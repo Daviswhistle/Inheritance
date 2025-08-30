@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import type { ReactElement } from "react";
 
 // ===== World Chain
 const FACTORY_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS as string;
@@ -653,7 +654,7 @@ export default function App() {
       setStatus("Failed to copy to clipboard");
     }
   };
-  const gate = (node: JSX.Element) =>
+  const gate = (node: ReactElement) =>
     (REQUIRE_VERIFY && !verified)
       ? (
         <div className="p-4 border rounded bg-yellow-50 text-sm">

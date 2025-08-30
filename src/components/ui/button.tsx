@@ -1,6 +1,14 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 
-type Props = ButtonHTMLAttributes<HTMLButtonElement>;
-export function Button({ className, ...props }: Props) {
-  return <button className={`px-3 py-1.5 rounded border ${className ?? ""}`} {...props} />;
+type ButtonProps = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & {
+  className?: string;
+};
+
+export function Button({ className = "", ...props }: ButtonProps) {
+  return (
+    <button
+      {...props}
+      className={`inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium border shadow-sm ${className}`}
+    />
+  );
 }
