@@ -17,7 +17,7 @@ const CHAIN_PARAMS = {
 } as const;
 const EXPLORER = CHAIN_PARAMS.blockExplorerUrls?.[0] || "https://worldscan.org";
 
-const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID as string;
+// const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID as string;
 const REQUIRE_VERIFY = (import.meta.env.VITE_REQUIRE_VERIFY as string || "false").toLowerCase() === "true";
 const WLD_ADDRESS = import.meta.env.VITE_WLD_ADDRESS as string;
 const ACTION_ID = import.meta.env.VITE_WORLD_ACTION_ID || "inheritance_access";
@@ -92,7 +92,7 @@ export default function App() {
   const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
 
   // ---- helpers
-  const toUnits = (v: bigint) => Number(v) / 10 ** wldDecimals;
+  // const toUnits = (v: bigint) => Number(v) / 10 ** wldDecimals;
   const fmtUnits = (v: bigint, d = wldDecimals) => ethers.formatUnits(v, d);
   const parseAmount = (s: string) => {
     const [i, d = ""] = s.split(".");

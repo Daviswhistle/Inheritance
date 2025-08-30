@@ -1,5 +1,5 @@
-import { InputHTMLAttributes } from "react";
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  const cls = "border rounded px-2 py-1 w-full";
-  return <input {...props} className={`${cls} ${props.className||""}`} />;
+import type { InputHTMLAttributes } from "react";
+
+export function Input({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={`border rounded px-2 py-1 w-full ${className ?? ""}`} {...p} />;
 }

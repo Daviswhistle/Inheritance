@@ -1,13 +1,12 @@
-import { ReactNode } from "react";
-export function Card({children}:{children:ReactNode}) {
-  return <div className="border rounded bg-white">{children}</div>;
+import type { HTMLAttributes } from "react";
+
+export function Card(props: HTMLAttributes<HTMLDivElement>) {
+  const { className, ...rest } = props;
+  return <div className={`rounded border bg-white ${className ?? ""}`} {...rest} />;
 }
-export function CardHeader({children}:{children:ReactNode}) {
-  return <div className="p-4 border-b">{children}</div>;
-}
-export function CardTitle({children}:{children:ReactNode}) {
-  return <div className="text-lg font-semibold">{children}</div>;
-}
-export function CardContent({children}:{children:ReactNode}) {
-  return <div className="p-4">{children}</div>;
-}
+export const CardHeader = (p: HTMLAttributes<HTMLDivElement>) =>
+  <div className={`p-4 border-b ${p.className ?? ""}`} {...p} />;
+export const CardTitle = (p: HTMLAttributes<HTMLHeadingElement>) =>
+  <h3 className={`font-semibold ${p.className ?? ""}`} {...p} />;
+export const CardContent = (p: HTMLAttributes<HTMLDivElement>) =>
+  <div className={`p-4 ${p.className ?? ""}`} {...p} />;
