@@ -82,7 +82,6 @@ export default function App() {
   const [wldDecimals, setWldDecimals] = useState(18);
   const [walletWld, setWalletWld] = useState<bigint>(0n);
   const [vaultWld, setVaultWld] = useState<bigint>(0n);
-  const [usdPerWld, setUsdPerWld] = useState<number | null>(null);
   const [amountStr, setAmountStr] = useState("");
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
@@ -394,10 +393,6 @@ export default function App() {
     ]);
     setWldSymbol(sym); setWldDecimals(dec);
     setWalletWld(userBal); setVaultWld(vaultBal);
-    try {
-      const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=worldcoin&vs_currencies=usd");
-      const j = await r.json(); setUsdPerWld(j.worldcoin?.usd ?? null);
-    } catch { setUsdPerWld(null); }
   };
   useEffect(() => { refreshBalances(); }, [provider, account, vault]);
 
@@ -690,10 +685,7 @@ export default function App() {
           <Card>
             <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
             <CardContent className="grid gap-3">
-              <div className="text-sm">
-                Wallet: {fmtUnits(walletWld)} {wldSymbol}
-                {usdPerWld ? ` (~$${(Number(ethers.formatUnits(walletWld, wldDecimals)) * usdPerWld).toFixed(2)})` : ""}
-              </div>
+              <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
               <div className="grid grid-cols-3 items-center gap-2">
                 <div>Heir address</div>
                 <Input className="col-span-2" placeholder="0x..." value={heir} onChange={e => setHeir(e.target.value)} />
@@ -788,14 +780,8 @@ export default function App() {
                 </div>
                 <div>Created at: <b>{vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}</b></div>
               </div>
-              <div className="text-sm">
-                Wallet: {fmtUnits(walletWld)} {wldSymbol}
-                {usdPerWld ? ` (~$${(Number(ethers.formatUnits(walletWld, wldDecimals)) * usdPerWld).toFixed(2)})` : ""}
-              </div>
-              <div className="text-sm">
-                Vault: {fmtUnits(vaultWld)} {wldSymbol}
-                {usdPerWld ? ` (~$${(Number(ethers.formatUnits(vaultWld, wldDecimals)) * usdPerWld).toFixed(2)})` : ""}
-              </div>
+              <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
+              <div className="text-sm">Vault: {fmtUnits(vaultWld)} {wldSymbol}</div>
               {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                 <>
                   <div className="grid grid-cols-3 items-center gap-2">
