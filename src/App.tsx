@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,6 +90,15 @@ export default function App() {
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
   const [releasing, setReleasing] = useState<boolean>(false);
   const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
+  const [ctaLoading, setCtaLoading] = useState<boolean>(false);
+  type ToastType = 'info' | 'success' | 'error';
+  type Toast = { id: number; type: ToastType; msg: string };
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const pushToast = (type: ToastType, msg: string) => {
+    const id = Date.now() + Math.floor(Math.random() * 1e6);
+    setToasts((t) => [...t, { id, type, msg }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
+  };
 
   // ---- helpers
   // const toUnits = (v: bigint) => Number(v) / 10 ** wldDecimals;
@@ -99,6 +108,7 @@ export default function App() {
     const dd = (d + "0".repeat(wldDecimals)).slice(0, wldDecimals);
     return BigInt(i || "0") * (10n ** BigInt(wldDecimals)) + BigInt(dd || "0");
   };
+  const gate2 = (node: ReactElement) => node;
   const fmt = (s: number) => {
     const d = Math.floor(s / 86400);
     const h = Math.floor((s % 86400) / 3600);
@@ -120,6 +130,106 @@ export default function App() {
         {text}
       </span>
     );
+  };
+
+  // Unified CTA: verify (if required) then connect within World App
+  const continueWorldApp = async () => {
+    try {
+      const appId = document
+        .querySelector('meta[name="minikit:app-id"]')
+        ?.getAttribute("content") || "";
+      const { MiniKit, VerificationLevel } = (await import("@worldcoin/minikit-js")) as any;
+      const install = MiniKit.install?.(appId);
+      if (!install?.success) {
+        setStatus("World App?먯꽌 ?댁뼱二쇱꽭(MiniKit bridge unavailable)");
+        return;
+      }
+
+      // 1) Verify if required and not yet verified
+      if (REQUIRE_VERIFY && !verified) {
+        const { finalPayload } = await MiniKit.commandsAsync.verify({
+          action: ACTION_ID,
+          verification_level: VerificationLevel.Device,
+        });
+        if (finalPayload?.status !== "success") {
+          setStatus("?몄쬆痍⑥냼?섏뿀嫄곕굹 ?ㅽ뙣?덉뒿?덈떎.");
+          return;
+        }
+        setVerified(true);
+        localStorage.setItem("wld-verified", "1");
+        setStatus("?몄쬆 ?꾨즺. 吏媛곌껐吏꾪뻾?⑸땲");
+      }
+
+      // 2) Connect wallet if not yet connected
+      if (!account) {
+        const nonce = Math.random().toString(36).slice(2);
+        const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
+        if (finalPayload?.status === "success") {
+          const addr: string = finalPayload.address;
+          const p = new ethers.JsonRpcProvider(RPC_URL, 480);
+          setProvider(p); setSigner(null); setAccount(addr);
+          setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
+        } else {
+          setStatus("?곌껐痍⑥냼?섏뿀嫄곕굹 ?ㅽ뙣?덉뒿?덈떎.");
+          return;
+        }
+      }
+    } catch (e: any) {
+      setStatus("吏꾪뻾 ?ㅻ쪟: " + (e?.message || e));
+    }
+  };
+
+  // New unified handler used by UI and auto-start
+  const continueWorldApp2 = async () => {
+    setCtaLoading(true);
+    try {
+      const appId = document
+        .querySelector('meta[name="minikit:app-id"]')
+        ?.getAttribute("content") || "";
+      const { MiniKit, VerificationLevel } = (await import("@worldcoin/minikit-js")) as any;
+      const install = MiniKit.install?.(appId);
+      if (!install?.success) {
+        setStatus("Open in World App (MiniKit bridge unavailable)");
+        pushToast('error', 'MiniKit bridge unavailable. Open in World App.');
+        return;
+      }
+
+      if (REQUIRE_VERIFY && !verified) {
+        const { finalPayload } = await MiniKit.commandsAsync.verify({
+          action: ACTION_ID,
+          verification_level: VerificationLevel.Device,
+        });
+        if (finalPayload?.status !== 'success') {
+          setStatus('Verification cancelled or failed.');
+          pushToast('error', 'Verification cancelled or failed.');
+          return;
+        }
+        setVerified(true);
+        localStorage.setItem('wld-verified', '1');
+        setStatus('Verification complete. Connecting wallet...');
+      }
+
+      if (!account) {
+        const nonce = Math.random().toString(36).slice(2);
+        const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
+        if (finalPayload?.status === 'success') {
+          const addr: string = finalPayload.address;
+          const p = new ethers.JsonRpcProvider(RPC_URL, 480);
+          setProvider(p); setSigner(null); setAccount(addr);
+          setStatus('Connected (World App): ' + addr.slice(0, 6) + '...' + addr.slice(-4));
+        } else {
+          setStatus('Connection cancelled or failed.');
+          pushToast('error', 'Connection cancelled or failed.');
+          return;
+        }
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      setStatus('Continue error: ' + msg);
+      pushToast('error', msg);
+    } finally {
+      setCtaLoading(false);
+    }
   };
 
   // ---- connect
@@ -193,10 +303,9 @@ export default function App() {
       if (finalPayload?.status === "success") {
         setVerified(true);
         localStorage.setItem("wld-verified", "1");
-        setStatus("Verification (Device) complete ✅ You may proceed.");
-        // 인증 직후 자동 연결은 아래 useEffect에서 처리됩니다.
-        // 필요하면 여기서 Orb로 재호출
-        // await MiniKit.commandsAsync.verify({ action: ACTION_ID, verification_level: VerificationLevel.Orb });
+        setStatus("Verification complete. You may proceed.");
+        // ?몄쬆 吏곹썑 ?먮룞 ?곌껐? ?꾨옒 useEffect?먯꽌 泥섎━?⑸땲
+        // ?꾩슂?섎㈃ ?ш린Orb濡ы샇異?        // await MiniKit.commandsAsync.verify({ action: ACTION_ID, verification_level: VerificationLevel.Orb });
       } else {
         setStatus("Verification cancelled or failed.");
       }
@@ -212,7 +321,7 @@ export default function App() {
     }
   }, []);
 
-  // World App 자동 연결 함수
+  // World App ?먮룞 ?곌껐 ?⑥닔
   const autoConnectWorldApp = async () => {
     try {
       const appId = document
@@ -234,14 +343,12 @@ export default function App() {
     return false;
   };
 
-  // 검증 완료(또는 비필수 검증) 시 자동 연결 시도
+  // 寃利꾨즺(?먮뒗 鍮꾪븘寃利? ?먮룞 ?곌껐 ?쒕룄
   useEffect(() => {
     (async () => {
-      if ((!REQUIRE_VERIFY || verified) && !account) {
-        await autoConnectWorldApp();
-      }
+      await continueWorldApp2();
     })();
-  }, [verified, account]);
+  }, []);
 
   // ---- contracts
   const factory = useMemo(() => {
@@ -328,11 +435,11 @@ export default function App() {
       setVaultHeartbeat(Number(hb));
       setVaultLastPing(Number(lp));
       if (!withdrawTo) setWithdrawTo(o);
-    } catch {}
+    } catch { }
   };
   useEffect(() => { if (vaultCtr) refreshVaultDetails(); }, [vaultCtr]);
 
-  // 팩토리 이벤트 로그에서 금고 생성 블록/시간 조회
+  // ?⑺넗由대깽濡쒓렇?먯꽌 湲덇퀬 ?앹꽦 釉붾줉/?쒓컙 議고쉶
   const loadVaultCreationMeta = async () => {
     if (!vault || !(signer || provider)) return;
     try {
@@ -355,7 +462,7 @@ export default function App() {
               setVaultCreatedTime(Number(blk?.timestamp || 0));
               return true;
             }
-          } catch {}
+          } catch { }
         }
         return false;
       };
@@ -437,6 +544,7 @@ export default function App() {
       refreshBalances(); refreshTimer();
     } catch (e: any) {
       setStatus("Create error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     }
   };
 
@@ -472,6 +580,7 @@ export default function App() {
       refreshBalances();
     } catch (e: any) {
       setStatus("Deposit error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     }
   };
   const setMax = () => setAmountStr(fmtUnits(walletWld, wldDecimals));
@@ -501,6 +610,7 @@ export default function App() {
       refreshTimer();
     } catch (e: any) {
       setStatus("Extend error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     }
   };
   const changePeriod = async () => {
@@ -524,6 +634,7 @@ export default function App() {
       refreshTimer();
     } catch (e: any) {
       setStatus("Change period error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     }
   };
   const cancelInheritance = async () => {
@@ -546,6 +657,8 @@ export default function App() {
       refreshTimer();
     } catch (e: any) {
       setStatus("Cancel error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
+
     }
   };
 
@@ -570,6 +683,7 @@ export default function App() {
       refreshBalances(); refreshTimer();
     } catch (e: any) {
       setStatus("Claim error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     }
   };
 
@@ -595,12 +709,14 @@ export default function App() {
         });
         if (finalPayload?.status !== "success") { setStatus("Withdraw cancelled or failed"); return; }
         setStatus("Withdrawing: " + finalPayload.transaction_id);
+
       }
       setStatus("Withdraw complete");
       setWithdrawAmountStr("");
       refreshBalances();
     } catch (e: any) {
       setStatus("Withdraw error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     }
   };
 
@@ -625,6 +741,7 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Release cancelled or failed"); setReleasing(false); return; }
+
         setStatus("Releasing: " + finalPayload.transaction_id);
       }
       setStatus("Released. You can create a new vault.");
@@ -632,6 +749,7 @@ export default function App() {
       await loadVault();
     } catch (e: any) {
       setStatus("Release error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     } finally {
       setReleasing(false);
       setShowReleaseConfirm(false);
@@ -649,39 +767,46 @@ export default function App() {
       setStatus("Failed to copy to clipboard");
     }
   };
-  const gate = (node: ReactElement) =>
-    (REQUIRE_VERIFY && !verified)
-      ? (
-        <div className="p-4 border rounded bg-yellow-50 text-sm">
-          World ID verification required. Tap the button below to continue.
-          <div className="mt-2"><Button onClick={doVerify}>Verify with World App</Button></div>
-        </div>
-      )
-      : node;
-
+  const gate = (node: ReactElement) => node;
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-md mx-auto grid gap-4">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+      <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b border-slate-200">
+        <div className="container-narrow flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded bg-brand-600" />
+            <div className="text-sm font-semibold tracking-tight">WLD Inheritance</div>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <span className="hidden sm:inline">World Chain</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5">{badge('Chain: 480', 'gray')}</span>
+          </div>
+        </div>
+      </header>
+      <div className="container-narrow px-4 py-4 md:py-6 grid gap-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">WLD Inheritance Vault</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-2 flex-wrap">
-              <Button onClick={doVerify} disabled={!REQUIRE_VERIFY || verified}>
-                {verified ? "Verified" : "Verify in World App"}
+            <div className="flex gap-2 flex-wrap items-center">
+              <Button
+                variant="primary"
+                onClick={continueWorldApp2}
+                disabled={ctaLoading || (!!account && (!REQUIRE_VERIFY || verified))}
+              >
+                {ctaLoading ? (<><span className="spinner mr-2"></span>Continuing...</>) : ((!account) ? "Continue in World App" : ((REQUIRE_VERIFY && !verified) ? "Complete verification" : "Connected"))}
               </Button>
-              {!account && <Button onClick={connect}>Connect</Button>}
               <div className="text-xs text-gray-600">{status}</div>
             </div>
+
             <div className="text-xs text-gray-500">
-              Send <b>{wldSymbol}</b> into your personal vault. If you don’t extend the timer before it expires,
-              your designated heir can claim the entire balance automatically.
+              Send <b>{wldSymbol}</b> into your vault. If you do not extend the timer before it expires,
+              your designated heir can claim the full balance.
             </div>
           </CardContent>
         </Card>
 
-        {gate(
+        {gate2(
           <Card>
             <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
             <CardContent className="grid gap-3">
@@ -698,7 +823,7 @@ export default function App() {
               <div className="text-xs text-red-600">
                 {periodDays < 1 || periodDays > 365 ? "Period must be between 1 and 365 days." : ""}
               </div>
-              <Button onClick={createVault} disabled={periodDays < 1 || periodDays > 365 || !ethers.isAddress(heir)}>Create vault</Button>
+              <Button variant="primary" onClick={createVault} disabled={periodDays < 1 || periodDays > 365 || !ethers.isAddress(heir)}>Create vault</Button>
               {vault && (
                 <div className="text-xs text-gray-600 break-all">
                   Your vault:
@@ -709,13 +834,13 @@ export default function App() {
                 </div>
               )}
               {!vault && <div className="text-xs text-gray-600">
-                Don’t see your vault? If you’re an heir, we’ll try to locate it automatically. You can also re-scan from the timer card below.
+                Cannot find your vault? If you are an heir, we will try to locate it automatically. You can also re-scan from the timer card below.
               </div>}
             </CardContent>
           </Card>
         )}
 
-        {vault && gate(
+        {vault && gate2(
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
@@ -776,9 +901,20 @@ export default function App() {
                 </div>
                 <div>
                   Created block: <b>{vaultCreatedBlock ?? "-"}</b>
-                  {vaultCreatedBlock !== null && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/block/${vaultCreatedBlock}`} target="_blank" rel="noreferrer">View</a>}
+                  {vaultCreatedBlock !== null ? (
+                    <a
+                      className="ml-2 text-blue-600 underline"
+                      href={`${EXPLORER}/block/${vaultCreatedBlock}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View
+                    </a>
+                  ) : null}
                 </div>
-                <div>Created at: <b>{vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}</b></div>
+                <div>
+                  Created at: <b>{vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}</b>
+                </div>
               </div>
               <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
               <div className="text-sm">Vault: {fmtUnits(vaultWld)} {wldSymbol}</div>
@@ -791,11 +927,11 @@ export default function App() {
                   </div>
                   <div className="flex gap-2 flex-wrap items-center">
                     <div className="text-xs text-gray-600">Available: {fmtUnits(walletWld)} {wldSymbol}</div>
-                    <Button onClick={() => setPct(25)}>25%</Button>
-                    <Button onClick={() => setPct(50)}>50%</Button>
-                    <Button onClick={() => setPct(75)}>75%</Button>
-                    <Button onClick={setMax}>Max</Button>
-                    <Button onClick={deposit}>Deposit</Button>
+                    <Button variant="ghost" onClick={() => setPct(25)}>25%</Button>
+                    <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
+                    <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
+                    <Button variant="ghost" onClick={setMax}>Max</Button>
+                    <Button variant="primary" onClick={deposit}>Deposit</Button>
                     <Button onClick={refreshBalances}>Refresh</Button>
                   </div>
                 </>
@@ -807,7 +943,7 @@ export default function App() {
           </Card>
         )}
 
-        {vault && gate(
+        {vault && gate2(
           <Card>
             <CardHeader><CardTitle>Timer & Controls</CardTitle></CardHeader>
             <CardContent className="space-y-2">
@@ -819,23 +955,23 @@ export default function App() {
               <div className="flex gap-2 flex-wrap">
                 {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                   <>
-                    <Button onClick={extendTime}>Extend time</Button>
+                    <Button variant="primary" onClick={extendTime}>Extend time</Button>
                     <div className="flex items-center gap-2">
                       <Input type="number" className="w-28" value={periodDays}
                         onChange={e => setPeriodDays(parseInt(e.target.value || "0"))} />
                       <Button onClick={changePeriod} disabled={periodDays < 1 || periodDays > 365}>Change period</Button>
                     </div>
-                    <Button onClick={cancelInheritance}>Cancel (set heir to me)</Button>
+                    <Button variant="ghost" onClick={cancelInheritance}>Cancel (set heir to me)</Button>
                     {supportsRelease && vaultWld === 0n && canClaim && (
                       <div className="flex items-center gap-2">
-                      <Button onClick={() => setShowReleaseConfirm(true)}>Release slot</Button>
-                      <span className="text-xs text-gray-500">* Available only after expiry and when vault balance is 0. The contract remains on-chain; only the factory mapping is cleared.</span>
+                        <Button onClick={() => setShowReleaseConfirm(true)}>Release slot</Button>
+                        <span className="text-xs text-gray-500">* Available only after expiry and when vault balance is 0. The contract remains on-chain; only the factory mapping is cleared.</span>
                       </div>
                     )}
                   </>
                 )}
                 {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && (
-                  <Button onClick={claim} disabled={!canClaim}>Claim (heir)</Button>
+                  <Button variant="primary" onClick={claim} disabled={!canClaim}>Claim (heir)</Button>
                 )}
                 {!account || (!vaultOwner && !vaultHeir) ? (
                   <Button onClick={loadVault}>Re-scan</Button>
@@ -866,6 +1002,11 @@ export default function App() {
           </Card>
         )}
       </div>
+      <div className="toast-container">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
+        ))}
+      </div>
       {showReleaseConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-md shadow-lg max-w-sm w-full p-4">
@@ -879,7 +1020,7 @@ export default function App() {
             </label>
             <div className="flex justify-end gap-2">
               <Button onClick={() => setShowReleaseConfirm(false)} disabled={releasing}>Cancel</Button>
-              <Button onClick={releaseSlot} disabled={releasing || !releaseAcknowledge}>Confirm</Button>
+              <Button variant="primary" onClick={releaseSlot} disabled={releasing || !releaseAcknowledge}>Confirm</Button>
             </div>
           </div>
         </div>

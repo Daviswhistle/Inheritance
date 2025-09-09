@@ -1,14 +1,33 @@
 import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 
+type Variant = "primary" | "outline" | "ghost";
+type Size = "sm" | "md" | "lg";
+
 type ButtonProps = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & {
   className?: string;
+  variant?: Variant;
+  size?: Size;
 };
 
-export function Button({ className = "", ...props }: ButtonProps) {
+const base = "btn";
+
+const variants: Record<Variant, string> = {
+  primary: "btn-primary",
+  outline: "btn-outline",
+  ghost: "btn-ghost",
+};
+
+const sizes: Record<Size, string> = {
+  sm: "btn-sm",
+  md: "btn-md",
+  lg: "btn-lg",
+};
+
+export function Button({ className = "", variant = "outline", size = "md", ...props }: ButtonProps) {
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium border shadow-sm ${className}`}
+      className={`${base} ${variants[variant]} ${sizes[size]} shadow-soft ${className}`}
     />
   );
 }

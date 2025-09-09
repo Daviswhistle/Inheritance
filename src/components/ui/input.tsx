@@ -6,7 +6,7 @@ export function Input({ className = "", ...props }: InputProps) {
   return (
     <input
       {...props}
-      className={`border rounded-md px-3 py-2 text-sm shadow-sm ${className}`}
+      className={`w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${className}`}
     />
   );
 }
