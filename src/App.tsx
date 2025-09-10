@@ -85,12 +85,15 @@ export default function App() {
   const [amountStr, setAmountStr] = useState("");
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
+  const [newHeir, setNewHeir] = useState<string>("");
   const [copied, setCopied] = useState<null | "vault" | "owner" | "heir" | "wld">(null);
   const [supportsRelease, setSupportsRelease] = useState<boolean>((import.meta.env as any).VITE_FACTORY_RELEASE_SUPPORTED === "true");
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
   const [releasing, setReleasing] = useState<boolean>(false);
   const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
+  const [heirFoundVaults, setHeirFoundVaults] = useState<string[]>([]);
+  const [findingHeirVaults, setFindingHeirVaults] = useState<boolean>(false);
   type ToastType = 'info' | 'success' | 'error';
   type Toast = { id: number; type: ToastType; msg: string };
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -116,6 +119,23 @@ export default function App() {
     const sec = s % 60;
     return `${d}d ${h}h ${m}m ${sec}s`;
   };
+  // Expiry timestamp & display (uses device locale/timezone)
+  const deviceTimeZone = useMemo(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time'; } catch { return 'local time'; }
+  }, []);
+  const expiryTs = useMemo(() => {
+    if (vaultLastPing && vaultHeartbeat) return vaultLastPing + vaultHeartbeat;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (timeRemaining && timeRemaining > 0) return nowSec + timeRemaining;
+    return 0;
+  }, [vaultLastPing, vaultHeartbeat, timeRemaining]);
+  const expired = useMemo(() => {
+    if (canClaim) return true;
+    if (!expiryTs) return false;
+    const nowSec = Math.floor(Date.now() / 1000);
+    return nowSec >= expiryTs;
+  }, [canClaim, expiryTs]);
+  const expiryLocal = useMemo(() => (expiryTs ? new Date(expiryTs * 1000).toLocaleString() : '-'), [expiryTs]);
   const short = (a: string) => a ? (a.slice(0, 6) + "..." + a.slice(-4)) : "-";
   const badge = (text: string, color: "blue" | "purple" | "yellow" | "green" | "gray") => {
     const clsMap: Record<string, string> = {
@@ -141,7 +161,7 @@ export default function App() {
       const { MiniKit, VerificationLevel } = (await import("@worldcoin/minikit-js")) as any;
       const install = MiniKit.install?.(appId);
       if (!install?.success) {
-        setStatus("World App?먯꽌 ?댁뼱二쇱꽭(MiniKit bridge unavailable)");
+        setStatus("Open in World App (MiniKit bridge unavailable)");
         return;
       }
 
@@ -152,12 +172,12 @@ export default function App() {
           verification_level: VerificationLevel.Device,
         });
         if (finalPayload?.status !== "success") {
-          setStatus("?몄쬆痍⑥냼?섏뿀嫄곕굹 ?ㅽ뙣?덉뒿?덈떎.");
+          setStatus("Verification cancelled or failed.");
           return;
         }
         setVerified(true);
         localStorage.setItem("wld-verified", "1");
-        setStatus("?몄쬆 ?꾨즺. 吏媛곌껐吏꾪뻾?⑸땲");
+        setStatus("Verification complete. Connecting...");
       }
 
       // 2) Connect wallet if not yet connected
@@ -170,12 +190,12 @@ export default function App() {
           setProvider(p); setSigner(null); setAccount(addr);
           setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
         } else {
-          setStatus("?곌껐痍⑥냼?섏뿀嫄곕굹 ?ㅽ뙣?덉뒿?덈떎.");
+          setStatus("Connection cancelled or failed.");
           return;
         }
       }
     } catch (e: any) {
-      setStatus("吏꾪뻾 ?ㅻ쪟: " + (e?.message || e));
+      setStatus("Continue error: " + (e?.message || e));
     }
   };
 
@@ -548,6 +568,44 @@ export default function App() {
     }
   };
 
+  // ---- discover vaults where current account is the heir (for heirs)
+  const findHeirVaults = async () => {
+    if (!factory || !account || findingHeirVaults) return;
+    setFindingHeirVaults(true);
+    setHeirFoundVaults([]);
+    try {
+      const p: any = signer ? (signer as any).provider : provider;
+      if (!p) return;
+      const sig = ethers.id("VaultCreated(address,address,address,uint256)");
+      const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
+      const logs = await (p as ethers.AbstractProvider).getLogs({
+        address: FACTORY_ADDRESS,
+        fromBlock: FACTORY_DEPLOY_BLOCK,
+        toBlock: "latest",
+        topics: [sig, null, heirTopic],
+      });
+      const iface = new ethers.Interface(FACTORY_ABI);
+      const vaults: string[] = [];
+      for (const lg of logs) {
+        try {
+          const parsed: any = iface.parseLog({ topics: lg.topics, data: lg.data });
+          const v = String(parsed?.args?.vault || "");
+          if (v && !vaults.includes(v)) vaults.push(v);
+        } catch {}
+      }
+      setHeirFoundVaults(vaults);
+      if (vaults.length === 1) {
+        setVault(vaults[0]);
+        pushToast('success', 'Detected a vault where you are heir.');
+      }
+      if (vaults.length === 0) pushToast('info', 'No vaults found where you are heir.');
+    } catch (e: any) {
+      pushToast('error', 'Heir scan error: ' + String(e?.message || e));
+    } finally {
+      setFindingHeirVaults(false);
+    }
+  };
+
   // ---- deposit WLD
   const deposit = async () => {
     if (!vault) return;
@@ -595,7 +653,7 @@ export default function App() {
     try {
       if (signer) {
         const tx = await vaultCtr.ping();
-        setStatus("Extending timer: " + tx.hash);
+        setStatus("Resetting timer: " + tx.hash);
         await tx.wait();
       } else {
         const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
@@ -603,13 +661,13 @@ export default function App() {
           transaction: [{ address: vault, abi: VAULT_ABI, functionName: "ping", args: [] }],
           formatPayload: true,
         });
-        if (finalPayload?.status !== "success") { setStatus("Extend cancelled or failed"); return; }
-        setStatus("Extending timer: " + finalPayload.transaction_id);
+        if (finalPayload?.status !== "success") { setStatus("Reset cancelled or failed"); return; }
+        setStatus("Resetting timer: " + finalPayload.transaction_id);
       }
-      setStatus("Timer extended (reset to full period)");
+      setStatus("Timer reset (full period restored)");
       refreshTimer();
     } catch (e: any) {
-      setStatus("Extend error: " + (e?.message || e));
+      setStatus("Reset error: " + (e?.message || e));
       pushToast('error', String(e?.message || e));
     }
   };
@@ -659,6 +717,32 @@ export default function App() {
       setStatus("Cancel error: " + (e?.message || e));
       pushToast('error', String(e?.message || e));
 
+    }
+  };
+
+  const updateHeir = async () => {
+    if (!vaultCtr) return;
+    if (!ethers.isAddress(newHeir)) { setStatus("Enter a valid new heir address"); return; }
+    try {
+      if (signer) {
+        const tx = await vaultCtr.updateHeir(newHeir);
+        setStatus("Updating heir: " + tx.hash);
+        await tx.wait();
+      } else {
+        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+          transaction: [{ address: vault, abi: VAULT_ABI, functionName: "updateHeir", args: [newHeir] }],
+          formatPayload: true,
+        });
+        if (finalPayload?.status !== "success") { setStatus("Update heir failed"); return; }
+        setStatus("Updating heir: " + finalPayload.transaction_id);
+      }
+      setStatus("Heir updated");
+      setNewHeir("");
+      refreshVaultDetails();
+    } catch (e: any) {
+      setStatus("Update heir error: " + (e?.message || e));
+      pushToast('error', String(e?.message || e));
     }
   };
 
@@ -769,7 +853,7 @@ export default function App() {
   };
   const gate = (node: ReactElement) => node;
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+    <div className="app-shell bg-gradient-to-b from-slate-50 to-slate-100">
       <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b border-slate-200">
         <div className="container-narrow flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
@@ -782,7 +866,7 @@ export default function App() {
           </div>
         </div>
       </header>
-      <div className="container-narrow px-4 py-4 md:py-6 grid gap-4">
+      <div className="container-narrow px-4 py-4 md:py-6 safe-pb grid gap-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">WLD Inheritance Vault</CardTitle>
@@ -806,6 +890,20 @@ export default function App() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm text-gray-700">
+            <div>
+              This mini app is fully non-custodial. Your keys and assets stay in your World App wallet. We never receive or control private keys.
+            </div>
+            <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
+              <li>Transactions are requested via World App MiniKit and must be explicitly approved in World App.</li>
+              <li>Deposits move WLD from your wallet to your personal vault contract; only you (before expiry) or your heir (after expiry) can move funds.</li>
+              <li>Our backend, if used, only reads chain data and never initiates transfers on your behalf.</li>
+            </ul>
+          </CardContent>
+        </Card>
+
         {gate2(
           <Card>
             <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
@@ -815,6 +913,9 @@ export default function App() {
                 <div>Heir address</div>
                 <Input className="col-span-2" placeholder="0x..." value={heir} onChange={e => setHeir(e.target.value)} />
               </div>
+              {heir && !ethers.isAddress(heir) && (
+                <div className="text-xs text-red-600">Invalid address format.</div>
+              )}
               <div className="grid grid-cols-3 items-center gap-2">
                 <div>Period (days)</div>
                 <Input type="number" className="col-span-2" value={periodDays}
@@ -834,8 +935,27 @@ export default function App() {
                 </div>
               )}
               {!vault && <div className="text-xs text-gray-600">
-                Cannot find your vault? If you are an heir, we will try to locate it automatically. You can also re-scan from the timer card below.
+                Cannot find your vault? If you are an heir, you can search for vaults where you are designated as the heir.
               </div>}
+              {!vault && account && (
+                <div className="flex items-center gap-2">
+                  <Button onClick={findHeirVaults} disabled={findingHeirVaults}>{findingHeirVaults ? 'Searching...' : 'Find vaults where I am heir'}</Button>
+                  {heirFoundVaults.length > 1 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} matches</span>}
+                </div>
+              )}
+              {!vault && heirFoundVaults.length > 1 && (
+                <div className="grid gap-2 text-xs">
+                  {heirFoundVaults.map((v) => (
+                    <div key={v} className="flex items-center justify-between gap-2">
+                      <span className="break-all">{short(v)}</span>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" onClick={() => setVault(v)}>Use</Button>
+                        <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">View</a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -948,19 +1068,35 @@ export default function App() {
             <CardHeader><CardTitle>Timer & Controls</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <div className="text-sm">Time until inheritance: <b>{fmt(timeRemaining)}</b></div>
+              <div className="text-sm">
+                {expired ? (
+                  <>Expired at (만료됨): <b>{expiryLocal}</b></>
+                ) : (
+                  <>Expires at (만료 예정일): <b>{expiryLocal}</b></>
+                )}
+                <span className="text-xs text-gray-500 ml-2">{deviceTimeZone}</span>
+              </div>
               <div className="text-sm">Claimable now: {canClaim ? "Yes" : "No"}</div>
               <div className="text-xs text-gray-500">
-                Tap <b>Extend time</b> to reset the countdown back to your full period.
+                Tap <b>Reset timer</b> to fill the countdown back to your full period.
               </div>
               <div className="flex gap-2 flex-wrap">
                 {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                   <>
-                    <Button variant="primary" onClick={extendTime}>Extend time</Button>
+                    <Button variant="primary" onClick={extendTime}>Reset timer</Button>
                     <div className="flex items-center gap-2">
                       <Input type="number" className="w-28" value={periodDays}
                         onChange={e => setPeriodDays(parseInt(e.target.value || "0"))} />
                       <Button onClick={changePeriod} disabled={periodDays < 1 || periodDays > 365}>Change period</Button>
                     </div>
+                    <div className="grid grid-cols-3 items-center gap-2">
+                      <div>New heir</div>
+                      <Input className="col-span-2" placeholder="0x..." value={newHeir} onChange={e => setNewHeir(e.target.value)} />
+                    </div>
+                    {newHeir && !ethers.isAddress(newHeir) && (
+                      <div className="text-xs text-red-600">Invalid new heir address.</div>
+                    )}
+                    <Button onClick={updateHeir} disabled={!newHeir || !ethers.isAddress(newHeir)}>Update heir</Button>
                     <Button variant="ghost" onClick={cancelInheritance}>Cancel (set heir to me)</Button>
                     {supportsRelease && vaultWld === 0n && canClaim && (
                       <div className="flex items-center gap-2">
@@ -984,6 +1120,9 @@ export default function App() {
                     <div>Withdraw to</div>
                     <Input className="col-span-2" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
                   </div>
+                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
+                    <div className="text-xs text-red-600">Invalid recipient address.</div>
+                  )}
                   <div className="flex gap-2">
                     <Button onClick={setWithdrawToMe}>To me</Button>
                   </div>
