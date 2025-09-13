@@ -68,6 +68,11 @@ body {
   min-height: 100dvh;
   /* fallbacks */
   min-height: 100vh;
+  /* Make the app its own scroll container to avoid host WebView quirks */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Respect safe areas (iOS notch/home indicator) */

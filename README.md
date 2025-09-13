@@ -12,4 +12,8 @@ Non‑custodial inheritance vault for WLD, designed to run inside World App usin
 2. `pnpm i && pnpm dev` (or your preferred package manager).
 
 ## Mobile scrolling
-This app uses dynamic viewport units (`svh/dvh`) and safe‑area padding to ensure reliable scrolling inside World App’s webview.
+This app uses dynamic viewport units (`svh/dvh`) and safe‑area padding to ensure reliable scrolling inside World App’s webview. The outer `.app-shell` is the scroll container with `overflow-y: auto; -webkit-overflow-scrolling: touch;` to avoid host WebView quirks on iOS/Android.
+
+## Auth & verification
+- Login uses Wallet Auth (`MiniKit.commandsAsync.walletAuth`) only.
+- Verification, if required by policy, is requested only after the user is connected (never as a login gate).

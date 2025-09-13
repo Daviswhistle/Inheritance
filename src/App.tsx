@@ -104,6 +104,30 @@ export default function App() {
   };
 
   // ---- helpers
+  const getRwProvider = (): ethers.AbstractProvider | null => {
+    const p: any = signer ? (signer as any).provider : provider;
+    return (p as ethers.AbstractProvider) || null;
+  };
+  const waitForTxOrEvent = async (
+    prov: ethers.AbstractProvider,
+    opts: { txHash?: string; confirmations?: number; timeoutMs?: number; intervalMs?: number; check?: () => Promise<boolean> }
+  ) => {
+    const { txHash, confirmations = 1, timeoutMs = 60_000, intervalMs = 1500, check } = opts || {};
+    const deadline = Date.now() + timeoutMs;
+    if (txHash && /^0x([A-Fa-f0-9]{64})$/.test(txHash)) {
+      const rcpt = await prov.waitForTransaction(txHash, confirmations);
+      if (!rcpt || rcpt.status !== 1) throw new Error("Transaction reverted or missing receipt");
+      return true;
+    }
+    if (check) {
+      while (Date.now() < deadline) {
+        try { if (await check()) return true; } catch {}
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+      throw new Error("Timed out waiting for on-chain confirmation");
+    }
+    return true;
+  };
   // const toUnits = (v: bigint) => Number(v) / 10 ** wldDecimals;
   const fmtUnits = (v: bigint, d = wldDecimals) => ethers.formatUnits(v, d);
   const parseAmount = (s: string) => {
@@ -111,6 +135,7 @@ export default function App() {
     const dd = (d + "0".repeat(wldDecimals)).slice(0, wldDecimals);
     return BigInt(i || "0") * (10n ** BigInt(wldDecimals)) + BigInt(dd || "0");
   };
+  const validDecimalInput = (s: string) => /^\d*(?:\.\d*)?$/.test(s);
   const gate2 = (node: ReactElement) => node;
   const fmt = (s: number) => {
     const d = Math.floor(s / 86400);
@@ -152,7 +177,9 @@ export default function App() {
     );
   };
 
-  // Unified CTA: verify (if required) then connect within World App
+  // Unified CTA (legacy helper - keep but ensure walletAuth comes first)
+  // NOTE: Review requirement: login must use walletAuth, not verify.
+  // We therefore authenticate first, then (optionally) verify after login.
   const continueWorldApp = async () => {
     try {
       const appId = document
@@ -160,27 +187,15 @@ export default function App() {
         ?.getAttribute("content") || "";
       const { MiniKit, VerificationLevel } = (await import("@worldcoin/minikit-js")) as any;
       const install = MiniKit.install?.(appId);
-      if (!install?.success) {
-        setStatus("Open in World App (MiniKit bridge unavailable)");
+      const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
+      if (!bridgeOn) {
+        const code = install?.errorCode || 'bridge_off';
+        const msg = install?.errorMessage || 'MiniKit bridge unavailable';
+        setStatus(`Bridge off (${code}). Open inside World App and update to latest. ${msg}`);
         return;
       }
 
-      // 1) Verify if required and not yet verified
-      if (REQUIRE_VERIFY && !verified) {
-        const { finalPayload } = await MiniKit.commandsAsync.verify({
-          action: ACTION_ID,
-          verification_level: VerificationLevel.Device,
-        });
-        if (finalPayload?.status !== "success") {
-          setStatus("Verification cancelled or failed.");
-          return;
-        }
-        setVerified(true);
-        localStorage.setItem("wld-verified", "1");
-        setStatus("Verification complete. Connecting...");
-      }
-
-      // 2) Connect wallet if not yet connected
+      // 1) Connect wallet if not yet connected (Wallet Auth is the login path)
       if (!account) {
         const nonce = Math.random().toString(36).slice(2);
         const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
@@ -193,6 +208,21 @@ export default function App() {
           setStatus("Connection cancelled or failed.");
           return;
         }
+      }
+
+      // 2) Optionally verify after login
+      if (REQUIRE_VERIFY && !verified) {
+        const { finalPayload } = await MiniKit.commandsAsync.verify({
+          action: ACTION_ID,
+          verification_level: VerificationLevel.Device,
+        });
+        if (finalPayload?.status !== "success") {
+          setStatus("Verification cancelled or failed.");
+          return;
+        }
+        setVerified(true);
+        localStorage.setItem("wld-verified", "1");
+        setStatus("Verification complete.");
       }
     } catch (e: any) {
       setStatus("Continue error: " + (e?.message || e));
@@ -208,27 +238,15 @@ export default function App() {
         ?.getAttribute("content") || "";
       const { MiniKit, VerificationLevel } = (await import("@worldcoin/minikit-js")) as any;
       const install = MiniKit.install?.(appId);
-      if (!install?.success) {
-        setStatus("Open in World App (MiniKit bridge unavailable)");
-        pushToast('error', 'MiniKit bridge unavailable. Open in World App.');
+      const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
+      if (!bridgeOn) {
+        const code = install?.errorCode || 'bridge_off';
+        const msg = install?.errorMessage || 'MiniKit bridge unavailable';
+        setStatus(`Bridge off (${code}). Open inside World App and update to latest. ${msg}`);
+        pushToast('error', 'Open this mini app inside World App ▸ update to latest.');
         return;
       }
-
-      if (REQUIRE_VERIFY && !verified) {
-        const { finalPayload } = await MiniKit.commandsAsync.verify({
-          action: ACTION_ID,
-          verification_level: VerificationLevel.Device,
-        });
-        if (finalPayload?.status !== 'success') {
-          setStatus('Verification cancelled or failed.');
-          pushToast('error', 'Verification cancelled or failed.');
-          return;
-        }
-        setVerified(true);
-        localStorage.setItem('wld-verified', '1');
-        setStatus('Verification complete. Connecting wallet...');
-      }
-
+      // Always login via walletAuth first
       if (!account) {
         const nonce = Math.random().toString(36).slice(2);
         const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
@@ -243,6 +261,22 @@ export default function App() {
           return;
         }
       }
+
+      // After login, optionally request verification
+      if (REQUIRE_VERIFY && !verified) {
+        const { finalPayload } = await MiniKit.commandsAsync.verify({
+          action: ACTION_ID,
+          verification_level: VerificationLevel.Device,
+        });
+        if (finalPayload?.status !== 'success') {
+          setStatus('Verification cancelled or failed.');
+          pushToast('error', 'Verification cancelled or failed.');
+          return;
+        }
+        setVerified(true);
+        localStorage.setItem('wld-verified', '1');
+        setStatus('Verification complete.');
+      }
     } catch (e: any) {
       const msg = String(e?.message || e);
       setStatus('Continue error: ' + msg);
@@ -252,20 +286,20 @@ export default function App() {
     }
   };
 
-  // ---- connect
+  // ---- connect (Wallet Auth only, never gate on verify)
   const connect = async () => {
-    if (REQUIRE_VERIFY && !verified) {
-      setStatus("Please verify in World App first.");
-      return;
-    }
     try {
       const appId = document
         .querySelector('meta[name="minikit:app-id"]')
         ?.getAttribute("content") || "";
       const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
       const install = MiniKit.install?.(appId);
-      if (!install?.success) {
-        setStatus("Open in World App (MiniKit bridge unavailable)");
+      const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
+      if (!bridgeOn) {
+        const code = install?.errorCode || "bridge_off";
+        const msg = install?.errorMessage || "MiniKit bridge unavailable";
+        setStatus(`Bridge off (${code}). Open inside World App and update to latest. ${msg}`);
+        pushToast('error', 'Open this mini app inside World App ▸ update to latest.');
         return;
       }
       const nonce = Math.random().toString(36).slice(2);
@@ -279,7 +313,8 @@ export default function App() {
         setStatus("Connection cancelled or failed");
       }
     } catch (e: any) {
-      setStatus("Connect error: " + (e?.message || e));
+      setStatus("Connect error: " + (e?.message || e) + ". Open this app inside World App and ensure you’re on the latest version.");
+      pushToast('error', 'Open inside World App ▸ update to latest.');
     }
   };
 
@@ -297,15 +332,14 @@ export default function App() {
 
       // Try MiniKit install (works only inside World App webview)
       const install = MiniKit.install?.(appId);
-      if (!install?.success) {
+      const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
+      if (!bridgeOn) {
         const code = install?.errorCode || "unknown";
         const msg = install?.errorMessage || "MiniKit bridge install failed";
         setStatus(`bridge=off (${code}) | ${msg}`);
         return;
       }
-
-      const installed = MiniKit?.isInstalled?.();
-      setStatus(`bridge=${installed ? "on" : "off"} | appId=${appId}`);
+      setStatus(`bridge=on | appId=${appId}`);
 
       // 8s no-response guard
       const to = setTimeout(() => {
@@ -396,7 +430,7 @@ export default function App() {
       const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
       const logs = await (p as ethers.AbstractProvider).getLogs({
         address: FACTORY_ADDRESS,
-        fromBlock: FACTORY_DEPLOY_BLOCK,
+        fromBlock: FACTORY_DEPLOY_BLOCK || "latest",
         toBlock: "latest",
         topics: [sig, null, heirTopic],
       });
@@ -469,7 +503,7 @@ export default function App() {
       const tryQuery = async (topics: (string | null | string[])[]) => {
         const logs = await (p as ethers.AbstractProvider).getLogs({
           address: FACTORY_ADDRESS,
-          fromBlock: FACTORY_DEPLOY_BLOCK,
+          fromBlock: FACTORY_DEPLOY_BLOCK || "latest",
           toBlock: "latest",
           topics,
         });
@@ -522,6 +556,13 @@ export default function App() {
     setWalletWld(userBal); setVaultWld(vaultBal);
   };
   useEffect(() => { refreshBalances(); }, [provider, account, vault]);
+  useEffect(() => {
+    if (!provider || !account) return;
+    const id = setInterval(() => { refreshBalances(); }, 30000);
+    const onVis = () => { if (document.visibilityState === 'visible') refreshBalances(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, [provider, account, vault]);
 
   const refreshTimer = async () => {
     if (!vaultCtr) return;
@@ -531,6 +572,13 @@ export default function App() {
     setCanClaim(cc);
   };
   useEffect(() => { if (vaultCtr) refreshTimer(); }, [vaultCtr]);
+  useEffect(() => {
+    if (!vaultCtr) return;
+    const id = setInterval(() => { refreshTimer(); }, 15000);
+    const onVis = () => { if (document.visibilityState === 'visible') refreshTimer(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, [vaultCtr]);
 
   // ---- create vault
   const createVault = async () => {
@@ -552,13 +600,21 @@ export default function App() {
           }],
           formatPayload: true,
         });
-        if (finalPayload?.status !== "success") {
-          setStatus("Transaction failed or cancelled");
-          return;
+        if (finalPayload?.status !== "success") { setStatus("Transaction cancelled or failed"); return; }
+        setStatus("Pending… awaiting confirmation");
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const vchk = await factory.vaultOf(account);
+              return vchk && vchk !== ethers.ZeroAddress;
+            },
+          });
         }
-        setStatus("Creating vault: " + finalPayload.transaction_id);
       }
-      setStatus("Vault created");
+      setStatus("Vault created ✅");
       const v = await factory.vaultOf(account);
       setVault(v);
       refreshBalances(); refreshTimer();
@@ -580,7 +636,7 @@ export default function App() {
       const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
       const logs = await (p as ethers.AbstractProvider).getLogs({
         address: FACTORY_ADDRESS,
-        fromBlock: FACTORY_DEPLOY_BLOCK,
+        fromBlock: FACTORY_DEPLOY_BLOCK || "latest",
         toBlock: "latest",
         topics: [sig, null, heirTopic],
       });
@@ -610,6 +666,7 @@ export default function App() {
   const deposit = async () => {
     if (!vault) return;
     if (!amountStr) { setStatus("Enter amount"); return; }
+    if (!validDecimalInput(amountStr)) { setStatus("Enter a valid decimal amount"); return; }
     const amt = parseAmount(amountStr);
     if (amt <= 0n) { setStatus("Enter amount greater than 0"); return; }
     if (amt > walletWld) { setStatus("Amount exceeds wallet balance"); return; }
@@ -631,9 +688,23 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Deposit cancelled or failed"); return; }
-        setStatus("Depositing: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prev = vaultWld;
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const p = signer ? (signer as any).provider : provider;
+              const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p as any);
+              const vb: bigint = await token.balanceOf(vault);
+              return vb > prev;
+            },
+          });
+        }
       }
-      setStatus("Deposit complete");
+      setStatus("Deposit complete ✅");
       setAmountStr("");
       refreshBalances();
     } catch (e: any) {
@@ -662,9 +733,21 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Reset cancelled or failed"); return; }
-        setStatus("Resetting timer: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prevLp = vaultLastPing;
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const lp: bigint = await (vaultCtr as any).lastPing();
+              return Number(lp) > (prevLp || 0);
+            },
+          });
+        }
       }
-      setStatus("Timer reset (full period restored)");
+      setStatus("Timer reset (full period restored) ✅");
       refreshTimer();
     } catch (e: any) {
       setStatus("Reset error: " + (e?.message || e));
@@ -686,9 +769,20 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Change period failed"); return; }
-        setStatus("Updating period: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const hb: bigint = await (vaultCtr as any).heartbeatInterval();
+              return Number(hb) === Number(seconds);
+            },
+          });
+        }
       }
-      setStatus("Period updated");
+      setStatus("Period updated ✅");
       refreshTimer();
     } catch (e: any) {
       setStatus("Change period error: " + (e?.message || e));
@@ -709,9 +803,20 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Cancel failed"); return; }
-        setStatus("Cancelling: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const h = await (vaultCtr as any).heir();
+              return h && h.toLowerCase() === vaultOwner.toLowerCase();
+            },
+          });
+        }
       }
-      setStatus("Inheritance cancelled (heir=owner)");
+      setStatus("Inheritance cancelled (heir=owner) ✅");
       refreshTimer();
     } catch (e: any) {
       setStatus("Cancel error: " + (e?.message || e));
@@ -735,9 +840,21 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Update heir failed"); return; }
-        setStatus("Updating heir: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          const target = newHeir;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const h = await (vaultCtr as any).heir();
+              return h && h.toLowerCase() === target.toLowerCase();
+            },
+          });
+        }
       }
-      setStatus("Heir updated");
+      setStatus("Heir updated ✅");
       setNewHeir("");
       refreshVaultDetails();
     } catch (e: any) {
@@ -761,9 +878,23 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Claim failed"); return; }
-        setStatus("Claiming: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prev = vaultWld;
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const p = signer ? (signer as any).provider : provider;
+              const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p as any);
+              const vb: bigint = await token.balanceOf(vault);
+              return vb < prev;
+            },
+          });
+        }
       }
-      setStatus("Claim complete");
+      setStatus("Claim complete ✅");
       refreshBalances(); refreshTimer();
     } catch (e: any) {
       setStatus("Claim error: " + (e?.message || e));
@@ -777,6 +908,7 @@ export default function App() {
     if (!withdrawTo) { setStatus("Enter recipient address"); return; }
     if (!ethers.isAddress(withdrawTo)) { setStatus("Invalid recipient address"); return; }
     if (!withdrawAmountStr) { setStatus("Enter amount"); return; }
+    if (!validDecimalInput(withdrawAmountStr)) { setStatus("Enter a valid decimal amount"); return; }
     const amt = parseAmount(withdrawAmountStr);
     if (amt <= 0n) { setStatus("Enter amount greater than 0"); return; }
     if (amt > vaultWld) { setStatus("Amount exceeds vault balance"); return; }
@@ -792,10 +924,24 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Withdraw cancelled or failed"); return; }
-        setStatus("Withdrawing: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prev = vaultWld;
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const p = signer ? (signer as any).provider : provider;
+              const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p as any);
+              const vb: bigint = await token.balanceOf(vault);
+              return vb < prev;
+            },
+          });
+        }
 
       }
-      setStatus("Withdraw complete");
+      setStatus("Withdraw complete ✅");
       setWithdrawAmountStr("");
       refreshBalances();
     } catch (e: any) {
@@ -825,10 +971,20 @@ export default function App() {
           formatPayload: true,
         });
         if (finalPayload?.status !== "success") { setStatus("Release cancelled or failed"); setReleasing(false); return; }
-
-        setStatus("Releasing: " + finalPayload.transaction_id);
+        setStatus("Pending… awaiting confirmation");
+        const prov = getRwProvider();
+        if (prov) {
+          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+          await waitForTxOrEvent(prov, {
+            txHash: txh,
+            check: async () => {
+              const v = await (factory as any).vaultOf(account);
+              return !v || v === ethers.ZeroAddress;
+            },
+          });
+        }
       }
-      setStatus("Released. You can create a new vault.");
+      setStatus("Released. You can create a new vault. ✅");
       setVault("");
       await loadVault();
     } catch (e: any) {
@@ -873,13 +1029,27 @@ export default function App() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2 flex-wrap items-center">
-              <Button
-                variant="primary"
-                onClick={continueWorldApp2}
-                disabled={ctaLoading || (!!account && (!REQUIRE_VERIFY || verified))}
-              >
-                {ctaLoading ? (<><span className="spinner mr-2"></span>Continuing...</>) : ((!account) ? "Continue in World App" : ((REQUIRE_VERIFY && !verified) ? "Complete verification" : "Connected"))}
-              </Button>
+              {!account && (
+                <Button
+                  variant="primary"
+                  onClick={continueWorldApp2}
+                  disabled={ctaLoading}
+                >
+                  {ctaLoading ? (<><span className="spinner mr-2"></span>Continuing...</>) : "Continue in World App"}
+                </Button>
+              )}
+              {account && REQUIRE_VERIFY && !verified && (
+                <Button
+                  variant="primary"
+                  onClick={continueWorldApp2}
+                  disabled={ctaLoading}
+                >
+                  {ctaLoading ? (<><span className="spinner mr-2"></span>Verifying...</>) : "Verify in World App"}
+                </Button>
+              )}
+              {account && (!REQUIRE_VERIFY || verified) && (
+                <Button disabled size="md">Connected</Button>
+              )}
               <div className="text-xs text-gray-600">{status}</div>
             </div>
 
@@ -900,6 +1070,8 @@ export default function App() {
               <li>Transactions are requested via World App MiniKit and must be explicitly approved in World App.</li>
               <li>Deposits move WLD from your wallet to your personal vault contract; only you (before expiry) or your heir (after expiry) can move funds.</li>
               <li>Our backend, if used, only reads chain data and never initiates transfers on your behalf.</li>
+              <li>Your address is provided by World App via a secure bridge; signatures and transactions happen only in World App.</li>
+              <li>We do not store any personal data about you, your heir, or your vault.</li>
             </ul>
           </CardContent>
         </Card>
@@ -1057,7 +1229,7 @@ export default function App() {
                 </>
               )}
               <div className="text-xs text-gray-500">
-                * This vault accepts only WLD. Do not send ETH or other tokens.
+                * This vault accepts only WLD on World Chain (480). Do not send ETH or other tokens. Gas fees are generally covered by World App; ETH is usually not required.
               </div>
             </CardContent>
           </Card>
