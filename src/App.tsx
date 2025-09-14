@@ -461,8 +461,7 @@ export default function App() {
     return false;
   };
 
-  // 寃利꾨즺(?먮뒗 鍮꾪븘寃利? ?먮룞 ?곌껐 ?쒕룄
-  // In-World App: on mount, WalletAuth first, then (optionally) Verify(Device)
+  // In-World App: on mount, initialize MiniKit bridge, WalletAuth first, then (optionally) Verify(Device)
   useEffect(() => {
     (async () => {
       try {
@@ -470,7 +469,11 @@ export default function App() {
           .querySelector('meta[name="minikit:app-id"]')
           ?.getAttribute("content") || "";
         const { MiniKit, VerificationLevel } = (await import("@worldcoin/minikit-js")) as any;
-        if (!MiniKit.isInstalled?.()) {
+        // Ensure the MiniKit bridge is initialized before checking installation state.
+        // Some hosts report isInstalled=false until install(appId) is called.
+        const install = MiniKit.install?.(appId);
+        const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
+        if (!bridgeOn) {
           setStatus("Open in World App (MiniKit bridge unavailable)");
           setMiniInstalled(false);
           return;
