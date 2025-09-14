@@ -75,7 +75,25 @@ export default function App() {
   const [heirResolved, setHeirResolved] = useState<{ username?: string; address?: string } | null>(null);
   const [resolvingHeir, setResolvingHeir] = useState<boolean>(false);
   const [heirSeq, setHeirSeq] = useState<number>(0);
+  // Period (days) — use string input to avoid forced 0 when user clears field
   const [periodDays, setPeriodDays] = useState<number>(30);
+  const [periodInput, setPeriodInput] = useState<string>("30");
+  const onPeriodChange = (raw: string) => {
+    // allow only digits; keep empty while editing
+    const v = (raw || '').replace(/\D+/g, '');
+    setPeriodInput(v);
+    if (v === '') return; // don't coerce to 0 while user is clearing
+    let n = parseInt(v, 10);
+    if (Number.isNaN(n)) return;
+    if (n < 0) n = 0; // temporarily allow 0 during typing; gate with validPeriod
+    if (n > 365) n = 365;
+    setPeriodDays(n);
+  };
+  const periodNum = useMemo(() => {
+    const n = parseInt(periodInput || '', 10);
+    return Number.isFinite(n) ? n : NaN;
+  }, [periodInput]);
+  const periodValid = useMemo(() => Number.isFinite(periodNum) && periodNum >= 1 && periodNum <= 365, [periodNum]);
 
   const [vault, setVault] = useState<string>("");
   const [vaultOwner, setVaultOwner] = useState<string>("");
@@ -597,6 +615,24 @@ export default function App() {
   const getUsernameFor = async (addr: string) => {
     try {
       const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      // Preflight simulation against RPC to surface readable errors
+      try {
+        const p = getRwProvider();
+        if (p && account) {
+          const iface = new ethers.Interface(FACTORY_ABI);
+          const data = iface.encodeFunctionData('createVault', [resolved.address, seconds]);
+          await (p as ethers.AbstractProvider).call({ to: FACTORY_ADDRESS, data, from: account });
+        }
+      } catch (simErr: any) {
+        const raw = String(simErr?.reason || simErr?.shortMessage || simErr?.message || simErr);
+        let friendly = raw;
+        if (/ALREADY_HAS_VAULT/i.test(raw)) friendly = 'You already have a vault (factory is one-per-owner).';
+        else if (/HeartbeatOutOfRange/i.test(raw)) friendly = 'Period must be 1–365 days.';
+        else if (/InvalidAddress/i.test(raw)) friendly = 'Invalid heir address.';
+        setStatus('Simulation: ' + friendly);
+        pushToast('error', friendly);
+        return;
+      }
       const u = await MiniKit.getUserByAddress?.(addr);
       return u?.username as string | undefined;
     } catch { return undefined; }
@@ -783,7 +819,9 @@ export default function App() {
     if (vault) { setStatus("You already have a vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
     const resolved = heirResolved || await resolveHeirInput(heir);
     if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
-    const seconds = BigInt(periodDays) * 24n * 60n * 60n;
+    const days = periodNum;
+    if (!periodValid) { setStatus("Period must be between 1 and 365 days."); return; }
+    const seconds = BigInt(days) * 24n * 60n * 60n;
     try {
       const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
@@ -947,7 +985,8 @@ export default function App() {
   };
   const changePeriod = async () => {
     if (!vaultCtr) return;
-    const seconds = BigInt(periodDays) * 24n * 60n * 60n;
+    if (!periodValid) { setStatus('Period must be between 1 and 365 days.'); return; }
+    const seconds = BigInt(periodNum) * 24n * 60n * 60n;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
@@ -1254,21 +1293,19 @@ export default function App() {
               <div className="grid grid-cols-3 items-center gap-2">
                 <div>Period (days)</div>
                 <Input
-                  type="number"
+                  type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  min={1}
-                  max={365}
-                  step={1}
                   className="col-span-2"
-                  value={periodDays}
-                  onChange={e => setPeriodDays(parseInt((e.target.value || "0"), 10))}
+                  value={periodInput}
+                  placeholder="30"
+                  onChange={e => onPeriodChange(e.target.value)}
                 />
               </div>
               <div className="text-xs text-red-600">
-                {periodDays < 1 || periodDays > 365 ? "Period must be between 1 and 365 days." : ""}
+                {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
               </div>
-              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || !!vault || periodDays < 1 || periodDays > 365 || !heirResolved?.address}>Create vault</Button>
+              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || !!vault || !periodValid || !heirResolved?.address}>Create vault</Button>
               {!!vault && (
                 <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
               )}
@@ -1450,17 +1487,15 @@ export default function App() {
                     <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account}>Reset timer</Button>
                     <div className="flex items-center gap-2">
                       <Input
-                        type="number"
+                        type="text"
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        min={1}
-                        max={365}
-                        step={1}
                         className="w-28"
-                        value={periodDays}
-                        onChange={e => setPeriodDays(parseInt((e.target.value || "0"), 10))}
+                        value={periodInput}
+                        placeholder="30"
+                        onChange={e => onPeriodChange(e.target.value)}
                       />
-                      <Button onClick={changePeriod} disabled={!miniInstalled || !account || periodDays < 1 || periodDays > 365}>Change period</Button>
+                      <Button onClick={changePeriod} disabled={!miniInstalled || !account || !periodValid}>Change period</Button>
                     </div>
                     <div className="grid grid-cols-3 items-center gap-2">
                       <div>New heir</div>
