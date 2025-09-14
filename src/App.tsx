@@ -22,7 +22,10 @@ const EXPLORER = CHAIN_PARAMS.blockExplorerUrls?.[0] || "https://worldscan.org";
 const REQUIRE_VERIFY = (import.meta.env.VITE_REQUIRE_VERIFY as string || "false").toLowerCase() === "true";
 const WLD_ADDRESS = import.meta.env.VITE_WLD_ADDRESS as string;
 const ACTION_ID = import.meta.env.VITE_WORLD_ACTION_ID || "inheritance_access";
-const FACTORY_DEPLOY_BLOCK = parseInt((import.meta.env as any).VITE_FACTORY_DEPLOY_BLOCK || "0") || 0;
+// Block range guard: prefer explicit deploy block; otherwise fall back safely later
+const FACTORY_DEPLOY_BLOCK_RAW = (import.meta.env as any).VITE_FACTORY_DEPLOY_BLOCK || "";
+const FACTORY_DEPLOY_BLOCK: number | "latest" =
+  FACTORY_DEPLOY_BLOCK_RAW ? parseInt(FACTORY_DEPLOY_BLOCK_RAW, 10) : "latest";
 
 // ===== WLD-only factory/vault ABI
 const FACTORY_ABI = [
@@ -58,14 +61,20 @@ const ERC20_ABI = [
 
 export default function App() {
   // ---- state
-  const [provider, setProvider] = useState<ethers.BrowserProvider | ethers.JsonRpcProvider | null>(null);
+  const [provider, setProvider] = useState<ethers.JsonRpcProvider | null>(null);
+  // signer 경로는 비활성 (World App 내부에서만 실행)
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [account, setAccount] = useState<string>("");
+  // Username (World App handle) — used for display; addresses are used on-chain
+  const [username, setUsername] = useState<string>("");
 
   const [verified, setVerified] = useState<boolean>(!REQUIRE_VERIFY);
   const [status, setStatus] = useState<string>("");
 
   const [heir, setHeir] = useState<string>("");
+  const [heirResolved, setHeirResolved] = useState<{ username?: string; address?: string } | null>(null);
+  const [resolvingHeir, setResolvingHeir] = useState<boolean>(false);
+  const [heirSeq, setHeirSeq] = useState<number>(0);
   const [periodDays, setPeriodDays] = useState<number>(30);
 
   const [vault, setVault] = useState<string>("");
@@ -86,6 +95,9 @@ export default function App() {
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
   const [newHeir, setNewHeir] = useState<string>("");
+  const [newHeirResolved, setNewHeirResolved] = useState<{ username?: string; address?: string } | null>(null);
+  const [resolvingNewHeir, setResolvingNewHeir] = useState<boolean>(false);
+  const [newHeirSeq, setNewHeirSeq] = useState<number>(0);
   const [copied, setCopied] = useState<null | "vault" | "owner" | "heir" | "wld">(null);
   const [supportsRelease, setSupportsRelease] = useState<boolean>((import.meta.env as any).VITE_FACTORY_RELEASE_SUPPORTED === "true");
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
@@ -94,6 +106,8 @@ export default function App() {
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
   const [heirFoundVaults, setHeirFoundVaults] = useState<string[]>([]);
   const [findingHeirVaults, setFindingHeirVaults] = useState<boolean>(false);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [miniInstalled, setMiniInstalled] = useState<boolean>(false);
   type ToastType = 'info' | 'success' | 'error';
   type Toast = { id: number; type: ToastType; msg: string };
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -102,11 +116,37 @@ export default function App() {
     setToasts((t) => [...t, { id, type, msg }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
   };
+  
+  // getLogs helper with safe fromBlock fallback for L2 gateways
+  const safeGetLogs = async (
+    p: ethers.AbstractProvider,
+    params: { address?: string; topics?: (string | null | string[])[]; toBlock?: number | string }
+  ) => {
+    const base = {
+      address: params.address,
+      topics: params.topics,
+      toBlock: params.toBlock ?? "latest",
+    } as const;
+    // If deploy block is known, use it directly
+    if (typeof FACTORY_DEPLOY_BLOCK === "number") {
+      return await p.getLogs({ ...base, fromBlock: FACTORY_DEPLOY_BLOCK });
+    }
+    // Otherwise, try a short window from the head to avoid L2 gateway limits
+    const head = await p.getBlockNumber();
+    const span1 = 20_000;
+    const from1 = head > span1 ? head - span1 : 0;
+    try {
+      return await p.getLogs({ ...base, fromBlock: from1 });
+    } catch {
+      const span2 = 5_000;
+      const from2 = head > span2 ? head - span2 : 0;
+      return await p.getLogs({ ...base, fromBlock: from2 });
+    }
+  };
 
   // ---- helpers
   const getRwProvider = (): ethers.AbstractProvider | null => {
-    const p: any = signer ? (signer as any).provider : provider;
-    return (p as ethers.AbstractProvider) || null;
+    return (provider as unknown as ethers.AbstractProvider) || null;
   };
   const waitForTxOrEvent = async (
     prov: ethers.AbstractProvider,
@@ -136,7 +176,24 @@ export default function App() {
     return BigInt(i || "0") * (10n ** BigInt(wldDecimals)) + BigInt(dd || "0");
   };
   const validDecimalInput = (s: string) => /^\d*(?:\.\d*)?$/.test(s);
-  const gate2 = (node: ReactElement) => node;
+  const gate2 = (node: ReactElement) => {
+    if (miniInstalled) return node;
+    return (
+      <Card>
+        <CardHeader><CardTitle>Open in World App</CardTitle></CardHeader>
+        <CardContent className="text-sm text-gray-700">
+          This mini app runs only inside World App. Please open it in World App to continue.
+        </CardContent>
+      </Card>
+    );
+  };
+  const isHeirSuspicious = () => {
+    const c = heirResolved?.address && ethers.isAddress(heirResolved.address)
+      ? ethers.getAddress(heirResolved.address)
+      : (ethers.isAddress(heir) ? ethers.getAddress(heir) : "");
+    if (!c) return false;
+    return c === ethers.ZeroAddress || (account && c === ethers.getAddress(account));
+  };
   const fmt = (s: number) => {
     const d = Math.floor(s / 86400);
     const h = Math.floor((s % 86400) / 3600);
@@ -177,7 +234,7 @@ export default function App() {
     );
   };
 
-  // Unified CTA (legacy helper - keep but ensure walletAuth comes first)
+  // Unified CTA (manual trigger) — requires World App
   // NOTE: Review requirement: login must use walletAuth, not verify.
   // We therefore authenticate first, then (optionally) verify after login.
   const continueWorldApp = async () => {
@@ -201,8 +258,10 @@ export default function App() {
         const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
         if (finalPayload?.status === "success") {
           const addr: string = finalPayload.address;
-          const p = new ethers.JsonRpcProvider(RPC_URL, 480);
+          const NETWORK = { chainId: 480, name: "world-chain" } as const;
+          const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
           setProvider(p); setSigner(null); setAccount(addr);
+          // World App 환경 가정: username 조회 불필요
           setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
         } else {
           setStatus("Connection cancelled or failed.");
@@ -244,15 +303,18 @@ export default function App() {
         const msg = install?.errorMessage || 'MiniKit bridge unavailable';
         setStatus(`Bridge off (${code}). Open inside World App and update to latest. ${msg}`);
         pushToast('error', 'Open this mini app inside World App ▸ update to latest.');
+        setMiniInstalled(false);
         return;
       }
+      setMiniInstalled(true);
       // Always login via walletAuth first
       if (!account) {
         const nonce = Math.random().toString(36).slice(2);
         const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
         if (finalPayload?.status === 'success') {
           const addr: string = finalPayload.address;
-          const p = new ethers.JsonRpcProvider(RPC_URL, 480);
+          const NETWORK = { chainId: 480, name: "world-chain" } as const;
+          const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
           setProvider(p); setSigner(null); setAccount(addr);
           setStatus('Connected (World App): ' + addr.slice(0, 6) + '...' + addr.slice(-4));
         } else {
@@ -306,7 +368,8 @@ export default function App() {
       const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
       if (finalPayload?.status === "success") {
         const addr: string = finalPayload.address;
-        const p = new ethers.JsonRpcProvider(RPC_URL, 480);
+        const NETWORK = { chainId: 480, name: "world-chain" } as const;
+        const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
         setProvider(p); setSigner(null); setAccount(addr);
         setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
       } else {
@@ -383,12 +446,13 @@ export default function App() {
         ?.getAttribute("content") || "";
       const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
       const install = MiniKit.install?.(appId);
-      if (!install?.success) return false;
+      if (!(install?.success === true || (MiniKit as any)?.isInstalled?.() === true)) return false;
       const nonce = Math.random().toString(36).slice(2);
       const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
       if (finalPayload?.status === "success") {
         const addr: string = finalPayload.address;
-        const p = new ethers.JsonRpcProvider(RPC_URL, 480);
+        const NETWORK = { chainId: 480, name: "world-chain" } as const;
+        const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
         setProvider(p); setSigner(null); setAccount(addr);
         setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
         return true;
@@ -398,21 +462,64 @@ export default function App() {
   };
 
   // 寃利꾨즺(?먮뒗 鍮꾪븘寃利? ?먮룞 ?곌껐 ?쒕룄
+  // In-World App: on mount, WalletAuth first, then (optionally) Verify(Device)
   useEffect(() => {
     (async () => {
-      await continueWorldApp2();
+      try {
+        const appId = document
+          .querySelector('meta[name="minikit:app-id"]')
+          ?.getAttribute("content") || "";
+        const { MiniKit, VerificationLevel } = (await import("@worldcoin/minikit-js")) as any;
+        if (!MiniKit.isInstalled?.()) {
+          setStatus("Open in World App (MiniKit bridge unavailable)");
+          setMiniInstalled(false);
+          return;
+        }
+        setMiniInstalled(true);
+        // 1) Wallet Auth — login must use walletAuth (docs)
+        if (!account) {
+          const nonce = Math.random().toString(36).slice(2);
+          const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
+          if (finalPayload?.status === 'success') {
+            const addr: string = finalPayload.address;
+            const NETWORK = { chainId: 480, name: "world-chain" } as const;
+            const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
+            setProvider(p); setSigner(null); setAccount(addr);
+            setStatus('Connected (World App): ' + addr.slice(0, 6) + '...' + addr.slice(-4));
+            try {
+              const u = await MiniKit.getUserByAddress?.(addr);
+              if (u?.username) setUsername(u.username);
+            } catch {}
+          } else {
+            setStatus('Connection cancelled or failed.');
+            return;
+          }
+        }
+        // 2) Verify(Device) — only after login and only if required
+        if (REQUIRE_VERIFY && !verified) {
+          const { finalPayload } = await MiniKit.commandsAsync.verify({
+            action: ACTION_ID,
+            verification_level: VerificationLevel.Device,
+          });
+          if (finalPayload?.status !== 'success') { setStatus('Verification cancelled or failed.'); return; }
+          setVerified(true);
+          localStorage.setItem('wld-verified', '1');
+        }
+      } catch (e: any) {
+        setStatus('Auto connect error: ' + String(e?.message || e));
+      }
     })();
   }, []);
 
   // ---- contracts
   const factory = useMemo(() => {
-    const rw = signer || provider;
+    const rw = provider; // read-only provider
     return rw ? new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, rw) : null;
-  }, [signer, provider]);
+  }, [provider]);
   const vaultCtr = useMemo(() => {
-    const rw = signer || provider;
+    const rw = provider; // read-only provider
     return rw && vault ? new ethers.Contract(vault, VAULT_ABI, rw) : null;
-  }, [signer, provider, vault]);
+  }, [provider, vault]);
 
   const loadVault = async () => {
     if (!factory || !account) return;
@@ -428,11 +535,10 @@ export default function App() {
       setStatus("Searching inheritance for me (heir)...");
       const sig = ethers.id("VaultCreated(address,address,address,uint256)");
       const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
-      const logs = await (p as ethers.AbstractProvider).getLogs({
+      const logs = await safeGetLogs((p as ethers.AbstractProvider), {
         address: FACTORY_ADDRESS,
-        fromBlock: FACTORY_DEPLOY_BLOCK || "latest",
-        toBlock: "latest",
         topics: [sig, null, heirTopic],
+        toBlock: "latest",
       });
       if (logs.length) {
         const iface = new ethers.Interface(FACTORY_ABI);
@@ -450,6 +556,62 @@ export default function App() {
       }
     } catch (e: any) {
       setStatus("Search error: " + (e?.message || e));
+    }
+  };
+
+  // Username/address resolution helpers — accept @username or 0x… in inputs
+  const getUsernameFor = async (addr: string) => {
+    try {
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const u = await MiniKit.getUserByAddress?.(addr);
+      return u?.username as string | undefined;
+    } catch { return undefined; }
+  };
+  const resolveHeirInput = async (input: string) => {
+    const trimmed = (input || "").trim();
+    if (!trimmed) return null;
+    if (ethers.isAddress(trimmed)) {
+      const uname = await getUsernameFor(ethers.getAddress(trimmed));
+      return { username: uname, address: ethers.getAddress(trimmed) } as const;
+    }
+    try {
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const u = await MiniKit.getUserByUsername?.(trimmed.startsWith("@") ? trimmed.slice(1) : trimmed);
+      if (u?.walletAddress && ethers.isAddress(u.walletAddress)) {
+        return { username: u.username, address: ethers.getAddress(u.walletAddress) } as const;
+      }
+    } catch {}
+    return null;
+  };
+
+  // Debounced input handlers to resolve username/address safely
+  const onHeirInput = async (v: string) => {
+    setHeir(v);
+    const mySeq = Date.now();
+    setHeirSeq(mySeq);
+    if (!v) { setHeirResolved(null); return; }
+    setResolvingHeir(true);
+    try {
+      const r = await resolveHeirInput(v);
+      // Only apply latest result
+      setHeirResolved((prev) => (heirSeq <= mySeq ? r : prev));
+    } finally {
+      // Clear resolving only if up-to-date
+      if (heirSeq <= mySeq) setResolvingHeir(false);
+    }
+  };
+
+  const onNewHeirInput = async (v: string) => {
+    setNewHeir(v);
+    const mySeq = Date.now();
+    setNewHeirSeq(mySeq);
+    if (!v) { setNewHeirResolved(null); return; }
+    setResolvingNewHeir(true);
+    try {
+      const r = await resolveHeirInput(v);
+      setNewHeirResolved((prev) => (newHeirSeq <= mySeq ? r : prev));
+    } finally {
+      if (newHeirSeq <= mySeq) setResolvingNewHeir(false);
     }
   };
 
@@ -501,11 +663,10 @@ export default function App() {
       const sig = ethers.id("VaultCreated(address,address,address,uint256)");
       const iface = new ethers.Interface(FACTORY_ABI);
       const tryQuery = async (topics: (string | null | string[])[]) => {
-        const logs = await (p as ethers.AbstractProvider).getLogs({
+        const logs = await safeGetLogs((p as ethers.AbstractProvider), {
           address: FACTORY_ADDRESS,
-          fromBlock: FACTORY_DEPLOY_BLOCK || "latest",
-          toBlock: "latest",
           topics,
+          toBlock: "latest",
         });
         for (const lg of logs) {
           try {
@@ -582,37 +743,34 @@ export default function App() {
 
   // ---- create vault
   const createVault = async () => {
-    if (!factory || !heir) { setStatus("Enter heir address"); return; }
+    if (!factory) { setStatus("Connect first"); return; }
+    if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+    const resolved = heirResolved || await resolveHeirInput(heir);
+    if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
     const seconds = BigInt(periodDays) * 24n * 60n * 60n;
     try {
-      if (signer) {
-        const tx = await factory.createVault(heir, seconds);
-        setStatus("Creating vault: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{
-            address: FACTORY_ADDRESS,
-            abi: FACTORY_ABI,
-            functionName: "createVault",
-            args: [heir, seconds.toString()],
-          }],
-          formatPayload: true,
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{
+          address: FACTORY_ADDRESS,
+          abi: FACTORY_ABI,
+          functionName: "createVault",
+          args: [resolved.address, seconds.toString()],
+        }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Transaction cancelled or failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const vchk = await factory.vaultOf(account);
+            return vchk && vchk !== ethers.ZeroAddress;
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Transaction cancelled or failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const vchk = await factory.vaultOf(account);
-              return vchk && vchk !== ethers.ZeroAddress;
-            },
-          });
-        }
       }
       setStatus("Vault created ✅");
       const v = await factory.vaultOf(account);
@@ -634,11 +792,10 @@ export default function App() {
       if (!p) return;
       const sig = ethers.id("VaultCreated(address,address,address,uint256)");
       const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
-      const logs = await (p as ethers.AbstractProvider).getLogs({
+      const logs = await safeGetLogs((p as ethers.AbstractProvider), {
         address: FACTORY_ADDRESS,
-        fromBlock: FACTORY_DEPLOY_BLOCK || "latest",
-        toBlock: "latest",
         topics: [sig, null, heirTopic],
+        toBlock: "latest",
       });
       const iface = new ethers.Interface(FACTORY_ABI);
       const vaults: string[] = [];
@@ -671,38 +828,31 @@ export default function App() {
     if (amt <= 0n) { setStatus("Enter amount greater than 0"); return; }
     if (amt > walletWld) { setStatus("Amount exceeds wallet balance"); return; }
     try {
-      if (signer) {
-        const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, signer);
-        const tx = await token.transfer(vault, amt);
-        setStatus("Depositing: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{
-            address: WLD_ADDRESS,
-            abi: ERC20_ABI,
-            functionName: "transfer",
-            args: [vault, amt.toString()],
-          }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{
+          address: WLD_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [vault, amt.toString()],
+        }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Deposit cancelled or failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prev = vaultWld;
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider as any);
+            const vb: bigint = await token.balanceOf(vault);
+            return vb > prev;
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Deposit cancelled or failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prev = vaultWld;
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const p = signer ? (signer as any).provider : provider;
-              const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p as any);
-              const vb: bigint = await token.balanceOf(vault);
-              return vb > prev;
-            },
-          });
-        }
       }
       setStatus("Deposit complete ✅");
       setAmountStr("");
@@ -722,30 +872,25 @@ export default function App() {
   const extendTime = async () => {
     if (!vaultCtr) return;
     try {
-      if (signer) {
-        const tx = await vaultCtr.ping();
-        setStatus("Resetting timer: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{ address: vault, abi: VAULT_ABI, functionName: "ping", args: [] }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "ping", args: [] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Reset cancelled or failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prevLp = vaultLastPing;
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const lp: bigint = await (vaultCtr as any).lastPing();
+            return Number(lp) > (prevLp || 0);
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Reset cancelled or failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prevLp = vaultLastPing;
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const lp: bigint = await (vaultCtr as any).lastPing();
-              return Number(lp) > (prevLp || 0);
-            },
-          });
-        }
       }
       setStatus("Timer reset (full period restored) ✅");
       refreshTimer();
@@ -758,29 +903,24 @@ export default function App() {
     if (!vaultCtr) return;
     const seconds = BigInt(periodDays) * 24n * 60n * 60n;
     try {
-      if (signer) {
-        const tx = await vaultCtr.updateHeartbeat(seconds);
-        setStatus("Updating period: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{ address: vault, abi: VAULT_ABI, functionName: "updateHeartbeat", args: [seconds.toString()] }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "updateHeartbeat", args: [seconds.toString()] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Change period failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const hb: bigint = await (vaultCtr as any).heartbeatInterval();
+            return Number(hb) === Number(seconds);
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Change period failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const hb: bigint = await (vaultCtr as any).heartbeatInterval();
-              return Number(hb) === Number(seconds);
-            },
-          });
-        }
       }
       setStatus("Period updated ✅");
       refreshTimer();
@@ -792,29 +932,24 @@ export default function App() {
   const cancelInheritance = async () => {
     if (!vaultCtr) return;
     try {
-      if (signer) {
-        const tx = await vaultCtr.cancelInheritance();
-        setStatus("Cancelling: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{ address: vault, abi: VAULT_ABI, functionName: "cancelInheritance", args: [] }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "cancelInheritance", args: [] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Cancel failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const h = await (vaultCtr as any).heir();
+            return h && h.toLowerCase() === vaultOwner.toLowerCase();
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Cancel failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const h = await (vaultCtr as any).heir();
-              return h && h.toLowerCase() === vaultOwner.toLowerCase();
-            },
-          });
-        }
       }
       setStatus("Inheritance cancelled (heir=owner) ✅");
       refreshTimer();
@@ -827,35 +962,32 @@ export default function App() {
 
   const updateHeir = async () => {
     if (!vaultCtr) return;
-    if (!ethers.isAddress(newHeir)) { setStatus("Enter a valid new heir address"); return; }
+    const resolved = newHeirResolved || await resolveHeirInput(newHeir);
+    if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
     try {
-      if (signer) {
-        const tx = await vaultCtr.updateHeir(newHeir);
-        setStatus("Updating heir: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{ address: vault, abi: VAULT_ABI, functionName: "updateHeir", args: [newHeir] }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "updateHeir", args: [resolved.address] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Update heir failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        const target = resolved.address;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const h = await (vaultCtr as any).heir();
+            return h && h.toLowerCase() === target.toLowerCase();
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Update heir failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          const target = newHeir;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const h = await (vaultCtr as any).heir();
-              return h && h.toLowerCase() === target.toLowerCase();
-            },
-          });
-        }
       }
       setStatus("Heir updated ✅");
       setNewHeir("");
+      setNewHeirResolved(null);
       refreshVaultDetails();
     } catch (e: any) {
       setStatus("Update heir error: " + (e?.message || e));
@@ -867,32 +999,26 @@ export default function App() {
   const claim = async () => {
     if (!vaultCtr) return;
     try {
-      if (signer) {
-        const tx = await vaultCtr.claim();
-        setStatus("Claiming: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{ address: vault, abi: VAULT_ABI, functionName: "claim", args: [] }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "claim", args: [] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Claim failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prev = vaultWld;
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider as any);
+            const vb: bigint = await token.balanceOf(vault);
+            return vb < prev;
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Claim failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prev = vaultWld;
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const p = signer ? (signer as any).provider : provider;
-              const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p as any);
-              const vb: bigint = await token.balanceOf(vault);
-              return vb < prev;
-            },
-          });
-        }
       }
       setStatus("Claim complete ✅");
       refreshBalances(); refreshTimer();
@@ -913,33 +1039,26 @@ export default function App() {
     if (amt <= 0n) { setStatus("Enter amount greater than 0"); return; }
     if (amt > vaultWld) { setStatus("Amount exceeds vault balance"); return; }
     try {
-      if (signer) {
-        const tx = await vaultCtr.ownerWithdrawWLD(amt, withdrawTo);
-        setStatus("Withdrawing: " + tx.hash);
-        await tx.wait();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{ address: vault, abi: VAULT_ABI, functionName: "ownerWithdrawWLD", args: [amt.toString(), withdrawTo] }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "ownerWithdrawWLD", args: [amt.toString(), withdrawTo] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Withdraw cancelled or failed"); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prev = vaultWld;
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider as any);
+            const vb: bigint = await token.balanceOf(vault);
+            return vb < prev;
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Withdraw cancelled or failed"); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prev = vaultWld;
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const p = signer ? (signer as any).provider : provider;
-              const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, p as any);
-              const vb: bigint = await token.balanceOf(vault);
-              return vb < prev;
-            },
-          });
-        }
-
       }
       setStatus("Withdraw complete ✅");
       setWithdrawAmountStr("");
@@ -960,29 +1079,24 @@ export default function App() {
     if (!factory) return;
     setReleasing(true);
     try {
-      if (signer) {
-        const tx = await (factory as any).releaseMyVault();
-        setStatus("Releasing: " + (tx?.hash || "tx"));
-        await tx.wait?.();
-      } else {
-        const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
-        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-          transaction: [{ address: FACTORY_ADDRESS, abi: [...FACTORY_ABI, "function releaseMyVault() returns (bool)"], functionName: "releaseMyVault", args: [] }],
-          formatPayload: true,
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); setReleasing(false); return; }
+      const { MiniKit } = (await import("@worldcoin/minikit-js")) as any;
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: FACTORY_ADDRESS, abi: [...FACTORY_ABI, "function releaseMyVault() returns (bool)"], functionName: "releaseMyVault", args: [] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Release cancelled or failed"); setReleasing(false); return; }
+      setStatus("Pending… awaiting confirmation");
+      const prov = getRwProvider();
+      if (prov) {
+        const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
+        await waitForTxOrEvent(prov, {
+          txHash: txh,
+          check: async () => {
+            const v = await (factory as any).vaultOf(account);
+            return !v || v === ethers.ZeroAddress;
+          },
         });
-        if (finalPayload?.status !== "success") { setStatus("Release cancelled or failed"); setReleasing(false); return; }
-        setStatus("Pending… awaiting confirmation");
-        const prov = getRwProvider();
-        if (prov) {
-          const txh = (finalPayload as any).transaction_hash || (finalPayload as any).transactionId || (finalPayload as any).transaction_id;
-          await waitForTxOrEvent(prov, {
-            txHash: txh,
-            check: async () => {
-              const v = await (factory as any).vaultOf(account);
-              return !v || v === ethers.ZeroAddress;
-            },
-          });
-        }
       }
       setStatus("Released. You can create a new vault. ✅");
       setVault("");
@@ -1029,15 +1143,7 @@ export default function App() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2 flex-wrap items-center">
-              {!account && (
-                <Button
-                  variant="primary"
-                  onClick={continueWorldApp2}
-                  disabled={ctaLoading}
-                >
-                  {ctaLoading ? (<><span className="spinner mr-2"></span>Continuing...</>) : "Continue in World App"}
-                </Button>
-              )}
+              {/* World App 전용: 자동 진행. 필요 시 상태만 표시 */}
               {account && REQUIRE_VERIFY && !verified && (
                 <Button
                   variant="primary"
@@ -1048,7 +1154,7 @@ export default function App() {
                 </Button>
               )}
               {account && (!REQUIRE_VERIFY || verified) && (
-                <Button disabled size="md">Connected</Button>
+                <Button disabled size="md">{username ? `@${username}` : 'Connected'}</Button>
               )}
               <div className="text-xs text-gray-600">{status}</div>
             </div>
@@ -1067,9 +1173,8 @@ export default function App() {
               This mini app is fully non-custodial. Your keys and assets stay in your World App wallet. We never receive or control private keys.
             </div>
             <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
-              <li>Transactions are requested via World App MiniKit and must be explicitly approved in World App.</li>
-              <li>Deposits move WLD from your wallet to your personal vault contract; only you (before expiry) or your heir (after expiry) can move funds.</li>
-              <li>Our backend, if used, only reads chain data and never initiates transfers on your behalf.</li>
+              <li>Transactions are requested via World App and must be explicitly approved in World App.</li>
+              <li>Deposits move WLD from your wallet to your personal vault contract; only you or your heir (after expiry) can move funds.</li>
               <li>Your address is provided by World App via a secure bridge; signatures and transactions happen only in World App.</li>
               <li>We do not store any personal data about you, your heir, or your vault.</li>
             </ul>
@@ -1082,11 +1187,23 @@ export default function App() {
             <CardContent className="grid gap-3">
               <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
               <div className="grid grid-cols-3 items-center gap-2">
-                <div>Heir address</div>
-                <Input className="col-span-2" placeholder="0x..." value={heir} onChange={e => setHeir(e.target.value)} />
+                <div>Heir (@username or 0x…)</div>
+                <Input className="col-span-2" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
               </div>
-              {heir && !ethers.isAddress(heir) && (
-                <div className="text-xs text-red-600">Invalid address format.</div>
+              {heir && (
+                resolvingHeir ? (
+                  <div className="text-xs text-gray-600">Resolving…</div>
+                ) : heirResolved?.address ? (
+                  <div className="text-xs text-gray-600">
+                    Resolved: {heirResolved.username ? <b>@{heirResolved.username}</b> : 'Address'} → <b>{short(heirResolved.address)}</b>
+                    <button className="ml-2 underline" onClick={() => copyText(heirResolved!.address!, 'heir')}>Copy</button>
+                  </div>
+                ) : (
+                  <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
+                )
+              )}
+              {heirResolved?.address && isHeirSuspicious() && (
+                <div className="text-xs text-yellow-700">Warning: Heir equals owner or zero address — this disables inheritance.</div>
               )}
               <div className="grid grid-cols-3 items-center gap-2">
                 <div>Period (days)</div>
@@ -1096,7 +1213,7 @@ export default function App() {
               <div className="text-xs text-red-600">
                 {periodDays < 1 || periodDays > 365 ? "Period must be between 1 and 365 days." : ""}
               </div>
-              <Button variant="primary" onClick={createVault} disabled={periodDays < 1 || periodDays > 365 || !ethers.isAddress(heir)}>Create vault</Button>
+              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || periodDays < 1 || periodDays > 365 || !heirResolved?.address}>Create vault</Button>
               {vault && (
                 <div className="text-xs text-gray-600 break-all">
                   Your vault:
@@ -1149,36 +1266,53 @@ export default function App() {
             </CardHeader>
             <CardContent className="grid gap-3">
               <div className="text-sm grid gap-1">
-                <div>
-                  Vault:
-                  {vault ? (
-                    <>
-                      <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vault, "vault")}>{short(vault)}</button>
-                      {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
-                    </>
-                  ) : <b className="break-all">-</b>}
-                  {vault && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vault}`} target="_blank" rel="noreferrer">View</a>}
+                <div className="flex items-center gap-2">
+                  <div>Owner:</div>
+                  <div><b>{username ? `@${username}` : (vaultOwner ? short(vaultOwner) : '-')}</b></div>
                 </div>
-                <div>
-                  Owner:
-                  {vaultOwner ? (
-                    <>
-                      <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vaultOwner, "owner")}>{short(vaultOwner)}</button>
-                      {copied === "owner" && <span className="ml-2 text-green-700">Copied</span>}
-                    </>
-                  ) : <b className="break-all">-</b>}
-                  {vaultOwner && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultOwner}`} target="_blank" rel="noreferrer">View</a>}
+                <div className="flex items-center gap-2">
+                  <div>Heir:</div>
+                  <div><b>{vaultHeir ? short(vaultHeir) : '-'}</b></div>
                 </div>
-                <div>
-                  Heir:
-                  {vaultHeir ? (
-                    <>
-                      <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vaultHeir, "heir")}>{short(vaultHeir)}</button>
-                      {copied === "heir" && <span className="ml-2 text-green-700">Copied</span>}
-                    </>
-                  ) : <b className="break-all">-</b>}
-                  {vaultHeir && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultHeir}`} target="_blank" rel="noreferrer">View</a>}
+                <div className="text-xs">
+                  <button className="underline" onClick={() => setShowAdvanced(v => !v)}>
+                    {showAdvanced ? 'Hide details' : 'Show addresses & explorer links'}
+                  </button>
                 </div>
+                {showAdvanced && (
+                  <div className="grid gap-1 text-xs">
+                    <div>
+                      Vault:
+                      {vault ? (
+                        <>
+                          <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vault, "vault")}>{short(vault)}</button>
+                          {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
+                          {vault && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vault}`} target="_blank" rel="noreferrer">View</a>}
+                        </>
+                      ) : <b className="break-all">-</b>}
+                    </div>
+                    <div>
+                      Owner:
+                      {vaultOwner ? (
+                        <>
+                          <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vaultOwner, "owner")}>{short(vaultOwner)}</button>
+                          {copied === "owner" && <span className="ml-2 text-green-700">Copied</span>}
+                          {vaultOwner && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultOwner}`} target="_blank" rel="noreferrer">View</a>}
+                        </>
+                      ) : <b className="break-all">-</b>}
+                    </div>
+                    <div>
+                      Heir:
+                      {vaultHeir ? (
+                        <>
+                          <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vaultHeir, "heir")}>{short(vaultHeir)}</button>
+                          {copied === "heir" && <span className="ml-2 text-green-700">Copied</span>}
+                          {vaultHeir && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultHeir}`} target="_blank" rel="noreferrer">View</a>}
+                        </>
+                      ) : <b className="break-all">-</b>}
+                    </div>
+                  </div>
+                )}
                 <div>Heartbeat: <b>{vaultHeartbeat ? Math.floor(vaultHeartbeat / 86400) : 0} days</b></div>
                 <div>Last ping: <b>{vaultLastPing ? new Date(vaultLastPing * 1000).toLocaleString() : "-"}</b></div>
                 <div>
@@ -1214,7 +1348,7 @@ export default function App() {
                 <>
                   <div className="grid grid-cols-3 items-center gap-2">
                     <div>Deposit amount</div>
-                    <Input className="col-span-2" inputMode="decimal" placeholder="0.0"
+                    <Input className="col-span-2" inputMode="decimal" pattern="^[0-9]*[.]?[0-9]*$" placeholder="0.0"
                       value={amountStr} onChange={e => setAmountStr(e.target.value)} />
                   </div>
                   <div className="flex gap-2 flex-wrap items-center">
@@ -1223,7 +1357,7 @@ export default function App() {
                     <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
                     <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
                     <Button variant="ghost" onClick={setMax}>Max</Button>
-                    <Button variant="primary" onClick={deposit}>Deposit</Button>
+                    <Button variant="primary" onClick={deposit} disabled={!miniInstalled || !account}>Deposit</Button>
                     <Button onClick={refreshBalances}>Refresh</Button>
                   </div>
                 </>
@@ -1255,31 +1389,40 @@ export default function App() {
               <div className="flex gap-2 flex-wrap">
                 {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                   <>
-                    <Button variant="primary" onClick={extendTime}>Reset timer</Button>
+                    <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account}>Reset timer</Button>
                     <div className="flex items-center gap-2">
                       <Input type="number" className="w-28" value={periodDays}
                         onChange={e => setPeriodDays(parseInt(e.target.value || "0"))} />
-                      <Button onClick={changePeriod} disabled={periodDays < 1 || periodDays > 365}>Change period</Button>
+                      <Button onClick={changePeriod} disabled={!miniInstalled || !account || periodDays < 1 || periodDays > 365}>Change period</Button>
                     </div>
                     <div className="grid grid-cols-3 items-center gap-2">
                       <div>New heir</div>
-                      <Input className="col-span-2" placeholder="0x..." value={newHeir} onChange={e => setNewHeir(e.target.value)} />
+                      <Input className="col-span-2" placeholder="@username or 0x..." value={newHeir} onChange={e => onNewHeirInput(e.target.value)} />
                     </div>
-                    {newHeir && !ethers.isAddress(newHeir) && (
-                      <div className="text-xs text-red-600">Invalid new heir address.</div>
+                    {newHeir && (
+                      resolvingNewHeir ? (
+                        <div className="text-xs text-gray-600">Resolving…</div>
+                      ) : newHeirResolved?.address ? (
+                        <div className="text-xs text-gray-600">
+                          Resolved: {newHeirResolved.username ? <b>@{newHeirResolved.username}</b> : 'Address'} → <b>{short(newHeirResolved.address)}</b>
+                          <button className="ml-2 underline" onClick={() => copyText(newHeirResolved!.address!, 'heir')}>Copy</button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
+                      )
                     )}
-                    <Button onClick={updateHeir} disabled={!newHeir || !ethers.isAddress(newHeir)}>Update heir</Button>
-                    <Button variant="ghost" onClick={cancelInheritance}>Cancel (set heir to me)</Button>
+                    <Button onClick={updateHeir} disabled={!miniInstalled || !account || !newHeirResolved?.address}>Update heir</Button>
+                    <Button variant="ghost" onClick={cancelInheritance} disabled={!miniInstalled || !account}>Cancel (set heir to me)</Button>
                     {supportsRelease && vaultWld === 0n && canClaim && (
                       <div className="flex items-center gap-2">
-                        <Button onClick={() => setShowReleaseConfirm(true)}>Release slot</Button>
+                        <Button onClick={() => setShowReleaseConfirm(true)} disabled={!miniInstalled || !account}>Release slot</Button>
                         <span className="text-xs text-gray-500">* Available only after expiry and when vault balance is 0. The contract remains on-chain; only the factory mapping is cleared.</span>
                       </div>
                     )}
                   </>
                 )}
                 {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && (
-                  <Button variant="primary" onClick={claim} disabled={!canClaim}>Claim (heir)</Button>
+                  <Button variant="primary" onClick={claim} disabled={!miniInstalled || !canClaim}>Claim (heir)</Button>
                 )}
                 {!account || (!vaultOwner && !vaultHeir) ? (
                   <Button onClick={loadVault}>Re-scan</Button>
@@ -1300,7 +1443,7 @@ export default function App() {
                   </div>
                   <div className="grid grid-cols-3 items-center gap-2">
                     <div>Amount</div>
-                    <Input className="col-span-2" inputMode="decimal" placeholder="0.0"
+                    <Input className="col-span-2" inputMode="decimal" pattern="^[0-9]*[.]?[0-9]*$" placeholder="0.0"
                       value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
                   </div>
                   <div className="flex gap-2">
@@ -1313,6 +1456,21 @@ export default function App() {
           </Card>
         )}
       </div>
+      <Card>
+        <CardHeader><CardTitle>Help & Legal</CardTitle></CardHeader>
+        <CardContent className="text-xs text-gray-600 space-y-2">
+          <div>
+            This tool is non-custodial and for informational purposes only. It does not constitute legal, tax, or investment advice.
+          </div>
+          <div>
+            <a className="text-blue-600 underline" href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>
+            <span className="mx-2">•</span>
+            <a className="text-blue-600 underline" href="/terms.html" target="_blank" rel="noreferrer">Terms</a>
+            <span className="mx-2">•</span>
+            <a className="text-blue-600 underline" href="mailto:daviswhistle@naver.com">Support</a>
+          </div>
+        </CardContent>
+      </Card>
       <div className="toast-container">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
@@ -1331,7 +1489,7 @@ export default function App() {
             </label>
             <div className="flex justify-end gap-2">
               <Button onClick={() => setShowReleaseConfirm(false)} disabled={releasing}>Cancel</Button>
-              <Button variant="primary" onClick={releaseSlot} disabled={releasing || !releaseAcknowledge}>Confirm</Button>
+              <Button variant="primary" onClick={releaseSlot} disabled={!miniInstalled || releasing || !releaseAcknowledge}>Confirm</Button>
             </div>
           </div>
         </div>
