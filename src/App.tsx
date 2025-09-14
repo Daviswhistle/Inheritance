@@ -261,6 +261,7 @@ export default function App() {
           const NETWORK = { chainId: 480, name: "world-chain" } as const;
           const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
           setProvider(p); setSigner(null); setAccount(addr);
+          try { localStorage.setItem('wld-account', ethers.getAddress(addr)); } catch {}
           // World App 환경 가정: username 조회 불필요
           setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
         } else {
@@ -316,6 +317,7 @@ export default function App() {
           const NETWORK = { chainId: 480, name: "world-chain" } as const;
           const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
           setProvider(p); setSigner(null); setAccount(addr);
+          try { localStorage.setItem('wld-account', ethers.getAddress(addr)); } catch {}
           setStatus('Connected (World App): ' + addr.slice(0, 6) + '...' + addr.slice(-4));
         } else {
           setStatus('Connection cancelled or failed.');
@@ -371,6 +373,7 @@ export default function App() {
         const NETWORK = { chainId: 480, name: "world-chain" } as const;
         const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
         setProvider(p); setSigner(null); setAccount(addr);
+        try { localStorage.setItem('wld-account', ethers.getAddress(addr)); } catch {}
         setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
       } else {
         setStatus("Connection cancelled or failed");
@@ -454,6 +457,7 @@ export default function App() {
         const NETWORK = { chainId: 480, name: "world-chain" } as const;
         const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
         setProvider(p); setSigner(null); setAccount(addr);
+        try { localStorage.setItem('wld-account', ethers.getAddress(addr)); } catch {}
         setStatus("Connected (World App): " + addr.slice(0, 6) + "..." + addr.slice(-4));
         return true;
       }
@@ -488,6 +492,7 @@ export default function App() {
             const NETWORK = { chainId: 480, name: "world-chain" } as const;
             const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
             setProvider(p); setSigner(null); setAccount(addr);
+            try { localStorage.setItem('wld-account', ethers.getAddress(addr)); } catch {}
             setStatus('Connected (World App): ' + addr.slice(0, 6) + '...' + addr.slice(-4));
             try {
               const u = await MiniKit.getUserByAddress?.(addr);
@@ -513,6 +518,32 @@ export default function App() {
       }
     })();
   }, []);
+
+  // Restore saved session (keeps user logged in across visits)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('wld-account') || '';
+      if (saved && ethers.isAddress(saved)) {
+        const addr = ethers.getAddress(saved);
+        const NETWORK = { chainId: 480, name: 'world-chain' } as const;
+        const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
+        setProvider(p); setSigner(null); setAccount(addr);
+        setStatus((s) => s || 'Session restored');
+      }
+    } catch {}
+  }, []);
+
+  // Optional: fetch username for restored sessions when available
+  useEffect(() => {
+    (async () => {
+      if (!account) return;
+      try {
+        const { MiniKit } = (await import('@worldcoin/minikit-js')) as any;
+        const u = await MiniKit.getUserByAddress?.(account);
+        if (u?.username) setUsername(u.username);
+      } catch {}
+    })();
+  }, [account]);
 
   // ---- contracts
   const factory = useMemo(() => {
@@ -748,6 +779,8 @@ export default function App() {
   const createVault = async () => {
     if (!factory) { setStatus("Connect first"); return; }
     if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+    // Prevent double-create: factory enforces 1-per-owner and will revert with ALREADY_HAS_VAULT
+    if (vault) { setStatus("You already have a vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
     const resolved = heirResolved || await resolveHeirInput(heir);
     if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
     const seconds = BigInt(periodDays) * 24n * 60n * 60n;
@@ -762,7 +795,11 @@ export default function App() {
         }],
         formatPayload: true,
       });
-      if (finalPayload?.status !== "success") { setStatus("Transaction cancelled or failed"); return; }
+      if (finalPayload?.status !== "success") {
+        setStatus("Transaction cancelled or failed");
+        pushToast('error', 'Transaction cancelled or failed');
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
       if (prov) {
@@ -780,8 +817,14 @@ export default function App() {
       setVault(v);
       refreshBalances(); refreshTimer();
     } catch (e: any) {
-      setStatus("Create error: " + (e?.message || e));
-      pushToast('error', String(e?.message || e));
+      const raw = String(e?.reason || e?.shortMessage || e?.message || e);
+      let friendly = raw;
+      if (/ALREADY_HAS_VAULT/i.test(raw)) friendly = 'You already have a vault (factory is one-per-owner).';
+      else if (/HeartbeatOutOfRange/i.test(raw)) friendly = 'Period must be 1–365 days.';
+      else if (/InvalidAddress/i.test(raw)) friendly = 'Invalid heir address.';
+      else if (/insufficient funds/i.test(raw)) friendly = 'Insufficient gas on World Chain (ETH needed for fees).';
+      setStatus("Create error: " + friendly);
+      pushToast('error', friendly);
     }
   };
 
@@ -1210,13 +1253,25 @@ export default function App() {
               )}
               <div className="grid grid-cols-3 items-center gap-2">
                 <div>Period (days)</div>
-                <Input type="number" className="col-span-2" value={periodDays}
-                  onChange={e => setPeriodDays(parseInt(e.target.value || "0"))} />
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  min={1}
+                  max={365}
+                  step={1}
+                  className="col-span-2"
+                  value={periodDays}
+                  onChange={e => setPeriodDays(parseInt((e.target.value || "0"), 10))}
+                />
               </div>
               <div className="text-xs text-red-600">
                 {periodDays < 1 || periodDays > 365 ? "Period must be between 1 and 365 days." : ""}
               </div>
-              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || periodDays < 1 || periodDays > 365 || !heirResolved?.address}>Create vault</Button>
+              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || !!vault || periodDays < 1 || periodDays > 365 || !heirResolved?.address}>Create vault</Button>
+              {!!vault && (
+                <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
+              )}
               {vault && (
                 <div className="text-xs text-gray-600 break-all">
                   Your vault:
@@ -1394,8 +1449,17 @@ export default function App() {
                   <>
                     <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account}>Reset timer</Button>
                     <div className="flex items-center gap-2">
-                      <Input type="number" className="w-28" value={periodDays}
-                        onChange={e => setPeriodDays(parseInt(e.target.value || "0"))} />
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        min={1}
+                        max={365}
+                        step={1}
+                        className="w-28"
+                        value={periodDays}
+                        onChange={e => setPeriodDays(parseInt((e.target.value || "0"), 10))}
+                      />
                       <Button onClick={changePeriod} disabled={!miniInstalled || !account || periodDays < 1 || periodDays > 365}>Change period</Button>
                     </div>
                     <div className="grid grid-cols-3 items-center gap-2">
