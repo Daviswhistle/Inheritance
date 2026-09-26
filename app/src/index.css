@@ -818,3 +818,92 @@ input::placeholder {
 .safe-pb {
   padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
 }
+
+/* ===== Bottom tab bar =====
+   App Guidelines 가 "Bottom tab navigation and anchored buttons" 를 좋은 예시로,
+   "Footer and long scrolling" 을 나쁜 예시로 든다. 카드가 한 줄로 늘어지면
+   390px 화면에서 스크롤을 6회 이상 요구하게 되고 그 자체로 심사 지적이 된다. */
+.tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 30;
+}
+
+.tab-item {
+  flex: 1;
+  min-height: 3rem; /* 터치 목표 크기 */
+  border: 0;
+  background: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.5rem 0.25rem;
+}
+
+.tab-item-active {
+  color: #0284c7;
+  box-shadow: inset 0 -2px 0 #0284c7;
+}
+
+/* ===== Inheritance pipeline =====
+   상속이 5단계로 진행되는 과정을 그대로 보여준다. "내 돈이 언제 이동하는가"를
+   머릿속에서 계산하지 않게 하는 것이 목적이다. */
+.pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pipeline li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.pipeline-done {
+  color: #0f172a;
+  font-weight: 500;
+}
+
+.pipeline-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 9999px;
+  border: 2px solid #cbd5e1;
+  flex: none;
+}
+
+.pipeline-done .pipeline-dot {
+  background: #0284c7;
+  border-color: #0284c7;
+}
+
+/* 스크린 리더 전용: 상태를 색이 아닌 텍스트로도 전달한다. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 탭 바가 fixed 이므로 콘텐츠가 그 뒤로 깔리지 않게 바 높이만큼 밀어 준다.
+   safe-area 를 한 번만 더하면 이중 여백이 되므로 여기서는 더하지 않는다. */
+.tab-pb {
+  padding-bottom: calc(3rem + env(safe-area-inset-bottom) + 0.75rem);
+}

@@ -20,28 +20,52 @@ import {
 } from "@/config";
 
 // ===== WLD-only factory/vault ABI
+//
+// 앱이 직접 호출하는 주소는 이 팩토리와 WLD 토큰 **두 곳뿐**이다.
+// 월드앱은 전송 전에 대상 컨트랙트를 allowlist 로 검사하고 목록에 없는
+// 컨트랙트는 `invalid_contract` 로 막는다. 사용자마다 주소가 다른 금고를 앱이
+// 직접 두드리면 목록에 올릴 수 없으므로, 모든 사용자 액션은 팩토리가 중계한다.
+// 금고는 calldata 인자로만 전달된다.
 const FACTORY_ABI = [
   "event VaultCreated(address indexed owner, address indexed heir, address vault, uint256 heartbeatInterval)",
+  "event VaultReleased(address indexed owner, address indexed vault)",
   "function createVault(address heir, uint256 heartbeatInterval) external returns (address)",
   "function vaultOf(address owner) external view returns (address)",
-  // Optional: supported in newer factory
+  "function myVault() external view returns (address)",
   "function releaseMyVault() external returns (bool)",
+  "function deposit(uint256 amount) external",
+  "function pingMyVault() external",
+  "function updateMyHeir(address newHeir) external",
+  "function changeMyPeriod(uint256 newInterval) external",
+  "function cancelMyInheritance() external",
+  "function withdrawFromMyVault(address to, uint256 amount) external",
+  "function rescueFromMyVault(address token, uint256 amount, address to) external",
+  "function fileClaimFor(address vault) external",
+  "function finalizeClaimFor(address vault) external",
+  "function isHeirOf(address owner, address vault) external view returns (bool)",
 ];
 
 const VAULT_ABI = [
   "function WLD() view returns (address)",
   "function heir() view returns (address)",
   "function owner() view returns (address)",
+  "function factory() view returns (address)",
   "function heartbeatInterval() view returns (uint256)",
   "function lastPing() view returns (uint256)",
-  "function canClaim() view returns (bool)",
+  "function deadline() view returns (uint256)",
+  "function claimFiledAt() view returns (uint256)",
+  "function claimedAt() view returns (uint256)",
+  "function CHALLENGE_PERIOD() view returns (uint256)",
+  // 만료만으로는 자금이 움직이지 않는다. 아래 세 함수가 상속의 단계를 나타낸다.
+  "function ownerStillActive() view returns (bool)",
+  "function isExpired() view returns (bool)",
+  "function claimPending() view returns (bool)",
+  "function challengeRunning() view returns (bool)",
+  "function claimableNow() view returns (bool)",
+  "function challengeEndsAt() view returns (uint256)",
+  "function inheritanceCancelled() view returns (bool)",
   "function timeRemaining() view returns (uint256)",
-  "function ping() external",
-  "function updateHeir(address _newHeir) external",
-  "function updateHeartbeat(uint256 _newInterval) external",
-  "function cancelInheritance() external",
-  "function claim() external",
-  "function ownerWithdrawWLD(uint256 amount, address to) external",
+  "function isSettled() view returns (bool)",
 ];
 
 const ERC20_ABI = [
@@ -49,6 +73,31 @@ const ERC20_ABI = [
   "function decimals() view returns (uint8)",
   "function balanceOf(address) view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+];
+
+/**
+ * 금고가 상속 파이프라인에서处于 어느 단계인지.
+ * 컨트랙트의 `ownerStillActive` / `isExpired` / `claimPending` / `challengeRunning` /
+ * `claimableNow` / `claimedAt` / `inheritanceCancelled` 를 한 곳에서 합쳐 만든다.
+ * UI 는 개별 불리언을 나열하는 대신 이 값 하나만 분기한다.
+ */
+type VaultPhase =
+  | "active"
+  | "expired"
+  | "challenging"
+  | "claimable"
+  | "settled"
+  | "cancelled";
+
+/** 하단 탭. 개수를 늘리지 않는 것이 의도다 —see the note on `tab`. */
+type TabKey = "vault" | "money" | "inherit" | "support";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "vault", label: "Vault" },
+  { key: "money", label: "Send" },
+  { key: "inherit", label: "Inherit" },
+  { key: "support", label: "Help" },
 ];
 
 type TxResultPayload = {
@@ -169,7 +218,55 @@ export default function App() {
   const [vaultCreatedBlock, setVaultCreatedBlock] = useState<number | null>(null);
   const [vaultCreatedTime, setVaultCreatedTime] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
-  const [canClaim, setCanClaim] = useState<boolean>(false);
+
+  /**
+   * 하단 탭으로 화면을 나눈다.
+   *
+   * 심사 가이드라인이 "Avoid footers, sidebars, and excessive scrolling" 이라 명시하고
+   * 나쁜 예시를 "Footer and long scrolling" 으로 든다. 카드를 한 줄로 늘어놓으면 390px
+   * 화면에서 스크롤 6회 이상을 요구해서 그대로 기각 사유가 됐다.
+   *
+   * 탭은 4개만 둔다. 그 이상은 탐색 비용이 이득보다 크고, 모바일에서 고를 수 있는
+   * 목표 수가 줄어드는 것이 오히려 usability 다.
+   */
+  const [tab, setTab] = useState<TabKey>("vault");
+
+  /**
+   * 상속은 이제 두 단계다. 만료만으로는 자금이 움직이지 않는다.
+   *
+   *   active      갱신 가능. owner 가 ping 로 기한을 연장한다.
+   *   expired     기한이 지났고 상속인이 아직 아무것도 하지 않음 →Funds 는 그대로
+   *   challenging 상속인이 신청했고 owner 가 이의 제기할 수 있는 7일
+   *   claimable   이의제기 기간이 지남 → heir 가 최종 수령 가능
+   *   settled     최종 수령 완료
+   *   cancelled   상속이 취소됨 (heir = owner)
+   *
+   * `canClaim` 은 예전의 "지금 수령 가능"이었다. 이제는 `claimable` 만 그 의미를
+   * 갖는데, 상속인이 7일 전에 돈을 가져갈 수 없다는 뜻이라 UI 에 그대로 쓰면 안 된다.
+   */
+  const [vaultPhase, setVaultPhase] = useState<VaultPhase>("active");
+  const [challengeEndsAt, setChallengeEndsAt] = useState<number>(0);
+  /** 최종 수령이 지금 가능한 상태인지 (= 이의제기 기간이 지났고 신청이 들어옴). */
+  const canClaim = vaultPhase === "claimable";
+  /** 상속인이 신청만 하고 아직 이의제기 기간이 남은 상태. */
+  const challengeRunning = vaultPhase === "challenging";
+  /** 기한이 지났지만 상속인이 아직 신청하지 않은 상태. */
+  const awaitingClaim = vaultPhase === "expired";
+  const inheritanceCancelled = vaultPhase === "cancelled";
+  const isSettledClaim = vaultPhase === "settled";
+  /**
+   * 기한이 지나 상속 파이프라인이 시작된 상태인가.
+   *
+   * ownerWithdraw / cancelInheritance / period 변경 / heir 변경은 기한 이후 전부 revert 된다.
+   * 예전처럼 `canClaim`(이의제기 종료) 만으로 게이트하면 7일 창이 열려 있는 동안
+   * 항상 실패하는 버튼을 사용자에게 활성화해 보낸다. 신청 대기(`expired`) 와
+   * 이의제기 중(`challenging`) 을 모두 포함시켜야 한다.
+   */
+  const isExpiredOrLater = awaitingClaim || challengeRunning || canClaim || isSettledClaim;
+  /** 이의제기 기간의 남은 초. 0 아래로 내려가지 않게 한다. */
+  const challengeRemaining = Math.max(0, challengeEndsAt - Math.floor(Date.now() / 1000));
+  /** 이의제기 기간(일). 컨트랙트 상수를 읽되 실패하면 기본값으로 버틴다. */
+  const [challengeDays, setChallengeDays] = useState(7);
 
   const [wldSymbol, setWldSymbol] = useState("WLD");
   const [wldDecimals, setWldDecimals] = useState(18);
@@ -438,7 +535,9 @@ export default function App() {
             // Local storage may be unavailable in some embedded contexts.
             void 0;
           }
-          setStatus('Connected (World App): ' + addr.slice(0, 6) + '...' + addr.slice(-4));
+          // 헤더에 유저네임과 World App 표시가 있으므로 상태 줄을 비운다.
+          // 여기까지 "Connected" 를 남기면 같은 정보가 두 줄로 보인다.
+          setStatus('');
         } else {
           setStatus('Connection cancelled or failed.');
           pushToast('error', 'Connection cancelled or failed.');
@@ -964,9 +1063,51 @@ export default function App() {
     if (!vaultCtr) return;
     try {
       const rem: bigint = await vaultCtr.timeRemaining();
-      const cc: boolean = await vaultCtr.canClaim();
+      // 상속 상태를 한 번에 읽어 단계로 정리한다. 이 RPC 묶음은 UI 의 모든
+      // 분기를 결정하므로 일부가 실패하면 안 된다.
+      const [
+        ownerActive,
+        expired,
+        pending,
+        challenging,
+        finalizable,
+        claimedAt,
+        cancelled,
+        challengeEnd,
+      ] = await Promise.all([
+        vaultCtr.ownerStillActive(),
+        vaultCtr.isExpired(),
+        vaultCtr.claimPending(),
+        vaultCtr.challengeRunning(),
+        vaultCtr.claimableNow(),
+        vaultCtr.claimedAt(),
+        vaultCtr.inheritanceCancelled(),
+        vaultCtr.challengeEndsAt(),
+      ]);
+      const phase: VaultPhase = cancelled
+        ? "cancelled"
+        : claimedAt > 0n
+          ? "settled"
+          : finalizable
+            ? "claimable"
+            : challenging
+              ? "challenging"
+              : pending
+                ? "challenging"
+                : expired
+                  ? "expired"
+                  : ownerActive
+                    ? "active"
+                    : "expired";
+      setVaultPhase(phase);
+      setChallengeEndsAt(Number(challengeEnd));
+      try {
+        const cp: bigint = await vaultCtr.CHALLENGE_PERIOD();
+        setChallengeDays(Math.round(Number(cp) / 86400));
+      } catch {
+        setChallengeDays(7);
+      }
       setTimeRemaining(Number(rem));
-      setCanClaim(cc);
     } catch (e: unknown) {
       console.warn("refreshTimer failed:", errorText(e));
     }
@@ -1110,12 +1251,20 @@ export default function App() {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{
-          address: WLD_ADDRESS,
-          abi: ERC20_ABI,
-          functionName: "transfer",
-          args: [vault, amt.toString()],
-        }],
+        transaction: [
+          {
+            address: WLD_ADDRESS,
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [FACTORY_ADDRESS, amt.toString()],
+          },
+          {
+            address: FACTORY_ADDRESS,
+            abi: FACTORY_ABI,
+            functionName: "deposit",
+            args: [amt.toString()],
+          },
+        ],
         formatPayload: true,
       });
       if (finalPayload?.status !== "success") { setStatus("Deposit cancelled or failed"); return; }
@@ -1152,7 +1301,7 @@ export default function App() {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "ping", args: [] }],
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "pingMyVault", args: [] }],
         formatPayload: true,
       });
       if (finalPayload?.status !== "success") { setStatus("Reset cancelled or failed"); return; }
@@ -1182,7 +1331,7 @@ export default function App() {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "updateHeartbeat", args: [seconds.toString()] }],
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "changeMyPeriod", args: [seconds.toString()] }],
         formatPayload: true,
       });
       if (finalPayload?.status !== "success") { setStatus("Change period failed"); return; }
@@ -1209,7 +1358,7 @@ export default function App() {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "cancelInheritance", args: [] }],
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "cancelMyInheritance", args: [] }],
         formatPayload: true,
       });
       if (finalPayload?.status !== "success") { setStatus("Cancel failed"); return; }
@@ -1240,7 +1389,7 @@ export default function App() {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "updateHeir", args: [resolved.address] }],
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "updateMyHeir", args: [resolved.address] }],
         formatPayload: true,
       });
       if (finalPayload?.status !== "success") { setStatus("Update heir failed"); return; }
@@ -1273,14 +1422,44 @@ export default function App() {
     }
   };
 
-  // ---- claim (after expiry)
-  const claim = async () => {
-    if (!vaultCtr) return;
+  // ---- 1단계: 상속인이 상속을 신청한다. 자금은 아직 움직이지 않는다.
+  //
+  // 신청 자체는 이산적이고 되돌릴 필요가 없는 행위다. 그래도 다른 상속 흐름과
+  // 같은 폴링/토스트/예외 처리를 거치도록 두 함수의 형태를 맞췄다 — 한쪽만
+  // 관대해지면 나중에 버그가 숨을 곳이 된다.
+  const fileClaim = async () => {
+    if (!vault || !vaultCtr) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "claim", args: [] }],
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "fileClaimFor", args: [vault] }],
+        formatPayload: true,
+      });
+      if (finalPayload?.status !== "success") { setStatus("Claim request cancelled or failed"); return; }
+      setStatus("Request filed. The owner has 7 days to renew before you can withdraw.");
+      const prov = getRwProvider();
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => await vaultCtr.claimPending(),
+      });
+      pushToast('success', 'Claim filed');
+      refreshTimer(); refreshBalances();
+    } catch (e: unknown) {
+      setStatus("Claim request error: " + errorText(e));
+      pushToast('error', errorText(e));
+    }
+  };
+
+  // ---- 2단계: 이의제기 기간이 지난 뒤 최종 수령. 자금이 실제로 이동한다.
+  const claim = async () => {
+    if (!vaultCtr || !vault) return;
+    try {
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const { MiniKit } = await loadMiniKit();
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "finalizeClaimFor", args: [vault] }],
         formatPayload: true,
       });
       if (finalPayload?.status !== "success") { setStatus("Claim failed"); return; }
@@ -1321,7 +1500,7 @@ export default function App() {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: vault, abi: VAULT_ABI, functionName: "ownerWithdrawWLD", args: [amt.toString(), withdrawTo] }],
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "withdrawFromMyVault", args: [withdrawTo, amt.toString()] }],
         formatPayload: true,
       });
       if (finalPayload?.status !== "success") { setStatus("Withdraw cancelled or failed"); return; }
@@ -1438,57 +1617,57 @@ export default function App() {
           </div>
         </div>
       </header>
-      <div className="container-narrow px-4 py-4 md:py-6 safe-pb grid gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">WLD Inheritance Vault</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex gap-2 flex-wrap items-center">
-              {/* 로그인은 반드시 사용자 탭에서 시작해야 한다 (World App 심사 규칙).
-                  마운트 시 자동 walletAuth 는 제거했으므로, 이 버튼이 로그인 진입점이
-                  유일하게 남은 경로다. 이게 없으면 account 가 빈 채로 진입해 아무것도
-                  할 수 없는 상태로 머무른다. */}
-              {!account && (
-                <Button
-                  variant="primary"
-                  onClick={continueWorldApp2}
-                  disabled={ctaLoading}
-                >
-                  {ctaLoading ? (<><span className="spinner mr-2"></span>Connecting...</>) : "Connect to World App"}
-                </Button>
-              )}
-              {account && REQUIRE_VERIFY && !verified && (
-                <Button
-                  variant="primary"
-                  onClick={continueWorldApp2}
-                  disabled={ctaLoading}
-                >
-                  {ctaLoading ? (<><span className="spinner mr-2"></span>Verifying...</>) : "Verify in World App"}
-                </Button>
-              )}
-              {account && (!REQUIRE_VERIFY || verified) && (
-                <Button disabled size="md">{username ? `@${username}` : 'Connected'}</Button>
-              )}
-              {/* 이 줄이 8개 트랜잭션 플로우 전부의 결과/오류 채널이다.
-                  스크린 리더 사용자에게 읽히도록 live region 이 필요하다. */}
-              <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
-                {status}
-              </div>
-            </div>
+      {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
+          콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
+      <div className="container-narrow px-4 py-4 md:py-6 tab-pb grid gap-4">
+        {/* 헤더. 로그인 상태와 탭마다 반복되므로 카드 한 장을 쓰지 않고 한 줄로 줄인다.
+            카드 4개(헤더/타이머/입금/고객센터)를 한 화면에 넣으려면 이게 전부 필요했다. */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            {account ? (
+              <>
+                <div className="text-sm font-semibold truncate">
+                  {username ? `@${username}` : short(account)}
+                </div>
+                <div className="text-xs text-gray-500">
+                  Connected{inheritanceCancelled ? " · inheritance cancelled" : ""}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-semibold">WLD Inheritance</div>
+                <div className="text-xs text-gray-500">Connect to get started</div>
+              </>
+            )}
+          </div>
+          {account && (!REQUIRE_VERIFY || verified) ? (
+            <span className="text-xs text-gray-500 shrink-0">World App</span>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={continueWorldApp2}
+              disabled={ctaLoading}
+              className="shrink-0"
+            >
+              {ctaLoading ? (<><span className="spinner mr-2"></span>Connecting...</>) : "Connect"}
+            </Button>
+          )}
+        </div>
 
-            <div className="text-xs text-gray-500">
-              Send <b>{wldSymbol}</b> into your vault. If you do not extend the timer before it expires,
-              your designated heir can claim the full balance.
-            </div>
-          </CardContent>
-        </Card>
+        {/* 8개 트랜잭션 플로우 전부의 결과/오류 채널.
+            스크린 리더 사용자에게 읽히도록 live region 이 필요하다. */}
+        {status && (
+          <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
+            {status}
+          </div>
+        )}
 
-        {vault && gate2(
+        {/* ===== Send 탭: 자금 흐름 ===== */}
+        {tab === "money" && vault && gate2(
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle>Vault Details & Deposit</CardTitle>
+                <CardTitle>Vault & Send</CardTitle>
                 <div className="flex items-center gap-2">
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && badge("Owner", "blue")}
                   {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
@@ -1621,22 +1800,162 @@ export default function App() {
               <div className="text-xs text-gray-500">
                 * This vault accepts only WLD on World Chain (480). Do not send ETH or other tokens. Gas fees are generally covered by World App; ETH is usually not required.
               </div>
+
+              {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
+                <>
+                <div className="space-y-2 border-t pt-3">
+                  <div className="text-xs text-gray-500">
+                    Emergency withdraw (before the countdown ends)
+                  </div>
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn WLD to</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
+                      <Button onClick={setWithdrawToMe}>My address</Button>
+                    </div>
+                  </div>
+                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
+                    <div className="text-xs text-red-600">Invalid recipient address.</div>
+                  )}
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-amount">Amount to withdraw</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
+                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
+                      <Button onClick={setWithdrawMax}>All</Button>
+                      <Button onClick={ownerWithdraw} disabled={isExpiredOrLater}>Withdraw to myself</Button>
+                    </div>
+                  </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {vault && gate2(
+        {/* ===== Inherit 탭: 상속 파이프라인을 그대로 보여준다 ===== */}
+        {tab === "inherit" && vault && gate2(
           <Card>
-            <CardHeader><CardTitle>Timer & Controls</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Inheritance Status</CardTitle></CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="text-sm text-gray-700">
+                Funds move only after the countdown runs out <b>and</b> your heir files a
+                claim, and then waits {challengeDays} more days. If you renew during those
+                days the claim is withdrawn automatically.
+              </div>
+
+              {/* 파이프라인을 단계로 보여준다. 어느 단계에 있는지가 한눈에 들어가야
+                  "내 돈이 언제 이동하는가"를 머릿속에서 계산할 필요가 없어진다. */}
+              <ol className="pipeline">
+                {[
+                  { k: "Counting down", done: vaultPhase === "active" },
+                  { k: "Countdown ended", done: awaitingClaim || challengeRunning || canClaim || isSettledClaim },
+                  { k: "Heir files a claim", done: challengeRunning || canClaim || isSettledClaim },
+                  { k: `${challengeDays}-day review window`, done: canClaim || isSettledClaim },
+                  { k: "Heir withdraws", done: isSettledClaim },
+                ].map((s, i) => (
+                  <li key={i} className={s.done ? "pipeline-done" : ""}>
+                    <span className="pipeline-dot" aria-hidden="true" />
+                    {s.k}
+                    {s.done && <span className="sr-only"> (completed)</span>}
+                  </li>
+                ))}
+              </ol>
+
+              {challengeRunning && (
+                <div className="text-sm">
+                  Your heir has filed a claim. Renew the countdown before{" "}
+                  <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
+                  to keep the funds. After that the claim cannot be stopped.
+                  {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
+                    <div className="mt-2">
+                      <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account}>
+                        Renew and withdraw the claim
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {awaitingClaim && account && vaultHeir &&
+                account.toLowerCase() === vaultHeir.toLowerCase() && (
+                  <div className="grid gap-2">
+                    <div className="text-sm">
+                      The countdown has ended, so the balance is now available to you. File a
+                      claim to start the {challengeDays}-day review window.
+                    </div>
+                    <Button variant="primary" onClick={fileClaim} disabled={!miniInstalled}>
+                      File claim
+                    </Button>
+                  </div>
+                )}
+
+              {canClaim && account && vaultHeir &&
+                account.toLowerCase() === vaultHeir.toLowerCase() && (
+                  <div className="grid gap-2">
+                    <div className="text-sm">
+                      The review window has passed. Withdraw the balance.
+                    </div>
+                    <Button variant="primary" onClick={claim} disabled={!miniInstalled || vaultWld === 0n}>
+                      Withdraw {fmtUnits(vaultWld)} {wldSymbol}
+                    </Button>
+                  </div>
+                )}
+
+              {isSettledClaim && (
+                <div className="text-sm text-gray-600">
+                  The inheritance completed. This vault is closed and holds nothing.
+                </div>
+              )}
+
+              {inheritanceCancelled && (
+                <div className="text-sm text-gray-600">
+                  Inheritance was cancelled, so no one inherits this vault. The balance is
+                  yours and you can withdraw it whenever you want.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ===== Vault 탭: 타이머와 갱신 ===== */}
+        {tab === "vault" && vault && gate2(
+          <Card>
+            <CardHeader><CardTitle>Vault & Controls</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {/* 이 앱의 존재 이유가 "타이머가 다 되지 않았는가" 다. 그래서 카드의 맨 위에
                   크고 눈에 띄게 두고, 남은 시간에 따라 색을 바꾼다. */}
               <div className={`timer-block ${timerUrgency}`}>
-                {canClaim ? (
+                {canClaim || isSettledClaim ? (
                   <>
-                    <div className="text-xs font-semibold uppercase">Expired — funds are claimable</div>
+                    <div className="text-xs font-semibold uppercase">
+                      {isSettledClaim ? "Inheritance completed" : "Review window passed"}
+                    </div>
                     <div className="timer-value">
-                      The heir can now claim the vault balance.
+                      {isSettledClaim
+                        ? "This vault is closed and holds nothing."
+                        : "The heir can withdraw the vault balance."}
+                    </div>
+                  </>
+                ) : challengeRunning ? (
+                  <>
+                    <div className="text-xs font-semibold uppercase text-gray-600">
+                      Claim filed — you can still stop it
+                    </div>
+                    <div className="timer-value">{fmt(challengeRemaining)}</div>
+                    <div className="text-xs text-gray-600">
+                      left in the review window. Renewing withdraws the claim.
+                    </div>
+                  </>
+                ) : awaitingClaim ? (
+                  <>
+                    <div className="text-xs font-semibold uppercase text-gray-600">
+                      Countdown ended
+                    </div>
+                    <div className="timer-value">Waiting for a claim</div>
+                    <div className="text-xs text-gray-600">
+                      Your heir can now file a claim. You would then have{" "}
+                      {challengeDays} days to renew.
                     </div>
                   </>
                 ) : (
@@ -1656,13 +1975,17 @@ export default function App() {
               {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                 <>
                   <div className="text-sm text-gray-700">
-                    {canClaim
-                      ? "This vault has expired. The countdown can no longer be reset and the balance now belongs to your heir."
-                      : "Reset the timer before it runs out. After expiry the balance passes to your heir and cannot be recovered."}
+                    {challengeRunning
+                      ? `Your heir filed a claim. Renew before ${challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"} to withdraw it.`
+                      : canClaim
+                        ? "The review window has passed, so the balance can no longer be renewed back."
+                        : awaitingClaim
+                          ? "The countdown has ended. Your heir can now file a claim, after which you would still have a few days to renew."
+                          : `Reset before the countdown ends. If you stop, your heir can claim the balance after a ${challengeDays}-day review window.`}
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account || canClaim}>
-                      Reset timer
+                      {challengeRunning ? "Renew and withdraw claim" : "Reset timer"}
                     </Button>
                   </div>
                 </>
@@ -1711,16 +2034,16 @@ export default function App() {
                     )}
                     <Button onClick={updateHeir} disabled={!miniInstalled || !account || !newHeirResolved?.address}>Update heir</Button>
                     {/* cancelInheritance 는 컨트랙트에서 만기 후 Expired 로 거부한다.
-                        형제 버튼인 withdraw 처럼 canClaim 으로 게이트해야 항상 실패하는
+                        형제 버튼인 withdraw 처럼 만료 이후에는 항상 실패하므로
                         클릭을 사용자에게 노출하지 않는다. */}
                     <Button
                       variant="ghost"
                       onClick={cancelInheritance}
-                      disabled={!miniInstalled || !account || canClaim}
+                      disabled={!miniInstalled || !account || isExpiredOrLater}
                     >
                       Cancel (set heir to me)
                     </Button>
-                    {supportsRelease && vaultWld === 0n && canClaim && (
+                    {supportsRelease && vaultWld === 0n && isExpiredOrLater && (
                       <div className="flex items-center gap-2">
                         <Button onClick={() => setShowReleaseConfirm(true)} disabled={!miniInstalled || !account}>Release slot</Button>
                         <span className="text-xs text-gray-500">* Available only after expiry and when vault balance is 0. The contract remains on-chain; only the factory mapping is cleared.</span>
@@ -1728,37 +2051,13 @@ export default function App() {
                     )}
                   </>
                 )}
-                {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && (
-                  <Button variant="primary" onClick={claim} disabled={!miniInstalled || !canClaim}>Claim (heir)</Button>
-                )}
+                {/* 상속 액션은 Inherit 탭의 파이프라인 카드가 단일 진입점으로 삼는다.
+                    여기도 남겨두면 같은 행위가 두 곳에 생겨 어느 쪽이 맞는지 헷갈리고,
+                    탭을 오갈 때마다 상태가 달라 보인다. */}
                 {!account || (!vaultOwner && !vaultHeir) ? (
                   <Button onClick={loadVault}>Re-scan</Button>
                 ) : null}
               </div>
-              {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
-                <div className="space-y-2 border-t pt-3">
-                  <div className="text-xs text-gray-500">Owner emergency withdraw (before expiry)</div>
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn WLD to</label>
-                    <div className="field-row-controls">
-                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
-                      <Button onClick={setWithdrawToMe}>My address</Button>
-                    </div>
-                  </div>
-                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
-                    <div className="text-xs text-red-600">Invalid recipient address.</div>
-                  )}
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-amount">Amount to withdraw</label>
-                    <div className="field-row-controls">
-                      <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
-                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
-                      <Button onClick={setWithdrawMax}>All</Button>
-                      <Button onClick={ownerWithdraw} disabled={canClaim}>Withdraw to myself</Button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
@@ -1766,7 +2065,8 @@ export default function App() {
         {/* 금고가 이미 있으면 이 카드를 숨긴다. 그대로 두면 비활성 primary 버튼과
             "You already have a vault" 문구가 함께 보여 혼란을 부르며, heir/period 조정은
             아래 "Timer & Controls" 카드에서 할 수 있어 기능 손실이 없다. */}
-        {!isMyVault && gate2(
+        {/* ===== Inherit 탭: 상속 설정과 상속 진행 상태 ===== */}
+        {tab === "inherit" && !isMyVault && gate2(
           <Card>
             <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
             <CardContent className="grid gap-3">
@@ -1853,6 +2153,10 @@ export default function App() {
           </Card>
         )}
 
+        {/* ===== Help 탭: 신뢰성 근거와 법적 고지 =====
+            여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
+        {tab === "support" && (
+        <>
         <Card>
           <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-700">
@@ -1930,21 +2234,39 @@ export default function App() {
           </Card>
         )}
 
-      <Card>
-        <CardHeader><CardTitle>Help & Legal</CardTitle></CardHeader>
-        <CardContent className="text-xs text-gray-600 space-y-2">
-          <div>
-            This tool is non-custodial and for informational purposes only. It does not constitute legal, tax, or investment advice.
-          </div>
-          <div>
-            <a className="text-blue-600 underline" href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>
-            <span className="mx-2">•</span>
-            <a className="text-blue-600 underline" href="/terms.html" target="_blank" rel="noreferrer">Terms</a>
-            <span className="mx-2">•</span>
-            <a className="text-blue-600 underline" href="mailto:daviswhistle@naver.com">Support</a>
-          </div>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader><CardTitle>Help & Legal</CardTitle></CardHeader>
+          <CardContent className="text-xs text-gray-600 space-y-2">
+            <div>
+              This tool is non-custodial and for informational purposes only. It does not constitute legal, tax, or investment advice.
+            </div>
+            <div>
+              <a className="text-blue-600 underline" href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>
+              <span className="mx-2">•</span>
+              <a className="text-blue-600 underline" href="/terms.html" target="_blank" rel="noreferrer">Terms</a>
+              <span className="mx-2">•</span>
+              <a className="text-blue-600 underline" href="mailto:daviswhistle@naver.com">Support</a>
+            </div>
+          </CardContent>
+        </Card>
+        </>
+        )}
+
+      {/* ===== 하단 탭 바 =====
+          가이드라인이 권장하는 "Bottom tab navigation and anchored buttons" 형태다.
+          fixed 이지만 safe-area 를 고려해 화면 가장자리와 겹치지 않게 들어 올린다. */}
+      <nav className="tab-bar" aria-label="Sections" hidden={!account}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            className={`tab-item ${tab === t.key ? "tab-item-active" : ""}`}
+            onClick={() => setTab(t.key)}
+            aria-current={tab === t.key ? "page" : undefined}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
       </div>
       <div className="toast-container" role="status" aria-live="polite" aria-atomic="false">

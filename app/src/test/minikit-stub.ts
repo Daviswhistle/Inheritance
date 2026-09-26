@@ -103,8 +103,9 @@ export const MiniKit = {
     }: {
       transaction: { address: string; abi: string[]; functionName: string; args: unknown[] }[];
     }) {
-      const call = transaction[0];
-      state.txLog.push(call.functionName);
+      // 입금은 approve + deposit 두 건을 한 번에 보낸다. 일부러 첫 건만 처리하면
+      // 실제 월드앱과 스텁의 동작이 갈라져 E2E 가 통과하는데 기기에서 실패한다.
+      for (const call of transaction) state.txLog.push(call.functionName);
       if (state.failNextTx) {
         state.failNextTx = false;
         return { finalPayload: { status: "fail", error: "E2E forced failure" } };
@@ -114,10 +115,14 @@ export const MiniKit = {
         const provider = await rpcProvider();
         const signer = await getSigner();
         const w = signer.connect(provider);
-        const contract = new ethers.Contract(call.address, call.abi, w);
-        const tx = await contract[call.functionName](...(call.args as never[]));
-        const rcpt = await tx.wait();
-        return { finalPayload: { status: "success", transaction_hash: rcpt.hash } };
+        let last: unknown = null;
+        for (const call of transaction) {
+          const contract = new ethers.Contract(call.address, call.abi, w);
+          const tx = await contract[call.functionName](...(call.args as never[]));
+          last = await tx.wait();
+        }
+        const rcpt = last as { hash: string } | null;
+        return { finalPayload: { status: "success", transaction_hash: rcpt?.hash } };
       } catch (e) {
         // 컨트랙트 revert 를 그대로 전파해 앱의 에러 표시 경로를 검증한다
         return { finalPayload: { status: "fail", error: (e as Error).message } };
