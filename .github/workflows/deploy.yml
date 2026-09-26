@@ -1,0 +1,76 @@
+name: Deploy mini app (Cloudflare Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "package.json"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & deploy to Pages
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # app/.env 는 gitignore 대상이라 CI 에 없다. 공개 온체인 정보만 여기서 주입한다.
+      # (개인키 등 비공개 값은 절대 넣지 않는다)
+      - name: Build
+        env:
+          VITE_FACTORY_ADDRESS: ${{ vars.VITE_FACTORY_ADDRESS }}
+          VITE_WLD_ADDRESS: ${{ vars.VITE_WLD_ADDRESS }}
+          VITE_RPC: ${{ vars.VITE_RPC }}
+          VITE_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_FACTORY_DEPLOY_BLOCK }}
+          VITE_FACTORY_RELEASE_SUPPORTED: ${{ vars.VITE_FACTORY_RELEASE_SUPPORTED }}
+          VITE_REQUIRE_VERIFY: ${{ vars.VITE_REQUIRE_VERIFY }}
+          VITE_WORLD_ACTION_ID: ${{ vars.VITE_WORLD_ACTION_ID }}
+          VITE_WORLD_APP_ID: ${{ vars.VITE_WORLD_APP_ID }}
+          VITE_NOTIFY_BACKEND_URL: ${{ vars.VITE_NOTIFY_BACKEND_URL }}
+        run: pnpm build
+
+      - name: Verify the build actually got a factory address
+        # vars 가 비어 있으면 VITE_FACTORY_ADDRESS 가 undefined 가 되어 흰 화면이 배포된다.
+        # 번들에 실제 값이 들어갔는지 확인해 잘못된 배포를 막는다.
+        run: |
+          set -euo pipefail
+          FACTORY="${{ vars.VITE_FACTORY_ADDRESS }}"
+          if [ -z "$FACTORY" ]; then
+            echo "::error::Repository variable VITE_FACTORY_ADDRESS 가 설정되지 않았습니다."; exit 1
+          fi
+          if ! grep -q "$FACTORY" dist/assets/*.js; then
+            echo "::error::번들에서 VITE_FACTORY_ADDRESS 를 찾지 못했습니다. 빌드 설정을 확인하세요."; exit 1
+          fi
+          echo "빌드 확인 OK: $FACTORY"
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=inheritance --branch=main
