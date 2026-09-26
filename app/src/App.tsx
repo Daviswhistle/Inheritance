@@ -7,7 +7,6 @@ import type { ReactElement } from "react";
 import {
   ACTION_ID,
   CHAIN_ID,
-  CHAIN_NAME,
   CONFIG_ERROR,
   EXPLORER,
   FACTORY_ADDRESS,
@@ -78,6 +77,28 @@ const txHashFromPayload = (payload: unknown): string | undefined => {
   const tx = payload as TxResultPayload;
   return tx.transaction_hash || tx.transactionId || tx.transaction_id;
 };
+
+/**
+ * 읽기 전용 provider 생성.
+ *
+ * 체인 ID를 하드코딩하지 않는다. 이전에는 `{ chainId: 480 }` 을 정적 network 로
+ * 넘겨서, 다른 체인(local anvil, World Chain Sepolia 등)에서 연결하면 모든 호출이
+ * `network changed: 480 => <실제>` 로 실패했다. 덕분에 이 앱은 메인넷 외에는
+ * 아예 테스트가 불가능했다.
+ *
+ * 대신 실제로 연결된 체인을 조회해 기대 체인과 다르면 경고한다.
+ */
+async function createProvider(): Promise<ethers.JsonRpcProvider> {
+  const p = new ethers.JsonRpcProvider(RPC_URL);
+  const net = await p.getNetwork();
+  if (net.chainId !== BigInt(CHAIN_ID)) {
+    console.warn(
+      `Unexpected chain: got ${net.chainId}, expected ${CHAIN_ID}. ` +
+        `Check VITE_RPC / VITE_FACTORY_ADDRESS — they must match.`,
+    );
+  }
+  return p;
+}
 
 export default function App() {
   // ---- state
@@ -254,11 +275,14 @@ export default function App() {
     return true;
   };
   // const toUnits = (v: bigint) => Number(v) / 10 ** wldDecimals;
-  const fmtUnits = (v: bigint, d = wldDecimals) => ethers.formatUnits(v, d);
+  const fmtUnits = (v: bigint, d = wldDecimals) => ethers.formatUnits(v, Number(d) || 0);
   const parseAmount = (s: string) => {
+    // Number() 로 한 번 더 변환한다 — 컨트랙트 반환값이 bigint 로 들어와도
+    // String.repeat / BigInt() 가 터지지 않도록.
+    const dec = Number(wldDecimals) || 0;
     const [i, d = ""] = s.split(".");
-    const dd = (d + "0".repeat(wldDecimals)).slice(0, wldDecimals);
-    return BigInt(i || "0") * (10n ** BigInt(wldDecimals)) + BigInt(dd || "0");
+    const dd = (d + "0".repeat(dec)).slice(0, dec);
+    return BigInt(i || "0") * (10n ** BigInt(dec)) + BigInt(dd || "0");
   };
   const validDecimalInput = (s: string) => /^\d*(?:\.\d*)?$/.test(s);
   const gate2 = (node: ReactElement) => {
@@ -347,9 +371,7 @@ export default function App() {
         const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
         if (finalPayload?.status === 'success') {
           const addr: string = finalPayload.address;
-          const NETWORK = { chainId: CHAIN_ID, name: CHAIN_NAME.toLowerCase() } as const;
-          const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
-          setProvider(p); setSigner(null); setAccount(addr);
+          setProvider(await createProvider()); setSigner(null); setAccount(addr);
           try {
             localStorage.setItem('wld-account', ethers.getAddress(addr));
           } catch {
@@ -599,19 +621,19 @@ export default function App() {
   // Restore saved session (keeps user logged in across visits)
   // 로그인 게이트가 아니라 표시 상태 복원용이므로, 지갑 서명 없이 주소만 되살린다.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('wld-account') || '';
-      if (saved && ethers.isAddress(saved)) {
-        const addr = ethers.getAddress(saved);
-        const NETWORK = { chainId: CHAIN_ID, name: CHAIN_NAME.toLowerCase() } as const;
-        const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
-        setProvider(p); setSigner(null); setAccount(addr);
-        setStatus((s) => s || 'Session restored');
+    (async () => {
+      try {
+        const saved = localStorage.getItem('wld-account') || '';
+        if (saved && ethers.isAddress(saved)) {
+          const addr = ethers.getAddress(saved);
+          setProvider(await createProvider()); setSigner(null); setAccount(addr);
+          setStatus((s) => s || 'Session restored');
+        }
+      } catch {
+        // Local storage may be unavailable in some embedded contexts.
+        void 0;
       }
-    } catch {
-      // Local storage may be unavailable in some embedded contexts.
-      void 0;
-    }
+    })();
   }, []);
 
   // Optional: fetch username for restored sessions when available
@@ -857,7 +879,11 @@ export default function App() {
         token.symbol(), token.decimals(),
         token.balanceOf(account), vault ? token.balanceOf(vault) : Promise.resolve(0n)
       ]);
-      setWldSymbol(sym); setWldDecimals(dec);
+      setWldSymbol(sym);
+      // ethers v6 는 uint8 반환값을 bigint 로 준다. 상태는 number 로 선언돼 있으므로
+      // 그대로 넣으면 아래 parseAmount 의 `"0".repeat(wldDecimals)` 가
+      // "Cannot convert a BigInt value to a number" 로 터져 입금이 전부 실패한다.
+      setWldDecimals(Number(dec));
       setWalletWld(userBal); setVaultWld(vaultBal);
     } catch (e: unknown) {
       // 주기적으로 호출되므로 조용히 실패시킨다. 단, unhandled rejection 으로
@@ -1349,7 +1375,19 @@ export default function App() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2 flex-wrap items-center">
-              {/* World App 전용: 자동 진행. 필요 시 상태만 표시 */}
+              {/* 로그인은 반드시 사용자 탭에서 시작해야 한다 (World App 심사 규칙).
+                  마운트 시 자동 walletAuth 는 제거했으므로, 이 버튼이 로그인 진입점이
+                  유일하게 남은 경로다. 이게 없으면 account 가 빈 채로 진입해 아무것도
+                  할 수 없는 상태로 머무른다. */}
+              {!account && (
+                <Button
+                  variant="primary"
+                  onClick={continueWorldApp2}
+                  disabled={ctaLoading}
+                >
+                  {ctaLoading ? (<><span className="spinner mr-2"></span>Connecting...</>) : "Connect to World App"}
+                </Button>
+              )}
               {account && REQUIRE_VERIFY && !verified && (
                 <Button
                   variant="primary"
