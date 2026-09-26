@@ -104,6 +104,72 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* Label-above-control field row.
+   The inline `grid-cols-3` pattern gave the label one third of ~326px of content
+   width on a 390px phone, so "Deposit amount" and "Period (days)" wrapped onto
+   two lines. Stacking the label above the control reads cleanly and leaves the
+   whole width for the input. */
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.field-row-label {
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
+.field-row-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Timer block — the whole app exists so the user keeps this from running out,
+   so it gets the strongest visual treatment on the page. */
+.timer-block {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.timer-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Urgency: the window is closing. */
+.timer-urgent {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.timer-urgent .timer-value {
+  color: #b45309;
+}
+
+.timer-critical {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.timer-critical .timer-value {
+  color: #b91c1c;
+}
+
+.timer-expired {
+  border-color: #ef4444;
+  background: #fee2e2;
+}
+
+.timer-expired .timer-value {
+  color: #991b1b;
+}
+
 .col-span-2 {
   grid-column: span 2 / span 2;
 }

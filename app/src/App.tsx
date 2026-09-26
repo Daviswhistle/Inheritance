@@ -346,6 +346,22 @@ export default function App() {
    */
   const isMyVault = Boolean(vaultOwner) && account.toLowerCase() === vaultOwner.toLowerCase();
 
+  /**
+   * 남은 시간에 따른 시각적紧急度.
+   *
+   * 이 앱은 사용자가 매 주기마다 자금을 "회수당할 위험"에 두게 한다. 그래서
+   * 기한이 임박했을 때 화면이 조용하면 사용자가 그대로 잊어버리고 자금을 잃는다.
+   * 주기 대비 비율로 판단한다 — 30일 주기면 3일/1일 남았을 때 경고.
+   */
+  const timerUrgency = useMemo(() => {
+    if (canClaim) return "timer-expired";
+    const period = vaultHeartbeat || 1;
+    const ratio = timeRemaining / period;
+    if (ratio <= 0.05) return "timer-critical";
+    if (ratio <= 0.2) return "timer-urgent";
+    return "";
+  }, [canClaim, timeRemaining, vaultHeartbeat]);
+
   const isHeirSuspicious = (): boolean => {
     const c = heirResolved?.address && ethers.isAddress(heirResolved.address)
       ? ethers.getAddress(heirResolved.address)
@@ -373,12 +389,6 @@ export default function App() {
     if (timeRemaining && timeRemaining > 0) return nowSec + timeRemaining;
     return 0;
   }, [vaultLastPing, vaultHeartbeat, timeRemaining]);
-  const expired = useMemo(() => {
-    if (canClaim) return true;
-    if (!expiryTs) return false;
-    const nowSec = Math.floor(Date.now() / 1000);
-    return nowSec >= expiryTs;
-  }, [canClaim, expiryTs]);
   const expiryLocal = useMemo(() => (expiryTs ? new Date(expiryTs * 1000).toLocaleString() : '-'), [expiryTs]);
   const short = (a: string) => a ? (a.slice(0, 6) + "..." + a.slice(-4)) : "-";
   const badge = (text: string, color: "blue" | "purple" | "yellow" | "green" | "gray") => {
@@ -1483,8 +1493,11 @@ export default function App() {
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && badge("Owner", "blue")}
                   {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
                   {(() => {
-                    if (vaultHeir && vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()) return badge("Cancelled", "yellow");
-                    return canClaim ? badge("Claimable", "green") : badge("Active", "gray");
+                    if (vaultHeir && vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()) return badge("Inheritance cancelled", "yellow");
+                    if (canClaim) return badge("Claimable", "green");
+                    if (timerUrgency === "timer-critical") return badge("Renew urgently", "yellow");
+                    if (timerUrgency === "timer-urgent") return badge("Renew soon", "yellow");
+                    return badge("Active", "gray");
                   })()}
                 </div>
               </div>
@@ -1587,10 +1600,12 @@ export default function App() {
               <div className="text-sm">Vault: {fmtUnits(vaultWld)} {wldSymbol}</div>
               {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                 <>
-                  <div className="grid grid-cols-3 items-center gap-2">
-                    <div>Deposit amount</div>
-                    <Input className="col-span-2" inputMode="decimal" pattern="^[0-9]*[.]?[0-9]*$" placeholder="0.0"
-                      value={amountStr} onChange={e => setAmountStr(e.target.value)} />
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="deposit-amount">Amount to deposit ({wldSymbol})</label>
+                    <div className="field-row-controls">
+                      <Input id="deposit-amount" inputMode="decimal" placeholder="0.0"
+                        value={amountStr} onChange={e => setAmountStr(e.target.value)} />
+                    </div>
                   </div>
                   <div className="flex gap-2 flex-wrap items-center">
                     <div className="text-xs text-gray-600">Available: {fmtUnits(walletWld)} {wldSymbol}</div>
@@ -1614,38 +1629,73 @@ export default function App() {
           <Card>
             <CardHeader><CardTitle>Timer & Controls</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <div className="text-sm">Time until inheritance: <b>{fmt(timeRemaining)}</b></div>
-              <div className="text-sm">
-                {expired ? (
-                  <>Expired at (만료됨): <b>{expiryLocal}</b></>
+              {/* 이 앱의 존재 이유가 "타이머가 다 되지 않았는가" 다. 그래서 카드의 맨 위에
+                  크고 눈에 띄게 두고, 남은 시간에 따라 색을 바꾼다. */}
+              <div className={`timer-block ${timerUrgency}`}>
+                {canClaim ? (
+                  <>
+                    <div className="text-xs font-semibold uppercase">Expired — funds are claimable</div>
+                    <div className="timer-value">
+                      The heir can now claim the vault balance.
+                    </div>
+                  </>
                 ) : (
-                  <>Expires at (만료 예정일): <b>{expiryLocal}</b></>
+                  <>
+                    <div className="text-xs font-semibold uppercase text-gray-600">
+                      {timerUrgency === "timer-urgent" || timerUrgency === "timer-critical"
+                        ? "Renew soon"
+                        : "Time left to renew"}
+                    </div>
+                    <div className="timer-value">{fmt(timeRemaining)}</div>
+                    <div className="text-xs text-gray-600">
+                      Expires {expiryLocal} <span className="text-gray-400">({deviceTimeZone})</span>
+                    </div>
+                  </>
                 )}
-                <span className="text-xs text-gray-500 ml-2">{deviceTimeZone}</span>
               </div>
-              <div className="text-sm">Claimable now: {canClaim ? "Yes" : "No"}</div>
-              <div className="text-xs text-gray-500">
-                Tap <b>Reset timer</b> to fill the countdown back to your full period.
-              </div>
+              {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
+                <>
+                  <div className="text-sm text-gray-700">
+                    {canClaim
+                      ? "This vault has expired. The countdown can no longer be reset and the balance now belongs to your heir."
+                      : "Reset the timer before it runs out. After expiry the balance passes to your heir and cannot be recovered."}
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account || canClaim}>
+                      Reset timer
+                    </Button>
+                  </div>
+                </>
+              )}
               <div className="flex gap-2 flex-wrap">
                 {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                   <>
-                    <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account}>Reset timer</Button>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        className="w-28"
-                        value={periodInput}
-                        placeholder="30"
-                        onChange={e => onPeriodChange(e.target.value)}
-                      />
-                      <Button onClick={changePeriod} disabled={!miniInstalled || !account || !periodValid}>Change period</Button>
+                    <div className="field-row" style={{ width: "100%" }}>
+                      <label className="field-row-label" htmlFor="period-change">
+                        Change renewal period (1–365 days)
+                      </label>
+                      <div className="field-row-controls">
+                        <Input
+                          id="period-change"
+                          type="text"
+                          inputMode="numeric"
+                          className="w-28"
+                          value={periodInput}
+                          placeholder="30"
+                          onChange={e => onPeriodChange(e.target.value)}
+                        />
+                        <Button onClick={changePeriod} disabled={!miniInstalled || !account || !periodValid}>
+                          Change period
+                        </Button>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 items-center gap-2">
-                      <div>New heir</div>
-                      <Input className="col-span-2" placeholder="@username or 0x..." value={newHeir} onChange={e => onNewHeirInput(e.target.value)} />
+                    <div className="field-row" style={{ width: "100%" }}>
+                      <label className="field-row-label" htmlFor="new-heir-input">
+                        Change heir
+                      </label>
+                      <div className="field-row-controls">
+                        <Input id="new-heir-input" placeholder="@username or 0x..." value={newHeir} onChange={e => onNewHeirInput(e.target.value)} />
+                      </div>
                     </div>
                     {newHeir && (
                       resolvingNewHeir ? (
@@ -1688,25 +1738,25 @@ export default function App() {
               {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                 <div className="space-y-2 border-t pt-3">
                   <div className="text-xs text-gray-500">Owner emergency withdraw (before expiry)</div>
-                  <div className="grid grid-cols-3 items-center gap-2">
-                    <div>Withdraw to</div>
-                    <Input className="col-span-2" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn WLD to</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
+                      <Button onClick={setWithdrawToMe}>My address</Button>
+                    </div>
                   </div>
                   {withdrawTo && !ethers.isAddress(withdrawTo) && (
                     <div className="text-xs text-red-600">Invalid recipient address.</div>
                   )}
-                  <div className="flex gap-2">
-                    <Button onClick={setWithdrawToMe}>To me</Button>
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-amount">Amount to withdraw</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
+                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
+                      <Button onClick={setWithdrawMax}>All</Button>
+                      <Button onClick={ownerWithdraw} disabled={canClaim}>Withdraw to myself</Button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-3 items-center gap-2">
-                    <div>Amount</div>
-                    <Input className="col-span-2" inputMode="decimal" pattern="^[0-9]*[.]?[0-9]*$" placeholder="0.0"
-                      value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={setWithdrawMax}>Max</Button>
-                  </div>
-                  <Button onClick={ownerWithdraw} disabled={canClaim}>Withdraw (owner)</Button>
                 </div>
               )}
             </CardContent>
@@ -1721,9 +1771,13 @@ export default function App() {
             <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
             <CardContent className="grid gap-3">
               <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
-              <div className="grid grid-cols-3 items-center gap-2">
-                <div>Heir (@username or 0x…)</div>
-                <Input className="col-span-2" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
+              <div className="field-row">
+                <label className="field-row-label" htmlFor="heir-input">
+                  Heir — who receives the funds if you stop renewing
+                </label>
+                <div className="field-row-controls">
+                  <Input id="heir-input" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
+                </div>
               </div>
               {heir && (
                 resolvingHeir ? (
@@ -1740,17 +1794,22 @@ export default function App() {
               {heirResolved?.address && isHeirSuspicious() && (
                 <div className="text-xs text-yellow-700">Warning: Heir equals owner or zero address — this disables inheritance.</div>
               )}
-              <div className="grid grid-cols-3 items-center gap-2">
-                <div>Period (days)</div>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className="col-span-2"
-                  value={periodInput}
-                  placeholder="30"
-                  onChange={e => onPeriodChange(e.target.value)}
-                />
+              <div className="field-row">
+                <label className="field-row-label" htmlFor="period-input">
+                  Renewal period — how often you must reset the timer (1–365 days)
+                </label>
+                <div className="field-row-controls">
+                  <Input
+                    id="period-input"
+                    type="text"
+                    inputMode="numeric"
+                    className="w-28"
+                    value={periodInput}
+                    placeholder="30"
+                    onChange={e => onPeriodChange(e.target.value)}
+                  />
+                  <span className="text-xs text-gray-500">days</span>
+                </div>
               </div>
               <div className="text-xs text-red-600">
                 {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
