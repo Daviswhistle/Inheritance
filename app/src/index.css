@@ -6,10 +6,25 @@
   /* slate-900 */
 }
 
+/* 스크롤 컨테이너는 문서 하나뿐이어야 한다.
+ *
+ * 이전에는 `html, body, #root { height: 100% }` 로 루트를 뷰포트 높이에
+ * 고정하고, 그 안의 `.app-shell` 에 또 `overflow-y: auto` 를 주었다. 그런데
+ * `.app-shell` 은 `min-height` 뿐이라 내용 높이(1281px)까지 자라 버퍼
+ * scrollHeight 와 clientHeight 가 같아졌다. 즉 실제로는 스크롤 컨테이너가
+ * 아니었다.
+ *
+ * 데스크톱 크로미엄에서는 바디가 대신 스크롤해서 문제가 드러나지 않았지만,
+ * iOS WKWebView 는 `overflow-y: auto` 를 붙은 요소가 터치를 가로채면서
+ * 자신은 스크롤할 수 없어서 제스처가 어디로도 전달되지 않는다. 그게
+ * "스크롤이 안 된다"는 심사 지적의 정체였다.
+ *
+ * 해결: 루트 높이를 auto 로 풀어 문서 자체를 유일한 스크롤러로 만든다. */
 html,
 body,
 #root {
-  height: 100%;
+  height: auto;
+  min-height: 100%;
 }
 
 /* Reset and mobile scrolling reliability */
@@ -28,12 +43,13 @@ body,
 
 html {
   -webkit-text-size-adjust: 100%;
-  height: -webkit-fill-available; /* iOS Safari/WebView fallback */
 }
 
 body {
   margin: 0;
-  overflow-y: auto;
+  /* 문서가 유일한 스크롤러다. `overscroll-behavior: none` 은 iOS 의
+     바운스(끝에서 튀는 효과) 를 막아 준다 — World App 가이드라인이 권장. */
+  overscroll-behavior-y: none;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -78,14 +94,15 @@ body {
 /* Prefer dynamic viewport units to avoid iOS/Android UI chrome issues.
    ORDER MATTERS: same property repeated, so the LAST valid one wins.
    100vh must come first as the fallback — putting it last silently
-   overrode svh/dvh and reintroduced the iOS URL-bar height bug. */
+   overrode svh/dvh and reintroduced the iOS URL-bar height bug.
+
+   `overflow-y: auto` 는 의도적으로 제거했다. 이 요소가 다시 스크롤
+   컨테이너가 되면 중첩 스크롤이 되살아나 iOS 에서 터치가 죽는다.
+   스크롤은 문서(html/body) 가 담당한다. */
 .app-shell {
   min-height: 100vh;
   min-height: 100svh;
   min-height: 100dvh;
-  /* Make the app its own scroll container to avoid host WebView quirks */
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
 }
