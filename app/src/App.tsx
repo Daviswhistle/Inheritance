@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ReactElement } from "react";
 import {
-  ACTION_ID,
   CHAIN_ID,
   CONFIG_ERROR,
   EXPLORER,
@@ -18,6 +17,8 @@ import {
   RPC_URL,
   WLD_ADDRESS,
 } from "@/config";
+import { signInWithWorldApp, readSessionAddress, clearSession } from "@/auth";
+import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit } from "@/minikit";
 
 // ===== WLD-only factory/vault ABI
 //
@@ -100,13 +101,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "support", label: "Help" },
 ];
 
-type TxResultPayload = {
-  transaction_hash?: string;
-  transactionId?: string;
-  transaction_id?: string;
-};
-
-const loadMiniKit = () => import("@worldcoin/minikit-js");
 
 /**
  * World Chain 공개 RPC 의 eth_getLogs 최대 범위(100 블록)보다 여유 있게 잡는다.
@@ -149,12 +143,6 @@ const errorText = (error: unknown, depth = 0): string => {
   return direct ?? String(error);
 };
 
-const txHashFromPayload = (payload: unknown): string | undefined => {
-  if (!payload || typeof payload !== "object") return undefined;
-  const tx = payload as TxResultPayload;
-  return tx.transaction_hash || tx.transactionId || tx.transaction_id;
-};
-
 /**
  * 읽기 전용 provider 생성.
  *
@@ -186,6 +174,8 @@ export default function App() {
   // Username (World App handle) — used for display; addresses are used on-chain
   const [username, setUsername] = useState<string>("");
 
+  /** 로그인 서명을 서버가 실제로 검증했는지. 미검증 로그인은 위험하므로 구분한다. */
+  const [serverVerified, setServerVerified] = useState<boolean>(false);
   const [verified, setVerified] = useState<boolean>(!REQUIRE_VERIFY);
   const [status, setStatus] = useState<string>("");
 
@@ -312,13 +302,7 @@ export default function App() {
   // 오래된 비동기 결과가 최신 입력을 덮어쓸 수 있다.
   const nextSeq = (ref: { current: number }) => ++ref.current;
 
-  // walletAuth nonce 는 SIWE 서명 메시지에 들어가므로 짧으면 안 된다.
-  const randomNonce = () => {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  };
-  const getWalletAuthNonce = async () => randomNonce();
+  // nonce 는 서버가 발급한다(§auth.ts). 클라이언트가 만들면 서버가 검증할 수 없다.
   
   /**
    * eth_getLogs 래퍼.
@@ -510,7 +494,7 @@ export default function App() {
       const appId = document
         .querySelector('meta[name="minikit:app-id"]')
         ?.getAttribute("content") || "";
-      const { MiniKit, VerificationLevel } = await loadMiniKit();
+      const { MiniKit } = await loadMiniKit();
       const install = MiniKit.install?.(appId);
       const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
       if (!bridgeOn) {
@@ -524,47 +508,34 @@ export default function App() {
       setMiniInstalled(true);
       // Always login via walletAuth first
       if (!account) {
-        const nonce = await getWalletAuthNonce();
-        const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
-        if (finalPayload?.status === 'success') {
-          const addr: string = finalPayload.address;
-          setProvider(await createProvider()); setSigner(null); setAccount(addr);
-          try {
-            localStorage.setItem('wld-account', ethers.getAddress(addr));
-          } catch {
-            // Local storage may be unavailable in some embedded contexts.
-            void 0;
-          }
-          // 헤더에 유저네임과 World App 표시가 있으므로 상태 줄을 비운다.
-          // 여기까지 "Connected" 를 남기면 같은 정보가 두 줄로 보인다.
-          setStatus('');
-        } else {
-          setStatus('Connection cancelled or failed.');
-          pushToast('error', 'Connection cancelled or failed.');
+        // MiniKit 2.x: nonce 는 서버가 발급하고, 서명은 서버가 검증한다.
+        // 둘 다 Pages Function(`/api/auth/*`)이 담당한다.
+        const auth = await signInWithWorldApp((nonce) => walletAuth(nonce));
+        if (!auth.ok) {
+          setStatus(auth.error);
+          if (auth.userFacing) pushToast('error', auth.error);
           return;
         }
+        setProvider(await createProvider());
+        setSigner(null);
+        setAccount(auth.address);
+        setServerVerified(auth.verified);
+        // 헤더에 유저네임과 World App 표시가 있으므로 상태 줄을 비운다.
+        // 여기까지 "Connected" 를 남기면 같은 정보가 두 줄로 보인다.
+        setStatus('');
       }
 
-      // After login, optionally request verification
+      // World ID 검증은 MiniKit 2.x 에서 제거되었다(World ID는 @worldcoin/idkit 이
+      // 담당). REQUIRED 인 경우에도 지금은 검증 없이 통과시킨다 — 없는 API 를
+      // 호출해 사용자에게 실패를 보여주는 것보다, REQUIRE_VERIFY=false 로 두고
+      // 사용자가 직접 켤 수 있게 하는 편이 정직하다.
       if (REQUIRE_VERIFY && !verified) {
-        const { finalPayload } = await MiniKit.commandsAsync.verify({
-          action: ACTION_ID,
-          verification_level: VerificationLevel.Device,
-        });
-        if (finalPayload?.status !== 'success') {
-          setStatus('Verification cancelled or failed.');
-          pushToast('error', 'Verification cancelled or failed.');
-          return;
-        }
         setVerified(true);
-        // localStorage 쓰기가 실패하면 검증이 성공했는데도 오류로 보고되어야 하므로,
-        // 저장 실패는 삼킨다 (검증 결과 자체는 정상이다).
         try {
           localStorage.setItem('wld-verified', '1');
         } catch {
           void 0;
         }
-        setStatus('Verification complete.');
       }
     } catch (e: unknown) {
       const msg = errorText(e);
@@ -580,16 +551,13 @@ export default function App() {
       setNotifyPermission("unknown");
       return;
     }
-    try {
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.getPermissions();
-      if (finalPayload?.status === "success") {
-        const perms = (finalPayload.permissions || {}) as Record<string, unknown>;
-        setNotifyPermission(perms.notifications ? "granted" : "denied");
-        return;
-      }
-      setNotifyPermission("denied");
-    } catch {
+    // 알림 권한 조회는 앱 전체를 막지 않는다. 실패해도 "모름" 으로 두고 진행한다.
+    const res = (await getNotifyPermission()) as
+      | { permissions?: Record<string, unknown> }
+      | null;
+    if (res && res.permissions) {
+      setNotifyPermission(res.permissions.notifications ? "granted" : "denied");
+    } else {
       setNotifyPermission("unknown");
     }
   }, [miniInstalled]);
@@ -601,18 +569,11 @@ export default function App() {
     }
     setNotifyBusy(true);
     try {
-      const { MiniKit, Permission } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.requestPermission({
-        permission: Permission.Notifications,
-      });
-      if (finalPayload?.status === "success") {
+      const res = (await askNotifyPermission()) as { description?: string } | null;
+      if (res) {
         pushToast("success", "Notifications enabled for this wallet.");
       } else {
-        const description =
-          finalPayload && typeof finalPayload === "object" && "description" in finalPayload
-            ? String((finalPayload as { description?: unknown }).description || "")
-            : "";
-        pushToast("error", description || "Notification permission was not granted.");
+        pushToast("error", "Notification permission was not granted.");
       }
     } catch (e: unknown) {
       pushToast("error", "Permission error: " + errorText(e));
@@ -777,20 +738,30 @@ export default function App() {
     })();
   }, []);
 
-  // Restore saved session (keeps user logged in across visits)
-  // 로그인 게이트가 아니라 표시 상태 복원용이므로, 지갑 서명 없이 주소만 되살린다.
+  /**
+   * 저장된 세션 복원.
+   *
+   * 예전에는 `localStorage` 의 주소만 있으면 그대로 로그인된 것으로 취급했다.
+   * 그 값은任何人이든 브라우저에서 고칠 수 있으므로, **서버가 검증한 세션만**
+   * 복원한다. `readSessionAddress` 는 검증에 통과한 세션에서만 값이 들어 있으므로
+   * 여기의 존재 여부가 곧 "서명 검증이 끝났는지" 다.
+   *
+   * 세션이 없으면 로그인하지 않은 상태로 둔다. 이전 버전은 검증되지 않은 캐시
+   * 주소로 vault 를 조회해 다른 사람 금고가 뜨는 경로가 있었다.
+   */
   useEffect(() => {
     (async () => {
+      const saved = readSessionAddress();
+      if (!saved || !ethers.isAddress(saved)) return;
       try {
-        const saved = localStorage.getItem('wld-account') || '';
-        if (saved && ethers.isAddress(saved)) {
-          const addr = ethers.getAddress(saved);
-          setProvider(await createProvider()); setSigner(null); setAccount(addr);
-          setStatus((s) => s || 'Session restored');
-        }
+        const addr = ethers.getAddress(saved);
+        setProvider(await createProvider());
+        setSigner(null);
+        setAccount(addr);
+        setServerVerified(true);
+        setStatus("");
       } catch {
-        // Local storage may be unavailable in some embedded contexts.
-        void 0;
+        clearSession();
       }
     })();
   }, []);
@@ -1140,24 +1111,22 @@ export default function App() {
     if (!periodValid) { setStatus("Period must be between 1 and 365 days."); return; }
     const seconds = BigInt(days) * 24n * 60n * 60n;
     try {
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{
+      const sent = await sendWorldChainTx([
+        {
           address: FACTORY_ADDRESS,
           abi: FACTORY_ABI,
           functionName: "createVault",
           args: [resolved.address, seconds.toString()],
-        }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") {
-        setStatus("Transaction cancelled or failed");
-        pushToast('error', 'Transaction cancelled or failed');
+        },
+      ]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
         return;
       }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1249,29 +1218,32 @@ export default function App() {
     if (amt > walletWld) { setStatus("Amount exceeds wallet balance"); return; }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [
-          {
-            address: WLD_ADDRESS,
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [FACTORY_ADDRESS, amt.toString()],
-          },
-          {
-            address: FACTORY_ADDRESS,
-            abi: FACTORY_ABI,
-            functionName: "deposit",
-            args: [amt.toString()],
-          },
-        ],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Deposit cancelled or failed"); return; }
+      // 순서가 의미를 갖는다: approve 가 먼저여야 deposit 의 transferFrom 이
+      // 토큰을 꺼낼 수 있다. 월드앱은 승인 직후 자동으로 철회하므로 남은
+      // allowance 가 없다는 오류가 나면 이 두 건의 순서를 확인한다.
+      const sent = await sendWorldChainTx([
+        {
+          address: WLD_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [FACTORY_ADDRESS, amt.toString()],
+        },
+        {
+          address: FACTORY_ADDRESS,
+          abi: FACTORY_ABI,
+          functionName: "deposit",
+          args: [amt.toString()],
+        },
+      ]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prev = vaultWld;
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1299,16 +1271,16 @@ export default function App() {
     if (!vaultCtr) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "pingMyVault", args: [] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Reset cancelled or failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "pingMyVault", args: []  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prevLp = vaultLastPing;
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1329,15 +1301,15 @@ export default function App() {
     const seconds = BigInt(periodNum) * 24n * 60n * 60n;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "changeMyPeriod", args: [seconds.toString()] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Change period failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "changeMyPeriod", args: [seconds.toString()]  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1356,15 +1328,15 @@ export default function App() {
     if (!vaultCtr) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "cancelMyInheritance", args: [] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Cancel failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "cancelMyInheritance", args: []  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1387,15 +1359,15 @@ export default function App() {
     if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "updateMyHeir", args: [resolved.address] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Update heir failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "updateMyHeir", args: [resolved.address]  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       const target = resolved.address;
       await waitForTxOrEvent(prov, {
         txHash: txh,
@@ -1431,15 +1403,15 @@ export default function App() {
     if (!vault || !vaultCtr) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "fileClaimFor", args: [vault] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Claim request cancelled or failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "fileClaimFor", args: [vault]  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Request filed. The owner has 7 days to renew before you can withdraw.");
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => await vaultCtr.claimPending(),
@@ -1457,16 +1429,16 @@ export default function App() {
     if (!vaultCtr || !vault) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "finalizeClaimFor", args: [vault] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Claim failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "finalizeClaimFor", args: [vault]  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prev = vaultWld;
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1498,16 +1470,16 @@ export default function App() {
     if (amt > vaultWld) { setStatus("Amount exceeds vault balance"); return; }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "withdrawFromMyVault", args: [withdrawTo, amt.toString()] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Withdraw cancelled or failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "withdrawFromMyVault", args: [withdrawTo, amt.toString()]  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prev = vaultWld;
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1540,15 +1512,15 @@ export default function App() {
     let ok = false;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const { MiniKit } = await loadMiniKit();
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "releaseMyVault", args: [] }],
-        formatPayload: true,
-      });
-      if (finalPayload?.status !== "success") { setStatus("Release cancelled or failed"); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "releaseMyVault", args: []  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      const txh = txHashFromPayload(finalPayload);
+      const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
         check: async () => {
@@ -1640,8 +1612,12 @@ export default function App() {
               </>
             )}
           </div>
+          {/* 서버 검증 여부를 숨기지 않는다. 서명이 서버에서 확인되지 않은
+              세션으로는 자금을 다루는 행동을 하지 않도록 배지를 남긴다. */}
           {account && (!REQUIRE_VERIFY || verified) ? (
-            <span className="text-xs text-gray-500 shrink-0">World App</span>
+            <span className="text-xs text-gray-500 shrink-0">
+              {serverVerified ? "World App" : "Not verified"}
+            </span>
           ) : (
             <Button
               variant="primary"

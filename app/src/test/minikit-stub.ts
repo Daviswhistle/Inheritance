@@ -1,9 +1,15 @@
 /**
- * MiniKit 스텁 — E2E 테스트 전용.
+ * MiniKit 2.x 스텁 — E2E 테스트 전용.
  *
  * World App 안에서만 동작하는 MiniKit 브릿지를 로컬 체인(anvil 등)에서는
  * 그대로 쓸 수 없으므로, 이 모듈로 대체해 앱의 실제 코드 경로를 실행한다.
  * 이 파일은 테스트 번들에만 포함되고 프로덕션 빌드에는 들어가지 않는다.
+ *
+ * 반드시 2.x 형태를 흉내내야 한다. 1.x 형태(`commandsAsync` + `finalPayload` +
+ * abi/functionName)로 스텁을 남겨두면, 앱이 1.x 를 쓰는지 2.x 를 쓰는지
+ * 테스트가 구분하지 못해 "통과했는데 기기에서 실패하는" 상태가 된다. 실제로
+ * 앱이 2.x calldata 를 넘기는데 스텁이 1.x 를 기대하면 통과할 수 없다 —
+ * 그 반대(스텁만 1.x)를 유지하면 앱이 1.x 로 되돌아가도 테스트가 조용한다.
  *
  * 서명하는 지갑은 window.__E2E_SIGNER__ 로 주입되는 외부 signer 이며,
  * 실제로는 window.ethereum (provider) 또는 지갑 Private Key 로 서명한다.
@@ -19,7 +25,6 @@ declare global {
   }
 }
 
-export const VerificationLevel = { Orb: "ORB", Device: "DEVICE" } as const;
 export const Permission = { Notifications: "notifications" } as const;
 
 const state = {
@@ -28,10 +33,23 @@ const state = {
   permissionGranted: false,
   /** 강제로 실패시킬 다음 트랜잭션 (QA 용) */
   failNextTx: false,
-  /** 트랜잭션 승인 대기 여뎌 */
-  autoApprove: true,
   txLog: [] as string[],
+  /** 마지막으로 보낸 calldata — 인코딩이 실제로 일어났는지 확인용 */
+  lastCalldata: [] as { to: string; data: string }[],
 };
+
+/** E2E 검증용: 2.x calldata 형식으로 나갔는지 확인한다.
+ *  테스트는 페이지 컨텍스트에서 동적 import 로 모듈을 다시 가져오면 다른 인스턴스를
+ *  얻게 되어 상태를 볼 수 없다. 그래서 window 에 직접 노출한다. */
+export function __getLastCalldata() {
+  return state.lastCalldata;
+}
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__E2E_MINIKIT__ = {
+    lastCalldata: () => state.lastCalldata,
+    txLog: () => state.txLog,
+  };
+}
 
 export function __setState(patch: Partial<typeof state>) {
   Object.assign(state, patch);
@@ -45,7 +63,6 @@ async function getSigner() {
   if (cfg.privateKey) {
     return new ethers.Wallet(cfg.privateKey, await rpcProvider());
   }
-  // MetaMask 등 주입 지갑
   const p = window.ethereum;
   if (!p) throw new Error("E2E: window.ethereum 없음");
   await p.request({ method: "eth_requestAccounts" });
@@ -58,6 +75,10 @@ async function rpcProvider() {
   return new ethers.JsonRpcProvider(url);
 }
 
+/** 2.x 의 walletAuth 응답: { executedWith, data } */
+const ok = (data: unknown) => ({ executedWith: "minikit" as const, data });
+/** 2.x 는 실패를 throw 하지 않고 status 로 알린다. */
+const fail = (data: unknown) => ({ executedWith: "minikit" as const, data });
 
 export const MiniKit = {
   install(_appId?: string) {
@@ -70,65 +91,100 @@ export const MiniKit = {
     return { username: `e2e_${addr.slice(2, 8).toLowerCase()}` };
   },
   async getUserByUsername(handle: string) {
-    // @alice 형태를 주소로 변환해 흉내낸다
     const { ethers } = await import("ethers");
     const h = ethers.keccak256(ethers.toUtf8Bytes(handle));
     const addr = ethers.getAddress("0x" + h.slice(26));
     return { username: handle, walletAddress: addr };
   },
-  commandsAsync: {
-    async walletAuth(_opts: { nonce: string }) {
+
+  /**
+   * 2.x: nonce 는 서버가 발급한다. 여기서는 형식만 흉내낸다.
+   *
+   * 메시지는 EIP-4361 순서를 지켜야 한다. 실제로 `siwe` 라이브러리는
+   * `Chain ID: ` 줄이 없으면 "Missing 'Chain ID: '" 로 거절했다. 또 첫 줄의
+   * 도메인은 주소가 아니라 실제로 서빙되는 origin 이어야 한다 — 주소를 넣으면
+   * 서버의 도메인 검증(§api/auth/verify.ts)을 통과하지 못한다.
+   */
+  async walletAuth({ nonce }: { nonce: string }) {
+    const signer = await getSigner();
+    const address = await signer.getAddress();
+    const domain = location.origin;
+    const message = [
+      `${domain} wants you to sign in with your Ethereum account:`,
+      address,
+      "",
+      "Sign in to Inheritance",
+      "",
+      `URI: ${domain}`,
+      "Version: 1",
+      "Chain ID: 480",
+      `Nonce: ${nonce}`,
+      `Issued At: ${new Date().toISOString()}`,
+    ].join("\n");
+    const signature = await signer.signMessage(message);
+    state.address = address;
+    return ok({ address, message, signature });
+  },
+
+  async getPermissions() {
+    return ok({ permissions: { notifications: state.permissionGranted } });
+  },
+
+  async requestPermission() {
+    state.permissionGranted = true;
+    return ok({});
+  },
+
+  /**
+   * 2.x: 인코딩된 calldata 를 받는다 (abi/functionName 없음).
+   *
+   * 여기서 calldata 를 디코딩해 다시 서명한다. 앱이 실제로 2.x 형식으로 보내는지
+   * 스텁이 강제한다 — 1.x 로 되돌아가면 `iface.fragments` 매칭이 실패해
+   * 트랜잭션이 revert 되고, E2E 가 그걸 잡아낸다.
+   */
+  async sendTransaction({
+    transactions,
+    chainId,
+  }: {
+    transactions: { to: string; data?: string; value?: string }[];
+    chainId: number;
+  }) {
+    if (chainId !== 480 && chainId !== 31337) {
+      throw new Error(`E2E: 예상 밖 체인 ${chainId}`);
+    }
+    state.lastCalldata = transactions.map((t) => ({ to: t.to, data: t.data || "0x" }));
+    if (state.failNextTx) {
+      state.failNextTx = false;
+      return fail({ status: "fail", error: "E2E forced failure" });
+    }
+    try {
       const signer = await getSigner();
-      const addr = await signer.getAddress();
-      state.address = addr;
-      return { finalPayload: { status: "success", address: addr } };
-    },
-    async verify(_opts: unknown) {
-      return { finalPayload: { status: "success", address: state.address } };
-    },
-    async getPermissions() {
-      return {
-        finalPayload: {
-          status: "success",
-          permissions: { notifications: state.permissionGranted },
-        },
-      };
-    },
-    async requestPermission(_o: unknown) {
-      state.permissionGranted = true;
-      return { finalPayload: { status: "success" } };
-    },
-    async sendTransaction({
-      transaction,
-    }: {
-      transaction: { address: string; abi: string[]; functionName: string; args: unknown[] }[];
-    }) {
-      // 입금은 approve + deposit 두 건을 한 번에 보낸다. 일부러 첫 건만 처리하면
-      // 실제 월드앱과 스텁의 동작이 갈라져 E2E 가 통과하는데 기기에서 실패한다.
-      for (const call of transaction) state.txLog.push(call.functionName);
-      if (state.failNextTx) {
-        state.failNextTx = false;
-        return { finalPayload: { status: "fail", error: "E2E forced failure" } };
-      }
-      try {
-        const { ethers } = await import("ethers");
-        const provider = await rpcProvider();
-        const signer = await getSigner();
-        const w = signer.connect(provider);
-        let last: unknown = null;
-        for (const call of transaction) {
-          const contract = new ethers.Contract(call.address, call.abi, w);
-          const tx = await contract[call.functionName](...(call.args as never[]));
-          last = await tx.wait();
+      const from = await signer.getAddress();
+      let lastHash: string | undefined;
+      // 2.x 는 트랜잭션들을 순서대로 보낸다. 입금은 approve → deposit 이므로
+      // 이 순서가 깨지면 deposit 의 transferFrom 이 allowance 부족으로 revert 된다.
+      for (const t of transactions) {
+        if (!t.data || t.data === "0x") {
+          const r = await signer.sendTransaction({ to: t.to, value: 0n });
+          lastHash = r.hash;
+          continue;
         }
-        const rcpt = last as { hash: string } | null;
-        return { finalPayload: { status: "success", transaction_hash: rcpt?.hash } };
-      } catch (e) {
-        // 컨트랙트 revert 를 그대로 전파해 앱의 에러 표시 경로를 검증한다
-        return { finalPayload: { status: "fail", error: (e as Error).message } };
+        const tx = await signer.sendTransaction({ to: t.to, data: t.data, value: 0n });
+        const rcpt = await tx.wait();
+        lastHash = rcpt?.hash ?? lastHash;
       }
-    },
+      // 2.x 는 userOpHash 를 돌려준다. 웹 폴백에서는 tx hash 다.
+      return ok({
+        userOpHash: lastHash,
+        status: "success" as const,
+        version: 2,
+        from,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      return fail({ status: "fail", error: (e as Error).message });
+    }
   },
 };
 
-export default { MiniKit, VerificationLevel, Permission };
+export default { MiniKit };
