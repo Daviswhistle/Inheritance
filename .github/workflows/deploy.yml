@@ -20,9 +20,6 @@ jobs:
   deploy:
     name: Build & deploy to Pages
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -37,11 +34,13 @@ jobs:
           cache-dependency-path: app/pnpm-lock.yaml
 
       - name: Install deps
+        working-directory: app
         run: pnpm install --frozen-lockfile
 
       # app/.env 는 gitignore 대상이라 CI 에 없다. 공개 온체인 정보만 여기서 주입한다.
       # (개인키 등 비공개 값은 절대 넣지 않는다)
       - name: Build
+        working-directory: app
         env:
           VITE_FACTORY_ADDRESS: ${{ vars.VITE_FACTORY_ADDRESS }}
           VITE_WLD_ADDRESS: ${{ vars.VITE_WLD_ADDRESS }}
@@ -55,6 +54,7 @@ jobs:
         run: pnpm build
 
       - name: Verify the build actually got a factory address
+        working-directory: app
         # vars 가 비어 있으면 VITE_FACTORY_ADDRESS 가 undefined 가 되어 흰 화면이 배포된다.
         # 번들에 실제 값이 들어갔는지 확인해 잘못된 배포를 막는다.
         run: |
@@ -68,9 +68,11 @@ jobs:
           fi
           echo "빌드 확인 OK: $FACTORY"
 
+      # 워크플로 전체에 defaults.run.working-directory 를 걸면 이 액션까지 영향을 받아
+      # 경로가 꼬인다. 여기서는 루트에서 실행하고 경로를 명시한다.
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=inheritance --branch=main
+          command: pages deploy app/dist --project-name=inheritance --branch=main
