@@ -94,11 +94,21 @@ type VaultPhase =
 /** 하단 탭. 개수를 늘리지 않는 것이 의도다 —see the note on `tab`. */
 type TabKey = "vault" | "money" | "inherit" | "support";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "vault", label: "Vault" },
-  { key: "money", label: "Send" },
-  { key: "inherit", label: "Inherit" },
-  { key: "support", label: "Help" },
+/**
+ * 탭 목록. `needsVault` 는 그 탭이 금고가 있어야만 내용이 있는지를 뜻한다.
+ *
+ * 금고가 없는데도 탭을 보여주면 빈 화면이 남는다. 실제로 그대로 배포해서
+ * "vault 란 send 탭은 왜 있는 거야? 아무것도 없잖아" 라는 지적을 받았다 — 첫 진입
+ * 사용자는 빈 탭 두 개를 보고 "Inherit" 탭을 직접 찾아가야 금고를 만들 수 있었다.
+ *
+ * 그래서 내용이 없는 탭은 아예 감춘다. 한 손가락으로 금고가 만들어지는 경로만
+ * 남긴다.
+ */
+const TABS: { key: TabKey; label: string; needsVault: boolean }[] = [
+  { key: "vault", label: "Vault", needsVault: true },
+  { key: "money", label: "Send", needsVault: true },
+  { key: "inherit", label: "Inherit", needsVault: false },
+  { key: "support", label: "Help", needsVault: false },
 ];
 
 
@@ -219,7 +229,25 @@ export default function App() {
    * 탭은 4개만 둔다. 그 이상은 탐색 비용이 이득보다 크고, 모바일에서 고를 수 있는
    * 목표 수가 줄어드는 것이 오히려 usability 다.
    */
-  const [tab, setTab] = useState<TabKey>("vault");
+  const [tab, setTab] = useState<TabKey>("inherit");
+
+  /**
+   * 실제로 보여줄 탭.
+   *
+   * 금고가 없으면 Vault/Send 는 내용이 없으므로 감춘다. 기본 탭을 "inherit" 로 둔
+   * 이유도 이것이다 — 첫 진입 사용자가 보게 되는 화면이 곧 "금고 만들기" 여야
+   * 하고, 아무것도 없는 화면을 먼저 보여주면 무엇을 해야 하는지 알 수 없다.
+   *
+   * 금고가 슬롯 해제 등으로 사라지면 현재 탭이 보이지 않게 되므로 Inherit 로 되돌린다.
+   */
+  const visibleTabs = vault ? TABS : TABS.filter((t) => !t.needsVault);
+  /** 현재 탭에 실제 카드가 하나라도 있는지. 금고 로딩 중이거나 조건이 어긋난 경우를 잡는다. */
+  const tabHasContent =
+    tab === "support" || tab === "inherit" || Boolean(vault);
+  const tabStillVisible = visibleTabs.some((t) => t.key === tab);
+  useEffect(() => {
+    if (!tabStillVisible) setTab("inherit");
+  }, [tabStillVisible]);
 
   /**
    * 상속은 이제 두 단계다. 만료만으로는 자금이 움직이지 않는다.
@@ -2044,8 +2072,53 @@ export default function App() {
         {/* ===== Inherit 탭: 상속 설정과 상속 진행 상태 ===== */}
         {tab === "inherit" && !isMyVault && gate2(
           <Card>
-            <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
-            <CardContent className="grid gap-3">
+            <CardHeader><CardTitle>How this works</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {/*
+                순서와 제약을 먼저 말한다.
+
+                폼만 있으면 "이거 만들고 나서 뭐?" 가 안 보인다. 실제로
+                "금고를 먼저 만들고 입금한다는 점도 뚜렷하지 않고 금고를 하나만
+                만들 수 있는 건지, 취소하면 다시 못 만드는 건지도 모르겠네" 라는
+                지적을 받았다. 전부 컨트랙트에 구현되어 있는 규칙인데 화면에
+                없었던 것이 문제였다.
+
+                3단계를 위에 두고, 제약은 폼 아래가 아니라 폼 위에서 말하는 편이
+                낫다 — 잘못 판단하고 만드는 것이 되돌리기 번거로우니까.
+              */}
+              <ol className="steps">
+                <li>
+                  <b>Create a vault</b>
+                  <span>Name your heir and how often you want to renew. This is free and moves no money.</span>
+                </li>
+                <li>
+                  <b>Send WLD to it</b>
+                  <span>After you create it, the Send tab appears and you deposit WLD there.</span>
+                </li>
+                <li>
+                  <b>Renew before the countdown ends</b>
+                  <span>Miss it and your heir can claim the balance, after a 7-day window you can still stop.</span>
+                </li>
+              </ol>
+
+              <div className="text-xs text-gray-600 space-y-1">
+                <div>
+                  One vault per wallet. The contract refuses a second one, so there is nothing to
+                  keep track of.
+                </div>
+                <div>
+                  Changed your mind? Until the countdown ends you can switch to a different heir,
+                  or cancel entirely and keep the WLD as your own. Nothing here is permanent.
+                </div>
+              </div>
+              </CardContent>
+              </Card>
+              )}
+
+              {tab === "inherit" && !isMyVault && gate2(
+                <Card>
+                  <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
+                  <CardContent className="grid gap-3">
               <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
               <div className="field-row">
                 <label className="field-row-label" htmlFor="heir-input">
@@ -2103,22 +2176,38 @@ export default function App() {
                   {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
                 </div>
               )}
-              {!isMyVault && <div className="text-xs text-gray-600">
-                Cannot find your vault? If you are an heir, you can search for vaults where you are designated as the heir.
-              </div>}
-              {!isMyVault && account && (
-                <div className="flex items-center gap-2">
-                  <Button onClick={findHeirVaults} disabled={findingHeirVaults}>{findingHeirVaults ? 'Searching...' : 'Find vaults where I am heir'}</Button>
-                  {heirFoundVaults.length > 0 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} match{heirFoundVaults.length > 1 ? "es" : ""}</span>}
-                </div>
-              )}
-              {!isMyVault && heirFoundVaults.length >= 1 && (
+            </CardContent>
+          </Card>
+        )}
+
+        {/*
+          상속인 경로를 주인 폼에서 분리한다.
+        
+          "내 금고 만들기" 폼 아래에 "상속인 찾기" 버튼이 붙어 있으면 서로 다른 두 가지
+          일을 하는 것처럼 보인다. 상속인은 자기 금고가 없으므로 이 화면이 상속인
+          입장에서 유일한 진입점이기도 하다.
+        */}
+        {tab === "inherit" && !isMyVault && account && gate2(
+          <Card>
+            <CardHeader><CardTitle>Looking for a vault you are heir to?</CardTitle></CardHeader>
+            <CardContent className="grid gap-2">
+              <div className="text-xs text-gray-600">
+                If someone named you as their heir, search for it here. Scanning takes a moment
+                because it reads the chain history.
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button onClick={findHeirVaults} disabled={findingHeirVaults}>
+                  {findingHeirVaults ? "Searching..." : "Find my vaults"}
+                </Button>
+                {heirFoundVaults.length > 0 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} match{heirFoundVaults.length > 1 ? "es" : ""}</span>}
+              </div>
+              {heirFoundVaults.length >= 1 && (
                 <div className="grid gap-2 text-xs">
                   {heirFoundVaults.map((v) => (
                     <div key={v} className="flex items-center justify-between gap-2">
                       <span className="break-all">{short(v)}</span>
                       <div className="flex items-center gap-2">
-                        <Button size="sm" onClick={() => setVault(v)}>Use</Button>
+                        <Button size="sm" onClick={() => setVault(v)}>Open</Button>
                         <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">View</a>
                       </div>
                     </div>
@@ -2228,11 +2317,23 @@ export default function App() {
         </>
         )}
 
+      {/* 탭이 보이는데 그 탭의 카드가 하나도 렌더되지 않은 경우의 안전망.
+          조건문이 겹치면서 특정 조합에서 빈 탭이 생길 수 있고, 그 상태로 나가면
+          "아무것도 없잖아" 가 그대로 사용자에게 보인다. 빈 화면 대신 다음 행동을
+          말해준다. */}
+      {tabStillVisible && !tabHasContent && (
+        <div className="text-sm text-gray-600">
+          {tab === "money" && "Your vault is not set up yet. Create it in the Inherit tab first."}
+          {tab === "vault" && "Loading your vault..."}
+        </div>
+      )}
+
       {/* ===== 하단 탭 바 =====
           가이드라인이 권장하는 "Bottom tab navigation and anchored buttons" 형태다.
-          fixed 이지만 safe-area 를 고려해 화면 가장자리와 겹치지 않게 들어 올린다. */}
+          fixed 이지만 safe-area 를 고려해 화면 가장자리와 겹치지 않게 들어 올린다.
+          내용이 없는 탭은 아예 보이지 않는다(visibleTabs). */}
       <nav className="tab-bar" aria-label="Sections" hidden={!account}>
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.key}
             className={`tab-item ${tab === t.key ? "tab-item-active" : ""}`}

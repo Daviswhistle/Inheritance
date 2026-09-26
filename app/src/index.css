@@ -907,3 +907,90 @@ input::placeholder {
 .tab-pb {
   padding-bottom: calc(3rem + env(safe-area-inset-bottom) + 0.75rem);
 }
+
+/* ===== How-it-works steps =====
+   첫 진입 사용자에게 순서와 제약을 말한다. 폼만 있고 "만들고 나서 뭐?" 가
+   안 보이면 사용자는 아무것도 하지 못한 채 화면을 떠나게 된다. */
+.steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  border-left: 2px solid #e2e8f0;
+  padding-left: 0.75rem;
+}
+
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 1.5rem;
+  display: grid;
+  gap: 0.125rem;
+}
+
+/* 번호는 CSS 로만 — 순서가 바뀌어도 마크업이 뒤집히지 않는다 */
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: -0.75rem;
+  top: 0;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 9999px;
+  background: #0284c7;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.steps b {
+  font-size: 0.875rem;
+}
+
+.steps span {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+/* ---- Tailwind 이름은 그대로 쓰되 정의가 없던 유틸리티들 ----
+   이 스타일시트는 손으로 쓴 것이라 Tailwind preflight 가 없다. 클래스 이름을
+   그대로 써놓고 정의를 빠뜨리면 **조용히** 아무 효과가 없고, typecheck 도 lint 도
+   build 도 통과한다. 실제로 `.space-y-4` 가 없어서 설명 블록과 폼이 붙어
+   렌더링됐다. 정의가 없는 클래스 이름을 쓰지 않기 위해 아래를 모두 채운다. */
+.space-y-4 > * + * {
+  margin-top: 1rem;
+}
+
+.min-w-0 {
+  min-width: 0;
+}
+
+/* flex 컨테이너에서 긴 주소·문장이 줄바꿈으로 늘어나는 것을 막는다 */
+.shrink-0 {
+  flex-shrink: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uppercase {
+  text-transform: uppercase;
+}
+
+.text-gray-400 {
+  color: #9ca3af;
+}
+
+.py-0\.5 {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+}
