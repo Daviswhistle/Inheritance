@@ -62,12 +62,14 @@ body {
   min-height: 100vh;
 }
 
-/* Prefer dynamic viewport units to avoid iOS/Android UI chrome issues */
+/* Prefer dynamic viewport units to avoid iOS/Android UI chrome issues.
+   ORDER MATTERS: same property repeated, so the LAST valid one wins.
+   100vh must come first as the fallback — putting it last silently
+   overrode svh/dvh and reintroduced the iOS URL-bar height bug. */
 .app-shell {
+  min-height: 100vh;
   min-height: 100svh;
   min-height: 100dvh;
-  /* fallbacks */
-  min-height: 100vh;
   /* Make the app its own scroll container to avoid host WebView quirks */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -75,9 +77,12 @@ body {
   flex-direction: column;
 }
 
-/* Respect safe areas (iOS notch/home indicator) */
+/* Respect safe areas (iOS notch/home indicator).
+   Give a real minimum so the bottom-most card (Privacy/Terms/Support links,
+   which the World App review requires) is not flush against the screen edge
+   on devices that report a 0 inset. */
 .safe-pb {
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
 }
 
 .grid {
@@ -124,6 +129,12 @@ body {
   gap: 0.25rem;
 }
 
+/* Used by the main content column in App.tsx. Without this the cards are
+   flush against each other and against the sticky header. */
+.gap-4 {
+  gap: 1rem;
+}
+
 .space-y-2>*+* {
   margin-top: 0.5rem;
 }
@@ -135,6 +146,39 @@ body {
 .mx-auto {
   margin-left: auto;
   margin-right: auto;
+}
+
+.mx-2 {
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+/* --- Spacing helpers that were referenced from App.tsx but never defined.
+   Tailwind is not in this project, so an undefined class silently no-ops
+   instead of erroring; these were found by cross-checking every className
+   in the JSX against the selectors in this file. */
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+
+.mb-3 {
+  margin-bottom: 0.75rem;
+}
+
+.space-y-1>*+* {
+  margin-top: 0.25rem;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-end {
+  justify-content: flex-end;
+}
+
+.items-start {
+  align-items: flex-start;
 }
 
 .px-2 {
@@ -165,6 +209,13 @@ body {
 .py-3 {
   padding-top: 0.75rem;
   padding-bottom: 0.75rem;
+}
+
+/* Used by the main content column in App.tsx. Without this the column has
+   no vertical padding at all and sits flush under the sticky header. */
+.py-4 {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
 }
 
 .pt-3 {
@@ -328,6 +379,13 @@ body {
   color: #92400e;
 }
 
+/* Referenced by the "heir looks wrong" warning in App.tsx.
+   Previously undefined, so the warning rendered in the default body
+   colour with no visual distinction at all. */
+.text-yellow-700 {
+  color: #a16207;
+}
+
 .text-green-800 {
   color: #166534;
 }
@@ -455,8 +513,14 @@ body {
   display: none;
 }
 
-.sm\:inline {
-  display: inline;
+/* Responsive variants MUST live inside their breakpoint.
+   This rule used to be top-level, where it had the same specificity as
+   `.hidden` but came later, so `display: inline` always won and the
+   element never actually hid on small screens. */
+@media (min-width: 640px) {
+  .sm\:inline {
+    display: inline;
+  }
 }
 
 .md\:py-6 {
@@ -497,7 +561,9 @@ body {
 /* Toasts */
 .toast-container {
   position: fixed;
-  top: 12px;
+  /* viewport-fit=cover + 노치 기기에서는 top:12px 가 상태바에 가려진다.
+     안전한 영역을 더한 뒤 최소 12px 를 확보한다. */
+  top: max(12px, env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;

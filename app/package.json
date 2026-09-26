@@ -11,15 +11,10 @@
     "preview": "vite preview --port 4173 --strictPort"
   },
   "dependencies": {
-    "@metamask/detect-provider": "^2.0.0",
     "@worldcoin/minikit-js": "^1.9.6",
-    "@worldcoin/minikit-react": "^1.9.7",
     "ethers": "^6.13.2",
-    "lucide-react": "^0.460.0",
-    "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "viem": "^2.34.0"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

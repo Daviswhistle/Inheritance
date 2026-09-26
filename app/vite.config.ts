@@ -11,9 +11,9 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    allowedHosts: [
-      "b35a3ed04770.ngrok-free.app"
-    ],
+    // World App 개발용 터널 호스트는 필요할 때 여기에 추가한다.
+    // (개인 ngrok 서브도메인은 특정 기기에 종속되므로 기본값으로 두지 않는다)
+    allowedHosts: [],
     cors: {
       origin: "*" // 개발 중엔 전체 허용 (배포 시엔 꼭 필요한 도메인만 남기세요)
     }

@@ -4,30 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ReactElement } from "react";
-
-// ===== World Chain
-const FACTORY_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS as string;
-const RPC_URL = (import.meta.env.VITE_RPC as string) || "https://worldchain-mainnet.g.alchemy.com/public";
-const CHAIN_ID_HEX = "0x1E0"; // 480
-const CHAIN_PARAMS = {
-  chainId: CHAIN_ID_HEX,
-  chainName: "World Chain",
-  rpcUrls: [RPC_URL],
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  blockExplorerUrls: ["https://worldscan.org"],
-} as const;
-const EXPLORER = CHAIN_PARAMS.blockExplorerUrls?.[0] || "https://worldscan.org";
-
-// const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID as string;
-const REQUIRE_VERIFY = (import.meta.env.VITE_REQUIRE_VERIFY as string || "false").toLowerCase() === "true";
-const WLD_ADDRESS = import.meta.env.VITE_WLD_ADDRESS as string;
-const ACTION_ID = import.meta.env.VITE_WORLD_ACTION_ID || "inheritance_access";
-const NOTIFY_BACKEND_URL = ((import.meta.env.VITE_NOTIFY_BACKEND_URL as string) || "").trim().replace(/\/+$/, "");
-const NOTIFY_BACKEND_ENABLED = NOTIFY_BACKEND_URL.length > 0;
-// Block range guard: prefer explicit deploy block; otherwise fall back safely later
-const FACTORY_DEPLOY_BLOCK_RAW = (import.meta.env.VITE_FACTORY_DEPLOY_BLOCK as string | undefined) || "";
-const FACTORY_DEPLOY_BLOCK: number | "latest" =
-  FACTORY_DEPLOY_BLOCK_RAW ? parseInt(FACTORY_DEPLOY_BLOCK_RAW, 10) : "latest";
+import {
+  ACTION_ID,
+  CHAIN_ID,
+  CHAIN_NAME,
+  CONFIG_ERROR,
+  EXPLORER,
+  FACTORY_ADDRESS,
+  FACTORY_DEPLOY_BLOCK,
+  NOTIFY_BACKEND_ENABLED,
+  NOTIFY_BACKEND_URL,
+  RELEASE_SUPPORTED,
+  REQUIRE_VERIFY,
+  RPC_URL,
+  WLD_ADDRESS,
+} from "@/config";
 
 // ===== WLD-only factory/vault ABI
 const FACTORY_ABI = [
@@ -143,10 +134,9 @@ export default function App() {
   const [resolvingNewHeir, setResolvingNewHeir] = useState<boolean>(false);
   const heirSeqRef = useRef<number>(0);
   const newHeirSeqRef = useRef<number>(0);
+  const toastSeqRef = useRef<number>(0);
   const [copied, setCopied] = useState<null | "vault" | "owner" | "heir" | "wld">(null);
-  const [supportsRelease, setSupportsRelease] = useState<boolean>(
-    (import.meta.env.VITE_FACTORY_RELEASE_SUPPORTED as string | undefined) === "true"
-  );
+  const [supportsRelease, setSupportsRelease] = useState<boolean>(RELEASE_SUPPORTED);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
   const [releasing, setReleasing] = useState<boolean>(false);
   const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
@@ -165,12 +155,23 @@ export default function App() {
   const [notifyBusy, setNotifyBusy] = useState<boolean>(false);
   const [watchBusy, setWatchBusy] = useState<boolean>(false);
   const pushToast = (type: ToastType, msg: string) => {
-    const id = Date.now() + Math.floor(Math.random() * 1e6);
+    // Date.now() 는 같은 밀리초에 여러 토스트가 올라오면 id 가 겹칠 수 있다.
+    const id = ++toastSeqRef.current;
     setToasts((t) => [...t, { id, type, msg }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
   };
 
-  const randomNonce = () => Math.random().toString(36).slice(2);
+  // 입력 디바운스용 단조 증가 카운터.
+  // Date.now() 를 쓰면 같은 밀리초에 발생한 두 이벤트의 seq 가 같아져
+  // 오래된 비동기 결과가 최신 입력을 덮어쓸 수 있다.
+  const nextSeq = (ref: { current: number }) => ++ref.current;
+
+  // walletAuth nonce 는 SIWE 서명 메시지에 들어가므로 짧으면 안 된다.
+  const randomNonce = () => {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  };
   const getWalletAuthNonce = async () => randomNonce();
   
   // getLogs helper with safe fromBlock fallback for L2 gateways
@@ -183,11 +184,18 @@ export default function App() {
       topics: params.topics,
       toBlock: params.toBlock ?? "latest",
     } as const;
-    // If deploy block is known, use it directly
-    if (typeof FACTORY_DEPLOY_BLOCK === "number") {
-      return await p.getLogs({ ...base, fromBlock: FACTORY_DEPLOY_BLOCK });
+
+    // 배포 블록이 알려져 있으면 그 지점부터 조회한다.
+    // L2 게이트웨이는(fromBlock..latest) 구간이 크면 거절하므로, 실패 시에는
+    // 배포 블록이 없는 것처럼 head 기준 짧은 창으로 좁혀 재시도한다.
+    if (FACTORY_DEPLOY_BLOCK !== null) {
+      try {
+        return await p.getLogs({ ...base, fromBlock: FACTORY_DEPLOY_BLOCK });
+      } catch {
+        // 구간이 너무 넓었을 수 있다. 아래 폴백으로 이어간다.
+      }
     }
-    // Otherwise, try a short window from the head to avoid L2 gateway limits
+
     const head = await p.getBlockNumber();
     const span1 = 20_000;
     const from1 = head > span1 ? head - span1 : 0;
@@ -201,8 +209,13 @@ export default function App() {
   };
 
   // ---- helpers
-  const getRwProvider = (): ethers.AbstractProvider | null => {
-    return (provider as unknown as ethers.AbstractProvider) || null;
+  // 이전에는 여기서 null 을 돌려주고 각 핸들러가 `if (prov)` 로 건너뛰었는데,
+  // 그러면 provider 가 없을 때 "대기 없이 완료"로 표시되어 버린다.
+  // provider 는 account 와 함께 설정되므로, 없으면 그 자체가 오류 상태다.
+  const getRwProvider = (): ethers.AbstractProvider => {
+    const p = provider as unknown as ethers.AbstractProvider | null;
+    if (!p) throw new Error("Not connected. Open the app in World App and sign in first.");
+    return p;
   };
   const waitForTxOrEvent = async (
     prov: ethers.AbstractProvider,
@@ -210,20 +223,31 @@ export default function App() {
   ) => {
     const { txHash, confirmations = 1, timeoutMs = 60_000, intervalMs = 1500, check } = opts || {};
     const deadline = Date.now() + timeoutMs;
+
+    // 1) 트랜잭션 해시가 있으면 먼저 온체인 포함(confirm)까지 대기한다.
+    let receipt: ethers.TransactionReceipt | null = null;
     if (txHash && /^0x([A-Fa-f0-9]{64})$/.test(txHash)) {
-      const rcpt = await prov.waitForTransaction(txHash, confirmations);
-      if (!rcpt || rcpt.status !== 1) throw new Error("Transaction reverted or missing receipt");
-      return true;
+      receipt = await prov.waitForTransaction(txHash, confirmations);
+      if (!receipt || receipt.status !== 1) throw new Error("Transaction reverted or missing receipt");
     }
+
+    // 2) `check` 는 상태 변화(잔액 증가 등)를 확인하는 후속 조건이다.
+    //    이전에는 해시가 있는 정상 경로에서 아예 실행되지 않아,
+    //    QA 체크리스트의 "금고 잔액이 늘어날 때까지 대기"가 사실상 동작하지 않았다.
     if (check) {
       while (Date.now() < deadline) {
         try {
           if (await check()) return true;
         } catch {
-          // Ignore transient RPC errors while polling.
+          // 폴링 중 일시적인 RPC 오류는 무시한다.
           void 0;
         }
         await new Promise((r) => setTimeout(r, intervalMs));
+      }
+      // 트랜잭션 자체는 성공했을 수 있으므로, 이 경우를 "실패"로 뭉개지 않는다.
+      if (receipt) {
+        console.warn("State check timed out, but the transaction was confirmed on-chain.");
+        return true;
       }
       throw new Error("Timed out waiting for on-chain confirmation");
     }
@@ -248,12 +272,15 @@ export default function App() {
       </Card>
     );
   };
-  const isHeirSuspicious = () => {
+  const isHeirSuspicious = (): boolean => {
     const c = heirResolved?.address && ethers.isAddress(heirResolved.address)
       ? ethers.getAddress(heirResolved.address)
       : (ethers.isAddress(heir) ? ethers.getAddress(heir) : "");
     if (!c) return false;
-    return c === ethers.ZeroAddress || (account && c === ethers.getAddress(account));
+    // 자기 자신을 상속인으로 두는 것은 허용되지만(사실상 자동 이전 해제),
+    // 0x0 은 컨트랙트가 거절하므로 경고 대상이다.
+    // account 가 비어 있을 때 `boolean | ""` 를 반환하지 않도록 명시적으로 비교한다.
+    return c === ethers.ZeroAddress || (!!account && c === ethers.getAddress(account));
   };
   const fmt = (s: number) => {
     const d = Math.floor(s / 86400);
@@ -320,7 +347,7 @@ export default function App() {
         const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
         if (finalPayload?.status === 'success') {
           const addr: string = finalPayload.address;
-          const NETWORK = { chainId: 480, name: "world-chain" } as const;
+          const NETWORK = { chainId: CHAIN_ID, name: CHAIN_NAME.toLowerCase() } as const;
           const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
           setProvider(p); setSigner(null); setAccount(addr);
           try {
@@ -349,7 +376,13 @@ export default function App() {
           return;
         }
         setVerified(true);
-        localStorage.setItem('wld-verified', '1');
+        // localStorage 쓰기가 실패하면 검증이 성공했는데도 오류로 보고되어야 하므로,
+        // 저장 실패는 삼킨다 (검증 결과 자체는 정상이다).
+        try {
+          localStorage.setItem('wld-verified', '1');
+        } catch {
+          void 0;
+        }
         setStatus('Verification complete.');
       }
     } catch (e: unknown) {
@@ -507,8 +540,13 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (REQUIRE_VERIFY && localStorage.getItem("wld-verified") === "1") {
-      setVerified(true);
+    try {
+      if (REQUIRE_VERIFY && localStorage.getItem("wld-verified") === "1") {
+        setVerified(true);
+      }
+    } catch {
+      // localStorage 가 차단된 컨텍스트일 수 있다.
+      void 0;
     }
   }, []);
 
@@ -530,16 +568,20 @@ export default function App() {
     refreshNotifyWatchState();
   }, [refreshNotifyWatchState]);
 
-  // In-World App: on mount, initialize MiniKit bridge, WalletAuth first, then (optionally) Verify(Device)
+  // In-World App: on mount, only initialize the MiniKit bridge.
+  //
+  // 여기서 walletAuth 를 호출하면 안 된다. World App 리뷰 규칙상 로그인은 반드시
+  // 사용자 제스처(탭)로 시작해야 하며, 마운트 시 자동 호출은 사용자를 놀라게 하고
+  // "사용자 동의 없이 지갑 접근"으로 심사에서 거부될 수 있다.
+  // 세션 복원은 아래 effect 가, 실제 로그인은 continueWorldApp2 가 담당한다.
   useEffect(() => {
     (async () => {
       try {
         const appId = document
           .querySelector('meta[name="minikit:app-id"]')
           ?.getAttribute("content") || "";
-        const { MiniKit, VerificationLevel } = await loadMiniKit();
-        // Ensure the MiniKit bridge is initialized before checking installation state.
-        // Some hosts report isInstalled=false until install(appId) is called.
+        const { MiniKit } = await loadMiniKit();
+        // 일부 호스트는 install(appId) 를 호출하기 전까지 isInstalled=false 를 보고한다.
         const install = MiniKit.install?.(appId);
         const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
         if (!bridgeOn) {
@@ -548,58 +590,20 @@ export default function App() {
           return;
         }
         setMiniInstalled(true);
-        // 1) Wallet Auth — login must use walletAuth (docs)
-        if (!account) {
-          const nonce = await getWalletAuthNonce();
-          const { finalPayload } = await MiniKit.commandsAsync.walletAuth({ nonce });
-          if (finalPayload?.status === 'success') {
-            const addr: string = finalPayload.address;
-            const NETWORK = { chainId: 480, name: "world-chain" } as const;
-            const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
-            setProvider(p); setSigner(null); setAccount(addr);
-            try {
-              localStorage.setItem('wld-account', ethers.getAddress(addr));
-            } catch {
-              // Local storage may be unavailable in some embedded contexts.
-              void 0;
-            }
-            setStatus('Connected (World App): ' + addr.slice(0, 6) + '...' + addr.slice(-4));
-            try {
-              const u = await MiniKit.getUserByAddress?.(addr);
-              if (u?.username) setUsername(u.username);
-            } catch {
-              // Username lookup is optional.
-              void 0;
-            }
-          } else {
-            setStatus('Connection cancelled or failed.');
-            return;
-          }
-        }
-        // 2) Verify(Device) — only after login and only if required
-        if (REQUIRE_VERIFY && !verified) {
-          const { finalPayload } = await MiniKit.commandsAsync.verify({
-            action: ACTION_ID,
-            verification_level: VerificationLevel.Device,
-          });
-          if (finalPayload?.status !== 'success') { setStatus('Verification cancelled or failed.'); return; }
-          setVerified(true);
-          localStorage.setItem('wld-verified', '1');
-        }
       } catch (e: unknown) {
-        setStatus('Auto connect error: ' + errorText(e));
+        setStatus('MiniKit init error: ' + errorText(e));
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Restore saved session (keeps user logged in across visits)
+  // 로그인 게이트가 아니라 표시 상태 복원용이므로, 지갑 서명 없이 주소만 되살린다.
   useEffect(() => {
     try {
       const saved = localStorage.getItem('wld-account') || '';
       if (saved && ethers.isAddress(saved)) {
         const addr = ethers.getAddress(saved);
-        const NETWORK = { chainId: 480, name: 'world-chain' } as const;
+        const NETWORK = { chainId: CHAIN_ID, name: CHAIN_NAME.toLowerCase() } as const;
         const p = new ethers.JsonRpcProvider(RPC_URL, NETWORK);
         setProvider(p); setSigner(null); setAccount(addr);
         setStatus((s) => s || 'Session restored');
@@ -637,41 +641,24 @@ export default function App() {
 
   const loadVault = useCallback(async () => {
     if (!factory || !account) return;
-    const v = await factory.vaultOf(account);
-    if (v && v !== ethers.ZeroAddress) {
-      setVault(v);
-      return;
-    }
-    // If owner vault not found, try to find vault where I'm heir via event logs
     try {
-      const p = (signer?.provider as ethers.AbstractProvider | null) ?? provider;
-      if (!p) return;
-      setStatus("Searching inheritance for me (heir)...");
-      const sig = ethers.id("VaultCreated(address,address,address,uint256)");
-      const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
-      const logs = await safeGetLogs((p as ethers.AbstractProvider), {
-        address: FACTORY_ADDRESS,
-        topics: [sig, null, heirTopic],
-        toBlock: "latest",
-      });
-      if (logs.length) {
-        const iface = new ethers.Interface(FACTORY_ABI);
-        const last = logs[logs.length - 1];
-        const parsed = iface.parseLog({ topics: last.topics, data: last.data });
-        const vaddr = String(parsed?.args?.[2] ?? "");
-        if (vaddr && vaddr !== ethers.ZeroAddress) {
-          setVault(vaddr);
-          setStatus("Found inheritance vault for me: " + vaddr);
-        } else {
-          setStatus("No inheritance found for me.");
-        }
-      } else {
-        setStatus("No inheritance found for me.");
+      const v = await factory.vaultOf(account);
+      if (v && v !== ethers.ZeroAddress) {
+        setVault(v);
+        return;
       }
     } catch (e: unknown) {
-      setStatus("Search error: " + errorText(e));
+      // RPC 실패를 삼키지 않는다 — 예외가 바깥으로 새면 unhandled rejection 이 된다.
+      setStatus("Vault lookup failed: " + errorText(e));
+      return;
     }
-  }, [factory, account, signer, provider]);
+
+    // 내 소유 금고가 없다. 여기서 "상속인인 금고"를 `vault` 에 넣으면 안 된다.
+    // `vault` 는 "내가 소유한 금고" 를 뜻하고, 이를 상속인 금고로 오염시키면
+    // (1) Create 버튼이 영구히 비활성화되고 (2) "이미 금고가 있습니다" 라고 표시된다.
+    // 결과적으로 남의 상속인이 된 사용자는 자기 금고를 만들 수 없게 된다.
+    // 상속인 금고는 아래 "Find vaults where I am heir" 액션으로 별도로 조회한다.
+  }, [factory, account]);
 
   // Username/address resolution helpers — accept @username or 0x… in inputs
   const getUsernameFor = async (addr: string) => {
@@ -709,8 +696,7 @@ export default function App() {
   // Debounced input handlers to resolve username/address safely
   const onHeirInput = async (v: string) => {
     setHeir(v);
-    const mySeq = Date.now();
-    heirSeqRef.current = mySeq;
+    const mySeq = nextSeq(heirSeqRef);
     if (!v) { setHeirResolved(null); setResolvingHeir(false); return; }
     setResolvingHeir(true);
     try {
@@ -718,6 +704,11 @@ export default function App() {
       // Only apply latest result
       if (heirSeqRef.current === mySeq) {
         setHeirResolved(r);
+      }
+    } catch (e: unknown) {
+      if (heirSeqRef.current === mySeq) {
+        setHeirResolved(null);
+        console.warn("heir resolution failed:", errorText(e));
       }
     } finally {
       // Clear resolving only if up-to-date
@@ -727,14 +718,18 @@ export default function App() {
 
   const onNewHeirInput = async (v: string) => {
     setNewHeir(v);
-    const mySeq = Date.now();
-    newHeirSeqRef.current = mySeq;
+    const mySeq = nextSeq(newHeirSeqRef);
     if (!v) { setNewHeirResolved(null); setResolvingNewHeir(false); return; }
     setResolvingNewHeir(true);
     try {
       const r = await resolveHeirInput(v);
       if (newHeirSeqRef.current === mySeq) {
         setNewHeirResolved(r);
+      }
+    } catch (e: unknown) {
+      if (newHeirSeqRef.current === mySeq) {
+        setNewHeirResolved(null);
+        console.warn("heir resolution failed:", errorText(e));
       }
     } finally {
       if (newHeirSeqRef.current === mySeq) setResolvingNewHeir(false);
@@ -756,7 +751,18 @@ export default function App() {
         setSupportsRelease(true);
       } catch (e: unknown) {
         const msg = errorText(e);
-        if (msg.includes("NO_VAULT") || msg.includes("NOT_OWNER") || msg.includes("NON_EMPTY")) {
+        // revert 가 발생했다는 사실 자체가 "지원한다"는 증거다.
+        // 만기 전이라 NOT_EXPIRED 로 거절되는 경우도 지원으로 판정해야 한다.
+        if (
+          msg.includes("NO_VAULT") ||
+          msg.includes("NOT_OWNER") ||
+          msg.includes("NON_EMPTY") ||
+          msg.includes("NOT_EXPIRED") ||
+          msg.includes("VaultNotEmpty") ||
+          msg.includes("NoVault") ||
+          msg.includes("NotOwner") ||
+          msg.includes("NotExpired")
+        ) {
           setSupportsRelease(true);
         }
       }
@@ -776,15 +782,18 @@ export default function App() {
       setVaultHeir(h);
       setVaultHeartbeat(Number(hb));
       setVaultLastPing(Number(lp));
-      if (!withdrawTo) setWithdrawTo(o);
+      // 수금처 기본값은 "한 번만" 채운다. `withdrawTo` 를 deps 에 두면
+      // 입력할 때마다 콜백이 재생성되어 이 effect 가 keystale 마다 다시 돌고,
+      // 사용자가 필드를 지우면 즉시 소유자 주소로 되돌아가 비워둘 수 없게 된다.
+      setWithdrawTo((prev) => prev || o);
     } catch {
       // Non-critical read failure.
       void 0;
     }
-  }, [vaultCtr, withdrawTo]);
-  useEffect(() => { if (vaultCtr) refreshVaultDetails(); }, [vaultCtr, refreshVaultDetails]);
+  }, [vaultCtr]);
+  useEffect(() => { if (vaultCtr) void refreshVaultDetails(); }, [vaultCtr, refreshVaultDetails]);
 
-  // ?⑺넗由대깽濡쒓렇?먯꽌 湲덇퀬 ?앹꽦 釉붾줉/?쒓컙 議고쉶
+  // 금고가 생성된 블록/시각을 이벤트 로그에서 역추적한다 (표시 전용, 실패해도 무방)
   const loadVaultCreationMeta = useCallback(async () => {
     if (!vault || !(signer || provider)) return;
     try {
@@ -842,31 +851,41 @@ export default function App() {
   // ---- balances & timer
   const refreshBalances = useCallback(async () => {
     if (!provider || !account) return;
-    const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
-    const [sym, dec, userBal, vaultBal] = await Promise.all([
-      token.symbol(), token.decimals(),
-      token.balanceOf(account), vault ? token.balanceOf(vault) : Promise.resolve(0n)
-    ]);
-    setWldSymbol(sym); setWldDecimals(dec);
-    setWalletWld(userBal); setVaultWld(vaultBal);
+    try {
+      const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+      const [sym, dec, userBal, vaultBal] = await Promise.all([
+        token.symbol(), token.decimals(),
+        token.balanceOf(account), vault ? token.balanceOf(vault) : Promise.resolve(0n)
+      ]);
+      setWldSymbol(sym); setWldDecimals(dec);
+      setWalletWld(userBal); setVaultWld(vaultBal);
+    } catch (e: unknown) {
+      // 주기적으로 호출되므로 조용히 실패시킨다. 단, unhandled rejection 으로
+      // 개발자 콘솔을 오염시키거나 모바일 웹뷰에서 경고를 남기지는 않는다.
+      console.warn("refreshBalances failed:", errorText(e));
+    }
   }, [provider, account, vault]);
-  useEffect(() => { refreshBalances(); }, [refreshBalances]);
+  useEffect(() => { void refreshBalances(); }, [refreshBalances]);
   useEffect(() => {
     if (!provider || !account) return;
-    const id = setInterval(() => { refreshBalances(); }, 30000);
-    const onVis = () => { if (document.visibilityState === 'visible') refreshBalances(); };
+    const id = setInterval(() => { void refreshBalances(); }, 30000);
+    const onVis = () => { if (document.visibilityState === 'visible') void refreshBalances(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
   }, [provider, account, refreshBalances]);
 
   const refreshTimer = useCallback(async () => {
     if (!vaultCtr) return;
-    const rem: bigint = await vaultCtr.timeRemaining();
-    const cc: boolean = await vaultCtr.canClaim();
-    setTimeRemaining(Number(rem));
-    setCanClaim(cc);
+    try {
+      const rem: bigint = await vaultCtr.timeRemaining();
+      const cc: boolean = await vaultCtr.canClaim();
+      setTimeRemaining(Number(rem));
+      setCanClaim(cc);
+    } catch (e: unknown) {
+      console.warn("refreshTimer failed:", errorText(e));
+    }
   }, [vaultCtr]);
-  useEffect(() => { if (vaultCtr) refreshTimer(); }, [vaultCtr, refreshTimer]);
+  useEffect(() => { if (vaultCtr) void refreshTimer(); }, [vaultCtr, refreshTimer]);
   useEffect(() => {
     if (!vaultCtr) return;
     const id = setInterval(() => { refreshTimer(); }, 15000);
@@ -883,6 +902,13 @@ export default function App() {
     if (vault) { setStatus("You already have a vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
     const resolved = heirResolved || await resolveHeirInput(heir);
     if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
+    // 0x0 은 컨트랙트에서 InvalidAddress 로 거절된다.
+    // 경고만 띄우고 버튼을 활성화해 두면 반드시 실패하는 트랜잭션이 만들어진다.
+    if (resolved.address === ethers.ZeroAddress) {
+      setStatus("Heir cannot be the zero address");
+      pushToast('error', 'Heir cannot be the zero address');
+      return;
+    }
     const days = periodNum;
     if (!periodValid) { setStatus("Period must be between 1 and 365 days."); return; }
     const seconds = BigInt(days) * 24n * 60n * 60n;
@@ -904,16 +930,14 @@ export default function App() {
       }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const vchk = await factory.vaultOf(account);
-            return vchk && vchk !== ethers.ZeroAddress;
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const vchk = await factory.vaultOf(account);
+          return vchk && vchk !== ethers.ZeroAddress;
+        },
+      });
       setStatus("Vault created ✅");
       const v = await factory.vaultOf(account);
       setVault(v);
@@ -1002,17 +1026,15 @@ export default function App() {
       setStatus("Pending… awaiting confirmation");
       const prev = vaultWld;
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
-            const vb: bigint = await token.balanceOf(vault);
-            return vb > prev;
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+          const vb: bigint = await token.balanceOf(vault);
+          return vb > prev;
+        },
+      });
       setStatus("Deposit complete ✅");
       setAmountStr("");
       refreshBalances();
@@ -1041,16 +1063,14 @@ export default function App() {
       setStatus("Pending… awaiting confirmation");
       const prevLp = vaultLastPing;
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const lp: bigint = await vaultCtr.lastPing();
-            return Number(lp) > (prevLp || 0);
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const lp: bigint = await vaultCtr.lastPing();
+          return Number(lp) > (prevLp || 0);
+        },
+      });
       setStatus("Timer reset (full period restored) ✅");
       refreshTimer();
     } catch (e: unknown) {
@@ -1072,16 +1092,14 @@ export default function App() {
       if (finalPayload?.status !== "success") { setStatus("Change period failed"); return; }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const hb: bigint = await vaultCtr.heartbeatInterval();
-            return Number(hb) === Number(seconds);
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const hb: bigint = await vaultCtr.heartbeatInterval();
+          return Number(hb) === Number(seconds);
+        },
+      });
       setStatus("Period updated ✅");
       refreshTimer();
     } catch (e: unknown) {
@@ -1101,16 +1119,14 @@ export default function App() {
       if (finalPayload?.status !== "success") { setStatus("Cancel failed"); return; }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const h = await vaultCtr.heir();
-            return h && h.toLowerCase() === vaultOwner.toLowerCase();
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const h = await vaultCtr.heir();
+          return h && h.toLowerCase() === vaultOwner.toLowerCase();
+        },
+      });
       setStatus("Inheritance cancelled (heir=owner) ✅");
       refreshTimer();
     } catch (e: unknown) {
@@ -1134,17 +1150,15 @@ export default function App() {
       if (finalPayload?.status !== "success") { setStatus("Update heir failed"); return; }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        const target = resolved.address;
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const h = await vaultCtr.heir();
-            return h && h.toLowerCase() === target.toLowerCase();
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      const target = resolved.address;
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const h = await vaultCtr.heir();
+          return h && h.toLowerCase() === target.toLowerCase();
+        },
+      });
       setStatus("Heir updated ✅");
       setNewHeir("");
       setNewHeirResolved(null);
@@ -1177,17 +1191,18 @@ export default function App() {
       setStatus("Pending… awaiting confirmation");
       const prev = vaultWld;
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
-            const vb: bigint = await token.balanceOf(vault);
-            return vb < prev;
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+          const vb: bigint = await token.balanceOf(vault);
+          // claim 은 금고를 0 으로 만든다. 잔액이 아직 로드되지 않은 경우
+          // (prev === 0) `vb < prev` 는 절대 참이 될 수 없어 60초 폴링 후
+          // 타임아웃으로 사용자에게 실패를 보고하게 된다. 0 도달 여부로 판정한다.
+          return vb === 0n || vb < prev;
+        },
+      });
       setStatus("Claim complete ✅");
       refreshBalances(); refreshTimer();
     } catch (e: unknown) {
@@ -1217,17 +1232,18 @@ export default function App() {
       setStatus("Pending… awaiting confirmation");
       const prev = vaultWld;
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
-            const vb: bigint = await token.balanceOf(vault);
-            return vb < prev;
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+          const vb: bigint = await token.balanceOf(vault);
+          // 인출 전 잔액을 모르는 상태(prev === 0)라면 비교 기준이 없다.
+          // 이 경우 레시트 확인만으로 성공을 확정한다 (아래 waitForTxOrEvent 참조).
+          if (prev === 0n) return true;
+          return vb < prev;
+        },
+      });
       setStatus("Withdraw complete ✅");
       setWithdrawAmountStr("");
       refreshBalances();
@@ -1246,36 +1262,39 @@ export default function App() {
   const releaseSlot = async () => {
     if (!factory) return;
     setReleasing(true);
+    let ok = false;
     try {
-      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); setReleasing(false); return; }
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const { MiniKit } = await loadMiniKit();
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{ address: FACTORY_ADDRESS, abi: [...FACTORY_ABI, "function releaseMyVault() returns (bool)"], functionName: "releaseMyVault", args: [] }],
+        transaction: [{ address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "releaseMyVault", args: [] }],
         formatPayload: true,
       });
-      if (finalPayload?.status !== "success") { setStatus("Release cancelled or failed"); setReleasing(false); return; }
+      if (finalPayload?.status !== "success") { setStatus("Release cancelled or failed"); return; }
       setStatus("Pending… awaiting confirmation");
       const prov = getRwProvider();
-      if (prov) {
-        const txh = txHashFromPayload(finalPayload);
-        await waitForTxOrEvent(prov, {
-          txHash: txh,
-          check: async () => {
-            const v = await factory.vaultOf(account);
-            return !v || v === ethers.ZeroAddress;
-          },
-        });
-      }
+      const txh = txHashFromPayload(finalPayload);
+      await waitForTxOrEvent(prov, {
+        txHash: txh,
+        check: async () => {
+          const v = await factory.vaultOf(account);
+          return !v || v === ethers.ZeroAddress;
+        },
+      });
       setStatus("Released. You can create a new vault. ✅");
       setVault("");
       await loadVault();
+      ok = true;
     } catch (e: unknown) {
       setStatus("Release error: " + errorText(e));
       pushToast('error', errorText(e));
     } finally {
       setReleasing(false);
-      setShowReleaseConfirm(false);
-      setReleaseAcknowledge(false);
+      // 실패했을 때 모달을 닫으면 오류 문맥이 사라지고 사용자는 이유를 알 수 없다.
+      if (ok) {
+        setShowReleaseConfirm(false);
+        setReleaseAcknowledge(false);
+      }
     }
   };
 
@@ -1291,6 +1310,26 @@ export default function App() {
   };
   return (
     <div className="app-shell bg-gradient-to-b from-slate-50 to-slate-100">
+      {/* 환경변수가 잘못되면 흰 화면 대신 복구 방법을 안내한다.
+          (config.ts 는 import 시점에 throw 할 수 없다 — 그랬다면 이 화면조차
+           렌더링되기 전에 앱이 죽는다) */}
+      {CONFIG_ERROR && (
+        <div className="container-narrow px-4 py-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuration required</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <pre
+                className="text-xs text-gray-700"
+                style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+              >
+                {CONFIG_ERROR}
+              </pre>
+            </CardContent>
+          </Card>
+        </div>
+      )}
       <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b border-slate-200">
         <div className="container-narrow flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
@@ -1299,7 +1338,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-600">
             <span className="hidden sm:inline">World Chain</span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5">{badge('Chain: 480', 'gray')}</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5">{badge(`Chain: ${CHAIN_ID}`, 'gray')}</span>
           </div>
         </div>
       </header>
@@ -1323,7 +1362,11 @@ export default function App() {
               {account && (!REQUIRE_VERIFY || verified) && (
                 <Button disabled size="md">{username ? `@${username}` : 'Connected'}</Button>
               )}
-              <div className="text-xs text-gray-600">{status}</div>
+              {/* 이 줄이 8개 트랜잭션 플로우 전부의 결과/오류 채널이다.
+                  스크린 리더 사용자에게 읽히도록 live region 이 필요하다. */}
+              <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
+                {status}
+              </div>
             </div>
 
             <div className="text-xs text-gray-500">
@@ -1512,12 +1555,18 @@ export default function App() {
                   <div><b>{vaultHeir ? short(vaultHeir) : '-'}</b></div>
                 </div>
                 <div className="text-xs">
-                  <button className="underline" onClick={() => setShowAdvanced(v => !v)}>
+                  <button
+                    type="button"
+                    className="underline"
+                    aria-expanded={showAdvanced}
+                    aria-controls="advanced-details"
+                    onClick={() => setShowAdvanced(v => !v)}
+                  >
                     {showAdvanced ? 'Hide details' : 'Show addresses & explorer links'}
                   </button>
                 </div>
                 {showAdvanced && (
-                  <div className="grid gap-1 text-xs">
+                  <div id="advanced-details" className="grid gap-1 text-xs">
                     <div>
                       Vault:
                       {vault ? (
@@ -1656,7 +1705,16 @@ export default function App() {
                       )
                     )}
                     <Button onClick={updateHeir} disabled={!miniInstalled || !account || !newHeirResolved?.address}>Update heir</Button>
-                    <Button variant="ghost" onClick={cancelInheritance} disabled={!miniInstalled || !account}>Cancel (set heir to me)</Button>
+                    {/* cancelInheritance 는 컨트랙트에서 만기 후 Expired 로 거부한다.
+                        형제 버튼인 withdraw 처럼 canClaim 으로 게이트해야 항상 실패하는
+                        클릭을 사용자에게 노출하지 않는다. */}
+                    <Button
+                      variant="ghost"
+                      onClick={cancelInheritance}
+                      disabled={!miniInstalled || !account || canClaim}
+                    >
+                      Cancel (set heir to me)
+                    </Button>
                     {supportsRelease && vaultWld === 0n && canClaim && (
                       <div className="flex items-center gap-2">
                         <Button onClick={() => setShowReleaseConfirm(true)} disabled={!miniInstalled || !account}>Release slot</Button>
@@ -1715,15 +1773,20 @@ export default function App() {
           </div>
         </CardContent>
       </Card>
-      <div className="toast-container">
+      <div className="toast-container" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
         ))}
       </div>
       {showReleaseConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-md shadow-lg max-w-sm w-full p-4">
-            <div className="text-lg font-semibold mb-2">Release vault slot?</div>
+          <div
+            className="bg-white rounded-md shadow-lg max-w-sm w-full p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="release-modal-title"
+          >
+            <div id="release-modal-title" className="text-lg font-semibold mb-2">Release vault slot?</div>
             <div className="text-sm text-gray-700 mb-3">
               You can release only after expiry and when the vault WLD balance is 0. Releasing keeps the vault contract on-chain and clears only the factory's one-per-owner mapping. Continue?
             </div>
