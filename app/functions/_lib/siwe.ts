@@ -35,7 +35,14 @@ export function json(status: number, body: unknown, headers: Record<string, stri
   });
 }
 
-export function preflight(origin: string | null, env: Env): Response | null {
+/**
+ * CORS 프리플라이트 응답.
+ *
+ * **OPTIONS 요청에서만** 부른다. GET/POST 핸들러 안에서 부르면 그 204 응답이
+ * 그대로 반환되어 GET 이 JSON 본문을 못 내보내게 된다 — 실제로 라이브의
+ * `/api/auth/nonce` 가 204 만 돌려주는 버그가 이 때문이었다.
+ */
+export function preflight(origin: string | null, env: Env): Response {
   return new Response(null, { status: 204, headers: corsHeaders(origin, env) });
 }
 

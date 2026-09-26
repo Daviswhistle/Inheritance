@@ -25,8 +25,6 @@ type VerifyBody = {
 
 export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
   const headers = corsHeaders(request.headers.get("Origin"), env);
-  const pf = preflight(request.headers.get("Origin"), env);
-  if (pf) return pf;
 
   if (!env.SIWE_SECRET) {
     return json(503, { status: "error", message: "SIWE_SECRET is not configured" }, headers);
@@ -97,4 +95,4 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
 };
 
 export const onRequestOptions = async ({ request, env }: { request: Request; env: Env }) =>
-  preflight(request.headers.get("Origin"), env) ?? new Response(null, { status: 204 });
+  preflight(request.headers.get("Origin"), env);

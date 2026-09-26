@@ -8,8 +8,6 @@ import { corsHeaders, issueNonce, json, preflight, type Env } from "../../_lib/s
  */
 export const onRequestGet = async ({ request, env }: { request: Request; env: Env }) => {
   const headers = corsHeaders(request.headers.get("Origin"), env);
-  const pf = preflight(request.headers.get("Origin"), env);
-  if (pf) return pf;
 
   if (!env.SIWE_SECRET) {
     // 조용히 통과시키지 않는다. secret 이 없으면 검증이 불가능하므로
@@ -22,4 +20,4 @@ export const onRequestGet = async ({ request, env }: { request: Request; env: En
 };
 
 export const onRequestOptions = async ({ request, env }: { request: Request; env: Env }) =>
-  preflight(request.headers.get("Origin"), env) ?? new Response(null, { status: 204 });
+  preflight(request.headers.get("Origin"), env);
