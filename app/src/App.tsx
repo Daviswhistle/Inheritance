@@ -2089,7 +2089,7 @@ export default function App() {
               <ol className="steps">
                 <li>
                   <b>Create a vault</b>
-                  <span>Name your heir and how often you want to renew. This is free and moves no money.</span>
+                  <span>Name your heir and how often you want to renew. No WLD moves at this step.</span>
                 </li>
                 <li>
                   <b>Send WLD to it</b>
@@ -2107,8 +2107,15 @@ export default function App() {
                   keep track of.
                 </div>
                 <div>
-                  Changed your mind? Until the countdown ends you can switch to a different heir,
-                  or cancel entirely and keep the WLD as your own. Nothing here is permanent.
+                  Changed your mind? Before the countdown ends you can switch to a different
+                  heir, or cancel entirely — then the WLD is yours to withdraw whenever you
+                  like. To start over, wait for the countdown to end with an empty vault and
+                  the slot releases, and you can create a new one.
+                </div>
+                <div className="text-gray-500">
+                  A vault itself cannot be deleted, and it cannot be deleted while it holds
+                  WLD after the countdown ends: at that point the balance belongs to your heir
+                  to withdraw. There is no path where anyone takes a cut.
                 </div>
               </div>
               </CardContent>
