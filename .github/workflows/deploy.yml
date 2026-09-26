@@ -39,6 +39,17 @@ jobs:
 
       # app/.env 는 gitignore 대상이라 CI 에 없다. 공개 온체인 정보만 여기서 주입한다.
       # (개인키 등 비공개 값은 절대 넣지 않는다)
+      # SIWE_SECRET 이 없으면 /api/auth/nonce 가 503 을 돌려주고 로그인이 전부 실패한다.
+      # 사이트는 그대로 올라가므로 화면으로 티가 나지 않는다 — 배포 전에 막는다.
+      - name: Verify SIWE_SECRET is present
+        working-directory: app
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.SIWE_SECRET }}" ]; then
+            echo "::error::Repository secret SIWE_SECRET 이 없습니다. /api/auth/* 가 503 이 되고 로그인이 실패합니다."; exit 1
+          fi
+          echo "SIWE_SECRET 확인 OK"
+
       - name: Build
         working-directory: app
         env:
@@ -68,11 +79,13 @@ jobs:
           fi
           echo "빌드 확인 OK: $FACTORY"
 
-      # 워크플로 전체에 defaults.run.working-directory 를 걸면 이 액션까지 영향을 받아
-      # 경로가 꼬인다. 여기서는 루트에서 실행하고 경로를 명시한다.
+      # `--cwd app` 가 반드시 필요하다. Pages Functions(app/functions/)는 **현재
+      # 작업 디렉터리** 기준으로 찾는다. 루트에서 `pages deploy app/dist` 를 쓰면
+      # app/functions 를 못 찾아서 SIWE 로그인 엔드포인트가 조용히 사라진다 —
+      # 사이트는 정상 배포되지만 /api/auth/* 가 404 가 되고 로그인이 안 된다.
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy app/dist --project-name=inheritance --branch=main
+          command: pages deploy --cwd app
