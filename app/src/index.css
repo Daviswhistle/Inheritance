@@ -13,6 +13,19 @@ body,
 }
 
 /* Reset and mobile scrolling reliability */
+
+/* CRITICAL: this stylesheet imitates Tailwind class names but is hand-written,
+   so Tailwind's preflight is absent. Without border-box, every element is
+   content-box: `width: 100%` + horizontal padding overflows its parent.
+   At a 390px viewport that made .app-shell 32px wider than the screen
+   (390 + 2x16px padding), clipping the right edge of every card in the
+   World App webview. Keep this rule. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   height: -webkit-fill-available; /* iOS Safari/WebView fallback */
@@ -77,13 +90,11 @@ body {
   flex-direction: column;
 }
 
-/* Respect safe areas (iOS notch/home indicator).
-   Give a real minimum so the bottom-most card (Privacy/Terms/Support links,
-   which the World App review requires) is not flush against the screen edge
-   on devices that report a 0 inset. */
-.safe-pb {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
-}
+/* NOTE: .safe-pb is defined at the very end of this file.
+   It must beat every other padding utility (all single-class selectors, so
+   cascade order is the only tiebreaker). Defining it here in the layout
+   section let `.py-4` / `.md:py-6` silently discard the iOS home-indicator
+   inset, which left the bottom legal links flush against the screen edge. */
 
 .grid {
   display: grid;
@@ -523,9 +534,15 @@ body {
   }
 }
 
-.md\:py-6 {
-  padding-top: 1.5rem;
-  padding-bottom: 1.5rem;
+/* md: variants belong in their breakpoint too. At top level this rule has the
+   same specificity as `.py-4` and `.safe-pb` but is declared later, so it won
+   on every screen size — small phones got desktop padding AND the safe-area
+   bottom inset was silently discarded. */
+@media (min-width: 768px) {
+  .md\:py-6 {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
 }
 
 .mr-2 {
@@ -707,4 +724,14 @@ input::placeholder {
 
 .bg-brand-700 {
   background-color: #1d4ed8;
+}
+
+/* ===== Safe area (must stay last: it has to win the cascade) =====
+
+   The World App review requires visible Privacy/Terms/Support links, and on
+   notched devices those sit at the very bottom. Every padding utility in this
+   file is a single-class selector, so declaration order is the only thing that
+   decides the winner — hence this block lives at the end. */
+.safe-pb {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
 }
