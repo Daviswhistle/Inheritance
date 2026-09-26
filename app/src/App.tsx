@@ -59,17 +59,45 @@ type TxResultPayload = {
 
 const loadMiniKit = () => import("@worldcoin/minikit-js");
 
+/**
+ * World Chain 공개 RPC 의 eth_getLogs 최대 범위(100 블록)보다 여유 있게 잡는다.
+ * 이 값을 넘기면 노드가 400 을 반환하고, 오류 메시지에 실제 원인이 담기지 않아
+ * 사용자에게 "could not coalesce error" 같은 무의미한 문구만 보인다.
+ */
+const LOG_SCAN_CHUNK = 90;
+
 const readErrorValue = (error: unknown, key: "reason" | "shortMessage" | "message"): string | undefined => {
   if (!error || typeof error !== "object") return undefined;
   const value = (error as Record<string, unknown>)[key];
   return typeof value === "string" && value ? value : undefined;
 };
 
-const errorText = (error: unknown): string => {
-  return readErrorValue(error, "reason")
-    ?? readErrorValue(error, "shortMessage")
-    ?? readErrorValue(error, "message")
-    ?? String(error);
+/**
+ * 오류에서 사람이 읽을 수 있는 문구를 뽑는다.
+ *
+ * ethers v6 는 노드의 JSON-RPC 오류를 분류하지 못하면
+ * `could not coalesce error` 라는 범용 메시지만 남기고, 진짜 원인은
+ * `info.error.message` 안쪽에 숨긴다. 예전 구현은 `reason` 만 읽으므로
+ * 사용자에게 "could not coalesce error" 가 그대로 노출됐다.
+ * 그래서 중첩 구조를 한 단계 파고들어 본문을 찾는다.
+ */
+const errorText = (error: unknown, depth = 0): string => {
+  const direct =
+    readErrorValue(error, "reason") ?? readErrorValue(error, "shortMessage") ?? readErrorValue(error, "message");
+  const generic = direct === "could not coalesce error" || direct === "unknown error";
+  if (direct && !generic) return direct;
+
+  if (depth < 3 && error && typeof error === "object") {
+    for (const key of ["info", "error", "cause", "payload"]) {
+      const nested = (error as Record<string, unknown>)[key];
+      if (nested && typeof nested === "object") {
+        const found = errorText(nested, depth + 1);
+        if (found && found !== String(nested)) return found;
+      }
+    }
+  }
+  if (generic && direct) return `${direct} (자세한 내용은 개발자 콘솔 참고)`;
+  return direct ?? String(error);
 };
 
 const txHashFromPayload = (payload: unknown): string | undefined => {
@@ -195,38 +223,50 @@ export default function App() {
   };
   const getWalletAuthNonce = async () => randomNonce();
   
-  // getLogs helper with safe fromBlock fallback for L2 gateways
+  /**
+   * eth_getLogs 래퍼.
+   *
+   * World Chain 공개 RPC 은 한 번의 eth_getLogs 를 최대 100 블록으로 제한한다.
+   * 실제로 확인된 오류:
+   *   "You can make eth_getLogs requests with up to a 100 block range."
+   * 여기서 5000 블록을 요청하면 400 이 돌아오고, ethers 는 그 오류를 분류하지
+   * 못해 "could not coalesce error" 라는 무의미한 메시지만 남긴다.
+   *
+   * 이전 구현은 실패 시 head 기준으로 창을 *좁혀* 재시도했는데(20,000 → 5,000),
+   * 그 창들도 100 블록 제한을 넘기 때문에 전부 실패했다. 게다가 좁히면 배포
+   * 시점을 지나쳐 버려 상속인 금고를 놓친다.
+   *
+   * 그래서 범위를 나눠 전부 훑는다. head 에서 과거 방향으로 내려가므로
+   * 최근 금고가 있으면 빠르게 답을 준다.
+   */
   const safeGetLogs = async (
     p: ethers.AbstractProvider,
     params: { address?: string; topics?: (string | null | string[])[]; toBlock?: number | string }
-  ) => {
-    const base = {
-      address: params.address,
-      topics: params.topics,
-      toBlock: params.toBlock ?? "latest",
-    } as const;
-
-    // 배포 블록이 알려져 있으면 그 지점부터 조회한다.
-    // L2 게이트웨이는(fromBlock..latest) 구간이 크면 거절하므로, 실패 시에는
-    // 배포 블록이 없는 것처럼 head 기준 짧은 창으로 좁혀 재시도한다.
-    if (FACTORY_DEPLOY_BLOCK !== null) {
-      try {
-        return await p.getLogs({ ...base, fromBlock: FACTORY_DEPLOY_BLOCK });
-      } catch {
-        // 구간이 너무 넓었을 수 있다. 아래 폴백으로 이어간다.
-      }
-    }
-
+  ): Promise<ethers.Log[]> => {
     const head = await p.getBlockNumber();
-    const span1 = 20_000;
-    const from1 = head > span1 ? head - span1 : 0;
-    try {
-      return await p.getLogs({ ...base, fromBlock: from1 });
-    } catch {
-      const span2 = 5_000;
-      const from2 = head > span2 ? head - span2 : 0;
-      return await p.getLogs({ ...base, fromBlock: from2 });
+    const to = typeof params.toBlock === "number" ? params.toBlock : head;
+    const from = FACTORY_DEPLOY_BLOCK ?? Math.max(0, head - 20_000);
+    if (to < from) return [];
+
+    const out: ethers.Log[] = [];
+    // 실패한 청크는 조용히 건너뛴다 — 한 청크가 막혀도 나머지는 쓸 수 있다.
+    for (let end = to; end >= from; end -= LOG_SCAN_CHUNK) {
+      const start = Math.max(from, end - LOG_SCAN_CHUNK + 1);
+      try {
+        const logs = await p.getLogs({
+          address: params.address,
+          topics: params.topics,
+          fromBlock: start,
+          toBlock: end,
+        });
+        out.push(...logs);
+      } catch {
+        // 다음 청크로 진행
+      }
+      if (start === from) break;
     }
+    // 오래된 순으로 모였으므로 최근 로그가 앞에 오도록 뒤집는다.
+    return out.reverse();
   };
 
   // ---- helpers
@@ -296,6 +336,16 @@ export default function App() {
       </Card>
     );
   };
+  /**
+   * `vault` 가 "내가 소유한 금고" 인지.
+   *
+   * `vault` 는 상속인 금고를 살펴볼 때도 임시로 채워진다(위 heir 검색의 Use).
+   * 그런데 Create 폼의 게이트로 `!!vault` 를 쓰면, 남의 금고를 딱 하나 찾아본
+   * 사용자는 이후 영원히 "이미 금고 보유" 상태로 Create 가 비활성화된다.
+   * 소유 여부는 on-chain owner 로 판단해야 한다.
+   */
+  const isMyVault = Boolean(vaultOwner) && account.toLowerCase() === vaultOwner.toLowerCase();
+
   const isHeirSuspicious = (): boolean => {
     const c = heirResolved?.address && ethers.isAddress(heirResolved.address)
       ? ethers.getAddress(heirResolved.address)
@@ -925,7 +975,7 @@ export default function App() {
     if (!factory) { setStatus("Connect first"); return; }
     if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
     // Prevent double-create: factory enforces 1-per-owner and will revert with ALREADY_HAS_VAULT
-    if (vault) { setStatus("You already have a vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
+    if (isMyVault) { setStatus("You already have a vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
     const resolved = heirResolved || await resolveHeirInput(heir);
     if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
     // 0x0 은 컨트랙트에서 InvalidAddress 로 거절된다.
@@ -1016,13 +1066,23 @@ export default function App() {
         }
       }
       setHeirFoundVaults(vaults);
-      if (vaults.length === 1) {
-        setVault(vaults[0]);
-        pushToast('success', 'Detected a vault where you are heir.');
+      // 찾은 상속인 금고를 `vault` 에 넣으면 안 된다. `vault` 는 "내가 소유한 금고" 를
+      // 뜻하고, 여기서 오염시키면 (1) Create 버튼이 영구히 비활성화되고
+      // (2) "You already have a vault" 라고 표시된다. 상속인 금고는 별도 상태로만
+      // 보관하고, 상세 보기로는 vault 를 건드리지 않는다.
+      if (vaults.length > 0) {
+        pushToast(
+          'success',
+          vaults.length === 1
+            ? 'Detected a vault where you are heir.'
+            : `Detected ${vaults.length} vaults where you are heir.`,
+        );
+      } else {
+        pushToast('info', 'No vaults found where you are heir.');
       }
-      if (vaults.length === 0) pushToast('info', 'No vaults found where you are heir.');
     } catch (e: unknown) {
       pushToast('error', 'Heir scan error: ' + errorText(e));
+      console.error("findHeirVaults failed:", e);
     } finally {
       setFindingHeirVaults(false);
     }
@@ -1656,7 +1716,7 @@ export default function App() {
         {/* 금고가 이미 있으면 이 카드를 숨긴다. 그대로 두면 비활성 primary 버튼과
             "You already have a vault" 문구가 함께 보여 혼란을 부르며, heir/period 조정은
             아래 "Timer & Controls" 카드에서 할 수 있어 기능 손실이 없다. */}
-        {!vault && gate2(
+        {!isMyVault && gate2(
           <Card>
             <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
             <CardContent className="grid gap-3">
@@ -1695,8 +1755,8 @@ export default function App() {
               <div className="text-xs text-red-600">
                 {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
               </div>
-              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || !!vault || !periodValid || !heirResolved?.address}>Create vault</Button>
-              {!!vault && (
+              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || isMyVault || !periodValid || !heirResolved?.address}>Create vault</Button>
+              {isMyVault && (
                 <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
               )}
               {vault && (
@@ -1708,16 +1768,16 @@ export default function App() {
                   {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
                 </div>
               )}
-              {!vault && <div className="text-xs text-gray-600">
+              {!isMyVault && <div className="text-xs text-gray-600">
                 Cannot find your vault? If you are an heir, you can search for vaults where you are designated as the heir.
               </div>}
-              {!vault && account && (
+              {!isMyVault && account && (
                 <div className="flex items-center gap-2">
                   <Button onClick={findHeirVaults} disabled={findingHeirVaults}>{findingHeirVaults ? 'Searching...' : 'Find vaults where I am heir'}</Button>
-                  {heirFoundVaults.length > 1 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} matches</span>}
+                  {heirFoundVaults.length > 0 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} match{heirFoundVaults.length > 1 ? "es" : ""}</span>}
                 </div>
               )}
-              {!vault && heirFoundVaults.length > 1 && (
+              {!isMyVault && heirFoundVaults.length >= 1 && (
                 <div className="grid gap-2 text-xs">
                   {heirFoundVaults.map((v) => (
                     <div key={v} className="flex items-center justify-between gap-2">
