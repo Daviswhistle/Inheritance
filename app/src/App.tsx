@@ -964,7 +964,7 @@ export default function App() {
           return vchk && vchk !== ethers.ZeroAddress;
         },
       });
-      setStatus("Vault created ✅");
+      setStatus("Vault created");
       const v = await factory.vaultOf(account);
       setVault(v);
       if (NOTIFY_BACKEND_ENABLED && v && v !== ethers.ZeroAddress) {
@@ -1061,7 +1061,7 @@ export default function App() {
           return vb > prev;
         },
       });
-      setStatus("Deposit complete ✅");
+      setStatus("Deposit complete");
       setAmountStr("");
       refreshBalances();
     } catch (e: unknown) {
@@ -1097,7 +1097,7 @@ export default function App() {
           return Number(lp) > (prevLp || 0);
         },
       });
-      setStatus("Timer reset (full period restored) ✅");
+      setStatus("Timer reset (full period restored)");
       refreshTimer();
     } catch (e: unknown) {
       setStatus("Reset error: " + errorText(e));
@@ -1126,7 +1126,7 @@ export default function App() {
           return Number(hb) === Number(seconds);
         },
       });
-      setStatus("Period updated ✅");
+      setStatus("Period updated");
       refreshTimer();
     } catch (e: unknown) {
       setStatus("Change period error: " + errorText(e));
@@ -1153,7 +1153,7 @@ export default function App() {
           return h && h.toLowerCase() === vaultOwner.toLowerCase();
         },
       });
-      setStatus("Inheritance cancelled (heir=owner) ✅");
+      setStatus("Inheritance cancelled (heir=owner)");
       refreshTimer();
     } catch (e: unknown) {
       setStatus("Cancel error: " + errorText(e));
@@ -1185,7 +1185,7 @@ export default function App() {
           return h && h.toLowerCase() === target.toLowerCase();
         },
       });
-      setStatus("Heir updated ✅");
+      setStatus("Heir updated");
       setNewHeir("");
       setNewHeirResolved(null);
       if (NOTIFY_BACKEND_ENABLED && account && vault) {
@@ -1229,7 +1229,7 @@ export default function App() {
           return vb === 0n || vb < prev;
         },
       });
-      setStatus("Claim complete ✅");
+      setStatus("Claim complete");
       refreshBalances(); refreshTimer();
     } catch (e: unknown) {
       setStatus("Claim error: " + errorText(e));
@@ -1270,7 +1270,7 @@ export default function App() {
           return vb < prev;
         },
       });
-      setStatus("Withdraw complete ✅");
+      setStatus("Withdraw complete");
       setWithdrawAmountStr("");
       refreshBalances();
     } catch (e: unknown) {
@@ -1307,7 +1307,7 @@ export default function App() {
           return !v || v === ethers.ZeroAddress;
         },
       });
-      setStatus("Released. You can create a new vault. ✅");
+      setStatus("Released. You can create a new vault.");
       setVault("");
       await loadVault();
       ok = true;
@@ -1414,159 +1414,6 @@ export default function App() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm text-gray-700">
-            <div>
-              This mini app is fully non-custodial. Your keys and assets stay in your World App wallet. We never receive or control private keys.
-            </div>
-            <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
-              <li>Transactions are requested via World App and must be explicitly approved in World App.</li>
-              <li>Deposits move WLD from your wallet to your personal vault contract; only you or your heir (after expiry) can move funds.</li>
-              <li>Your address is provided by World App via a secure bridge; signatures and transactions happen only in World App.</li>
-              <li>We do not store any personal data about you, your heir, or your vault.</li>
-            </ul>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>World App Notifications</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm text-gray-700">
-            <div className="text-xs text-gray-600">
-              Heir alerts are sent through World App notifications when a registered vault becomes claimable with a non-zero WLD balance.
-            </div>
-            <div className="text-xs text-gray-600">
-              Backend: <b>{NOTIFY_BACKEND_ENABLED ? "connected" : "disabled (set VITE_NOTIFY_BACKEND_URL)"}</b>
-            </div>
-            <div className="text-xs text-gray-600">
-              This wallet notifications:{" "}
-              <b>
-                {notifyPermission === "granted" ? "enabled" : notifyPermission === "denied" ? "disabled" : "unknown"}
-              </b>
-            </div>
-            {account && vault && (
-              <div className="text-xs text-gray-600">
-                Current vault watch:{" "}
-                <b>
-                  {notifyWatchState === "registered"
-                    ? "registered"
-                    : notifyWatchState === "not_registered"
-                      ? "not registered"
-                      : "unknown"}
-                </b>
-              </div>
-            )}
-            <div className="flex gap-2 flex-wrap">
-              <Button onClick={requestNotifyPermission} disabled={!miniInstalled || notifyBusy}>
-                {notifyBusy ? "Working..." : "Enable notifications"}
-              </Button>
-              <Button onClick={refreshNotifyPermission} disabled={!miniInstalled || notifyBusy}>
-                Refresh permission
-              </Button>
-              {account && (
-                <Button onClick={sendNotifyTestToMe} disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}>
-                  Send test to me
-                </Button>
-              )}
-              {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && vault && vaultHeir && (
-                <Button
-                  variant="primary"
-                  onClick={registerHeirAlert}
-                  disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}
-                >
-                  Register heir alert
-                </Button>
-              )}
-              {vault && (
-                <Button onClick={refreshNotifyWatchState} disabled={!NOTIFY_BACKEND_ENABLED || watchBusy}>
-                  Refresh watcher
-                </Button>
-              )}
-            </div>
-            <div className="text-xs text-gray-500">
-              Important: the heir wallet must also open this mini app at least once and enable notifications.
-            </div>
-          </CardContent>
-        </Card>
-
-        {gate2(
-          <Card>
-            <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
-            <CardContent className="grid gap-3">
-              <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
-              <div className="grid grid-cols-3 items-center gap-2">
-                <div>Heir (@username or 0x…)</div>
-                <Input className="col-span-2" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
-              </div>
-              {heir && (
-                resolvingHeir ? (
-                  <div className="text-xs text-gray-600">Resolving…</div>
-                ) : heirResolved?.address ? (
-                  <div className="text-xs text-gray-600">
-                    Resolved: {heirResolved.username ? <b>@{heirResolved.username}</b> : 'Address'} → <b>{short(heirResolved.address)}</b>
-                    <button className="ml-2 underline" onClick={() => copyText(heirResolved!.address!, 'heir')}>Copy</button>
-                  </div>
-                ) : (
-                  <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
-                )
-              )}
-              {heirResolved?.address && isHeirSuspicious() && (
-                <div className="text-xs text-yellow-700">Warning: Heir equals owner or zero address — this disables inheritance.</div>
-              )}
-              <div className="grid grid-cols-3 items-center gap-2">
-                <div>Period (days)</div>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className="col-span-2"
-                  value={periodInput}
-                  placeholder="30"
-                  onChange={e => onPeriodChange(e.target.value)}
-                />
-              </div>
-              <div className="text-xs text-red-600">
-                {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
-              </div>
-              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || !!vault || !periodValid || !heirResolved?.address}>Create vault</Button>
-              {!!vault && (
-                <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
-              )}
-              {vault && (
-                <div className="text-xs text-gray-600 break-all">
-                  Your vault:
-                  <button className="ml-1 underline text-blue-700" onClick={() => copyText(vault, "vault")}>
-                    {short(vault)}
-                  </button>
-                  {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
-                </div>
-              )}
-              {!vault && <div className="text-xs text-gray-600">
-                Cannot find your vault? If you are an heir, you can search for vaults where you are designated as the heir.
-              </div>}
-              {!vault && account && (
-                <div className="flex items-center gap-2">
-                  <Button onClick={findHeirVaults} disabled={findingHeirVaults}>{findingHeirVaults ? 'Searching...' : 'Find vaults where I am heir'}</Button>
-                  {heirFoundVaults.length > 1 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} matches</span>}
-                </div>
-              )}
-              {!vault && heirFoundVaults.length > 1 && (
-                <div className="grid gap-2 text-xs">
-                  {heirFoundVaults.map((v) => (
-                    <div key={v} className="flex items-center justify-between gap-2">
-                      <span className="break-all">{short(v)}</span>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" onClick={() => setVault(v)}>Use</Button>
-                        <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">View</a>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         {vault && gate2(
           <Card>
             <CardHeader>
@@ -1649,22 +1496,32 @@ export default function App() {
                   ) : <b className="break-all">-</b>}
                   {WLD_ADDRESS && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${WLD_ADDRESS}`} target="_blank" rel="noreferrer">View</a>}
                 </div>
-                <div>
-                  Created block: <b>{vaultCreatedBlock ?? "-"}</b>
-                  {vaultCreatedBlock !== null ? (
+                {/* 블록 번호는 탐색기에 "View" 링크로만提供. 숫자를 그대로 노출하면
+                    사용자에게 의미가 없고 테스트 체인에서 "4" 같은 값이 오히려
+                    완성되지 않은 화면처럼 보인다. */}
+                {vaultCreatedBlock !== null ? (
+                  <div>
+                    Created at:{" "}
+                    <b>
+                      {vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}
+                    </b>{" "}
                     <a
-                      className="ml-2 text-blue-600 underline"
+                      className="text-blue-600 underline"
                       href={`${EXPLORER}/block/${vaultCreatedBlock}`}
                       target="_blank"
                       rel="noreferrer"
                     >
                       View
                     </a>
-                  ) : null}
-                </div>
-                <div>
-                  Created at: <b>{vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}</b>
-                </div>
+                  </div>
+                ) : (
+                  <div>
+                    Created at:{" "}
+                    <b>
+                      {vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}
+                    </b>
+                  </div>
+                )}
               </div>
               <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
               <div className="text-sm">Vault: {fmtUnits(vaultWld)} {wldSymbol}</div>
@@ -1795,7 +1652,165 @@ export default function App() {
             </CardContent>
           </Card>
         )}
-      </div>
+
+        {/* 금고가 이미 있으면 이 카드를 숨긴다. 그대로 두면 비활성 primary 버튼과
+            "You already have a vault" 문구가 함께 보여 혼란을 부르며, heir/period 조정은
+            아래 "Timer & Controls" 카드에서 할 수 있어 기능 손실이 없다. */}
+        {!vault && gate2(
+          <Card>
+            <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
+              <div className="grid grid-cols-3 items-center gap-2">
+                <div>Heir (@username or 0x…)</div>
+                <Input className="col-span-2" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
+              </div>
+              {heir && (
+                resolvingHeir ? (
+                  <div className="text-xs text-gray-600">Resolving…</div>
+                ) : heirResolved?.address ? (
+                  <div className="text-xs text-gray-600">
+                    Resolved: {heirResolved.username ? <b>@{heirResolved.username}</b> : 'Address'} → <b>{short(heirResolved.address)}</b>
+                    <button className="ml-2 underline" onClick={() => copyText(heirResolved!.address!, 'heir')}>Copy</button>
+                  </div>
+                ) : (
+                  <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
+                )
+              )}
+              {heirResolved?.address && isHeirSuspicious() && (
+                <div className="text-xs text-yellow-700">Warning: Heir equals owner or zero address — this disables inheritance.</div>
+              )}
+              <div className="grid grid-cols-3 items-center gap-2">
+                <div>Period (days)</div>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className="col-span-2"
+                  value={periodInput}
+                  placeholder="30"
+                  onChange={e => onPeriodChange(e.target.value)}
+                />
+              </div>
+              <div className="text-xs text-red-600">
+                {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
+              </div>
+              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || !!vault || !periodValid || !heirResolved?.address}>Create vault</Button>
+              {!!vault && (
+                <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
+              )}
+              {vault && (
+                <div className="text-xs text-gray-600 break-all">
+                  Your vault:
+                  <button className="ml-1 underline text-blue-700" onClick={() => copyText(vault, "vault")}>
+                    {short(vault)}
+                  </button>
+                  {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
+                </div>
+              )}
+              {!vault && <div className="text-xs text-gray-600">
+                Cannot find your vault? If you are an heir, you can search for vaults where you are designated as the heir.
+              </div>}
+              {!vault && account && (
+                <div className="flex items-center gap-2">
+                  <Button onClick={findHeirVaults} disabled={findingHeirVaults}>{findingHeirVaults ? 'Searching...' : 'Find vaults where I am heir'}</Button>
+                  {heirFoundVaults.length > 1 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} matches</span>}
+                </div>
+              )}
+              {!vault && heirFoundVaults.length > 1 && (
+                <div className="grid gap-2 text-xs">
+                  {heirFoundVaults.map((v) => (
+                    <div key={v} className="flex items-center justify-between gap-2">
+                      <span className="break-all">{short(v)}</span>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" onClick={() => setVault(v)}>Use</Button>
+                        <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">View</a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm text-gray-700">
+            <div>
+              This mini app is fully non-custodial. Your keys and assets stay in your World App wallet. We never receive or control private keys.
+            </div>
+            <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
+              <li>Transactions are requested via World App and must be explicitly approved in World App.</li>
+              <li>Deposits move WLD from your wallet to your personal vault contract; only you or your heir (after expiry) can move funds.</li>
+              <li>Your address is provided by World App via a secure bridge; signatures and transactions happen only in World App.</li>
+              <li>We do not store any personal data about you, your heir, or your vault.</li>
+            </ul>
+          </CardContent>
+        </Card>
+
+        {NOTIFY_BACKEND_ENABLED && (
+          <Card>
+            <CardHeader><CardTitle>World App Notifications</CardTitle></CardHeader>
+            <CardContent className="space-y-3 text-sm text-gray-700">
+              <div className="text-xs text-gray-600">
+                Heir alerts are sent through World App notifications when a registered vault becomes claimable with a non-zero WLD balance.
+              </div>
+              <div className="text-xs text-gray-600">
+                Backend: <b>{NOTIFY_BACKEND_ENABLED ? "connected" : "disabled (set VITE_NOTIFY_BACKEND_URL)"}</b>
+              </div>
+              <div className="text-xs text-gray-600">
+                This wallet notifications:{" "}
+                <b>
+                  {notifyPermission === "granted" ? "enabled" : notifyPermission === "denied" ? "disabled" : "unknown"}
+                </b>
+              </div>
+              {account && vault && (
+                <div className="text-xs text-gray-600">
+                  Current vault watch:{" "}
+                  <b>
+                    {notifyWatchState === "registered"
+                      ? "registered"
+                      : notifyWatchState === "not_registered"
+                        ? "not registered"
+                        : "unknown"}
+                  </b>
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap">
+                <Button onClick={requestNotifyPermission} disabled={!miniInstalled || notifyBusy}>
+                  {notifyBusy ? "Working..." : "Enable notifications"}
+                </Button>
+                <Button onClick={refreshNotifyPermission} disabled={!miniInstalled || notifyBusy}>
+                  Refresh permission
+                </Button>
+                {account && (
+                  <Button onClick={sendNotifyTestToMe} disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}>
+                    Send test to me
+                  </Button>
+                )}
+                {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && vault && vaultHeir && (
+                  <Button
+                    variant="primary"
+                    onClick={registerHeirAlert}
+                    disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}
+                  >
+                    Register heir alert
+                  </Button>
+                )}
+                {vault && (
+                  <Button onClick={refreshNotifyWatchState} disabled={!NOTIFY_BACKEND_ENABLED || watchBusy}>
+                    Refresh watcher
+                  </Button>
+                )}
+              </div>
+              <div className="text-xs text-gray-500">
+                Important: the heir wallet must also open this mini app at least once and enable notifications.
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
       <Card>
         <CardHeader><CardTitle>Help & Legal</CardTitle></CardHeader>
         <CardContent className="text-xs text-gray-600 space-y-2">
@@ -1811,6 +1826,8 @@ export default function App() {
           </div>
         </CardContent>
       </Card>
+
+      </div>
       <div className="toast-container" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
