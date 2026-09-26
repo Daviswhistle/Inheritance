@@ -8,21 +8,31 @@ import {SafeERC20Lib} from "./libraries/SafeERC20Lib.sol";
 /// @notice owner가 {heartbeatInterval} 동안 ping(생존 신호)을 보내지 않으면 금고의 WLD 잔액을
 ///         heir에게 이전한다.
 ///
-/// @dev 만기(`canClaim() == true`)가 되면 **소유자의 상태 변경 권한이 완전히 정지된다**.
-///      만기 전에 owner가 `ping`/`updateHeir`/`updateHeartbeat` 로 금고를 되살리거나
-///      상속인을 자기 자신으로 바꿀 수 있다면, 상속은 사실상 무의미해진다.
-///      만기 시점의 상태는 불변이며, {claim} 만 실행할 수 있다.
+/// @dev **두 단계 상속.** 만료 즉시 자금이 움직이지 않는다. heir가 먼저 `fileClaim()` 로
+///      신청을 하고, 그 시점부터 {CHALLENGE_PERIOD} 동안 owner가 이의를 제기할 수 있으며,
+///      기간이 지나고 heir가 `finalizeClaim()` 을 실행해야 자금이 실제로 이동한다.
 ///
-///      ETH는 상속 대상 자산이 아니다. `receive`/`fallback` 이 revert 하므로 정상적인
-///      ETH 입금은 불가능하고, `SELFDESTRUCT` 로 강제 입금된 ETH만 {sweepEth} 로 회수한다.
+///      이 단계를 둔 이유는 "잠깐 깜빡여서 전액을 잃는" 상황을 없애기 위해서다.
+///      이 앱의 목적은 사용자의 마지막 의사를 전달하는 것이지, 사용자가
+///      실수하거나 잊었다고 가문의 돈을 빼앗아 가는 것이 아니다. 신청이
+///      실제로 들어온 시점부터 이의제기 창을 열면, 오래 부재였다가 돌아온
+///      사용자에게도 회수 기회가 생기고, 그게 아니라면 상속인은 7일 뒤에
+///      받는다. 상속인이 방치하더라도 owner에게 불이익은 없다.
+///
+///      만기 시점의 **owner 측 상태는 불변이며**, `ping()` 은 이의제기 창 안에서만 예외적으로
+///      허용된다. owner가 할 수 있는 유일한 예외 행동은 청산을 취소하는 것뿐이며,
+///      자금을 옮기거나 상속인을 바꾸거나 기간을 늘리는 것은 여전히 불가능하다.
 contract InheritanceVaultWLD {
     // ===== Errors =====
     error NotOwner();
     error InvalidAddress();
     error HeartbeatOutOfRange();
-    error NotClaimableYet();
+    error NotExpiredYet();
     error Expired(); // 만기 후에는 소유자 기능 불가
     error AlreadyClaimed();
+    error AlreadyFiled();
+    error NotHeir();
+    error ChallengeStillRunning();
     error NothingToTransfer();
     error EthNotAccepted();
     error Reentrancy();
@@ -33,25 +43,37 @@ contract InheritanceVaultWLD {
     event Ping(uint256 timestamp);
     event HeirUpdated(address indexed oldHeir, address indexed newHeir);
     event HeartbeatUpdated(uint256 oldInterval, uint256 newInterval);
-    event ClaimedWLD(address indexed to, uint256 amount);
+    event ClaimFiled(address indexed by, uint256 filedAt, uint256 challengeEndsAt);
+    event ClaimWithdrawn(address indexed by);
+    event InheritanceFinalized(address indexed recipient, uint256 wldAmount, uint256 claimedAt);
     event OwnerWithdrawnWLD(address indexed to, uint256 amount);
     event UnknownERC20Rescued(address indexed token, address indexed to, uint256 amount);
     event EthSwept(address indexed to, uint256 amount);
     event InheritanceCanceled(address indexed owner);
-    /// @notice 만기 후 상속이 최종적으로 성립해 실행되었음. vault는 이제 비어 있다.
-    event InheritanceClaimed(address indexed recipient, uint256 wldAmount, uint256 claimedAt);
 
     // ===== Storage =====
     address public immutable owner; // 금고 소유자
+    address public immutable factory; // 이 금고를 생성한 팩토리
     address public immutable WLD; // 대상 토큰 (고정)
     address public heir; // 상속인
     uint256 public heartbeatInterval; // 만기 주기(초)
     uint256 public lastPing; // 마지막 연장 시각
-    bool public claimed; // 상속 실행 여부 (다시 실행 불가)
-    uint256 public claimedAt; // 상속 실행 시각
+    /// @notice 상속 신청 시각. 0 이면 아직 상속인이 신청하지 않았다.
+    uint256 public claimFiledAt;
+    /// @notice 상속이 최종 실행된 시각. 0 이면 아직 실행되지 않았다.
+    uint256 public claimedAt;
 
     // ===== Reentrancy guard =====
     uint256 private _locked = 1;
+
+    /// @notice 상속인이 신청한 뒤 owner가 이의를 제기할 수 있는 기간(초).
+    /// @dev owner가 마지막 갱신의 시점에 이 값을 바꾸는 기능은 제공하지 않는다 —
+    ///      상속인이 이의제기 창을 임의로 늘리거나 줄 수 있어야 하기 때문이다.
+    ///      창이 짧으면 owner 가 보호받지 못하고, 길면 상속인이 불필요하게 기다린다.
+    ///      7일이 두 요구를 동시에 만족하는 값이다.
+    uint256 public constant CHALLENGE_PERIOD = 7 days;
+    uint256 public constant MIN_HEARTBEAT = 1 days;
+    uint256 public constant MAX_HEARTBEAT = 365 days;
 
     modifier nonReentrant() {
         if (_locked != 1) revert Reentrancy();
@@ -65,24 +87,61 @@ contract InheritanceVaultWLD {
         _;
     }
 
-    /// @dev 만기 이후에는 소유자의 모든 상태 변경을 차단한다.
-    modifier onlyOwnerBeforeExpiry() {
-        if (msg.sender != owner) revert NotOwner();
-        if (canClaim()) revert Expired();
+    /// @dev 소유자 또는 그 팩토리. 팩토리를 경유하는 이유는 월드앱 allowlist 때문이다 —
+    ///      사용자마다 다른 금고 주소를 앱이 직접 호출할 수 없으므로, 팩토리가 대신
+    ///      중계한다. 팩토리는 `vaultOf` 로 소유자를 식별할 수 있으므로 이 경로가
+    ///      권한을 넓혀주지 않는다.
+    modifier onlyOwnerOrFactory() {
+        if (msg.sender != owner && msg.sender != factory) revert NotOwner();
         _;
     }
 
-    uint256 public constant MIN_HEARTBEAT = 1 days;
-    uint256 public constant MAX_HEARTBEAT = 365 days;
+    /// @dev 상속인 또는 그 팩토리.
+    modifier onlyHeirOrFactory() {
+        if (msg.sender != heir && msg.sender != factory) revert NotHeir();
+        _;
+    }
 
-    constructor(address _owner, address _heir, address _wld, uint256 _heartbeatInterval) {
+    /// @dev 갱신 기한이 지나 상속인이 아직 아무것도 하지 않은 상태에서는 소유자의 상태 변경을
+    ///      전부 차단한다. 되살리기를 허용하면 상속이 무의미해지기 때문이다.
+    ///      유일한 예외는 **이의제기 기간** — 상속인이 실제로 신청을 넣은 뒤 owner 가 살아있다는
+    ///      신호(ping) 를 보일 유일한 통로다. 그 ping 는 청산 신청을 취소할 뿐 자금을 옮기지
+    ///      않고, 상속인이나 기간을 바꾸는 권한은 여전히 없다.
+    modifier ownerMayStillAct() {
+        if (!ownerStillActive() && !challengeRunning()) revert Expired();
+        _;
+    }
+
+    /// @dev 갱신 기한 전까지. 이의제기 기간에도 적용된다 — 신청 이후 owner 가 상속인을
+    ///      바꾸거나 기간을 늘리는 것으로는 신청을 이길 수 없어야 한다.
+    modifier ownerStillActiveOnly() {
+        if (!ownerStillActive()) revert Expired();
+        _;
+    }
+
+    /// @dev 긴급 회수는 예외적으로 **상속이 취소된 금고**에서는 만료 후에도 허용한다.
+    ///      취소는 heir 를 owner 로 바꾸므로 신청할 상속인이 없고, 만료 규칙으로
+    ///      잠가 버리면 자금이 영구히 갇힌다.
+    modifier ownerMayWithdraw() {
+        if (!ownerStillActive() && !inheritanceCancelled()) revert Expired();
+        _;
+    }
+
+    /// @param _owner 금고 소유자
+    /// @param _heir 상속인 주소
+    /// @param _wld 상속 대상 토큰
+    /// @param _heartbeatInterval 갱신 주기(초). {MIN_HEARTBEAT} ~ {MAX_HEARTBEAT} 사이.
+    /// @param _factory 이 금고를 생성한 팩토리. 소유자 액션 중계를 허용할 유일한 주소.
+    constructor(address _owner, address _heir, address _wld, uint256 _heartbeatInterval, address _factory) {
         if (_owner == address(0) || _heir == address(0) || _wld == address(0)) revert InvalidAddress();
+        if (_factory == address(0)) revert InvalidAddress();
         if (_heartbeatInterval < MIN_HEARTBEAT || _heartbeatInterval > MAX_HEARTBEAT) {
             revert HeartbeatOutOfRange();
         }
         owner = _owner;
         heir = _heir;
         WLD = _wld;
+        factory = _factory;
         heartbeatInterval = _heartbeatInterval;
         lastPing = block.timestamp;
         emit Ping(lastPing);
@@ -90,96 +149,169 @@ contract InheritanceVaultWLD {
 
     // ===== Views =====
 
-    /// @notice 지금 상속인이 자금을 수령할 수 있는 상태인지.
-    function canClaim() public view returns (bool) {
-        return !claimed && block.timestamp >= lastPing + heartbeatInterval;
+    /// @notice owner 가 아직 금고를 갱신할 수 있는 상태인지.
+    /// @dev 게이트웨이 판정의 단일 기준점이다. 상속인이 신청하지 않은 상태에서만 true 다
+    ///      (= 갱신 기한 전). 신청이 들어오면 이 값은 false 가 되어 owner 의 다른 상태 변경이
+    ///      전부 막히고, 이의제기 기간에는 오직 `ping()` 만 열린다.
+    function ownerStillActive() public view returns (bool) {
+        return claimFiledAt == 0 && block.timestamp < lastPing + heartbeatInterval;
     }
 
+    /// @notice 갱신 기한이 지났는지 (상속인이 아직 신청하지 않은 상태).
+    /// @dev 만료 자체를 뜻한다. 자금이 상속인에게 이동하려면 `fileClaim()` 과
+    ///      `finalizeClaim()` 이 추가로 필요하다.
+    function isExpired() public view returns (bool) {
+        return claimedAt == 0 && claimFiledAt == 0 && block.timestamp >= lastPing + heartbeatInterval;
+    }
+
+    /// @notice 상속이 취소되었는지 (heir 가 owner 로 바뀐 상태).
+    /// @dev 취소된 금고는 상속인이 없으므로 순수한 본인 지갑과 같다. 이 경우에도
+    ///      만료 후 회수가 막히면 자금이 영구히 갇힌다 — 취소했으면서 못 빼게 되는
+    ///      것은 사용자가 취소 버튼을 눌렀다는 사실과 모순이다.
+    function inheritanceCancelled() public view returns (bool) {
+        return heir != address(0) && heir == owner;
+    }
+
+    /// @notice 지금 자금이 상속인에게 이동 가능한 최종 상태인지.
+    function claimableNow() public view returns (bool) {
+        return claimFiledAt != 0 && block.timestamp >= claimFiledAt + CHALLENGE_PERIOD;
+    }
+
+    /// @notice 상속인이 신청했고 owner가 아직 이의를 제기할 수 있는 기간인지.
+    function challengeRunning() public view returns (bool) {
+        return claimFiledAt != 0 && block.timestamp < claimFiledAt + CHALLENGE_PERIOD;
+    }
+
+    /// @notice 상속인이 신청했는지 여부.
+    function claimPending() external view returns (bool) {
+        return claimFiledAt != 0;
+    }
+
+    /// @notice 이의제기 기간 종료 시각 (신청 전이면 0).
+    function challengeEndsAt() external view returns (uint256) {
+        if (claimFiledAt == 0) return 0;
+        return claimFiledAt + CHALLENGE_PERIOD;
+    }
+
+    /// @notice 기한까지 남은 시간(초). 만료·신청·최종 실행 어느 상태든 0 을 넘지 않는다.
     function timeRemaining() external view returns (uint256) {
-        if (canClaim()) return 0;
+        if (claimFiledAt != 0 || claimedAt != 0) return 0;
         uint256 due = lastPing + heartbeatInterval;
         return due > block.timestamp ? (due - block.timestamp) : 0;
     }
 
-    /// @notice 만기 시각(0이면 이미 만기).
+    /// @notice 갱신 기한(만료 예정 시각).
     function deadline() external view returns (uint256) {
         return lastPing + heartbeatInterval;
     }
 
-    /// @notice 이 금고가 더 이상 활성 상태가 아닌지 (만기되었거나 이미 상속이 성립됨).
-    /// @dev 팩토리의 슬롯 해제 조건. `claim()` 후에는 {canClaim} 이 false 가 되므로
-    ///      `canClaim()` 만 보면 상속을 이미 수령한 사용자가 슬롯을 못 해제한다.
+    /// @notice 이 금고의 활성 재사용이 끝났는지 (만료되었거나 상속이 진행 중이거나 완료됨).
+    /// @dev 팩토리의 슬롯 해제 조건.
     function isSettled() external view returns (bool) {
-        return claimed || canClaim();
+        return claimedAt != 0 || isExpired() || claimFiledAt != 0;
     }
 
-    // ===== Owner controls (만기 전) =====
+    // ===== Owner controls =====
 
-    /// @notice 생존 신호. 만기 후에는 호출할 수 없다 — 되살리기를 허용하면 상속이 무의미해진다.
-    function ping() external onlyOwnerBeforeExpiry {
+    /// @notice 생존 신호. 갱신 기한이 지난 뒤에도 **이의제기 기간 안에서는** 호출할 수
+    ///         있으며, 이 경우 청산 신청이 취소되고 기한이 다시 전체 주기로 초기화된다.
+    /// @dev 이것이 owner 가 지킬 수 있는 유일한 최종 행동이며, 자금을 옮기지도
+    ///      상속인을 바꾸지도 않는다. 기한이 지난 뒤에도 되살리기를 허용하면
+    ///      상속은 무의미해진다.
+    function ping() external onlyOwnerOrFactory ownerMayStillAct {
+        bool hadPendingClaim = claimFiledAt != 0;
         lastPing = block.timestamp;
+        if (hadPendingClaim) {
+            claimFiledAt = 0;
+            emit ClaimWithdrawn(owner);
+        }
         emit Ping(lastPing);
     }
 
-    function updateHeir(address _newHeir) external onlyOwnerBeforeExpiry {
+    /// @notice 상속인 변경 (갱신 기한 전, 이의제기 기간 이전).
+    function updateHeir(address _newHeir) external onlyOwnerOrFactory ownerStillActiveOnly {
         if (_newHeir == address(0)) revert InvalidAddress();
         address old = heir;
         heir = _newHeir;
         emit HeirUpdated(old, _newHeir);
     }
 
-    function updateHeartbeat(uint256 _newInterval) external onlyOwnerBeforeExpiry {
+    /// @notice 갱신 주기 변경 (갱신 기한 전, 이의제기 기간 이전).
+    function updateHeartbeat(uint256 _newInterval) external onlyOwnerOrFactory ownerStillActiveOnly {
         if (_newInterval < MIN_HEARTBEAT || _newInterval > MAX_HEARTBEAT) revert HeartbeatOutOfRange();
         uint256 old = heartbeatInterval;
         heartbeatInterval = _newInterval;
         emit HeartbeatUpdated(old, _newInterval);
     }
 
-    /// @notice 상속 자체를 취소(만기 전). heir=owner로 설정 → 사실상 자동 이전 중지.
-    function cancelInheritance() external onlyOwnerBeforeExpiry {
+    /// @notice 상속 자체를 취소. heir 를 owner 로 설정해 자동 이전을 막는다.
+    /// @dev 만료 전이거나 이의제기 기간 중에만 가능하다. 취소된 금고는 owner 가
+    ///      끝까지 살아 있다는 뜻이므로 상속인이 신청할 이유가 사라진다.
+    function cancelInheritance() external onlyOwnerOrFactory ownerStillActiveOnly {
         address old = heir;
         heir = owner;
+        claimFiledAt = 0;
         emit HeirUpdated(old, owner);
         emit InheritanceCanceled(owner);
     }
 
-    // ===== Claim (만기 후 누구나 실행 가능) =====
+    // ===== Two-step claim =====
 
-    /// @notice 만기 후 WLD 전액을 상속인에게 전송.
-    /// @dev 실행 직후 vault는 비어 있는 최종 상태가 되므로, 이후 입금분이 다시 sweep되는 일이 없다.
-    function claim() external nonReentrant {
-        if (claimed) revert AlreadyClaimed();
-        if (!canClaim()) revert NotClaimableYet();
+    /// @notice 상속인이 만료된 금고에 상속을 신청한다. 자금은 아직 이동하지 않는다.
+    /// @dev 반드시 heir 자신만 호출할 수 있다. 남이 대신 신청하면 owner 가 의도하지
+    ///      않은 이의제기 알림을 받는 등 방해가 될 수 있으므로 제한한다.
+    ///      신청 시점부터 {CHALLENGE_PERIOD} 동안 owner 는 `ping()` 으로 이의를 제기할
+    ///      수 있고, 기간이 지나면 heir 가 `finalizeClaim()` 으로 자금을 받는다.
+    function fileClaim() external onlyHeirOrFactory {
+        if (claimedAt != 0) revert AlreadyClaimed();
+        if (claimFiledAt != 0) revert AlreadyFiled();
+        if (!isExpired()) revert NotExpiredYet();
+
+        claimFiledAt = block.timestamp;
+        emit ClaimFiled(msg.sender, claimFiledAt, claimFiledAt + CHALLENGE_PERIOD);
+    }
+
+    /// @notice 이의제기 기간이 지난 뒤 상속인이 WLD 전액을 받는다. 금고는 최종 상태가 된다.
+    /// @dev 실행 직후 금고는 비어 있는 최종 상태가 되므로, 이후 입금분이 다시
+    ///      sweep 되는 일이 없다. 실행 후에는 owner 의 `ping()` 이 차단되므로
+    ///      되돌릴 수 없다.
+    function finalizeClaim() external onlyHeirOrFactory nonReentrant {
+        if (claimedAt != 0) revert AlreadyClaimed();
+        if (claimFiledAt == 0) revert NotExpiredYet();
+        if (challengeRunning()) revert ChallengeStillRunning();
 
         address recipient = heir;
         uint256 bal = SafeERC20Lib.safeBalanceOf(WLD, address(this));
         if (bal == 0) revert NothingToTransfer();
 
-        // Checks-Effects-Interactions: 만료를 먼저 확정해 재진입/중복 claim을 차단한다.
-        claimed = true;
+        // Checks-Effects-Interactions: 최종 상태를 먼저 확정해 재진입/중복 실행을 차단한다.
         claimedAt = block.timestamp;
         heir = address(0);
 
         SafeERC20Lib.safeTransfer(WLD, recipient, bal);
 
-        emit ClaimedWLD(recipient, bal);
-        emit InheritanceClaimed(recipient, bal, claimedAt);
+        emit InheritanceFinalized(recipient, bal, claimedAt);
     }
 
-    // ===== Owner recovery (만기 전) =====
+    // ===== Owner recovery =====
 
-    /// @notice 만기 전 소유자 긴급 회수 (WLD).
-    function ownerWithdrawWLD(uint256 amount, address to) external onlyOwner nonReentrant {
-        if (canClaim()) revert Expired();
+    /// @notice 만료 전(이의제기 기간 이전) 소유자 긴급 회수 (WLD).
+    /// @dev 상속이 취소된 경우(heir == owner)에는 만료 후에도 회수할 수 있게 한다.
+    ///      상속인이 존재하지 않는 금고를 만료 규칙으로 잠가 버리면 자금이 영구히
+    ///      갇히고, `releaseMyVault()` 도 잔액 0 이 아니어서 동작하지 않는다.
+    function ownerWithdrawWLD(uint256 amount, address to) external onlyOwnerOrFactory ownerMayWithdraw nonReentrant {
         if (to == address(0)) revert InvalidAddress();
         SafeERC20Lib.safeTransfer(WLD, to, amount);
         emit OwnerWithdrawnWLD(to, amount);
     }
 
-    /// @notice 상속 대상이 아닌 오입금 토큰 구조 (만기 전).
-    /// @dev 만기 이후에도 호출 가능해야 한다 — 만기 후 회수 경로가 없으면
-    ///      잘못 전송된 토큰이 영구히 금고에 잠긴다. WLD 는 여기서 회수할 수 없다.
-    function ownerRescueUnknownERC20(address token, uint256 amount, address to) external onlyOwner nonReentrant {
+    /// @notice 상속 대상이 아닌 토큰 회수 (읽기 전용 컨트랙트 주소 검증 포함).
+    /// @dev WLD 와 ETH 는 여기서 회수할 수 없다. ETH 는 {sweepEth} 를 쓸 것.
+    function ownerRescueUnknownERC20(address token, uint256 amount, address to)
+        external
+        onlyOwnerOrFactory
+        nonReentrant
+    {
         if (to == address(0)) revert InvalidAddress();
         if (token == WLD) revert WldOnly();
         SafeERC20Lib.safeTransfer(token, to, amount);
@@ -187,8 +319,8 @@ contract InheritanceVaultWLD {
     }
 
     /// @notice `SELFDESTRUCT` 로 강제 입금된 ETH 회수.
-    /// @dev ETH 는 애초에 상속 대상이 아니므로 만기 여부와 무관하게 항상 회수할 수 있다.
-    function sweepEth(address payable to) external onlyOwner nonReentrant {
+    /// @dev ETH 는 애초에 상속 대상이 아니므로 만료 여부와 무관하게 항상 회수할 수 있다.
+    function sweepEth(address payable to) external onlyOwnerOrFactory nonReentrant {
         if (to == address(0)) revert InvalidAddress();
         uint256 bal = address(this).balance;
         if (bal == 0) revert NothingToTransfer();

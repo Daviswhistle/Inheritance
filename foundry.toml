@@ -11,3 +11,15 @@ optimizer_runs = 200
 evm_version = "cancun"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+# TFH Smart Contract Development Guidelines 은 핵심 custody 로직의 코드 커버리지를
+# 90% 이상으로 요구한다. 배포 대상인 WLD 금고와 팩토리가 기준선을 넘는지 CI 가 강제한다.
+[profile.default.fuzz]
+runs = 256
+
+[profile.coverage]
+optimizer = true
+# 실제로 메인넷에 올라가는 WLD 구현만 기준선을 적용한다.
+# InheritanceVaultTokens 변형은 배포되지 않는 대체 구현이라 별도 다룬다.
+fail_under = 90
+exclude_patterns = ["InheritanceVaultTokens", "SafeERC20Lib", "test", "script"]
