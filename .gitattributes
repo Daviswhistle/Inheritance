@@ -1,0 +1,20 @@
+# Normalize EOLs for source files and avoid touching node_modules
+
+# Keep all files in node_modules exactly as-is (no EOL normalization)
+node_modules/** -text
+
+# Project sources use LF
+*.js   text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.jsx  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.sh   text eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf

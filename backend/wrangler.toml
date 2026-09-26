@@ -1,0 +1,20 @@
+name = "world-inheritance-notify"
+main = "src/worker.mjs"
+compatibility_date = "2026-02-26"
+
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "world-inheritance-notify"
+# Replace with your real D1 database_id from `wrangler d1 create`.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public"
+# Optional: set to exact frontend origin to restrict CORS.
+# FRONTEND_ORIGIN = "https://<your-miniapp-domain>"
+# Set your app id here or with: wrangler secret put WORLD_APP_ID
+# WORLD_APP_ID = "app_xxx"

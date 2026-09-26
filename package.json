@@ -1,0 +1,16 @@
+{
+  "scripts": {
+    "dev": "pnpm --dir app dev",
+    "build": "pnpm --dir app build",
+    "lint": "pnpm --dir app lint",
+    "typecheck": "pnpm --dir app typecheck",
+    "notify:dev": "npx wrangler dev --config backend/wrangler.toml --port 8787",
+    "notify:deploy": "npx wrangler deploy --config backend/wrangler.toml",
+    "notify:d1:local": "npx wrangler d1 migrations apply world-inheritance-notify --local --config backend/wrangler.toml",
+    "notify:d1:remote": "npx wrangler d1 migrations apply world-inheritance-notify --remote --config backend/wrangler.toml",
+    "notify:tail": "npx wrangler tail --config backend/wrangler.toml"
+  },
+  "dependencies": {
+    "@worldcoin/minikit-js": "^1.9.6"
+  }
+}
