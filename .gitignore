@@ -39,3 +39,6 @@ desktop.ini
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+
+# 백엔드 알림 로직 단위 테스트가 워커에서 떼어낸 임시 파일
+backend/src/.alerts-extract.mjs

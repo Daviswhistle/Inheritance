@@ -4,12 +4,28 @@ const SEND_NOTIFICATION_URL = "https://developer.worldcoin.org/api/v2/minikit/se
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+// 두 단계 상속 컨트랙트(InheritanceVaultWLD)의 함수 셀렉터.
+//
+// 여기를 잘못 채운 채로 오면 조용히 엉뚱한 값을 읽는다. 실제로 예전 셀렉터
+// 목록에 있던 HEIR "0xe3cfef60" 은 heir() 가 아니라 timeRemaining() 이었다
+// (heir() = 0x91f2ebb8). uint 를 주소로 디코딩하고 있었고, CAN_CLAIM
+// "0x6dc7a627" 은 컨트랙트에서 아예 삭제된 함수다.
+//
+// 셀렉터는 함수 시그니처에서 파생되므로 시그니처를 바꿀 때마다 함께 갱신한다.
+// 검증: scripts/verify-notify-selectors.sh
 const SELECTORS = {
-  OWNER: "0x8da5cb5b",
-  HEIR: "0xe3cfef60",
-  CAN_CLAIM: "0x6dc7a627",
-  WLD: "0xde061d66",
-  BALANCE_OF: "0x70a08231",
+  OWNER: "0x8da5cb5b",              // owner()
+  HEIR: "0x91f2ebb8",               // heir()
+  WLD: "0xde061d66",                // WLD()
+  BALANCE_OF: "0x70a08231",         // balanceOf(address)
+  IS_EXPIRED: "0x2f13b60c",         // isExpired()          카운트다운 종료, 상속인 미신청
+  CLAIM_PENDING: "0x03a9f06e",      // claimPending()       상속인 신청함
+  CHALLENGE_ENDS_AT: "0x765be13f",  // challengeEndsAt()    이의제기 끝나는 시각
+  CLAIMABLE_NOW: "0xc4671608",      // claimableNow()       7일 지남, 최종 수령 가능
+  TIME_REMAINING: "0xe3cfef60",     // timeRemaining()
+  HEARTBEAT_INTERVAL: "0x561a4fac", // heartbeatInterval()
+  CANCELLED: "0x12cd6595",          // inheritanceCancelled()
+  CLAIMED_AT: "0xd2217fac",          // claimedAt()          최종 수령 완료 시각
 };
 
 const CREATE_TABLE_SQL = `
@@ -25,7 +41,8 @@ CREATE TABLE IF NOT EXISTS watchers (
   last_vault_balance TEXT NOT NULL DEFAULT '0',
   notified_heir_address TEXT,
   notified_at TEXT,
-  last_error TEXT
+  last_error TEXT,
+  alerts TEXT
 );
 `;
 
@@ -33,6 +50,22 @@ CREATE TABLE IF NOT EXISTS watchers (
 let schemaReady = null;
 
 const nowIso = () => new Date().toISOString();
+
+/**
+ * 알림 dedupe 상태를 읽는다.
+ *
+ * JSON 이 깨졌거나 옛 행(컬럼 없음)이면 빈 객체로 시작한다. 상태를 잃는 것은
+ * 알림을 한 번 더 보내는 것보다 나쁘지 않다.
+ */
+const parseAlerts = (raw) => {
+  if (!raw) return {};
+  try {
+    const v = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+};
 
 const normalizeAddress = (value) => {
   if (typeof value !== "string") return null;
@@ -157,13 +190,49 @@ const ethCall = async (env, to, data) => {
   return rpc(env, "eth_call", [{ to, data }, "latest"]);
 };
 
+/**
+ * 컨트랙트 호출이 실패할 때 상태를 "모름" 으로 두고 계속 진행한다.
+ * 조용히 아무 알림도 안 보내는 편이 나쁘다 — 일부 조회가 실패해도 나머지는 보낸다.
+ */
+const readFlag = async (env, to, selector, fallback = null) => {
+  try {
+    return decodeBool(await ethCall(env, to, selector));
+  } catch {
+    return fallback;
+  }
+};
+const readUint = async (env, to, selector, fallback = null) => {
+  try {
+    return decodeUint(await ethCall(env, to, selector));
+  } catch {
+    return fallback;
+  }
+};
+
+/**
+ * 금고의 상속 파이프라인 상태를 한 번에 읽는다.
+ *
+ * 두 단계 상속이라 "지금 돈을 뺄 수 있나" 를 뜻하는 단일 불리언으로는 부족하다.
+ * 누구에게 무엇을 알릴지가 이 값들에 달려 있으므로 전부 읽는다.
+ */
 const getVaultSnapshot = async (env, vaultAddress) => {
   const vault = normalizeAddress(vaultAddress);
   if (!vault) throw new Error("Invalid vault address");
 
   const ownerAddress = decodeAddress(await ethCall(env, vault, SELECTORS.OWNER));
   const heirAddress = decodeAddress(await ethCall(env, vault, SELECTORS.HEIR));
-  const canClaim = decodeBool(await ethCall(env, vault, SELECTORS.CAN_CLAIM));
+
+  const [isExpired, claimPending, claimableNow, cancelled, claimedAt,
+    challengeEndsAt, timeRemaining, heartbeatInterval] = await Promise.all([
+    readFlag(env, vault, SELECTORS.IS_EXPIRED, null),
+    readFlag(env, vault, SELECTORS.CLAIM_PENDING, null),
+    readFlag(env, vault, SELECTORS.CLAIMABLE_NOW, null),
+    readFlag(env, vault, SELECTORS.CANCELLED, null),
+    readUint(env, vault, SELECTORS.CLAIMED_AT, null),
+    readUint(env, vault, SELECTORS.CHALLENGE_ENDS_AT, null),
+    readUint(env, vault, SELECTORS.TIME_REMAINING, null),
+    readUint(env, vault, SELECTORS.HEARTBEAT_INTERVAL, null),
+  ]);
 
   let tokenAddress = null;
   try {
@@ -174,8 +243,11 @@ const getVaultSnapshot = async (env, vaultAddress) => {
 
   let vaultBalance = 0n;
   if (tokenAddress && tokenAddress !== ZERO_ADDRESS) {
-    const encoded = await ethCall(env, tokenAddress, encodeBalanceOf(vault));
-    vaultBalance = decodeUint(encoded);
+    try {
+      vaultBalance = decodeUint(await ethCall(env, tokenAddress, encodeBalanceOf(vault)));
+    } catch {
+      vaultBalance = 0n;
+    }
   }
 
   return {
@@ -183,8 +255,15 @@ const getVaultSnapshot = async (env, vaultAddress) => {
     ownerAddress,
     heirAddress,
     tokenAddress,
-    canClaim,
     vaultBalance,
+    isExpired,
+    claimPending,
+    claimableNow,
+    cancelled,
+    claimedAt,
+    challengeEndsAt,
+    timeRemaining,
+    heartbeatInterval,
   };
 };
 
@@ -201,6 +280,7 @@ const rowToWatcher = (row) => {
     lastVaultBalance: String(row.last_vault_balance || "0"),
     notifiedHeirAddress: row.notified_heir_address || null,
     notifiedAt: row.notified_at || null,
+    alerts: parseAlerts(row.alerts),
     lastError: row.last_error || null,
   };
 };
@@ -220,8 +300,9 @@ const saveWatcher = async (env, watcher) => {
         last_vault_balance,
         notified_heir_address,
         notified_at,
-        last_error
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_error,
+        alerts
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(vault_address) DO UPDATE SET
         owner_address = excluded.owner_address,
         heir_address = excluded.heir_address,
@@ -232,7 +313,8 @@ const saveWatcher = async (env, watcher) => {
         last_vault_balance = excluded.last_vault_balance,
         notified_heir_address = excluded.notified_heir_address,
         notified_at = excluded.notified_at,
-        last_error = excluded.last_error
+        last_error = excluded.last_error,
+        alerts = excluded.alerts
     `
   )
     .bind(
@@ -249,7 +331,8 @@ const saveWatcher = async (env, watcher) => {
       watcher.notifiedAt,
       watcher.lastError
     )
-    .run();
+    .run(      JSON.stringify(watcher.alerts || {}),
+    );
 };
 
 const getWatcherByVault = async (env, vaultAddress) => {
@@ -378,10 +461,128 @@ const sendWorldNotification = async (env, { walletAddress, title, message, miniA
   return data;
 };
 
+/**
+ * 알림 대상과时机.
+ *
+ * 예전 구현은 "canClaim() 이 참이 되면 상속인에게 1회" 뿐이었다. 두 단계 상속에서
+ * 이건 순서가 뒤집혔다 — 그 시점에는 이미 상속인이 신청을 해야 하는 상태고,
+ * 관심사가 가장 높은 시점은 그 *전* 이다.
+ *
+ * 실제로 보내는 알림:
+ *   1) 상속인  — 카운트다운 종료. "지금 신청할 수 있다" (실행 가능한 유일한 신호)
+ *   2) 피상속인 — 상속인이 신청함. "Someone is claiming your funds" (가장 강한 각성 신호)
+ *   3) 피상속인 — 기한 임박. 갱신하라는 조기 경고
+ *   4) 상속인  — 7일 경과. 이제 인출 가능
+ *
+ * dedupe 는 단계별로 따로 기억한다. "상속인이 신청함" 알림은 owner 가 갱신으로
+ * 취소하면 다시 초기화돼야 하므로, 전체 상태가 아니라 알림 종류 단위로 관리한다.
+ */
+const ALERT = {
+  HEIR_CLAIMABLE: "heir_claimable",
+  OWNER_CLAIM_FILED: "owner_claim_filed",
+  OWNER_EXPIRING: "owner_expiring",
+  HEIR_FINALIZABLE: "heir_finalizable",
+};
+
+/** 기한 임박 기준: 주기의 20% 이내. 주기 대비 비율이라 기간 길이와 무관하다. */
+const EXPIRING_RATIO = 5n;
+const EXPIRING_DIVISOR = 100n;
+
+const decideAlerts = (snapshot, prevAlerts) => {
+  const alerts = [];
+  const balance = snapshot.vaultBalance > 0n;
+  const heirIsReal = snapshot.heirAddress && snapshot.heirAddress !== ZERO_ADDRESS;
+  const ownerIsReal = snapshot.ownerAddress && snapshot.ownerAddress !== ZERO_ADDRESS;
+  // 상속 취소(heir = owner)면 상속인이 따로 없으므로 상속인 알림을 보내지 않는다.
+  const cancelled = snapshot.cancelled === true || !heirIsReal;
+
+  if (!balance || !ownerIsReal) return { alerts, reason: "empty_or_no_owner" };
+
+  // 이미 상속이 끝났으면 더 알릴 것이 없다.
+  if (snapshot.claimedAt && snapshot.claimedAt > 0n) {
+    return { alerts, reason: "already_settled" };
+  }
+
+  // 2) 상속인이 신청했다 — 피상속인에게. 이게 제일 급하다.
+  //
+  // `claimPending` 로 판정하고 `challengeRunning` 은 보지 않는다 — 스냅샷이 그 값을
+  // 반환하지 않아 조건이 영영 false 가 되고, 가장 중요한 알림이 조용히 사라진다.
+  // (단위 테스트가 이걸 잡았다)
+  //
+  // 단 `claimableNow` 이면 이미 7일이 지나 되돌릴 수 없다. 그 뒤에도 같은 알림을
+  // 보내면 소음이므로 제외한다.
+  if (snapshot.claimPending === true && snapshot.claimableNow !== true) {
+    if (!prevAlerts[ALERT.OWNER_CLAIM_FILED]) {
+      const endsAt = snapshot.challengeEndsAt
+        ? new Date(Number(snapshot.challengeEndsAt) * 1000).toISOString()
+        : null;
+      alerts.push({
+        kind: ALERT.OWNER_CLAIM_FILED,
+        to: snapshot.ownerAddress,
+        title: "A claim was filed on your vault",
+        message: endsAt
+          ? `Your heir can withdraw unless you renew before ${endsAt}.`
+          : "Your heir can withdraw unless you renew during the review window.",
+      });
+    }
+  }
+
+  if (cancelled) return { alerts, reason: "cancelled" };
+
+  // 1) 카운트다운 종료, 아직 신청 없음 — 상속인에게. 지금이 행동할 수 있는 유일한 시점.
+  if (snapshot.isExpired === true && snapshot.claimPending !== true) {
+    if (!prevAlerts[ALERT.HEIR_CLAIMABLE]) {
+      alerts.push({
+        kind: ALERT.HEIR_CLAIMABLE,
+        to: snapshot.heirAddress,
+        title: "You can claim an inheritance",
+        message: "A vault that named you as heir has finished its countdown. Open the app to file your claim.",
+      });
+    }
+  }
+
+  // 4) 7일 경과 — 상속인에게 이제 인출 가능.
+  if (snapshot.claimableNow === true) {
+    if (!prevAlerts[ALERT.HEIR_FINALIZABLE]) {
+      alerts.push({
+        kind: ALERT.HEIR_FINALIZABLE,
+        to: snapshot.heirAddress,
+        title: "Your inheritance is ready to withdraw",
+        message: "The review window has passed. Open the app to withdraw.",
+      });
+    }
+  }
+
+  // 3) 기한 임박 — 피상속인에게. 주기 대비 비율.
+  if (
+    snapshot.isExpired !== true &&
+    snapshot.timeRemaining !== null &&
+    snapshot.heartbeatInterval !== null &&
+    snapshot.heartbeatInterval > 0n
+  ) {
+    const threshold = (snapshot.heartbeatInterval * EXPIRING_RATIO) / EXPIRING_DIVISOR;
+    if (snapshot.timeRemaining <= threshold) {
+      if (!prevAlerts[ALERT.OWNER_EXPIRING]) {
+        alerts.push({
+          kind: ALERT.OWNER_EXPIRING,
+          to: snapshot.ownerAddress,
+          title: "Your vault is about to expire",
+          message: "Renew the countdown or your heir can file a claim.",
+        });
+      }
+    }
+  }
+
+  return { alerts, reason: alerts.length ? "pending" : "nothing_to_say" };
+};
+
 const checkWatcher = async (env, watcher) => {
   const stamp = nowIso();
+  let lastErrorSeen = null;
   try {
     const snapshot = await getVaultSnapshot(env, watcher.vaultAddress);
+    const prevAlerts = parseAlerts(watcher.alerts);
+
     const next = {
       ...watcher,
       ownerAddress: snapshot.ownerAddress,
@@ -389,38 +590,54 @@ const checkWatcher = async (env, watcher) => {
       active: true,
       updatedAt: stamp,
       lastCheckedAt: stamp,
-      lastClaimable: snapshot.canClaim,
+      lastClaimable: snapshot.claimableNow === true,
       lastVaultBalance: snapshot.vaultBalance.toString(),
       lastError: null,
     };
 
-    if (!snapshot.canClaim) {
-      next.notifiedHeirAddress = null;
-      next.notifiedAt = null;
-      await saveWatcher(env, next);
-      return { notified: false, reason: "not_claimable" };
+    // 상태가 원래대로 돌아오면(갱신으로 신청 취소 등) 해당 단계의 dedupe 를 푼다.
+    // 그래야 같은 알림이 필요할 때 다시 간다.
+    if (snapshot.ownerStillActive !== false || snapshot.claimPending !== true) {
+      delete prevAlerts[ALERT.OWNER_CLAIM_FILED];
+    }
+    if (snapshot.isExpired !== true || snapshot.claimPending === true) {
+      delete prevAlerts[ALERT.HEIR_CLAIMABLE];
+    }
+    if (snapshot.timeRemaining === null || snapshot.timeRemaining > (snapshot.heartbeatInterval || 0n)) {
+      delete prevAlerts[ALERT.OWNER_EXPIRING];
+    }
+    if (snapshot.claimableNow !== true || snapshot.claimPending !== true) {
+      delete prevAlerts[ALERT.HEIR_FINALIZABLE];
     }
 
-    if (snapshot.vaultBalance <= 0n) {
+    const { alerts, reason } = decideAlerts(snapshot, prevAlerts);
+    next.alerts = prevAlerts;
+
+    if (!alerts.length) {
       await saveWatcher(env, next);
-      return { notified: false, reason: "empty_balance" };
+      return { notified: false, reason };
     }
 
-    if (next.notifiedHeirAddress && addrEq(next.notifiedHeirAddress, snapshot.heirAddress)) {
-      await saveWatcher(env, next);
-      return { notified: false, reason: "already_notified" };
+    const sent = [];
+    for (const a of alerts) {
+      try {
+        await sendWorldNotification(env, {
+          walletAddress: a.to,
+          title: a.title,
+          message: a.message,
+          miniAppPath: `/?vault=${snapshot.vaultAddress}`,
+        });
+        prevAlerts[a.kind] = stamp;
+        sent.push(a.kind);
+      } catch (error) {
+        // 한 건이 실패해도 나머지는 보낸다. 다음 주기에 재시도된다.
+        lastErrorSeen = error instanceof Error ? error.message : String(error);
+      }
     }
-
-    await sendWorldNotification(env, {
-      walletAddress: snapshot.heirAddress,
-      title: "Inheritance claim is ready",
-      message: "A vault that named you as heir is now claimable.",
-      miniAppPath: `/?vault=${snapshot.vaultAddress}`,
-    });
-    next.notifiedHeirAddress = snapshot.heirAddress;
-    next.notifiedAt = stamp;
+    next.alerts = prevAlerts;
+    next.lastError = sent.length === alerts.length ? null : lastErrorSeen;
     await saveWatcher(env, next);
-    return { notified: true, reason: "sent" };
+    return { notified: sent.length > 0, reason: "sent", sent };
   } catch (error) {
     const next = {
       ...watcher,

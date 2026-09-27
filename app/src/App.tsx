@@ -2113,9 +2113,14 @@ export default function App() {
                   the slot releases, and you can create a new one.
                 </div>
                 <div className="text-gray-500">
-                  A vault itself cannot be deleted, and it cannot be deleted while it holds
-                  WLD after the countdown ends: at that point the balance belongs to your heir
-                  to withdraw. There is no path where anyone takes a cut.
+                  A vault cannot be deleted. To start a new one, the old vault has to be
+                  finished and empty — then the slot releases.
+                </div>
+                <div className="text-gray-500">
+                  If the countdown ends with WLD still inside, nothing moves on its own. Your
+                  heir has to file a claim, which starts a 7-day window where you can still
+                  renew and stop it. If you do not renew in those 7 days, they withdraw the
+                  balance. No one takes a cut.
                 </div>
               </div>
               </CardContent>

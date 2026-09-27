@@ -8,8 +8,8 @@ crons = ["* * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "world-inheritance-notify"
-# Replace with your real D1 database_id from `wrangler d1 create`.
-database_id = "00000000-0000-0000-0000-000000000000"
+# 2026-09-27 에 wrangler d1 create 로 실제 생성.
+database_id = "3f42cdf7-9a53-409a-8f59-b27ef8ee631a"
 migrations_dir = "migrations"
 
 [vars]
