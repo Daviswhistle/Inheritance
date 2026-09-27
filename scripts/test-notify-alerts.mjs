@@ -22,9 +22,25 @@ const start = src.indexOf("const ALERT = {");
 const end = src.indexOf("const checkWatcher = async");
 assert.ok(start > 0 && end > start, "decideAlerts 블록을 찾지 못했다");
 const zeroAt = src.indexOf("const ZERO_ADDRESS");
-const extracted = src.slice(zeroAt, zeroAt + 200).split(String.fromCharCode(10)).slice(0,2).join(String.fromCharCode(10)) + String.fromCharCode(10) + src.slice(start, end);
-writeFileSync(resolve(here, ".alerts-extract.mjs"), extracted + "\nexport { decideAlerts, ALERT };\n");
-const { decideAlerts, ALERT } = await import(resolve(here, ".alerts-extract.mjs"));
+const zeroLine = src.slice(zeroAt).split("\n")[0];
+
+// readDelivery 는 checkWatcher 뒤쪽(전송 헬퍼 근처)에 있으므로 따로 뺀다.
+const rdStart = src.indexOf("const readDelivery = (res, walletAddress) => {");
+const rdEnd = src.indexOf("const sendWorldNotification = async");
+assert.ok(rdStart > 0 && rdEnd > rdStart, "readDelivery 블록을 찾지 못했다");
+
+const extracted = [
+  zeroLine,
+  src.slice(start, end),
+  src.slice(rdStart, rdEnd),
+].join("\n");
+writeFileSync(
+  resolve(here, ".alerts-extract.mjs"),
+  extracted + "\nexport { decideAlerts, shouldSend, markAlert, readDelivery, ALERT };\n",
+);
+const { decideAlerts, shouldSend, markAlert, readDelivery, ALERT } = await import(
+  resolve(here, ".alerts-extract.mjs")
+);
 
 const OWNER = "0x1111111111111111111111111111111111111111";
 const HEIR = "0x2222222222222222222222222222222222222222";
@@ -141,6 +157,81 @@ check("알림 대상이 올바른 주체로 간다", () => {
 check("알림 문구에 이의제기 기한이 들어간다", () => {
   const a = decideAlerts({ ...base, claimPending: true, challengeEndsAt: 1_800_000_000n }, {}).alerts[0];
   assert.match(a.message, /2027/, "기한 날짜가 메시지에 포함돼야 한다");
+});
+
+// ------------------------------------------------- 전달 결과 판정 (실측에서 발견된 함정)
+//
+// 알림 API 는 200 을 주면서 동시에 sent:false 를 준다. 월드앱을 설치하지 않은
+// 지갑이면 "User not found" 다. 예전 코드는 res.ok 만 봐서 이것을 성공으로
+// 세었고, 그 결과 dedupe 키가 영구히 찍혀 상속인은 알림을 다시 못 받았다.
+
+check("200 + sent:true → 전달로 인정", () => {
+  const r = readDelivery({ success: true, result: [{ walletAddress: HEIR, sent: true }] }, HEIR);
+  assert.equal(r.delivered, true);
+});
+
+check("200 + sent:false → 전달 실패로 인정 (이게 핵심)", () => {
+  const r = readDelivery(
+    { success: true, result: [{ walletAddress: HEIR, sent: false, reason: "User not found" }] },
+    HEIR,
+  );
+  assert.equal(r.delivered, false, "200 이어도 미전달은 미전달이다");
+  assert.equal(r.reason, "User not found");
+});
+
+check("주소 대소문자 무관하게 자기 행을 찾는다", () => {
+  const r = readDelivery(
+    { success: true, result: [{ walletAddress: HEIR.toLowerCase(), sent: true }] },
+    HEIR,
+  );
+  assert.equal(r.delivered, true);
+});
+
+check("결과 행이 없으면 실패로 잡는다 (낙관적 판정 금지)", () => {
+  const r = readDelivery({ success: true, result: [] }, HEIR);
+  assert.equal(r.delivered, false);
+});
+
+check("결과의 delivered:false 는 24시간 뒤에 다시 보낸다", () => {
+  const now = Date.parse("2026-09-27T00:00:00Z");
+  const prev = {};
+  markAlert(prev, ALERT.HEIR_CLAIMABLE, new Date(now).toISOString(), false, "User not found");
+  assert.equal(shouldSend(prev, ALERT.HEIR_CLAIMABLE, now + 60_000), false, "재시도 간격 안이면 안 보낸다");
+  assert.equal(shouldSend(prev, ALERT.HEIR_CLAIMABLE, now + 25 * 3600_000), true, "하루 지나면 다시 보낸다");
+});
+
+check("sent:false 였어도 상태가 그대로면 매 분 재시도하지 않는다", () => {
+  // 1분 간격 cron 이므로 이게 안 막히면 분당 1440회 호출이 된다.
+  const now = Date.parse("2026-09-27T00:00:00Z");
+  const prev = {};
+  markAlert(prev, ALERT.OWNER_EXPIRING, new Date(now).toISOString(), false, "User not found");
+  let calls = 0;
+  for (let m = 1; m <= 60; m += 1) {
+    if (shouldSend(prev, ALERT.OWNER_EXPIRING, now + m * 60_000)) calls += 1;
+  }
+  assert.equal(calls, 0, "한 시간 동안 재시도 0회여야 한다");
+});
+
+check("전달 성공 기록도 24시간 뒤면 재무장된다", () => {
+  const now = Date.parse("2026-09-27T00:00:00Z");
+  const prev = {};
+  markAlert(prev, ALERT.HEIR_FINALIZABLE, new Date(now).toISOString(), true);
+  assert.equal(shouldSend(prev, ALERT.HEIR_FINALIZABLE, now + 3600_000), false);
+  assert.equal(shouldSend(prev, ALERT.HEIR_FINALIZABLE, now + 25 * 3600_000), true);
+});
+
+check("옛 형식(문자열) 기록은 보낸 것으로 간주 — 즉시 재전송하지 않는다", () => {
+  const prev = { [ALERT.OWNER_CLAIM_FILED]: "2026-01-01T00:00:00Z" };
+  assert.equal(shouldSend(prev, ALERT.OWNER_CLAIM_FILED, Date.parse("2026-01-01T00:10:00Z")), false);
+});
+
+check("기록이 깨졌으면 보내는 쪽으로 (조용히 삼키지 않는다)", () => {
+  const prev = { [ALERT.OWNER_EXPIRING]: { at: "not-a-date" } };
+  assert.equal(shouldSend(prev, ALERT.OWNER_EXPIRING, Date.now()), true);
+});
+
+check("기록이 아예 없으면 보낸다", () => {
+  assert.equal(shouldSend({}, ALERT.HEIR_CLAIMABLE, Date.now()), true);
 });
 
 // ---------------------------------------------------------------- 결과

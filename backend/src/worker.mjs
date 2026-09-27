@@ -1,5 +1,8 @@
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
-const SEND_NOTIFICATION_URL = "https://developer.worldcoin.org/api/v2/minikit/send-notification";
+// 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
+// (한동안 옛 코드가 도는 것 같아 이 필드로 판별했다).
+const CODE_VERSION = "two-step-1";
+const SEND_NOTIFICATION_URL = "https://developer.world.org/api/v2/minikit/send-notification";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -428,7 +431,38 @@ const upsertWatcherFromSnapshot = async (env, snapshot) => {
   return watcher;
 };
 
-const sendWorldNotification = async (env, { walletAddress, title, message, miniAppPath = "/" }) => {
+/**
+ * 월드앱 딥링크.
+ *
+ * 형식이 엄격하다. `/?vault=0x...` 같은 상대경로는 매번
+ * "mini_app_path must be a valid WorldApp or World ID deeplink" 로 거절된다.
+ * 반드시 `worldapp://mini-app?app_id=app_...` 여야 하고, 뒤에 파라미터를
+ * 덧붙이는 것은 허용된다 (그래서 금고 주소를 함께 실었다).
+ */
+const miniAppDeepLink = (appId, vaultAddress) => {
+  const base = `worldapp://mini-app?app_id=${appId}`;
+  return vaultAddress ? `${base}&vault=${vaultAddress}` : base;
+};
+
+/**
+ * API 응답에서 "실제로 전달됐는가" 를 읽는다.
+ *
+ * 응답은 { success, result: [{ walletAddress, sent, reason }] } 모양이다.
+ * 200 이어도 sent:false 가 붙으면 전달되지 않은 것이다 — 월드앱을 설치하지
+ * 않은 지갑이면 "User not found" 가 온다. 그걸 성공으로 세면 상속인은 알림을
+ * 영영 못 받는다.
+ */
+const readDelivery = (res, walletAddress) => {
+  const rows = Array.isArray(res?.result) ? res.result : [];
+  const row = rows.find(
+    (r) => typeof r?.walletAddress === "string" && r.walletAddress.toLowerCase() === walletAddress.toLowerCase(),
+  ) || rows[0];
+  if (!row) return { delivered: false, reason: "no result row" };
+  if (row.sent === true) return { delivered: true, reason: null };
+  return { delivered: false, reason: String(row.reason || "not delivered") };
+};
+
+const sendWorldNotification = async (env, { walletAddress, title, message, vaultAddress = null }) => {
   const appId = (env.WORLD_APP_ID || "").trim();
   const apiKey = (env.WORLD_NOTIFY_API_KEY || "").trim();
   if (!appId || !appId.startsWith("app_")) {
@@ -443,20 +477,42 @@ const sendWorldNotification = async (env, { walletAddress, title, message, miniA
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      // User-Agent 를 반드시 명시한다. 이 API 앞단의 WAF 는 UA 가 없는 요청을
+      // 403 으로 막는다 — 본문 없는 nginx 403 HTML 이 돌아온다.
+      //
+      // Workers 런타임의 fetch 는 기본적으로 UA 를 보내지 않아서 이 요청이 전부
+      // 403 이었다. 같은 머신에서 curl 로 테스트하면 200 이라 "키가 잘못됐나"
+      // 로 오해하기 쉽다. UA 가 문제인지 IP 가 문제인지는 UA 만 바꿔 보면 갈린다.
+      "User-Agent": "world-inheritance-notify/1.0 (+https://inheritance.pages.dev)",
     },
     body: JSON.stringify({
       app_id: appId,
       wallet_addresses: [walletAddress],
       title,
       message,
-      mini_app_path: miniAppPath,
+        mini_app_path: miniAppDeepLink(appId, vaultAddress),
     }),
   });
 
-  const data = await res.json().catch(() => ({}));
+  // 본문을 그대로 붙잡는다. JSON 이 아닐 수 있다 — 앞단에 막히면 HTML 이 온다.
+  // res.json().catch(() => ({})) 로 삼키면 "Notification API failed (403)" 만
+  // 남고 원인을 알 방법이 없다. 실제로 그랬다.
+  const raw = await res.text().catch(() => "");
+  let data = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = {};
+  }
   if (!res.ok) {
-    const msg = data?.detail || data?.message || data?.error || `Notification API failed (${res.status})`;
-    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    const code = data?.code ? `[${data.code}]` : "";
+    const detail = data?.detail || data?.message || data?.error;
+    const body = detail
+      ? (typeof detail === "string" ? detail : JSON.stringify(detail))
+      : (raw ? `non-JSON body: ${raw.slice(0, 300)}` : "empty body");
+    throw new Error(
+      `Notification API ${res.status} ${code} | ${body} | host=${new URL(SEND_NOTIFICATION_URL).host}`,
+    );
   }
   return data;
 };
@@ -484,11 +540,43 @@ const ALERT = {
   HEIR_FINALIZABLE: "heir_finalizable",
 };
 
+/**
+ * 알림 재시도 간격.
+ *
+ * 이 값이 dedupe 를 성립시키는지 결정한다. 예전에는 "한 번이라도 시도를 했으면"
+ * 로 기록했는데, 그건 전송 실패를 성공으로 취급하는 셈이 된다 — API 는
+ * delivered 를 `sent: false` 로 200 과 함께 돌려주는데 예전 코드는 예외 없이
+ * 성공으로 봤다. 그랬더니 월드앱을 아직 설치하지 않은 상속인은 영영 알림을
+ * 못 받았다. 기록은 남기고 하루 뒤에 다시 시도한다.
+ */
+const ALERT_RETRY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 이 알림을 지금 보낼 수 있는가.
+ *
+ * 상태가 되돌아가면(갱신으로 신청 취소 등) checkWatcher 가 기록을 지우므로
+ * 즉시 다시 armed 된다. 여기서는 그 사이에 같은 단계를 몇 번 반복했는지만 본다.
+ */
+const shouldSend = (prevAlerts, kind, nowMs) => {
+  const rec = prevAlerts[kind];
+  if (!rec) return true;
+  // 옛 형식(ISO 문자열) — 한 번 보냈다고 본다.
+  if (typeof rec === "string") return false;
+  const at = Date.parse(rec.at || "");
+  if (!Number.isFinite(at)) return true;
+  return nowMs - at >= ALERT_RETRY_MS;
+};
+
+/** 시도 결과를 기록한다. 실패도 기록한다 — 그래야 ��마다 재시도하지 않는다. */
+const markAlert = (prevAlerts, kind, stamp, delivered, reason = null) => {
+  prevAlerts[kind] = delivered ? { at: stamp, delivered: true } : { at: stamp, delivered: false, reason };
+};
+
 /** 기한 임박 기준: 주기의 20% 이내. 주기 대비 비율이라 기간 길이와 무관하다. */
 const EXPIRING_RATIO = 5n;
 const EXPIRING_DIVISOR = 100n;
 
-const decideAlerts = (snapshot, prevAlerts) => {
+const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
   const alerts = [];
   const balance = snapshot.vaultBalance > 0n;
   const heirIsReal = snapshot.heirAddress && snapshot.heirAddress !== ZERO_ADDRESS;
@@ -512,7 +600,7 @@ const decideAlerts = (snapshot, prevAlerts) => {
   // 단 `claimableNow` 이면 이미 7일이 지나 되돌릴 수 없다. 그 뒤에도 같은 알림을
   // 보내면 소음이므로 제외한다.
   if (snapshot.claimPending === true && snapshot.claimableNow !== true) {
-    if (!prevAlerts[ALERT.OWNER_CLAIM_FILED]) {
+    if (shouldSend(prevAlerts, ALERT.OWNER_CLAIM_FILED, nowMs)) {
       const endsAt = snapshot.challengeEndsAt
         ? new Date(Number(snapshot.challengeEndsAt) * 1000).toISOString()
         : null;
@@ -531,7 +619,7 @@ const decideAlerts = (snapshot, prevAlerts) => {
 
   // 1) 카운트다운 종료, 아직 신청 없음 — 상속인에게. 지금이 행동할 수 있는 유일한 시점.
   if (snapshot.isExpired === true && snapshot.claimPending !== true) {
-    if (!prevAlerts[ALERT.HEIR_CLAIMABLE]) {
+    if (shouldSend(prevAlerts, ALERT.HEIR_CLAIMABLE, nowMs)) {
       alerts.push({
         kind: ALERT.HEIR_CLAIMABLE,
         to: snapshot.heirAddress,
@@ -543,7 +631,7 @@ const decideAlerts = (snapshot, prevAlerts) => {
 
   // 4) 7일 경과 — 상속인에게 이제 인출 가능.
   if (snapshot.claimableNow === true) {
-    if (!prevAlerts[ALERT.HEIR_FINALIZABLE]) {
+    if (shouldSend(prevAlerts, ALERT.HEIR_FINALIZABLE, nowMs)) {
       alerts.push({
         kind: ALERT.HEIR_FINALIZABLE,
         to: snapshot.heirAddress,
@@ -562,7 +650,7 @@ const decideAlerts = (snapshot, prevAlerts) => {
   ) {
     const threshold = (snapshot.heartbeatInterval * EXPIRING_RATIO) / EXPIRING_DIVISOR;
     if (snapshot.timeRemaining <= threshold) {
-      if (!prevAlerts[ALERT.OWNER_EXPIRING]) {
+      if (shouldSend(prevAlerts, ALERT.OWNER_EXPIRING, nowMs)) {
         alerts.push({
           kind: ALERT.OWNER_EXPIRING,
           to: snapshot.ownerAddress,
@@ -610,7 +698,7 @@ const checkWatcher = async (env, watcher) => {
       delete prevAlerts[ALERT.HEIR_FINALIZABLE];
     }
 
-    const { alerts, reason } = decideAlerts(snapshot, prevAlerts);
+    const { alerts, reason } = decideAlerts(snapshot, prevAlerts, Date.parse(stamp));
     next.alerts = prevAlerts;
 
     if (!alerts.length) {
@@ -619,25 +707,39 @@ const checkWatcher = async (env, watcher) => {
     }
 
     const sent = [];
+    const undelivered = [];
     for (const a of alerts) {
+      // 수신자별로 결과를 봐야 한다. API 는 "요청이 유효했다" 는 200 과
+      // "이 지갑에는 전달하지 못했다" 는 sent:false 를 함께 돌려준다.
+      // 지갑 단위로 판정하므로 수신자 여럿을 한 번에 넘길 수 없다.
       try {
-        await sendWorldNotification(env, {
+        const res = await sendWorldNotification(env, {
           walletAddress: a.to,
           title: a.title,
           message: a.message,
-          miniAppPath: `/?vault=${snapshot.vaultAddress}`,
+          vaultAddress: snapshot.vaultAddress,
         });
-        prevAlerts[a.kind] = stamp;
-        sent.push(a.kind);
+        const outcome = readDelivery(res, a.to);
+        markAlert(prevAlerts, a.kind, stamp, outcome.delivered, outcome.reason);
+        if (outcome.delivered) {
+          sent.push(a.kind);
+        } else {
+          undelivered.push(`${a.kind}: ${outcome.reason}`);
+        }
       } catch (error) {
-        // 한 건이 실패해도 나머지는 보낸다. 다음 주기에 재시도된다.
-        lastErrorSeen = error instanceof Error ? error.message : String(error);
+        // 한 건이 실패해도 나머지는 보낸다.
+        const msg = error instanceof Error ? error.message : String(error);
+        markAlert(prevAlerts, a.kind, stamp, false, msg);
+        undelivered.push(`${a.kind}: ${msg}`);
+        lastErrorSeen = msg;
       }
     }
     next.alerts = prevAlerts;
-    next.lastError = sent.length === alerts.length ? null : lastErrorSeen;
+    // 미달한 게 있으면 반드시 드러낸다. 조용히 성공한 것처럼 보이면
+    // "알림이 없다" 는 사실을 아무도 모르게 된다.
+    next.lastError = undelivered.length ? `undelivered ${undelivered.join("; ")}` : null;
     await saveWatcher(env, next);
-    return { notified: sent.length > 0, reason: "sent", sent };
+    return { notified: sent.length > 0, reason: "sent", sent, undelivered };
   } catch (error) {
     const next = {
       ...watcher,
@@ -685,6 +787,7 @@ const handleRequest = async (request, env) => {
         watchers,
         hasWorldAppId: Boolean((env.WORLD_APP_ID || "").trim()),
         hasNotifyApiKey: Boolean((env.WORLD_NOTIFY_API_KEY || "").trim()),
+        codeVersion: CODE_VERSION,
       },
       cors.headers
     );
@@ -778,13 +881,12 @@ const handleRequest = async (request, env) => {
     const title = typeof body?.title === "string" && body.title ? body.title : "WLD Inheritance Test";
     const message =
       typeof body?.message === "string" && body.message ? body.message : "Test notification from your mini app.";
-    const miniAppPath = vaultAddress ? `/?vault=${vaultAddress}` : "/";
 
     const result = await sendWorldNotification(env, {
       walletAddress,
       title,
       message,
-      miniAppPath,
+        vaultAddress,
     });
     return jsonResponse(200, { status: "success", result }, cors.headers);
   }
