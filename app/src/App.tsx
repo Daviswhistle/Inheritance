@@ -18,7 +18,7 @@ import {
   WLD_ADDRESS,
 } from "@/config";
 import { signInWithWorldApp, readSessionAddress, clearSession } from "@/auth";
-import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit } from "@/minikit";
+import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit, sendWorldChat, pickWorldContacts } from "@/minikit";
 
 // ===== WLD-only factory/vault ABI
 //
@@ -307,6 +307,19 @@ export default function App() {
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
   const [heirFoundVaults, setHeirFoundVaults] = useState<string[]>([]);
   const [findingHeirVaults, setFindingHeirVaults] = useState<boolean>(false);
+  /** 상속인의 월드챗 유저네임 — 월드챗으로 직접 보내려면 필요하다. */
+  const [heirVaultUsername, setHeirVaultUsername] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState<boolean>(false);
+  /**
+   * 상속인 스캔을 이미 시도했는가.
+   *
+   * 월드앱 알림은 앱을 설치하지 않은 지갑에 도달하지 못한다("User not found").
+   * 즉 상속인이 자기가 상속인이라는 사실을 알게 하는 경로는 두 개뿐이다:
+   * 주인이 직접 알려주거나, 상속인이 스스로 앱을 여는 것. 두 번째 경로에서
+   * 사용자가 "Find my vaults" 버튼을 먼저 알아채야만 했다면 대부분은
+   * 모른다. 그래서 내 금고가 없는 계정은 열자마자 스스로 조회한다.
+   */
+  const [heirScanAttempted, setHeirScanAttempted] = useState<boolean>(false);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [miniInstalled, setMiniInstalled] = useState<boolean>(false);
   type ToastType = 'info' | 'success' | 'error';
@@ -729,6 +742,46 @@ export default function App() {
       void 0;
     }
   }, []);
+
+  /** 상속인의 월드챗 유저네임을 되돌린다. 지갑만 있어도 찾을 수 있다. */
+  useEffect(() => {
+    let cancelled = false;
+    if (!vaultHeir || vaultHeir === ethers.ZeroAddress) {
+      setHeirVaultUsername(null);
+      return;
+    }
+    void getUsernameFor(vaultHeir).then((u) => {
+      if (!cancelled) setHeirVaultUsername(u || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultHeir]);
+
+  /**
+   * 상속인이 앱을 열자마자 자기가 상속인인지 알 수 있게 한다.
+   *
+   * 월드앱 알림은 이 미니앱을 깔지 않은 지갑에 닿지 않는다. 그래서 상속인이
+   * 알게 되는 경로는 주인이 알려주거나, 스스로 여는 것뿐이다. 그런데
+   * "Find my vaults" 버튼을 먼저 알아채야만 했다면 대부분은 모른다.
+   * 내 금고가 없는 계정은 열자마자 스스로 조회한다.
+   *
+   * `findHeirVaults` 는 매 렌더 새로 만들어지므로 의존 배열에 넣을 수 없다.
+   * 대신 계정별로 한 번만 도는 것을 ref 로 강제한다 — 상태로 쓰면 렌더마다
+   * 갱신되어 effect 가 다시 걸린다.
+   */
+  const heirScannedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!account || vault) return;
+    const key = account.toLowerCase();
+    if (heirScannedFor.current === key) return;
+    heirScannedFor.current = key;
+    void findHeirVaults();
+    setHeirScanAttempted(true);
+    // findHeirVaults 는 매 렌더 새로 만들어지므로 넣으면 effect 가 계속 돌아간다.
+    // 중복 실행은 위 ref 가 막는다 — 계정당 한 번.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, vault]);
 
   useEffect(() => {
     refreshNotifyPermission();
@@ -1183,6 +1236,87 @@ export default function App() {
       else if (/insufficient funds/i.test(raw)) friendly = 'Insufficient gas on World Chain (ETH needed for fees).';
       setStatus("Create error: " + friendly);
       pushToast('error', friendly);
+    }
+  };
+
+  // ---- 주인이 상속인에게 보낼 링크/문구
+  //
+  // 월드앱 알림은 이 미니앱을 설치하지 않은 지갑에 도달하지 못한다. 그래서
+  // 상속인이 알게 되는 유일한 확실한 경로는 주인이 직접 보내는 링크다.
+  // 앱이 설치되어 있든 없든 이 링크는 통한다.
+  const heirLink = vault ? `${window.location.origin}/?vault=${vault}` : "";
+  const heirMessage = vault && vaultHeir
+    ? [
+        `You are named as the heir of a WLD vault.`,
+        ``,
+        `Open this link in World App to see it: ${heirLink}`,
+        ``,
+        `What it means: if the person who named you stops renewing it, the countdown ends and nothing`,
+        `moves on its own. You would file a claim, they would then have 7 days to renew and stop it,`,
+        `and only after those 7 days could you withdraw. If you have not been contacted before that`,
+        `point, nothing is owed to you yet.`,
+        ``,
+        `Vault: ${vault}`,
+      ].join("\n")
+    : "";
+
+  /**
+   * 상속인의 월드챗 유저네임.
+   *
+   * 컨트랙트에는 지갑 주소만 저장되므로 유저네임은(chain 에서) 되돌려야 한다.
+   * 이게 있어야 월드챗으로 직접 보낼 수 있다 — 유저네임이 없으면 월드챗은
+   * 주소로는 닿지 못하고 링크를 쓰는 방법밖에 없다.
+   */
+  const heirUsername = heirVaultUsername;
+
+  const tellHeirInChat = async () => {
+    if (!heirMessage) return;
+    setShareBusy(true);
+    const res = await sendWorldChat(heirMessage, heirUsername ? [heirUsername] : []);
+    setShareBusy(false);
+    if (res.delivered) {
+      pushToast("success", "Sent in World Chat.");
+    } else {
+      // 월드챗은 월드앱 유저만 닿는다. 그 외에는 링크가 유일한 통로다.
+      pushToast("error", "World Chat is not available for this recipient — send them the link below instead.");
+    }
+  };
+
+  const copyToClipboard = async (text: string, what: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      pushToast("success", `${what} copied.`);
+      return true;
+    } catch {
+      pushToast("error", "Could not copy — the text is shown on screen, select it manually.");
+      return false;
+    }
+  };
+
+  const copyHeirLink = () => (heirLink ? void copyToClipboard(heirLink, "Link") : undefined);
+  const copyHeirMessage = () =>
+    heirMessage ? void copyToClipboard(heirMessage, "Message") : undefined;
+
+  /**
+   * 월드앱 연락처에서 상속인을 고른다.
+   *
+   * 주소를 손으로 옮겨 적으면 한 글자만 틀려도 자기가 지정하지 않은 지갑이
+   * 상속인이 된다. 연락처에서 고르면 지갑 주소가 함께 와서 그 위험이 없다.
+   */
+  const pickHeirFromContacts = async () => {
+    setShareBusy(true);
+    try {
+      const picked = await pickWorldContacts(
+        "Join me on a WLD inheritance vault in World App.",
+      );
+      const first = picked?.[0];
+      if (!first?.walletAddress) {
+        // 월드앱 밖이거나 사용자가 취소했다. 주소를 직접 넣는 경로가 남는다.
+        return;
+      }
+      onHeirInput(first.username ? `@${first.username}` : first.walletAddress);
+    } finally {
+      setShareBusy(false);
     }
   };
 
@@ -2138,6 +2272,9 @@ export default function App() {
                 </label>
                 <div className="field-row-controls">
                   <Input id="heir-input" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
+                  <Button size="sm" onClick={pickHeirFromContacts} disabled={shareBusy}>
+                    {shareBusy ? "…" : "Pick"}
+                  </Button>
                 </div>
               </div>
               {heir && (
@@ -2201,31 +2338,88 @@ export default function App() {
         */}
         {tab === "inherit" && !isMyVault && account && gate2(
           <Card>
-            <CardHeader><CardTitle>Looking for a vault you are heir to?</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Are you named as someone's heir?</CardTitle></CardHeader>
             <CardContent className="grid gap-2">
               <div className="text-xs text-gray-600">
-                If someone named you as their heir, search for it here. Scanning takes a moment
-                because it reads the chain history.
+                This app checks the chain for you as soon as you open it. Scanning reads the
+                factory's history, so it takes a moment.
               </div>
+              {findingHeirVaults ? (
+                <div className="text-xs text-gray-600">Checking the chain for vaults that name you…</div>
+              ) : heirScanAttempted ? (
+                heirFoundVaults.length > 0 ? (
+                  <>
+                    <div className="text-sm font-medium">
+                      You are the heir of {heirFoundVaults.length} vault{heirFoundVaults.length > 1 ? "s" : ""}.
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Open one to see whether the countdown has ended and whether you can file a claim.
+                      Nothing is owed to you until the countdown runs out and you file — see the Inherit tab.
+                    </div>
+                    <div className="grid gap-2 text-xs">
+                      {heirFoundVaults.map((v) => (
+                        <div key={v} className="flex items-center justify-between gap-2">
+                          <span className="break-all">{short(v)}</span>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" onClick={() => setVault(v)}>Open</Button>
+                            <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">View</a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm font-medium">No vault names you as heir.</div>
+                )
+              ) : null}
               <div className="flex items-center gap-2 flex-wrap">
                 <Button onClick={findHeirVaults} disabled={findingHeirVaults}>
-                  {findingHeirVaults ? "Searching..." : "Find my vaults"}
+                  {findingHeirVaults ? "Searching..." : "Check again"}
                 </Button>
-                {heirFoundVaults.length > 0 && <span className="text-xs text-gray-600">Found {heirFoundVaults.length} match{heirFoundVaults.length > 1 ? "es" : ""}</span>}
               </div>
-              {heirFoundVaults.length >= 1 && (
-                <div className="grid gap-2 text-xs">
-                  {heirFoundVaults.map((v) => (
-                    <div key={v} className="flex items-center justify-between gap-2">
-                      <span className="break-all">{short(v)}</span>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" onClick={() => setVault(v)}>Open</Button>
-                        <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">View</a>
-                      </div>
-                    </div>
-                  ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ===== 주인이 상속인에게 보낼 수 있는 링크 =====
+            월드앱 알림은 이 미니앱을 깔지 않은 지갑에 닿지 않는다("User not found").
+            상속인 단말에 뭐가 깔려 있든 통하는 유일한 채널은 주인이 직접 보내는 링크다.
+            이게 없으면 "상속인으로 지정된 사실" 자체가 상속인에게 전달되지 않는다. */}
+        {tab === "inherit" && isMyVault && vault && vaultHeir && gate2(
+          <Card>
+            <CardHeader><CardTitle>Tell your heir</CardTitle></CardHeader>
+            <CardContent className="grid gap-2">
+              <div className="text-xs text-gray-600">
+                A notification only reaches a wallet that has already opened World App. Your heir
+                may never open it, so do not rely on one — tell them yourself.
+              </div>
+              {heirUsername ? (
+                <>
+                  <div className="text-sm font-medium">Send in World Chat</div>
+                  <div className="text-xs text-gray-600">
+                    Reaches @{heirUsername} inside World App, whether or not they have ever opened
+                    this app. Tapping the message opens the vault below.
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant="primary" onClick={tellHeirInChat} disabled={shareBusy}>
+                      {shareBusy ? "Sending..." : "Send in World Chat"}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-gray-600">
+                  This heir is a bare address with no World Chat username, so World Chat cannot
+                  address them. Use the link below — it works whatever they have installed.
                 </div>
               )}
+              <div className="text-xs text-gray-600">
+                Or send it any other way you already talk to them:
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button onClick={copyHeirLink}>Copy link</Button>
+                <Button onClick={copyHeirMessage}>Copy message</Button>
+              </div>
+              <div className="text-xs text-gray-600 break-all">{heirLink}</div>
             </CardContent>
           </Card>
         )}

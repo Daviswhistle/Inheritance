@@ -146,6 +146,73 @@ export async function requestNotifyPermission(): Promise<unknown> {
   }
 }
 
+/* ===== 상속인에게 알리기 =====
+ *
+ * 월드앱 알림(send-notification) 은 월드앱을 쓴 지갑에만 닿는다. 실제로 이
+ * 앱의 수신 테스트는 "User not found" 로 끝났다 — 그 지갑은 월드앱을 한 번도
+ * 열지 않았기 때문이다. 상속인이 이 앱을 깔았다는 전제 없이 전달하려면
+ * 월드앱 안에 이미 있는 경로를 써야 한다.
+ *
+ * World Chat 은 월드앱 유저네임을 받는 쪽에 닿는다. 이 미니앱을 깔지 않았어도
+ * 월드챗에서 메시지를 받고, 누르면 미니앱이 열린다.
+ */
+
+export type ShareTarget = { delivered: boolean; reason?: string };
+
+/**
+ * 월드챗으로 알린다.
+ *
+ * 월드앱 유저는 받을 수 있고, 이 미니앱을 깔지 않았어도 받는다 — 대상은 지갑이
+ * 아니라 월드챗 대화이기 때문이다. `to` 에 유저네임을 주면 상속인이 직접 고르지
+ * 않아도 되고, 비워두면 월드앱이 선택 화면을 띄운다.
+ */
+export async function sendWorldChat(message: string, to: string[] = []): Promise<ShareTarget> {
+  try {
+    const { MiniKit } = await loadMiniKitModule();
+    const res = (await MiniKit.chat({ message, to })) as {
+      executedWith?: string;
+      data?: { status?: string; count?: number };
+    };
+    if (res?.executedWith === "fallback") {
+      return { delivered: false, reason: "not in World App" };
+    }
+    if (res?.data?.status === "fail") {
+      return { delivered: false, reason: "send_failed" };
+    }
+    return { delivered: true };
+  } catch (e) {
+    // 2.x 는 실패를 status 로 알리고 throw 하지 않지만, 월드앱 바깥에서는
+    // 명령 자체가 없는 예외로 나올 수 있다. 사용자에게는 복사 안내로 이어진다.
+    return { delivered: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * 월드앱 연락처 선택기를 연다.
+ *
+ * 연락처를 고르면 지갑 주소가 함께 온다. 즉 이건 "알리기"뿐 아니라
+ * 상속인 지갑 주소를 틀리지 않게 고르는 통로이기도 하다 — 사람이 주소
+ * 12자리를 옮겨 적는 것보다 훨씬 안전하다.
+ */
+export async function pickWorldContacts(
+  inviteMessage: string,
+): Promise<Array<{ username: string; walletAddress: string }>> {
+  try {
+    const { MiniKit } = await loadMiniKitModule();
+    const res = (await MiniKit.shareContacts({
+      isMultiSelectEnabled: false,
+      inviteMessage,
+    })) as {
+      executedWith?: string;
+      data?: { contacts?: Array<{ username: string; walletAddress: string }> };
+    };
+    if (res?.executedWith === "fallback") return [];
+    return res?.data?.contacts ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /** MiniKit 모듈 자체를 동적으로 불러온다. install / 유저네임 조회처럼
  *  명령이 아닌 API 를 쓸 때 쓴다. */
 export const loadMiniKit = () => import("@worldcoin/minikit-js");
