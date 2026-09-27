@@ -15,6 +15,6 @@ migrations_dir = "migrations"
 [vars]
 RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public"
 # Optional: set to exact frontend origin to restrict CORS.
-# FRONTEND_ORIGIN = "https://<your-miniapp-domain>"
+FRONTEND_ORIGIN = "https://inheritance.pages.dev"
 # Set your app id here or with: wrangler secret put WORLD_APP_ID
 # WORLD_APP_ID = "app_xxx"

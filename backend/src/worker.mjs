@@ -89,7 +89,10 @@ const encodeBalanceOf = (address) => `${SELECTORS.BALANCE_OF}${padAddress(addres
 
 const decodeAddress = (hex) => {
   if (typeof hex !== "string" || !hex.startsWith("0x") || hex.length < 42) {
-    throw new Error("Invalid encoded address");
+    // 이 주소에 컨트랙트가 없거나 함수 호출이 revert 했다. eth_call 은 둘 다 빈
+    // 결과를 돌려주므로 구분되지 않는다 — 어느 쪽이든 "여기에 금고가 없다" 고
+    // 말하는 게 호출자에게 쓸모 있는 답이다.
+    throw new Error("no contract at this address, or the call reverted");
   }
   return `0x${hex.slice(-40).toLowerCase()}`;
 };
@@ -788,6 +791,9 @@ const handleRequest = async (request, env) => {
         hasWorldAppId: Boolean((env.WORLD_APP_ID || "").trim()),
         hasNotifyApiKey: Boolean((env.WORLD_NOTIFY_API_KEY || "").trim()),
         codeVersion: CODE_VERSION,
+        // CORS 가 실제로 잠겨 있는지 확인하려고 노출한다.
+        frontendOrigin: (env.FRONTEND_ORIGIN || "").trim() || "(unset → CORS *)",
+        frontendOrigin: (env.FRONTEND_ORIGIN || "").trim() || "(unset → CORS *)",
       },
       cors.headers
     );

@@ -650,7 +650,7 @@ export default function App() {
       throw new Error(data?.message || "Failed to register notification watcher");
     }
     setNotifyWatchState("registered");
-    if (!silent) pushToast("success", "Heir claim alert is registered.");
+    if (!silent) pushToast("success", "Vault registered. You and your heir will be notified.");
   };
 
   const registerHeirAlert = async () => {
@@ -663,7 +663,7 @@ export default function App() {
       return;
     }
     if (account.toLowerCase() !== vaultOwner.toLowerCase()) {
-      pushToast("error", "Only the owner can register heir alerts.");
+      pushToast("error", "Only the owner can register alerts for this vault.");
       return;
     }
     setWatchBusy(true);
@@ -2254,13 +2254,12 @@ export default function App() {
             <CardHeader><CardTitle>World App Notifications</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm text-gray-700">
               <div className="text-xs text-gray-600">
-                Heir alerts are sent through World App notifications when a registered vault becomes claimable with a non-zero WLD balance.
+                Register this vault and World App notifies you and your heir at each point where a decision is
+                actually open: the countdown is close to ending, your heir has filed a claim, or the 7-day review
+                window has passed. Nothing is sent while the vault holds no WLD.
               </div>
               <div className="text-xs text-gray-600">
-                Backend: <b>{NOTIFY_BACKEND_ENABLED ? "connected" : "disabled (set VITE_NOTIFY_BACKEND_URL)"}</b>
-              </div>
-              <div className="text-xs text-gray-600">
-                This wallet notifications:{" "}
+                Notifications for this wallet:{" "}
                 <b>
                   {notifyPermission === "granted" ? "enabled" : notifyPermission === "denied" ? "disabled" : "unknown"}
                 </b>
@@ -2295,7 +2294,7 @@ export default function App() {
                     onClick={registerHeirAlert}
                     disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}
                   >
-                    Register heir alert
+                    Register vault alerts
                   </Button>
                 )}
                 {vault && (
