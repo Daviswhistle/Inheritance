@@ -47,7 +47,7 @@ function unwrap(err: unknown): string {
     cur = (cur as { cause?: unknown }).cause;
   }
   const uniq = [...new Set(parts)];
-  return uniq.length ? uniq[uniq.length - 1] : "알 수 없는 오류";
+  return uniq.length ? uniq[uniq.length - 1] : "Unknown error";
 }
 
 /** 사용자가 취소한 건 실패가 아니라 선택이므로 구분해 message를 남기지 않는다. */
@@ -62,7 +62,7 @@ function isUserRejection(msg: string): boolean {
  * 순서를 지켜야 한다 — 먼저 꺼내낼 승인이 없으면 transferFrom 이 revert 된다.
  */
 export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult> {
-  if (!calls.length) return { ok: false, error: "트랜잭션이 비어 있습니다", userFacing: true };
+  if (!calls.length) return { ok: false, error: "Nothing to send", userFacing: true };
   try {
     const { MiniKit } = await loadMiniKitModule();
     const transactions = calls.map((c) => ({
@@ -81,17 +81,17 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
 
     // 2.x 는 { executedWith, data } 를 돌려준다.
     if (result.executedWith === "fallback") {
-      return { ok: false, error: "이 브라우저에서는 트랜잭션을 보낼 수 없습니다", userFacing: true };
+      return { ok: false, error: "This browser cannot send transactions", userFacing: true };
     }
     const data = result.data as { userOpHash?: string; status?: string; transaction_hash?: string } | undefined;
     if (!data || data.status !== "success") {
-      return { ok: false, error: "트랜잭션이 실패했습니다", userFacing: true };
+      return { ok: false, error: "The transaction did not go through", userFacing: true };
     }
     return { ok: true, tx: { hash: data.userOpHash ?? data.transaction_hash, executedWith: result.executedWith } };
   } catch (e) {
     const msg = unwrap(e);
     if (isUserRejection(msg)) {
-      return { ok: false, error: "거래를 취소했습니다", userFacing: false };
+      return { ok: false, error: "You cancelled the transaction", userFacing: false };
     }
     return { ok: false, error: msg, userFacing: true };
   }
@@ -110,17 +110,17 @@ export async function walletAuth(nonce: string): Promise<
     const { MiniKit } = await loadMiniKitModule();
     const result = await MiniKit.walletAuth({ nonce, statement: "Sign in to Inheritance" });
     if (result.executedWith === "fallback") {
-      return { ok: false, error: "월드앱에서 로그인해 주세요", userFacing: true };
+      return { ok: false, error: "Please sign in from World App", userFacing: true };
     }
     const d = result.data as { address?: string; message?: string; signature?: string };
     if (!d?.address || !d.message || !d.signature) {
-      return { ok: false, error: "로그인 응답이 불완전합니다", userFacing: true };
+      return { ok: false, error: "The sign-in response was incomplete", userFacing: true };
     }
     return { ok: true, address: d.address, message: d.message, signature: d.signature };
   } catch (e) {
     const msg = unwrap(e);
     if (isUserRejection(msg)) {
-      return { ok: false, error: "로그인을 취소했습니다", userFacing: false };
+      return { ok: false, error: "You cancelled sign-in", userFacing: false };
     }
     return { ok: false, error: msg, userFacing: true };
   }

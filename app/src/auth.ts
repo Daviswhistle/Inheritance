@@ -65,7 +65,7 @@ export type AuthResult =
 export async function signInWithWorldApp(signature: (nonce: string) => Promise<{ ok: true; address: string; message: string; signature: string } | { ok: false; error: string; userFacing: boolean }>): Promise<AuthResult> {
   const nonce = await fetchAuthNonce();
   if (!nonce) {
-    return { ok: false, error: "인증 서버에 연결할 수 없습니다", userFacing: true };
+    return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
   }
 
   const signed = await signature(nonce);
@@ -82,17 +82,17 @@ export async function signInWithWorldApp(signature: (nonce: string) => Promise<{
     });
     const j = (await r.json()) as { isValid?: boolean; address?: string; message?: string };
     if (!r.ok || !j.isValid || !j.address) {
-      return { ok: false, error: j.message || "서명 검증에 실패했습니다", userFacing: true };
+      return { ok: false, error: j.message || "Signature verification failed", userFacing: true };
     }
     // 서명이 가리키는 주소와 서명 요청 시 고른 주소가 같은지 확인한다.
     if (j.address.toLowerCase() !== signed.address.toLowerCase()) {
-      return { ok: false, error: "서명 주소가 일치하지 않습니다", userFacing: true };
+      return { ok: false, error: "The signed address does not match", userFacing: true };
     }
     store(ADDRESS_KEY, j.address);
     store(SESSION_KEY, JSON.stringify({ address: j.address, at: Date.now() }));
     return { ok: true, address: j.address, verified: true };
   } catch {
-    return { ok: false, error: "인증 서버에 연결할 수 없습니다", userFacing: true };
+    return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
   }
 }
 

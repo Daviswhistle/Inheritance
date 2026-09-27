@@ -17,9 +17,9 @@ const problems: string[] = [];
 for (const key of REQUIRED_ADDRESSES) {
   const value = (raw[key] ?? "").trim();
   if (!value) {
-    problems.push(`${key} 가 설정되지 않았습니다.`);
+    problems.push(`${key} is not set.`);
   } else if (!ADDRESS_RE.test(value)) {
-    problems.push(`${key} 가 EVM 주소 형식이 아닙니다: ${value}`);
+    problems.push(`${key} is not a valid EVM address: ${value}`);
   }
 }
 
@@ -28,16 +28,16 @@ export const CONFIG_ERROR: string | null =
   problems.length === 0
     ? null
     : [
-        "앱 설정이 올바르지 않아 시작할 수 없습니다.",
+        "The app cannot start because its configuration is incomplete.",
         "",
         ...problems.map((p) => `• ${p}`),
         "",
-        "해결 방법",
-        "  1) 예제 파일을 복사합니다:",
+        "How to fix it",
+        "  1) Copy the example file:",
         "       cp .env.example .env",
-        "  2) VITE_FACTORY_ADDRESS / VITE_WLD_ADDRESS 를 실제 값으로 채웁니다.",
+        "  2) Fill in VITE_FACTORY_ADDRESS and VITE_WLD_ADDRESS with real values.",
         "",
-        "최신 배포 주소는 배포 로그에서 확인할 수 있습니다:",
+        "The current deployment addresses are in the deploy log:",
         "  forge script script/DeployWLDFactory.s.sol:DeployWLDFactory --rpc-url <rpc>",
       ].join("\n");
 

@@ -149,7 +149,7 @@ const errorText = (error: unknown, depth = 0): string => {
       }
     }
   }
-  if (generic && direct) return `${direct} (자세한 내용은 개발자 콘솔 참고)`;
+  if (generic && direct) return `${direct} (see the developer console for details)`;
   return direct ?? String(error);
 };
 
