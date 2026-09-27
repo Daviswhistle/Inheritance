@@ -36,6 +36,8 @@ const state = {
   txLog: [] as string[],
   /** 마지막으로 보낸 calldata — 인코딩이 실제로 일어났는지 확인용 */
   lastCalldata: [] as { to: string; data: string }[],
+  /** 마지막 실패 사유 — 앱이 삼키기 전에 스텁이 남긴다 */
+  lastError: null as string | null,
 };
 
 /** E2E 검증용: 2.x calldata 형식으로 나갔는지 확인한다.
@@ -48,6 +50,7 @@ if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__E2E_MINIKIT__ = {
     lastCalldata: () => state.lastCalldata,
     txLog: () => state.txLog,
+      lastError: () => state.lastError,
   };
 }
 
@@ -163,13 +166,23 @@ export const MiniKit = {
       let lastHash: string | undefined;
       // 2.x 는 트랜잭션들을 순서대로 보낸다. 입금은 approve → deposit 이므로
       // 이 순서가 깨지면 deposit 의 transferFrom 이 allowance 부족으로 revert 된다.
+      // nonce 를 직접 붙잡아 올린다.
+      //
+      // ethers 의 JsonRpcSigner 는 signer 인스턴스 단위로 nonce 를 기억하는데,
+      // 블록 하나에 approve → deposit 두 건을 연달아 보내면 같은 nonce 가 두 번
+      // 쓰이고 두 번째가 "nonce too low" 로 떨어진다. 그래서 입금这一步가
+      // 조용히 실패했는데 E2E 는 calldata 만 확인해서 통과로 보고했다.
+      //
+      // 월드앱의 실제 경로는 번들러가 nonce 를 처리하므로 이 문제가 없다 —
+      // 여기는 스텁이 그 동작을 흉내 내야 하는 부분이다.
+      let nonce = await signer.getNonce("pending");
       for (const t of transactions) {
         if (!t.data || t.data === "0x") {
-          const r = await signer.sendTransaction({ to: t.to, value: 0n });
+          const r = await signer.sendTransaction({ to: t.to, value: 0n, nonce: nonce++ });
           lastHash = r.hash;
           continue;
         }
-        const tx = await signer.sendTransaction({ to: t.to, data: t.data, value: 0n });
+        const tx = await signer.sendTransaction({ to: t.to, data: t.data, value: 0n, nonce: nonce++ });
         const rcpt = await tx.wait();
         lastHash = rcpt?.hash ?? lastHash;
       }
@@ -182,7 +195,11 @@ export const MiniKit = {
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      return fail({ status: "fail", error: (e as Error).message });
+      // 실패 사유를 남긴다. 예전엔 그냥 fail() 로 돌려주기만 했는데, 그러면
+      // 앱이 "트랜잭션이 실패했습니다" 라는 일반 문구만 보여주고 왜 실패했는지는
+      // 아무도 알 수 없었다. E2E 가 이 값을 읽는다.
+      state.lastError = (e as Error)?.message || String(e);
+      return fail({ status: "fail", error: state.lastError });
     }
   },
 };
