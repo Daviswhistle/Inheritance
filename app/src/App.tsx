@@ -1931,7 +1931,7 @@ export default function App() {
                     <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
                     <Button variant="ghost" onClick={setMax}>Max</Button>
                     <Button variant="primary" onClick={deposit} disabled={!miniInstalled || !account}>Deposit</Button>
-                    <Button onClick={refreshBalances}>Refresh</Button>
+                    <Button onClick={refreshBalances}>Refresh balance</Button>
                   </div>
                 </>
               )}
@@ -2193,7 +2193,7 @@ export default function App() {
                     여기도 남겨두면 같은 행위가 두 곳에 생겨 어느 쪽이 맞는지 헷갈리고,
                     탭을 오갈 때마다 상태가 달라 보인다. */}
                 {!account || (!vaultOwner && !vaultHeir) ? (
-                  <Button onClick={loadVault}>Re-scan</Button>
+                  <Button onClick={loadVault}>Check again</Button>
                 ) : null}
               </div>
             </CardContent>
@@ -2272,8 +2272,13 @@ export default function App() {
                 </label>
                 <div className="field-row-controls">
                   <Input id="heir-input" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
-                  <Button size="sm" onClick={pickHeirFromContacts} disabled={shareBusy}>
-                    {shareBusy ? "…" : "Pick"}
+                  <Button
+                    size="sm"
+                    onClick={pickHeirFromContacts}
+                    disabled={shareBusy}
+                    title="Open your World App contacts and choose an heir"
+                  >
+                    {shareBusy ? "…" : "From contacts"}
                   </Button>
                 </div>
               </div>
@@ -2361,8 +2366,8 @@ export default function App() {
                         <div key={v} className="flex items-center justify-between gap-2">
                           <span className="break-all">{short(v)}</span>
                           <div className="flex items-center gap-2">
-                            <Button size="sm" onClick={() => setVault(v)}>Open</Button>
-                            <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">View</a>
+                            <Button size="sm" onClick={() => setVault(v)}>Open in app</Button>
+                            <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">Explorer</a>
                           </div>
                         </div>
                       ))}
