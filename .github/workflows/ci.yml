@@ -63,6 +63,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # 정의가 없는 className 은 빌드도 타입체크도 린트도 통과하고 화면에서는
+      # 아무 일도 일어나지 않는다. 실제로 .bg-black/50 때문에 모달 배경이
+      # 없고 .font-medium 때문에 제목이 굵어지지 않았다.
+      - name: Check CSS classes are defined
+        run: node ../scripts/check-css-classes.mjs
+
       - name: Build
         run: pnpm build
 

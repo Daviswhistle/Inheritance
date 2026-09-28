@@ -2243,19 +2243,23 @@ export default function App() {
                 <div>
                   Changed your mind? Before the countdown ends you can switch to a different
                   heir, or cancel entirely — then the WLD is yours to withdraw whenever you
-                  like. To start over, wait for the countdown to end with an empty vault and
-                  the slot releases, and you can create a new one.
+                  like.
                 </div>
                 <div className="text-gray-500">
                   A vault cannot be deleted. To start a new one, the old vault has to be
                   finished and empty — then the slot releases.
                 </div>
-                <div className="text-gray-500">
-                  If the countdown ends with WLD still inside, nothing moves on its own. Your
-                  heir has to file a claim, which starts a 7-day window where you can still
-                  renew and stop it. If you do not renew in those 7 days, they withdraw the
-                  balance. No one takes a cut.
-                </div>
+              </div>
+              {/* 가장 중요한 규칙이다. 옆의 보조 문구보다 옅히면 읽히지 않는다 —
+                  "기한이 지나도 아무 일도 안 일어난다" 는 오해하면 안 되는 사실이고,
+                  이 앱의 존재 이유 그 자체다.
+                  이 앱은 Tailwind 프리플라이트 없이 손으로 쓴 CSS 라 존재하지 않는
+                  클래스는 조용히 무시된다. 쓰는 클래스는 index.css 에 정의가 있는 것만. */}
+              <div className="text-sm text-gray-700 border-l-2 border-blue-200 pl-3">
+                If the countdown ends with WLD still inside, <b>nothing moves on its own.</b> Your
+                heir has to file a claim, which starts a 7-day window where you can still renew and
+                stop it. If you do not renew in those 7 days, they withdraw the balance. No one
+                takes a cut.
               </div>
               </CardContent>
               </Card>
@@ -2280,6 +2284,12 @@ export default function App() {
                   >
                     {shareBusy ? "…" : "From contacts"}
                   </Button>
+                </div>
+                {/* 버튼 라벨만으로는 무엇을 여는지 알기 어렵다. 라벨을 길게 하면
+                    390px 에서 입력창과 fighting 하므로, 짧게 두고 여기에 쓴다. */}
+                <div className="text-xs text-gray-600">
+                  Type a World App username or an address, or use "From contacts" to pick one from
+                  your World App contacts.
                 </div>
               </div>
               {heir && (
