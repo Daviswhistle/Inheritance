@@ -2408,13 +2408,14 @@ export default function App() {
                 may never open it, so do not rely on one — tell them yourself.
               </div>
               {/* 기한이 지나면 상속인이 신청하기 전까지 주인은 아무것도 할 수 없다.
-                  알고리즘을 알아야 상속인에게 미리 말할 수 있다. 1년 유예 뒤에는
-                  갱신이 다시 열리지만 그때까지 아무도 신청하지 않으면 묶여 있는 셈이다. */}
+                  알고리즘을 알아야 상속인에게 미리 말할 수 있다. 되찾는 통로(1년 유예
+                  같은 것)는 일부러 만들지 않았다 — owner 가 되찾을 수 있게 하면 상속인
+                  보장이 사라진다. */}
               <div className="text-xs text-gray-600">
                 Worth knowing: once the countdown ends you cannot move the WLD yourself until your
-                heir files a claim. They can renew to cancel a claim at any point before they
-                withdraw, so a claim is not final until they act. If they never file anything, the
-                balance sits until a year passes and your renewal reopens.
+                heir files a claim — there is no way back for you at that point. They can renew to
+                cancel a claim at any time before they withdraw, so a claim only becomes final when
+                they act. If they never file anything, the balance simply sits there.
               </div>
               {heirUsername ? (
                 <>

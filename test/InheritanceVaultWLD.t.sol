@@ -605,12 +605,44 @@ contract InheritanceVaultWLDTest is Test {
     }
 
     function test_RevertWhen_PingAfterExpiryWithoutClaim() public {
-        // 상속인이 아무것도 하지 않은 상태에서 owner 가 되살리면 안 된다.
-        // 되살리기를 허용하면 상속 자체가 무의미해진다.
+        // 기한이 지났고 상속인이 아직 아무것도 하지 않은 상태 — owner 는 여기서 막힌다.
+        //
+        // 막다른 곳이라고 알고 일부러 둔 것이다. 되찾는 통로(1년 유예 같은 것)를 만들어
+        // 봤다가 되돌렸다: owner 가 새벽도착할 수 있게 되면 상속인에게는 "언젠가 내 돈이
+        // 온다" 는 보장이 없고, 이 앱이 하는 일이 달라진다. 이 상태에서 유일한 길은
+        // 상속인이 신청하는 것이고 자금은 그때 이동한다. 잃는 사람이 없으니 되찾기
+        // 통로는 상속인의 권리만 약화시킨다.
         _expire();
         vm.prank(owner);
         vm.expectRevert(InheritanceVaultWLD.Expired.selector);
         vault.ping();
+    }
+
+    function test_OwnerStaysLockedOutHoweverLongNobodyFiles() public {
+        // 위 막다른 곳이 "잠시" 가 아니라 영구임을 고정한다. 나중에 되찾기 통로를 넣는
+        // 변경이 이 테스트를 깨뜨려야 하고, 그때는 이 결정이 뒤집힌 걸로 보인다.
+        _expire();
+        assertTrue(vault.isExpired(), "expired");
+        assertEq(vault.claimOutstanding(), false, "no claim to cancel");
+
+        // 1년 뒤에도, 10년 뒤에도
+        vm.warp(block.timestamp + 365 days);
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.ping();
+
+        vm.warp(block.timestamp + 3650 days);
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.ping();
+
+        // 상속인이 신청하면 길은 열린다
+        _fileOnly(vault, heir);
+        assertTrue(vault.claimOutstanding(), "now there is a claim to cancel");
+        vm.prank(owner);
+        vault.ping();
+        assertTrue(vault.ownerStillActive(), "countdown restored");
+        assertEq(wld.balanceOf(address(vault)), 100 ether, "funds never left");
     }
 
     function test_PingDuringChallengeCancelsTheClaim() public {
@@ -677,51 +709,6 @@ contract InheritanceVaultWLDTest is Test {
         vm.prank(owner);
         vm.expectRevert(InheritanceVaultWLD.Expired.selector);
         vault.ping();
-    }
-
-    function test_RevertWhen_PingJustBeforeReclaimGrace() public {
-        // 유예기간이 지나기 직전까지는 막힌다 — 1초 적게도 안 된다.
-        _expire();
-        assertTrue(vault.reclaimGraceElapsed() == false, "still locked");
-        vm.warp(block.timestamp + vault.RECLAIM_GRACE() - 1);
-        assertFalse(vault.reclaimGraceElapsed(), "one second short is still locked");
-        vm.prank(owner);
-        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
-        vault.ping();
-    }
-
-    function test_PingAfterReclaimGraceRestoresTheCountdown() public {
-        // 상속인이 끝까지 신청하지 않아도 유예기간이 지나면 갱신이 열린다.
-        // 자금이 영구히 묶이는 것을 막기 위한 유일한 통로다.
-        _expire();
-        vm.warp(block.timestamp + vault.RECLAIM_GRACE());
-        assertTrue(vault.reclaimGraceElapsed(), "grace elapsed");
-
-        vm.prank(owner);
-        vault.ping();
-
-        assertTrue(vault.ownerStillActive(), "countdown restored");
-        assertEq(wld.balanceOf(address(vault)), 100 ether, "funds still in the vault, ping moves nothing");
-        assertEq(wld.balanceOf(heir), 0, "heir still has nothing");
-    }
-
-    function test_ReclaimGraceOnlyRestoresRenewalNotWithdrawal() public {
-        // 되살리는 것은 갱신뿐이다. 유예기간이 지나도 곧바로 인출할 수는 없다.
-        _expire();
-        vm.warp(block.timestamp + vault.RECLAIM_GRACE());
-        vm.prank(owner);
-        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
-        vault.ownerWithdrawWLD(1 ether, owner);
-    }
-
-    function test_ReclaimGraceDoesNotOpenWhileAClaimIsPending() public {
-        // 유예기간은 "아무도 신청하지 않은 상태" 에만 적용된다.
-        // 청산 신청이 걸려 있으면 이미 다른 경로(취소 가능)가 열려 있다.
-        _expire();
-        _fileOnly(vault, heir);
-        vm.warp(block.timestamp + vault.CHALLENGE_PERIOD() + vault.RECLAIM_GRACE());
-        assertFalse(vault.reclaimGraceElapsed(), "a pending claim owns the state");
-        assertTrue(vault.claimOutstanding(), "still outstanding");
     }
 
     function test_RevertWhen_FinalizeWhileOwnerCanStillCancel() public {
