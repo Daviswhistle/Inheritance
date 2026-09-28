@@ -2253,12 +2253,12 @@ export default function App() {
               {/* 이 문장은 사실 주장이라 컨트랙트에서 검증했다. 금고의 WLD 가 나오는
                   경로는 finalizeClaim 하나뿐이고 그건 상속인이 직접 눌러야 한다.
                   "여전히 당신 것" 이라고 쓰면 안 된다 — 기한 후에는 주인도 인출할 수
-                  없다. ownerWithdrawWLD/ping/updateHeir/cancelInheritance/updateHeartbeat
-                  이 전부 Expired 로 막힌다(0x203d82d8). 그래서 "금고에 남는다" 고
-                  정확히 쓴다. */}
+                  없다. ownerWithdrawWLD/updateHeir/cancelInheritance 가 전부 Expired 로
+                  막힌다(0x203d82d8). 그래서 "금고에 남는다" 고 정확히 쓴다. */}
               <div className="text-sm text-gray-700 border-l-2 border-blue-200 pl-3">
                 The countdown ending <b>moves nothing.</b> Your WLD stays in the vault until your
-                heir files a claim — and once they do, you have 7 days to renew and cancel it.
+                heir files a claim — and from then on you can renew to cancel it any time before
+                they actually withdraw.
               </div>
               </CardContent>
               </Card>
@@ -2408,11 +2408,13 @@ export default function App() {
                 may never open it, so do not rely on one — tell them yourself.
               </div>
               {/* 기한이 지나면 상속인이 신청하기 전까지 주인은 아무것도 할 수 없다.
-                  알고리즘을 알아야 상속인에게 미리 말할 수 있다. */}
+                  알고리즘을 알아야 상속인에게 미리 말할 수 있다. 1년 유예 뒤에는
+                  갱신이 다시 열리지만 그때까지 아무도 신청하지 않으면 묶여 있는 셈이다. */}
               <div className="text-xs text-gray-600">
-                Worth knowing: once the countdown ends, you cannot move the WLD yourself until
-                your heir files a claim. If they never do, it simply stays in the vault — which
-                is why telling them matters.
+                Worth knowing: once the countdown ends you cannot move the WLD yourself until your
+                heir files a claim. They can renew to cancel a claim at any point before they
+                withdraw, so a claim is not final until they act. If they never file anything, the
+                balance sits until a year passes and your renewal reopens.
               </div>
               {heirUsername ? (
                 <>

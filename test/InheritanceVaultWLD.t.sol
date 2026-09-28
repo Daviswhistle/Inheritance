@@ -643,11 +643,96 @@ contract InheritanceVaultWLDTest is Test {
         vault.finalizeClaim();
     }
 
-    function test_RevertWhen_PingAfterChallengeEnds() public {
+    function test_OwnerCanStillCancelAfterChallengeEndsButBeforeReceipt() public {
+        // 7일이 지나도 상속인이 `finalizeClaim` 를 누르기 전까지는 owner 가 막을 수 있어야 한다.
+        //
+        // 여기서 이 정책이 바뀐 이유: 수령은 상속인이 직접 누르는 방식이다. 7일이 지나면
+        // owner 가 막을 수 없는데 상속인은 즉시 가져갈 수 있는 구간이 생겼다 — 금고는
+        // 무방비인데 자금은 아직 아무도 받지 않은 상태였다. 약속("수령 전까지 취소 가능")과
+        // 어긋났다.
         _expire();
         _fileOnly(vault, heir);
         vm.warp(block.timestamp + vault.CHALLENGE_PERIOD());
-        // 이의제기 기한이 지나면 owner 는 더 이상 막을 수 없다
+
+        assertTrue(vault.claimableNow(), "heir may now withdraw");
+        assertEq(vault.claimedAt(), 0, "but nothing has been received yet");
+        assertTrue(vault.claimOutstanding(), "claim still outstanding");
+
+        vm.prank(owner);
+        vault.ping();
+
+        assertEq(vault.claimFiledAt(), 0, "claim withdrawn");
+        assertFalse(vault.claimableNow(), "heir can no longer withdraw");
+        assertTrue(vault.ownerStillActive(), "countdown restored");
+        assertEq(wld.balanceOf(heir), 0, "heir received nothing");
+        assertEq(wld.balanceOf(address(vault)), 100 ether, "funds untouched");
+    }
+
+    function test_RevertWhen_PingAfterReceipt() public {
+        // 실제로 수령이 끝난 뒤에는 더 이상 취소할 수 없다.
+        _expire();
+        _runClaim(vault, heir);
+        assertTrue(vault.claimedAt() > 0, "settled");
+        assertFalse(vault.claimOutstanding(), "nothing outstanding any more");
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.ping();
+    }
+
+    function test_RevertWhen_PingJustBeforeReclaimGrace() public {
+        // 유예기간이 지나기 직전까지는 막힌다 — 1초 적게도 안 된다.
+        _expire();
+        assertTrue(vault.reclaimGraceElapsed() == false, "still locked");
+        vm.warp(block.timestamp + vault.RECLAIM_GRACE() - 1);
+        assertFalse(vault.reclaimGraceElapsed(), "one second short is still locked");
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.ping();
+    }
+
+    function test_PingAfterReclaimGraceRestoresTheCountdown() public {
+        // 상속인이 끝까지 신청하지 않아도 유예기간이 지나면 갱신이 열린다.
+        // 자금이 영구히 묶이는 것을 막기 위한 유일한 통로다.
+        _expire();
+        vm.warp(block.timestamp + vault.RECLAIM_GRACE());
+        assertTrue(vault.reclaimGraceElapsed(), "grace elapsed");
+
+        vm.prank(owner);
+        vault.ping();
+
+        assertTrue(vault.ownerStillActive(), "countdown restored");
+        assertEq(wld.balanceOf(address(vault)), 100 ether, "funds still in the vault, ping moves nothing");
+        assertEq(wld.balanceOf(heir), 0, "heir still has nothing");
+    }
+
+    function test_ReclaimGraceOnlyRestoresRenewalNotWithdrawal() public {
+        // 되살리는 것은 갱신뿐이다. 유예기간이 지나도 곧바로 인출할 수는 없다.
+        _expire();
+        vm.warp(block.timestamp + vault.RECLAIM_GRACE());
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.ownerWithdrawWLD(1 ether, owner);
+    }
+
+    function test_ReclaimGraceDoesNotOpenWhileAClaimIsPending() public {
+        // 유예기간은 "아무도 신청하지 않은 상태" 에만 적용된다.
+        // 청산 신청이 걸려 있으면 이미 다른 경로(취소 가능)가 열려 있다.
+        _expire();
+        _fileOnly(vault, heir);
+        vm.warp(block.timestamp + vault.CHALLENGE_PERIOD() + vault.RECLAIM_GRACE());
+        assertFalse(vault.reclaimGraceElapsed(), "a pending claim owns the state");
+        assertTrue(vault.claimOutstanding(), "still outstanding");
+    }
+
+    function test_RevertWhen_FinalizeWhileOwnerCanStillCancel() public {
+        // 상속인이 먼저 확정하면 owner 가 막을 수 없게 된다 — 그 전까지는 안 된다.
+        _expire();
+        _fileOnly(vault, heir);
+        vm.warp(block.timestamp + vault.CHALLENGE_PERIOD());
+        vm.prank(heir);
+        vault.finalizeClaim();
+        assertEq(wld.balanceOf(heir), 100 ether, "heir took it after the window");
+        // 이제 owner 의 취소는 불가하고, 자금은 이미 나갔다
         vm.prank(owner);
         vm.expectRevert(InheritanceVaultWLD.Expired.selector);
         vault.ping();

@@ -72,6 +72,16 @@ contract InheritanceVaultWLD {
     ///      창이 짧으면 owner 가 보호받지 못하고, 길면 상속인이 불필요하게 기다린다.
     ///      7일이 두 요구를 동시에 만족하는 값이다.
     uint256 public constant CHALLENGE_PERIOD = 7 days;
+
+    /// @dev 아무도 상속 신청을 하지 않은 상태에서 소유자가 되살릴 수 있게 되는 시점까지의
+    ///      유예. 상속인이 끝까지 신청하지 않으면 소유자도 자금을 꺼낼 수단이 없어져
+    ///      자금이 영구히 묶인다. 어떤 상속 파이프라인도 "아무도 아무것도 하지 않는" 상태를
+    ///      영구히 유지할 수는 없다 — 최소한은 사람이 개입할 통로를 남겨야 한다.
+    ///
+    ///      {CHALLENGE_PERIOD} 와 무관하다. 이 값이 지났다고 신청이 접수되거나 자금이
+    ///      이동하지는 않는다. 오직 소유자의 갱신만 되살릴 뿐이고, 그 뒤 기존 회수
+    ///      경로(갱신 → 인출)가 열린다.
+    uint256 public constant RECLAIM_GRACE = 365 days;
     uint256 public constant MIN_HEARTBEAT = 1 days;
     uint256 public constant MAX_HEARTBEAT = 365 days;
 
@@ -102,13 +112,29 @@ contract InheritanceVaultWLD {
         _;
     }
 
-    /// @dev 갱신 기한이 지나 상속인이 아직 아무것도 하지 않은 상태에서는 소유자의 상태 변경을
-    ///      전부 차단한다. 되살리기를 허용하면 상속이 무의미해지기 때문이다.
-    ///      유일한 예외는 **이의제기 기간** — 상속인이 실제로 신청을 넣은 뒤 owner 가 살아있다는
-    ///      신호(ping) 를 보일 유일한 통로다. 그 ping 는 청산 신청을 취소할 뿐 자금을 옮기지
-    ///      않고, 상속인이나 기간을 바꾸는 권한은 여전히 없다.
+    /// @dev 소유자가 기한 이후에도 할 수 있는 유일한 행동은 `ping` 이다. 세 가지 경우에 열린다.
+    ///
+    ///      1. 아직 기한이 안 지났을 때 (정상적인 갱신).
+    ///      2. **이의제기 기간** — 상속인이 신청을 넣었고 아직 7일이 지나지 않았을 때.
+    ///         되살리기를 허용하면 상속이 무의미해지므로 이것까지는 막아야 한다.
+    ///      3. **신청이 있고 아직 수령 전** — 여기가 문제였고 고쳤다. 7일이 지나도 상속인이
+    ///         `finalizeClaim` 를 호출하기 전까지는 owner 가 아무것도 못 했다. 그런데
+    ///         수령은 상속인이 직접 누르는 방식이므로, 그 사이에는 owner 가 막을 수단이
+    ///         전혀 없었고 상속인은 즉시 가져갈 수 있었다. 약속은 "수령 전까지 취소 가능"
+    ///         이었지만 실제로는 7일이 경계였다.
+    ///      4. **아무도 신청하지 않고 {RECLAIM_GRACE} 이 지난 뒤** — 3번을 넣지 않으면
+    ///         반대쪽 막다른 곳이 생긴다. 상속인이 끝까지 신청하지 않으면 owner 도 자금을
+    ///         못 꺼내고, 복구 경로가 없어 자금이 영구히 묶인다. 1년이면 충분하다고
+    ///         판단해 그 뒤로는 갱신만 되살린다. 자금을 새로 내보내는 경로는 추가하지
+    ///         않는다 — `ping` 이 카운트다운을 되살리면 기존 회수 경로가 그대로 열리고,
+    ///         7일 규칙도 건드리지 않는다.
+    ///
+    ///      이 갱신은 자금을 옮기지 않고, 상속인을 바꾸거나 기간을 바꾸는 권한도 아니다.
+    ///      그 둘은 `ownerStillActiveOnly` 로 계속 막혀 있다.
     modifier ownerMayStillAct() {
-        if (!ownerStillActive() && !challengeRunning()) revert Expired();
+        if (!ownerStillActive() && !challengeRunning() && !claimOutstanding() && !reclaimGraceElapsed()) {
+            revert Expired();
+        }
         _;
     }
 
@@ -180,6 +206,23 @@ contract InheritanceVaultWLD {
     /// @notice 상속인이 신청했고 owner가 아직 이의를 제기할 수 있는 기간인지.
     function challengeRunning() public view returns (bool) {
         return claimFiledAt != 0 && block.timestamp < claimFiledAt + CHALLENGE_PERIOD;
+    }
+
+    /// @notice 상속인이 신청했고 아직 실제로 받지 않은 상태인지.
+    /// @dev 7일이 지나도 `finalizeClaim` 는 상속인이 직접 호출해야 실행된다. 따라서 이
+    ///      구간에서는 자금이 아직 움직이지 않았고, owner 의 취소 권한도 남아 있어야 한다.
+    ///      `claimableNow()` 과 다른 함수다 — 여기는 "돈이 아직 나가지 않았는가" 를 묻고,
+    ///      저것은 "지금 상속인이 가져갈 수 있는가" 를 묻는다.
+    function claimOutstanding() public view returns (bool) {
+        return claimFiledAt != 0 && claimedAt == 0;
+    }
+
+    /// @notice 아무도 신청하지 않은 채 회수 유예기간까지 지났는지.
+    /// @dev 기한 후 상속인이 신청하지 않으면 owner 도 아무것도 못 하는 구간이 생기고,
+    ///      그대로 두면 자금이 영구히 묶인다. 유예기간이 지나면 갱신만 되살려 주인이
+    ///      카운트다운을 되돌릴 수 있게 한다. 자금을 직접 내보내는 경로는 열지 않는다.
+    function reclaimGraceElapsed() public view returns (bool) {
+        return claimFiledAt == 0 && block.timestamp >= lastPing + heartbeatInterval + RECLAIM_GRACE;
     }
 
     /// @notice 상속인이 신청했는지 여부.
