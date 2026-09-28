@@ -2250,16 +2250,15 @@ export default function App() {
                   finished and empty — then the slot releases.
                 </div>
               </div>
-              {/* 가장 중요한 규칙이다. 옆의 보조 문구보다 옅히면 읽히지 않는다 —
-                  "기한이 지나도 아무 일도 안 일어난다" 는 오해하면 안 되는 사실이고,
-                  이 앱의 존재 이유 그 자체다.
-                  이 앱은 Tailwind 프리플라이트 없이 손으로 쓴 CSS 라 존재하지 않는
-                  클래스는 조용히 무시된다. 쓰는 클래스는 index.css 에 정의가 있는 것만. */}
+              {/* 이 문장은 사실 주장이라 컨트랙트에서 검증했다. 금고의 WLD 가 나오는
+                  경로는 finalizeClaim 하나뿐이고 그건 상속인이 직접 눌러야 한다.
+                  "여전히 당신 것" 이라고 쓰면 안 된다 — 기한 후에는 주인도 인출할 수
+                  없다. ownerWithdrawWLD/ping/updateHeir/cancelInheritance/updateHeartbeat
+                  이 전부 Expired 로 막힌다(0x203d82d8). 그래서 "금고에 남는다" 고
+                  정확히 쓴다. */}
               <div className="text-sm text-gray-700 border-l-2 border-blue-200 pl-3">
-                If the countdown ends with WLD still inside, <b>nothing moves on its own.</b> Your
-                heir has to file a claim, which starts a 7-day window where you can still renew and
-                stop it. If you do not renew in those 7 days, they withdraw the balance. No one
-                takes a cut.
+                The countdown ending <b>moves nothing.</b> Your WLD stays in the vault until your
+                heir files a claim — and once they do, you have 7 days to renew and cancel it.
               </div>
               </CardContent>
               </Card>
@@ -2407,6 +2406,13 @@ export default function App() {
               <div className="text-xs text-gray-600">
                 A notification only reaches a wallet that has already opened World App. Your heir
                 may never open it, so do not rely on one — tell them yourself.
+              </div>
+              {/* 기한이 지나면 상속인이 신청하기 전까지 주인은 아무것도 할 수 없다.
+                  알고리즘을 알아야 상속인에게 미리 말할 수 있다. */}
+              <div className="text-xs text-gray-600">
+                Worth knowing: once the countdown ends, you cannot move the WLD yourself until
+                your heir files a claim. If they never do, it simply stays in the vault — which
+                is why telling them matters.
               </div>
               {heirUsername ? (
                 <>
