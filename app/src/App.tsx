@@ -41,6 +41,7 @@ const FACTORY_ABI = [
   "function cancelMyInheritance() external",
   "function withdrawFromMyVault(address to, uint256 amount) external",
   "function rescueFromMyVault(address token, uint256 amount, address to) external",
+  "function sweepSettledVaultFor(address to) external",
   "function fileClaimFor(address vault) external",
   "function finalizeClaimFor(address vault) external",
   "function isHeirOf(address owner, address vault) external view returns (bool)",
@@ -193,11 +194,20 @@ export default function App() {
   const [heirResolved, setHeirResolved] = useState<{ username?: string; address?: string } | null>(null);
   const [resolvingHeir, setResolvingHeir] = useState<boolean>(false);
   // Period (days) — use string input to avoid forced 0 when user clears field
-  const [periodInput, setPeriodInput] = useState<string>("30");
+  /**
+   * 주기 입력 필드.
+   *
+   * 고정값 "30" 으로 시작하면 문제가 된다 — 실제로 200일 주기 금고에서 아무것도 입력하지
+   * 않고 "Change period" 을 누르면 30일로 바뀌고 마감이 170일 앞당겨진다. 조작하지 않은
+   * 필드가 조작한 것처럼 보이면 그대로 눌러 버린다.
+   */
+  const [periodInput, setPeriodInput] = useState<string>("");
+  const [periodTouched, setPeriodTouched] = useState<boolean>(false);
   const onPeriodChange = (raw: string) => {
     // allow only digits; keep empty while editing
     const v = (raw || '').replace(/\D+/g, '');
     setPeriodInput(v);
+      setPeriodTouched(true);
     if (v === '') return; // don't coerce to 0 while user is clearing
     let n = parseInt(v, 10);
     if (Number.isNaN(n)) return;
@@ -211,6 +221,35 @@ export default function App() {
   const periodValid = useMemo(() => Number.isFinite(periodNum) && periodNum >= 1 && periodNum <= 365, [periodNum]);
 
   const [vault, setVault] = useState<string>("");
+  /**
+   * `?vault=` 링크로 넘어온 금고.
+   *
+   * 별도 상태로 두는 이유: 예전에는 링크 파라미터를 곧바로 `vault` 에 넣었는데 그 다음
+   * `loadVault` 가 "내 소유 금고" 로 `vault` 를 덮어썼다. 그래서 **자기 금고가 있는
+   * 사람이 상속인 링크를 열면 자기 금고만 보게 되었고**, 링크가 가리키는 상속 대상은
+   * 신청 버튼도 잔액도 오류도 없이 화면에서 사라졌다. 링크는 이 앱이 상속인에게
+   * 알려주는 유일한 확실한 경로이므로 조용히 버리면 그 약속이 통째로 사라진다.
+   */
+  const [linkedVault, setLinkedVault] = useState<string>("");
+  /** 내 소유 금고 주소. 링크 금고를 보고 있는 동안에도 잃지 않는다. */
+  const [ownVault, setOwnVault] = useState<string>("");
+  /**
+   * `?vault=` 링크가 읽히지 않았을 때의 이유.
+   *
+   * 조용히 무시하면 안 된다. 예전에는 잘못된 링크를 그냥 버겼고, 그 결과 사용자는
+   * 자기 금고도 없는 빈 화면을 보며 "이 앱이 왜 아무것도 안 보여주지" 라고 생각했다.
+   * 틀린 입력인지, 앱이 고장인지, 링크가 오래된 것인지 구분하려면 이유를 말해야 한다.
+   */
+  const [linkError, setLinkError] = useState<string>("");
+  /**
+   * 화면의 데이터가 체인 현재 상태가 아님을 나타낸다.
+   *
+   * RPC 가 죽었을 때 예전에는 조용히 넘어가서 갱신되지 않은 숫자를 계속 보여줬다.
+   * 사용자가 보기에는 "내가 한 갱신이 반영되지 않았다", "내 돈이 사라졌다" 다. 실제로는
+   * 서버에 닿지 않았을 뿐이고 온체인 상태는 그대로다. 이 플래그로 그 구분을 화면에
+   * 드러낸다.
+   */
+  const [stale, setStale] = useState<boolean>(true);
   const [vaultOwner, setVaultOwner] = useState<string>("");
   const [vaultHeir, setVaultHeir] = useState<string>("");
   const [vaultHeartbeat, setVaultHeartbeat] = useState<number>(0);
@@ -303,6 +342,7 @@ export default function App() {
   const [supportsRelease, setSupportsRelease] = useState<boolean>(RELEASE_SUPPORTED);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
   const [releasing, setReleasing] = useState<boolean>(false);
+  const [sweeping, setSweeping] = useState<boolean>(false);
   const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
   const [heirFoundVaults, setHeirFoundVaults] = useState<string[]>([]);
@@ -458,6 +498,8 @@ export default function App() {
       </Card>
     );
   };
+
+
   /**
    * `vault` 가 "내가 소유한 금고" 인지.
    *
@@ -736,10 +778,17 @@ export default function App() {
   useEffect(() => {
     try {
       const v = new URLSearchParams(window.location.search).get("vault");
-      if (v && ethers.isAddress(v)) setVault(ethers.getAddress(v));
+      if (v && ethers.isAddress(v)) {
+        const target = ethers.getAddress(v);
+        setLinkedVault(target);
+        setVault(target);
+      } else if (v) {
+        // 주소 형식부터 아니면 금고를 하나도 못 본다. 조용히 무시하면 사용자는
+        // 링크가 깨졌다는 사실조차 모른다.
+        setLinkError("This link does not contain a valid vault address.");
+      }
     } catch {
-      // Ignore malformed query params.
-      void 0;
+      setLinkError("This link could not be read.");
     }
   }, []);
 
@@ -772,7 +821,9 @@ export default function App() {
    */
   const heirScannedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!account || vault) return;
+    // 자기 금고를 갖고 있어도 남의 상속인이 될 수 있다. 예전엔 `|| vault` 로 막혀서
+    // 자기 금고가 있는 사람은 상속인으로서 아무것도 발견할 수 없었다.
+    if (!account) return;
     const key = account.toLowerCase();
     if (heirScannedFor.current === key) return;
     heirScannedFor.current = key;
@@ -877,9 +928,13 @@ export default function App() {
     try {
       const v = await factory.vaultOf(account);
       if (v && v !== ethers.ZeroAddress) {
-        setVault(v);
+        setOwnVault(v);
+        // 링크 금고가 우선이다. 상속인에게 보낸 링크를 열었는데 자기 금고로 되돌아가면
+        // 링크가 준 정보가 사라진다. 어느 쪽을 보는지는 화면에 알려준다.
+        if (!linkedVault) setVault(v);
         return;
       }
+      setOwnVault("");
     } catch (e: unknown) {
       // RPC 실패를 삼키지 않는다 — 예외가 바깥으로 새면 unhandled rejection 이 된다.
       setStatus("Vault lookup failed: " + errorText(e));
@@ -891,7 +946,7 @@ export default function App() {
     // (1) Create 버튼이 영구히 비활성화되고 (2) "이미 금고가 있습니다" 라고 표시된다.
     // 결과적으로 남의 상속인이 된 사용자는 자기 금고를 만들 수 없게 된다.
     // 상속인 금고는 아래 "Find vaults where I am heir" 액션으로 별도로 조회한다.
-  }, [factory, account]);
+  }, [factory, account, linkedVault]);
 
   // Username/address resolution helpers — accept @username or 0x… in inputs
   const getUsernameFor = async (addr: string) => {
@@ -1014,16 +1069,23 @@ export default function App() {
       setVaultOwner(o);
       setVaultHeir(h);
       setVaultHeartbeat(Number(hb));
+      // 주기 입력 필드를 실제 값으로 맞춘다. 사용자가 편집 중이면 건드리지 않는다.
+      if (!periodTouched) {
+        setPeriodInput(String(Math.round(Number(hb) / 86400)));
+      }
       setVaultLastPing(Number(lp));
       // 수금처 기본값은 "한 번만" 채운다. `withdrawTo` 를 deps 에 두면
       // 입력할 때마다 콜백이 재생성되어 이 effect 가 keystale 마다 다시 돌고,
       // 사용자가 필드를 지우면 즉시 소유자 주소로 되돌아가 비워둘 수 없게 된다.
       setWithdrawTo((prev) => prev || o);
+      setStale(true);
     } catch {
-      // Non-critical read failure.
-      void 0;
+      // 읽기가 실패했다. 예전에는 여기서 조용히 넘어갔고, 그래서 화면은 갱신되지 않은
+      // 채로 남아 있었다. 사용자는 그 정체를 "내 돈이 사라졌다" 로 읽는다 — 실제로는
+      // RPC 가 죽은 것뿐인데도 말이다. 지금 데이터가 최신이 아니라는 사실을 말해야 한다.
+      setStale(false);
     }
-  }, [vaultCtr]);
+  }, [vaultCtr, periodTouched]);
   useEffect(() => { if (vaultCtr) void refreshVaultDetails(); }, [vaultCtr, refreshVaultDetails]);
 
   // 금고가 생성된 블록/시각을 이벤트 로그에서 역추적한다 (표시 전용, 실패해도 무방)
@@ -1370,6 +1432,61 @@ export default function App() {
     }
   };
 
+  /**
+   * "내가 상속인으로 지정됐나" 카드.
+   *
+   * 자기 금고가 없는 사람에게는 첫 화면이어야 하고(상속인이 이 앱을 여는 이유다),
+   * 자기 금고가 있는 사람에게도 보여야 한다 — 자기 금고가 있어도 남의 상속인이 될 수 있으므로.
+   * 예전처럼 `!isMyVault` 로 숨기면 그 사람은 자기 금고만 관리하다가 평생
+   * "누군가가 나를 상속인으로 지명했나" 를 알 방법이 없었다. 상속인 링크를 받아도
+   * (a) 링크가 자기 금고로 덮이고 (b) 여기 카드가 없어서 신청 수단이 사라진다.
+   * 두 곳에 쓰이므로 변수로 뺀다.
+   */
+  const heirStatusCard = gate2(
+    <Card>
+      <CardHeader><CardTitle>Are you named as someone&apos;s heir?</CardTitle></CardHeader>
+      <CardContent className="grid gap-2">
+        <div className="text-xs text-gray-600">
+          This app checks the chain for you as soon as you open it. Scanning reads the
+          factory&apos;s history, so it takes a moment.
+        </div>
+        {findingHeirVaults ? (
+          <div className="text-xs text-gray-600">Checking the chain for vaults that name you…</div>
+        ) : heirScanAttempted ? (
+          heirFoundVaults.length > 0 ? (
+            <>
+              <div className="text-sm font-medium">
+                You are the heir of {heirFoundVaults.length} vault{heirFoundVaults.length > 1 ? "s" : ""}.
+              </div>
+              <div className="text-xs text-gray-600">
+                Open one to see whether the countdown has ended and whether you can file a claim.
+                Nothing is owed to you until the countdown runs out and you file — see the Inherit tab.
+              </div>
+              <div className="grid gap-2 text-xs">
+                {heirFoundVaults.map((v) => (
+                  <div key={v} className="flex items-center justify-between gap-2">
+                    <span className="break-all">{short(v)}</span>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={() => { setVault(v); setLinkedVault(v); }}>Open in app</Button>
+                      <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">Explorer</a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="text-sm font-medium">No vault names you as heir.</div>
+          )
+        ) : null}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={findHeirVaults} disabled={findingHeirVaults}>
+            {findingHeirVaults ? "Searching..." : "Check again"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   // ---- deposit WLD
   const deposit = async () => {
     if (!vault) return;
@@ -1451,6 +1568,9 @@ export default function App() {
         },
       });
       setStatus("Timer reset (full period restored)");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
       refreshTimer();
     } catch (e: unknown) {
       setStatus("Reset error: " + errorText(e));
@@ -1480,6 +1600,10 @@ export default function App() {
         },
       });
       setStatus("Period updated");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
+      setPeriodTouched(false);
       refreshTimer();
     } catch (e: unknown) {
       setStatus("Change period error: " + errorText(e));
@@ -1507,6 +1631,9 @@ export default function App() {
         },
       });
       setStatus("Inheritance cancelled (heir=owner)");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
       refreshTimer();
     } catch (e: unknown) {
       setStatus("Cancel error: " + errorText(e));
@@ -1539,6 +1666,9 @@ export default function App() {
         },
       });
       setStatus("Heir updated");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
       setNewHeir("");
       setNewHeirResolved(null);
       if (NOTIFY_BACKEND_ENABLED && account && vault) {
@@ -1572,6 +1702,9 @@ export default function App() {
         return;
       }
       setStatus("Request filed. The owner has 7 days to renew before you can withdraw.");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
       const prov = getRwProvider();
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
@@ -1613,6 +1746,9 @@ export default function App() {
         },
       });
       setStatus("Claim complete");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
       refreshBalances(); refreshTimer();
     } catch (e: unknown) {
       setStatus("Claim error: " + errorText(e));
@@ -1654,6 +1790,9 @@ export default function App() {
         },
       });
       setStatus("Withdraw complete");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
       setWithdrawAmountStr("");
       refreshBalances();
     } catch (e: unknown) {
@@ -1691,6 +1830,9 @@ export default function App() {
         },
       });
       setStatus("Released. You can create a new vault.");
+      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+      void refreshVaultDetails();
       setVault("");
       await loadVault();
       ok = true;
@@ -1704,6 +1846,54 @@ export default function App() {
         setShowReleaseConfirm(false);
         setReleaseAcknowledge(false);
       }
+    }
+  };
+
+  /**
+   * 정산된 금고에 늦게 들어온 잔액을 회수한다.
+   *
+   * 왜 이것이 필요한가: 상속인이 돈을 가져간 뒤에도 금고 주소는 살아 있다. 그때 와서
+   * WLD 를 입금하면 잔액이 남는다. 계약에는 `ownerSweepAfterSettlement` 이 있어서 회수할
+   * 수 있게 되었고, 팩토리 경유용 `sweepSettledVaultFor` 도 붙였다 — 그런데 **앱에는
+   * 이 함수를 호출하는 코드가 아예 없었다.** 그 상태가 두 가지로 나빴다.
+   *
+   *   1. 피상속인이 "잔액이 0 이다" 는 사실을 믿고 아무것도 안 한다. 돈은 실제로 있고
+   *      사용자는 꺼낼 방법이 없다. 입금 자체는 앱이 막지 않으니까 막다른 길이 생긴다.
+   *   2. 상속이 끝났는데 잔액이 있다는 사실이 화면에 전혀 드러나지 않는다.
+   *
+   * 그래서 정산 상태에 잔액이 남아 있으면 반드시 이 버튼을 보여준다. 없으면 돈이 갇힌다.
+   */
+  const sweepSettled = async () => {
+    if (!factory || !account) return;
+    if (sweeping) return;
+    setSweeping(true);
+    try {
+      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "sweepSettledVaultFor", args: [account]  }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
+      setStatus("Pending… awaiting confirmation");
+      const prev = vaultWld;
+      const prov = getRwProvider();
+      await waitForTxOrEvent(prov, {
+        txHash: sent.tx.hash,
+        check: async () => {
+          const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+          const now: bigint = await token.balanceOf(vault);
+          return now < prev;
+        },
+      });
+      setStatus("Swept the remaining balance to your address");
+      void refreshVaultDetails();
+      refreshBalances();
+    } catch (e: unknown) {
+      setStatus("Sweep error: " + errorText(e));
+      pushToast('error', errorText(e));
+    } finally {
+      setSweeping(false);
     }
   };
 
@@ -1792,6 +1982,20 @@ export default function App() {
           )}
         </div>
 
+        {/* 연결이 끊기면 화면이 멈춘다. 예전에는 여기에 아무 표시가 없어서 사용자가
+            "내 갱신이 반영되지 않았다", 혹은 더 나쁘게 "내 돈이 사라졌다" 고 읽었다.
+            온체인 상태는 그대로인데 화면만 멈춘 것임을 분명히 해야 한다. */}
+        {!stale && account && (
+          <div
+            className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3"
+            role="status"
+            aria-live="polite"
+          >
+            Not connected to World Chain right now, so the numbers below may be out of date.
+            Your funds are unaffected on-chain. Pull to retry, or reopen the app.
+          </div>
+        )}
+
         {/* 8개 트랜잭션 플로우 전부의 결과/오류 채널.
             스크린 리더 사용자에게 읽히도록 live region 이 필요하다. */}
         {status && (
@@ -1823,7 +2027,23 @@ export default function App() {
               <div className="text-sm grid gap-1">
                 <div className="flex items-center gap-2">
                   <div>Owner:</div>
-                  <div><b>{username ? `@${username}` : (vaultOwner ? short(vaultOwner) : '-')}</b></div>
+                  <div>
+                    <b>
+                      {/* 여기서 로그인한 사람의 username 을 쓰면 안 된다. 상속인이 이 탭을
+                          열면 자기 이름이 "Owner" 옆에 찍히고, 자기 주소가 "Heir" 옆에 찍힌다.
+                          화면이 사용자에게 "당신이 이 금고의 주인이다" 라고 말하는 셈이라
+                          상속인이 자기 금고로 오인하고 행동까지 미끄러뜨릴 수 있다.
+                          username 은 **내가 이 금고의 주인일 때만** 예외적으로 쓴다. */}
+                      {isMyVault && username
+                        ? `@${username}`
+                        : vaultOwner
+                          ? short(vaultOwner)
+                          : "-"}
+                    </b>
+                    {!isMyVault && vaultOwner && (
+                      <span className="text-xs text-gray-500"> (not you)</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <div>Heir:</div>
@@ -1930,10 +2150,27 @@ export default function App() {
                     <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
                     <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
                     <Button variant="ghost" onClick={setMax}>Max</Button>
-                    <Button variant="primary" onClick={deposit} disabled={!miniInstalled || !account}>Deposit</Button>
+                    <Button
+                      variant="primary"
+                      onClick={deposit}
+                      disabled={!miniInstalled || !account || isSettledClaim}
+                    >
+                      Deposit
+                    </Button>
                     <Button onClick={refreshBalances}>Refresh balance</Button>
                   </div>
                 </>
+              )}
+              {/* 정산된 금고에서 입금을 막는다. 계약을 막을 수는 없다 — 누군가 주소로
+                  직접 보낼 수 있으므로 sweep 이 여전히 필요하다 — 하지만 앱이 직접
+                  권하는 일은 하지 않는다. 잔액이 남으면 "비어 있다" 는 표시가 거짓이 되고
+                  사용자는 해제 수단까지 찾아내야 한다. */}
+              {isSettledClaim && (
+                <div className="text-xs text-gray-600">
+                  This vault is closed, so deposits are turned off here — create a new vault
+                  first. If you already sent WLD to this vault address, you can still sweep it
+                  back to you from the Inherit tab.
+                </div>
               )}
               <div className="text-xs text-gray-500">
                 * This vault accepts only WLD on World Chain (480). Do not send ETH or other tokens. Gas fees are generally covered by World App; ETH is usually not required.
@@ -1977,10 +2214,25 @@ export default function App() {
             <CardHeader><CardTitle>Inheritance Status</CardTitle></CardHeader>
             <CardContent className="grid gap-3">
               <div className="text-sm text-gray-700">
-                Funds move only after the countdown runs out <b>and</b> your heir files a
-                claim, and then waits {challengeDays} more days. You can renew at any point to
-                withdraw that claim, including after those {challengeDays} days — until they
-                actually take it.
+                {/* 이 문장을 피상속인과 상속인에게 다르게 말한다. 예전에는 항상
+                    피상속인 목소리("your heir", "You can renew") 로 적혀 있었는데,
+                    상속인이 이 탭을 열면 자기 상속 절차가 자기 아닌 사람에게
+                    달라고 ajax 되는 것처럼 읽혔다. */}
+                {isMyVault ? (
+                  <>
+                    Funds move only after the countdown runs out <b>and</b> your heir files a
+                    claim, and then waits {challengeDays} more days. You can renew at any point to
+                    withdraw that claim, including after those {challengeDays} days — until they
+                    actually take it.
+                  </>
+                ) : (
+                  <>
+                    Funds move only after the countdown runs out <b>and</b> you file a claim,
+                    and then wait {challengeDays} more days. The owner can renew at any point to
+                    withdraw your claim, including after those {challengeDays} days — until you
+                    actually take the balance.
+                  </>
+                )}
               </div>
 
               {/* 파이프라인을 단계로 보여준다. 어느 단계에 있는지가 한눈에 들어가야
@@ -2003,9 +2255,24 @@ export default function App() {
 
               {challengeRunning && (
                 <div className="text-sm">
-                  Your heir has filed a claim. Renew the countdown before{" "}
-                  <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
-                  to keep the funds. After that the claim cannot be stopped.
+                  {/* "Your heir has filed a claim ... renew to keep the funds" 를
+                      상속인에게 그대로 보여주면 자기 상속 신청이 남의 것으로 읽히고
+                      "당신이 갱신하라" 는 지시처럼 보인다. 상속인에게는 자기 절차의
+                      다음 단계와 남은 시간을 알려야 한다. */}
+                  {isMyVault ? (
+                    <>
+                      Your heir has filed a claim. Renew the countdown before{" "}
+                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
+                      to keep the funds. After that the claim cannot be stopped.
+                    </>
+                  ) : (
+                    <>
+                      You filed a claim. The owner has until{" "}
+                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
+                      to renew and withdraw it. After that your claim can no longer be stopped,
+                      and you can withdraw the balance.
+                    </>
+                  )}
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                     <div className="mt-2">
                       <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account}>
@@ -2041,9 +2308,39 @@ export default function App() {
                   </div>
                 )}
 
+              {/* 정산 이후 늦게 들어온 잔액 회수.
+                  이게 없으면 돈이 금고에 갇힌 채 화면에는 "비어 있다" 고 표시된다.
+                  계약에 회수 함수가 붙어 있는데 앱에서 부를 수 없으면 의미가 없다. */}
+              {isSettledClaim && isMyVault && vaultWld > 0n && (
+                <div className="field-row" style={{ width: "100%" }}>
+                  <label className="field-row-label" htmlFor="settled-sweep">
+                    Leftover balance in the closed vault
+                  </label>
+                  <div className="field-row-controls">
+                    <Button
+                      variant="primary"
+                      onClick={sweepSettled}
+                      disabled={!miniInstalled || !account || sweeping}
+                    >
+                      {sweeping
+                        ? "Sweeping…"
+                        : `Sweep ${fmtUnits(vaultWld, wldDecimals)} WLD to me`}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {isSettledClaim && (
                 <div className="text-sm text-gray-600">
-                  The inheritance completed. This vault is closed and holds nothing.
+                  {vaultWld > 0n ? (
+                    <>
+                      The inheritance completed and the heir was paid. This vault is closed, but{" "}
+                      <b>{fmtUnits(vaultWld, wldDecimals)} WLD</b> arrived afterwards and is still
+                      in the contract. You can sweep it to your own address.
+                    </>
+                  ) : (
+                    "The inheritance completed. This vault is closed and holds nothing."
+                  )}
                 </div>
               )}
 
@@ -2093,8 +2390,11 @@ export default function App() {
                     </div>
                     <div className="timer-value">Waiting for a claim</div>
                     <div className="text-xs text-gray-600">
-                      Your heir can now file a claim. You would then have{" "}
-                      {challengeDays} days to renew.
+                      {/* 여기서도 주어가 갈린다. "Your heir can now file a claim" 을
+                          상속인에게 보여주면 남이 대신 신청해야 한다는 뜻으로 읽힌다. */}
+                      {isMyVault
+                        ? `Your heir can now file a claim. You would then have ${challengeDays} days to renew.`
+                        : `You can now file a claim. The owner would then have ${challengeDays} days to renew.`}
                     </div>
                   </>
                 ) : (
@@ -2214,53 +2514,65 @@ export default function App() {
             "Create My Vault" 이 있어서, 상속인이 자기 것인지를 확인하려면 스크롤을
             내려야 했다. 스캔 결과가 있는 경우 카드를 맨 앞으로 올린다. */}
 
-        {tab === "inherit" && !isMyVault && account && gate2(
+        {/* ===== 깨진 링크 =====
+            조용히 무시하면 안 된다. 사용자는 자기 금고도 없는 빈 화면을 보며 이유를
+            알 수 없다. 틀린 입력인지 앱이 고장인지부터 구분되게 해야 한다. */}
+        {tab === "inherit" && linkError && (
           <Card>
-            <CardHeader><CardTitle>Are you named as someone's heir?</CardTitle></CardHeader>
+            <CardHeader><CardTitle>This link could not be opened</CardTitle></CardHeader>
+            <CardContent className="grid gap-2">
+              <div className="text-sm text-gray-700">{linkError}</div>
+              <div className="text-xs text-gray-600">
+                A link looks like <code>…?vault=0x…</code>. If the person who sent it made a
+                mistake, ask them to send it again.
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ===== 링크로 받은 금고 안내 =====
+            상속인에게 보내는 링크는 이 앱이 상속인을 도달시키는 유일한 확실한 경로다.
+            그런데 받는 사람이 자기 금고를 갖고 있으면 예전에는 자기 금고만 보여주고 링크가
+            가리키는 상속 대상을 조용히 버렸다. 지금 보고 있는 것이 누구의 금고인지 말하고,
+            자기 금고로 돌아갈 수 있게 한다. */}
+        {tab === "inherit" && linkedVault && ownVault && ownVault.toLowerCase() !== linkedVault.toLowerCase() && account && gate2(
+          <Card>
+            <CardHeader><CardTitle>You are viewing a vault you were sent</CardTitle></CardHeader>
             <CardContent className="grid gap-2">
               <div className="text-xs text-gray-600">
-                This app checks the chain for you as soon as you open it. Scanning reads the
-                factory's history, so it takes a moment.
+                This is the vault from the link you opened, and it is the one your actions apply
+                to. Your own vault is <b>{short(ownVault)}</b>.
               </div>
-              {findingHeirVaults ? (
-                <div className="text-xs text-gray-600">Checking the chain for vaults that name you…</div>
-              ) : heirScanAttempted ? (
-                heirFoundVaults.length > 0 ? (
-                  <>
-                    <div className="text-sm font-medium">
-                      You are the heir of {heirFoundVaults.length} vault{heirFoundVaults.length > 1 ? "s" : ""}.
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      Open one to see whether the countdown has ended and whether you can file a claim.
-                      Nothing is owed to you until the countdown runs out and you file — see the Inherit tab.
-                    </div>
-                    <div className="grid gap-2 text-xs">
-                      {heirFoundVaults.map((v) => (
-                        <div key={v} className="flex items-center justify-between gap-2">
-                          <span className="break-all">{short(v)}</span>
-                          <div className="flex items-center gap-2">
-                            <Button size="sm" onClick={() => setVault(v)}>Open in app</Button>
-                            <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">Explorer</a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-sm font-medium">No vault names you as heir.</div>
-                )
-              ) : null}
               <div className="flex items-center gap-2 flex-wrap">
-                <Button onClick={findHeirVaults} disabled={findingHeirVaults}>
-                  {findingHeirVaults ? "Searching..." : "Check again"}
+                <Button onClick={() => { setVault(linkedVault); setLinkedVault(""); }} variant="primary">
+                  Keep viewing the linked vault
+                </Button>
+                <Button onClick={() => { setVault(ownVault); setLinkedVault(""); }}>
+                  Back to your own vault
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* ===== Inherit 탭: 상속 설정과 상속 진행 상태 ===== */}
-        {tab === "inherit" && !isMyVault && gate2(
+        {/* "내가 상속인으로 지정됐나" 카드.
+            자기 금고가 없는 사람에게는 첫 화면이어야 하고(상속인이 이 앱을 여는 이유다),
+            자기 금고가 있는 사람에게도 보여야 한다 — 자기 금고가 있어도 남의 상속인이 될 수
+            있으므로. 예전처럼 `!isMyVault` 로 숨기면 그 사람은 자기 금고만 관리하다가
+            평생 "누군가가 나를 상속인으로 지명했나" 를 알 방법이 없었다. 상속인 링크를
+            받아도 (a) 링크가 자기 금고로 덮이면 (b) 여기 카드가 없으므로 신청 수단이
+            사라진다. 두 곳에서 쓰이므로 변수로 뺀다. */}
+        {tab === "inherit" && account && heirStatusCard}
+
+        {/* ===== Inherit 탭: 상속 설정과 상속 진행 상태 =====
+
+            "내가 아직 금고를 만들지 않았다"를 묻는 조건이지, "지금 보고 있는 금고가
+            내 것이 아니다" 가 아니다. 두 개를 섞으면 상속인 링크를 열어 남의 금고를
+            보는 순간 이 온보딩이 튀어나온다 — 자기 금고가 이미 있는데 "Create a vault"
+            를 권하고, Owner 화법("your heir can claim the balance", "you can keep
+            renewing to stop them") 으로 상속인에게 말한다. 링크가 처음 동작하게 만든
+            변경이 만든 부작용이다. */}
+        {tab === "inherit" && !ownVault && gate2(
           <Card>
             <CardHeader><CardTitle>How this works</CardTitle></CardHeader>
             <CardContent className="space-y-4">

@@ -83,10 +83,24 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
     if (result.executedWith === "fallback") {
       return { ok: false, error: "This browser cannot send transactions", userFacing: true };
     }
-    const data = result.data as { userOpHash?: string; status?: string; transaction_hash?: string } | undefined;
-    if (!data || data.status !== "success") {
-      return { ok: false, error: "The transaction did not go through", userFacing: true };
-    }
+      // MiniKit 2.x 는 실패를 throw 하지 않고 status 로 알린다. 그리고 revert 사유를
+      // data.error / data.reason 에 담아 준다.
+      //
+      // 예전 코드는 그것을 버리고 "The transaction did not go through" 라는 고정 문구만
+      // 냈다. 그래서 "개인은 기한 중이라 더 이상 갱신할 수 없습니다" 와 "잘못된 주소입니다"
+      // 가 화면에서 똑같이 보였다. 사용자는 gas 를 쓰고 아무 변화도 없는 이유를 알 수
+      // 없었다.
+      const data = result.data as {
+        userOpHash?: string;
+        status?: string;
+        transaction_hash?: string;
+        error?: string;
+        reason?: string;
+      } | undefined;
+      if (!data || data.status !== "success") {
+        const reason = (data?.error || data?.reason || "").toString().trim();
+        return { ok: false, error: reason || "The transaction did not go through", userFacing: true };
+      }
     return { ok: true, tx: { hash: data.userOpHash ?? data.transaction_hash, executedWith: result.executedWith } };
   } catch (e) {
     const msg = unwrap(e);
