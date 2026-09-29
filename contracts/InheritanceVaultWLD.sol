@@ -34,6 +34,8 @@ contract InheritanceVaultWLD {
     error NotHeir();
     error ChallengeStillRunning();
     error NothingToTransfer();
+    /// @dev 정산(실제 수령)이 아직 되지 않았을 때. 정산 뒤에 들어온 잔고만 회수할 수 있다.
+    error NotSettled();
     error EthNotAccepted();
     error Reentrancy();
     error WldOnly();
@@ -47,6 +49,7 @@ contract InheritanceVaultWLD {
     event ClaimWithdrawn(address indexed by);
     event InheritanceFinalized(address indexed recipient, uint256 wldAmount, uint256 claimedAt);
     event OwnerWithdrawnWLD(address indexed to, uint256 amount);
+    event SettledResidueSwept(address indexed to, uint256 amount);
     event UnknownERC20Rescued(address indexed token, address indexed to, uint256 amount);
     event EthSwept(address indexed to, uint256 amount);
     event InheritanceCanceled(address indexed owner);
@@ -327,8 +330,33 @@ contract InheritanceVaultWLD {
         emit OwnerWithdrawnWLD(to, amount);
     }
 
+    /// @notice **상속이 끝난 뒤** 들어온 WLD 를 회수한다.
+    ///
+    /// @dev 이게 없으면 자금이 영구히 묶이고, 더 나쁜 게 owner's factory 슬롯까지
+    ///      영구히 막힌다. `finalizeClaim` 은 그 시점의 잔액 전량을 상속인에게 넘기고
+    ///      금고를 비우지만, 그 *이후* 에 누군가 WLD 를 보내면 아무도 꺼낼 방법이 없다.
+    ///      `ownerWithdrawWLD` 는 만료 후라 막히고(Expired), `ownerRescueUnknownERC20`
+    ///      는 WLD 를 명시적으로 거부한다(WldOnly), `ping` 도 마찬가지다. 그리고 팩토리의
+    ///      `releaseMyVault` 은 잔액 0 을 요구하므로(VaultNotEmpty) 그 1 wei 때문에
+    ///      주인은 `createVault` 도 못 하게 된다 — 즉 제3자가 비용 0 으로 남의 슬롯을
+    ///      영구히 봉인할 수 있었다. 실제로 그랬다.
+    ///
+    ///      상속인이 이미 받은 금액은 손댈 수 없다 — `finalizeClaim` 이 그 시점의 전량을
+    ///      넘겼기 때문에 여기 남은 것은 상속 대상이 아니다. 누군가 늦게 보낸 것뿐이다.
+    ///
+    /// @param to 수령 주소
+    function ownerSweepAfterSettlement(address to) external onlyOwnerOrFactory nonReentrant {
+        if (to == address(0)) revert InvalidAddress();
+        if (claimedAt == 0) revert NotSettled();
+        uint256 bal = SafeERC20Lib.safeBalanceOf(WLD, address(this));
+        if (bal == 0) revert NothingToTransfer();
+        SafeERC20Lib.safeTransfer(WLD, to, bal);
+        emit SettledResidueSwept(to, bal);
+    }
+
     /// @notice 상속 대상이 아닌 토큰 회수 (읽기 전용 컨트랙트 주소 검증 포함).
     /// @dev WLD 와 ETH 는 여기서 회수할 수 없다. ETH 는 {sweepEth} 를 쓸 것.
+    ///      정산 이후 들어온 WLD 는 {ownerSweepAfterSettlement} 을 쓸 것.
     function ownerRescueUnknownERC20(address token, uint256 amount, address to)
         external
         onlyOwnerOrFactory

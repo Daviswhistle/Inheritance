@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {InheritanceVaultWLD} from "./InheritanceVaultWLD.sol";
 import {IERC20} from "./interfaces/IERC20Minimal.sol";
+import {SafeERC20Lib} from "./libraries/SafeERC20Lib.sol";
 
 /// @title InheritanceVaultWLDFactoryOnePerOwner — 각 소유자당 금고 1개
 ///
@@ -110,7 +111,17 @@ contract InheritanceVaultWLDFactoryOnePerOwner {
     /// @param amount 입금할 WLD 양 ( wad 단위)
     function deposit(uint256 amount) external {
         address v = _myVault();
-        IERC20(WLD).transferFrom(msg.sender, v, amount);
+        // 반환값을 버리지 않는다. bool 을 돌려주지 않는 ERC-20 은 실패해도 성공한 것처럼
+        // 지나가고, 그 상태에서 입금이 안 됐는데 화면은 "입금됨" 으로 간다.
+        // 금고 쪽 회수 경로는 이미 SafeERC20Lib 를 쓰므로 여기도 맞춰야 한다.
+        SafeERC20Lib.safeTransferFrom(WLD, msg.sender, v, amount);
+    }
+
+    /// @notice 정산이 끝난 뒤 늦게 들어온 WLD 를 내 금고에서 회수한다.
+    /// @dev 월드앱은 허용 목록에 있는 주소만 보낼 수 있으므로 사용자는 금고가 아니라
+    ///      이 팩토리만 호출할 수 있다. 금고에 직접 호출하는 경로는 앱에서 도달 불가다.
+    function sweepSettledVaultFor(address to) external {
+        InheritanceVaultWLD(payable(_myVault())).ownerSweepAfterSettlement(to);
     }
 
     /// @notice 내 금고의 생존 신호를 보낸다(갱신 기한 연장). 이의제기 기간 중이면 청산 신청이 취소된다.
