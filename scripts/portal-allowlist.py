@@ -28,8 +28,11 @@ ENDPOINTS = (
     "https://developer.worldcoin.org/api/v1/graphql",
 )
 
-# 배포된 값 — app/.env.example 및 저장소 변수와 같아야 한다
-FACTORY = "0x39721e856f5efa361b6428f056D437124F70C55E"
+# 배포된 값 — app/.env 및 저장소 변수와 같아야 한다.
+# 팩토리를 갈아끼울 때 여기도 같이 갱신해야 한다. 안 갱신하면 이 스크립트가 옛 주소를
+# "누락" 으로 진단하고 되살리려 시도한다 — 실제로 교체된 팩토리를 allowlist 에
+# 되돌릴 뻔했다.
+FACTORY = "0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88"
 WLD = "0x2cfc85d8e48f8eab294be644d9e25c3030863003"
 META_ID = "meta_9cf3b324ec9a1838a56c5b6d98be8674"
 
