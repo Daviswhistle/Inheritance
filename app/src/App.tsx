@@ -1978,8 +1978,9 @@ export default function App() {
             <CardContent className="grid gap-3">
               <div className="text-sm text-gray-700">
                 Funds move only after the countdown runs out <b>and</b> your heir files a
-                claim, and then waits {challengeDays} more days. If you renew during those
-                days the claim is withdrawn automatically.
+                claim, and then waits {challengeDays} more days. You can renew at any point to
+                withdraw that claim, including after those {challengeDays} days — until they
+                actually take it.
               </div>
 
               {/* 파이프라인을 단계로 보여준다. 어느 단계에 있는지가 한눈에 들어가야
@@ -2032,7 +2033,7 @@ export default function App() {
                 account.toLowerCase() === vaultHeir.toLowerCase() && (
                   <div className="grid gap-2">
                     <div className="text-sm">
-                      The review window has passed. Withdraw the balance.
+                      The review window has passed, so you can withdraw. Renewing would still cancel their claim until they do.
                     </div>
                     <Button variant="primary" onClick={claim} disabled={!miniInstalled || vaultWld === 0n}>
                       Withdraw {fmtUnits(vaultWld)} {wldSymbol}
@@ -2116,14 +2117,18 @@ export default function App() {
                     {challengeRunning
                       ? `Your heir filed a claim. Renew before ${challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"} to withdraw it.`
                       : canClaim
-                        ? "The review window has passed, so the balance can no longer be renewed back."
+                        ? "The review window has passed, so the heir can take the balance. You can still renew to withdraw the claim, until they actually do."
                         : awaitingClaim
-                          ? "The countdown has ended. Your heir can now file a claim, after which you would still have a few days to renew."
+                          ? "The countdown has ended. Your heir can now file a claim, and you can keep renewing to cancel it until they actually take the balance."
                           : `Reset before the countdown ends. If you stop, your heir can claim the balance after a ${challengeDays}-day review window.`}
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account || canClaim}>
-                      {challengeRunning ? "Renew and withdraw claim" : "Reset timer"}
+                    {/* canClaim 로 비활성화하지 않는다. 계약은 상속인이 실제로 수령하기
+                        전까지 갱신을 허용하는데, 여기가 옛 규칙("7일이 지나면 못 되돌린다")을
+                        그대로 구현하고 있었다. 계약만 고치고 UI 를 안 고치면 화면이
+                        블록체인과 모순된다. */}
+                    <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account || isSettledClaim}>
+                      {challengeRunning || canClaim ? "Renew and withdraw claim" : "Reset timer"}
                     </Button>
                   </div>
                 </>
@@ -2203,6 +2208,57 @@ export default function App() {
         {/* 금고가 이미 있으면 이 카드를 숨긴다. 그대로 두면 비활성 primary 버튼과
             "You already have a vault" 문구가 함께 보여 혼란을 부르며, heir/period 조정은
             아래 "Timer & Controls" 카드에서 할 수 있어 기능 손실이 없다. */}
+        {/* ===== 상속인 확인 =====
+            금고가 없는 사람이 이 앱을 여는 이유의 절반은 "상속인이 Somebody" 다.
+            그런데 이 카드를 맨 아래에 두면 그 위에 "How this works" 와
+            "Create My Vault" 이 있어서, 상속인이 자기 것인지를 확인하려면 스크롤을
+            내려야 했다. 스캔 결과가 있는 경우 카드를 맨 앞으로 올린다. */}
+
+        {tab === "inherit" && !isMyVault && account && gate2(
+          <Card>
+            <CardHeader><CardTitle>Are you named as someone's heir?</CardTitle></CardHeader>
+            <CardContent className="grid gap-2">
+              <div className="text-xs text-gray-600">
+                This app checks the chain for you as soon as you open it. Scanning reads the
+                factory's history, so it takes a moment.
+              </div>
+              {findingHeirVaults ? (
+                <div className="text-xs text-gray-600">Checking the chain for vaults that name you…</div>
+              ) : heirScanAttempted ? (
+                heirFoundVaults.length > 0 ? (
+                  <>
+                    <div className="text-sm font-medium">
+                      You are the heir of {heirFoundVaults.length} vault{heirFoundVaults.length > 1 ? "s" : ""}.
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Open one to see whether the countdown has ended and whether you can file a claim.
+                      Nothing is owed to you until the countdown runs out and you file — see the Inherit tab.
+                    </div>
+                    <div className="grid gap-2 text-xs">
+                      {heirFoundVaults.map((v) => (
+                        <div key={v} className="flex items-center justify-between gap-2">
+                          <span className="break-all">{short(v)}</span>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" onClick={() => setVault(v)}>Open in app</Button>
+                            <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">Explorer</a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm font-medium">No vault names you as heir.</div>
+                )
+              ) : null}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button onClick={findHeirVaults} disabled={findingHeirVaults}>
+                  {findingHeirVaults ? "Searching..." : "Check again"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* ===== Inherit 탭: 상속 설정과 상속 진행 상태 ===== */}
         {tab === "inherit" && !isMyVault && gate2(
           <Card>
@@ -2231,7 +2287,7 @@ export default function App() {
                 </li>
                 <li>
                   <b>Renew before the countdown ends</b>
-                  <span>Miss it and your heir can claim the balance, after a 7-day window you can still stop.</span>
+                  <span>Miss it and your heir can claim the balance. They wait 7 days, and you can keep renewing to stop them right up until they actually take it.</span>
                 </li>
               </ol>
 
@@ -2348,50 +2404,6 @@ export default function App() {
           일을 하는 것처럼 보인다. 상속인은 자기 금고가 없으므로 이 화면이 상속인
           입장에서 유일한 진입점이기도 하다.
         */}
-        {tab === "inherit" && !isMyVault && account && gate2(
-          <Card>
-            <CardHeader><CardTitle>Are you named as someone's heir?</CardTitle></CardHeader>
-            <CardContent className="grid gap-2">
-              <div className="text-xs text-gray-600">
-                This app checks the chain for you as soon as you open it. Scanning reads the
-                factory's history, so it takes a moment.
-              </div>
-              {findingHeirVaults ? (
-                <div className="text-xs text-gray-600">Checking the chain for vaults that name you…</div>
-              ) : heirScanAttempted ? (
-                heirFoundVaults.length > 0 ? (
-                  <>
-                    <div className="text-sm font-medium">
-                      You are the heir of {heirFoundVaults.length} vault{heirFoundVaults.length > 1 ? "s" : ""}.
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      Open one to see whether the countdown has ended and whether you can file a claim.
-                      Nothing is owed to you until the countdown runs out and you file — see the Inherit tab.
-                    </div>
-                    <div className="grid gap-2 text-xs">
-                      {heirFoundVaults.map((v) => (
-                        <div key={v} className="flex items-center justify-between gap-2">
-                          <span className="break-all">{short(v)}</span>
-                          <div className="flex items-center gap-2">
-                            <Button size="sm" onClick={() => setVault(v)}>Open in app</Button>
-                            <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">Explorer</a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-sm font-medium">No vault names you as heir.</div>
-                )
-              ) : null}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button onClick={findHeirVaults} disabled={findingHeirVaults}>
-                  {findingHeirVaults ? "Searching..." : "Check again"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* ===== 주인이 상속인에게 보낼 수 있는 링크 =====
             월드앱 알림은 이 미니앱을 깔지 않은 지갑에 닿지 않는다("User not found").
@@ -2420,7 +2432,7 @@ export default function App() {
                   <div className="text-sm font-medium">Send in World Chat</div>
                   <div className="text-xs text-gray-600">
                     Reaches @{heirUsername} inside World App, whether or not they have ever opened
-                    this app. Tapping the message opens the vault below.
+                    this app. Tapping the message opens this vault.
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Button variant="primary" onClick={tellHeirInChat} disabled={shareBusy}>

@@ -769,6 +769,45 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* 원시 <button> 처리.
+ *
+ * 이 앱의 주 버튼은 <Button>(.btn) 이지만 주소 복사·상세 펼치기 같은 인라인
+ * 동작은 원시 <button> 을 쓴다. 브라우저 기본 스타일(회색 배경, 테두리)이
+ * 그대로 보여서 같은 화면의 다른 버튼과 어긋났고, 높이가 21px 라 손가락으로
+ * 누르기엔 작았다.
+ *
+ * 여기서는 전역 리셋만 걸고 실제 모양은 :not(.btn) 규칙이 준다. .btn 은
+ * 패딩·테두리·배경을 모두 자기 규칙에 갖고 있고 클래스 명시도가 요소보다
+ * 높으므로 영향받지 않는다. */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* .btn(주 버튼)과 .tab-item(탭 바 탐색)은 자기 레이아웃을 갖고 있으므로 손대지
+   않는다 — 인라인 텍스트 동작(주소 복사, 상세 펼치기)에만 적용한다. */
+button:not(.btn):not(.tab-item) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.25rem;
+  /* 수직만 보정한다. `margin` 을 주면 같은 명시도의 .ml-1/.ml-2 를 덮어써서
+     "Token (WLD):0x5FbD" 처럼 콜론에 붙어버린다 — 실제로 그랬다. */
+  margin-block: -0.25rem;
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+button:not(.btn):not(.tab-item):hover {
+  background-color: #eff6ff;
+}
+
 input:focus-visible {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
