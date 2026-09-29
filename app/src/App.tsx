@@ -242,7 +242,11 @@ export default function App() {
    */
   const [linkError, setLinkError] = useState<string>("");
   /**
-   * 화면의 데이터가 체인 현재 상태가 아님을 나타낸다.
+   * 화면의 데이터가 체인의 현재 상태와 일치하는가.
+   *
+   * `true` = 최신 (배너 없음), `false` = 체인에 닿지 못했으니 숫자를 믿으면 안 됨 (배너 표시).
+   * 이름이 뒤집혀 보인다(`stale` 가 true 면 최신) — 실제로도 그렇고, 배너 조건이
+   * `!stale` 이라 오해가 반복돼 왔던 만큼 여기서 못 박아 둔다.
    *
    * RPC 가 죽었을 때 예전에는 조용히 넘어가서 갱신되지 않은 숫자를 계속 보여줬다.
    * 사용자가 보기에는 "내가 한 갱신이 반영되지 않았다", "내 돈이 사라졌다" 다. 실제로는
@@ -250,6 +254,39 @@ export default function App() {
    * 드러낸다.
    */
   const [stale, setStale] = useState<boolean>(true);
+
+  /**
+   * 체인 생존 확인 폴.
+   *
+   * 각 데이터 읽기가 실패할 때 플래그를 바꾸는 방식만으로는 배너가 **끼어 stuck** 한다.
+   * 금고가 없는 사용자는 `vaultCtr` 이 null 이라 모든 읽기가 조기 반환하고, 그래서
+   * 플래그를 되돌릴 방법이 없다 — 체인이 이미 살아 있어도 배너가 계속 뜨는 상태가 된다.
+   * 실제로 처음 로그인 직후 체인이 아직 올라오는 중이면 이 상태로 빠진다.
+   *
+   * 그래서 가장 싸고 독립적인 호출(`getBlockNumber`) 하나를 주기적으로 때려서 플래그의
+   * 단일 기준점으로 삼는다. 읽기 실패는 빠른 피드백용으로만 남기고, 여기서 확정한다.
+   */
+  useEffect(() => {
+    if (!provider) return;
+    let stopped = false;
+    const probe = async () => {
+      try {
+        await provider.getBlockNumber();
+        if (!stopped) setStale(true);
+      } catch {
+        if (!stopped) setStale(false);
+      }
+    };
+    void probe();
+    const id = setInterval(() => { void probe(); }, 10000);
+    const onVis = () => { if (document.visibilityState === "visible") void probe(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [provider]);
   const [vaultOwner, setVaultOwner] = useState<string>("");
   const [vaultHeir, setVaultHeir] = useState<string>("");
   const [vaultHeartbeat, setVaultHeartbeat] = useState<number>(0);
@@ -932,12 +969,22 @@ export default function App() {
         // 링크 금고가 우선이다. 상속인에게 보낸 링크를 열었는데 자기 금고로 되돌아가면
         // 링크가 준 정보가 사라진다. 어느 쪽을 보는지는 화면에 알려준다.
         if (!linkedVault) setVault(v);
+        setStale(true);
         return;
       }
       setOwnVault("");
+      // 금고가 없는 경우에도 읽기는 성공했다. 배너를 여기서 지워야 연결이 복구됐을 때
+      // 금고가 없는 사람에게도 배너가 영구히 남지 않는다 (refreshVaultDetails 는
+      // `!vaultCtr` 이면 즉시 반환하므로 이 경로가 그 일을 대신한다).
+      setStale(true);
     } catch (e: unknown) {
       // RPC 실패를 삼키지 않는다 — 예외가 바깥으로 새면 unhandled rejection 이 된다.
       setStatus("Vault lookup failed: " + errorText(e));
+      // 여기서가 "연결 배너" 가 실제로 필요해지는 지점이다. RPC 가 죽으면
+      // `vault` 가 채워지지 않아 `vaultCtr` 이 null 이 되고, 그러면 아래
+      // `refreshVaultDetails` 는 `if (!vaultCtr) return` 로 즉시 빠져나간다.
+      // 즉 상태 플래그를 그쪽에만 두면, 배너가 정확히 필요한 순간에 표시되지 않는다.
+      setStale(false);
       return;
     }
 
@@ -1222,7 +1269,14 @@ export default function App() {
         setChallengeDays(7);
       }
       setTimeRemaining(Number(rem));
+      setStale(true);
     } catch (e: unknown) {
+      // 이 함수가 15초마다 도는 폴이다. 즉 사용자가 체인을 잃었을 때 가장 먼저, 가장
+      // 자주 잡히는 지점이다. 예전에는 여기서 console.warn 만 남기고 조용히 넘어갔다.
+      // 그러면 화면은 갱신되지 않은 숫자를 정답처럼 보여주고, 사용자는 그걸 "내 갱신이
+      // 반영되지 않았다" 또는 "내 돈이 사라졌다" 고 읽는다. 연결이 끊겼다는 사실을
+      // 말하는 유일한 기회인데, 말할 수 있는 곳이 아니었다.
+      setStale(false);
       console.warn("refreshTimer failed:", errorText(e));
     }
   }, [vaultCtr]);
