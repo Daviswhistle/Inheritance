@@ -110,11 +110,20 @@ contract InheritanceVaultWLDTest is Test {
     //  회귀: 만기 후 소유자가 금고를 되살릴 수 있었음
     // ================================================================
 
-    function test_RevertWhen_PingAfterExpiry() public {
+    function test_PingAfterExpiryRestoresTheCountdown() public {
+        // 기한이 지나도 갱신은 열린다.
+        //
+        // 상속이 성립하는 조건이 "피상속인이 갱신하지 않는 것" 이므로, 갱신을 막으면
+        // 상속이 성립할 수 없다. 갱신은 "살아 있다" 는 신호이지 상속의 실패가 아니다.
+        // 이 테스트는 옛 정책(만료 후 ping 불가)을 고정하고 있었고, 그 정책이 틀렸다.
         _expire();
+        assertTrue(vault.isExpired(), "expired");
+
         vm.prank(owner);
-        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
         vault.ping();
+
+        assertTrue(vault.ownerStillActive(), "countdown restored");
+        assertFalse(vault.isExpired(), "no longer expired");
     }
 
     function test_RevertWhen_UpdateHeirAfterExpiry() public {
@@ -140,25 +149,61 @@ contract InheritanceVaultWLDTest is Test {
 
     /// @dev 핵심 시나리오: 만기 후 owner 가 heir 를 자신으로 바꾼 뒤 claim 하여
     ///      전액을 되가져갈 수 있었어야 한다. 이제는 두 단계 모두 차단된다.
-    function test_OwnerCannotStealBackAfterExpiry() public {
+    function test_OwnerCannotRetargetAnAwardedClaim() public {
+        // 지키려는 불변식이 바뀐다.
+        //
+        // 예전 테스트는 "만료 후 주인이 자금을 되가져갈 수 없어야 한다" 였다. 갱신이
+        // 상속인이 받기 전까지 주인의 권리라는 게 드러나면서 그 전제는 사라졌다. 주인이
+        // 갱신하는 동안 상속인이 기다리는 게 상속의 정의이기 때문이다.
+        //
+        // 진짜 조작 위험은 별개다 — 상속인이 이미 신청했는데 **주인이 그 신청의 대상이나
+        // 조건을 바꿀 수 있다면** 그건 상속이 아니다. 갱신은 신청을 취소할 수 있어도
+        // (명시적 이의 제기가 그거다) 상속인·기간을 몰래 바꿀 수는 없어야 한다.
         _expire();
+        _fileOnly(vault, heir);
+
+        // 7일이 지나 상속인이 수령할 수 있는 상태에서도
+        vm.warp(block.timestamp + vault.CHALLENGE_PERIOD());
+        assertTrue(vault.claimableNow(), "heir may now withdraw");
 
         vm.prank(owner);
         vm.expectRevert(InheritanceVaultWLD.Expired.selector);
         vault.updateHeir(owner);
 
-        // 우회 경로: ping 로 되살린 뒤 withdraw 시도
         vm.prank(owner);
         vm.expectRevert(InheritanceVaultWLD.Expired.selector);
-        vault.ping();
+        vault.updateHeartbeat(1 days);
 
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.cancelInheritance();
+
+        // direct 인출도 막혀 있다 — 갱신(핑)을 거쳐야 하고, 핑은 상속인을 바꾸지 않는다
         vm.prank(owner);
         vm.expectRevert(InheritanceVaultWLD.Expired.selector);
         vault.ownerWithdrawWLD(100 ether, owner);
 
         // 상속인은 그대로 수령한다
-        _runClaim(vault, heir);
+        vm.prank(heir);
+        vault.finalizeClaim();
         assertEq(wld.balanceOf(heir), 100 ether, "heir paid");
+    }
+
+    function test_PingCancelsWithoutRetargeting() public {
+        // 핑이 하는 일은 신청 취소와 카운트다운 초기화뿐이다. 상속인이 그대로다.
+        // 만료 후에도 갱신은 되지만 그 결과가 "상속인을 나로 바꾸기" 가 되지 않는지 확인.
+        _expire();
+        _fileOnly(vault, heir);
+        vm.warp(block.timestamp + vault.CHALLENGE_PERIOD());
+
+        vm.prank(owner);
+        vault.ping();
+
+        assertEq(vault.heir(), heir, "heir unchanged");
+        assertEq(vault.claimFiledAt(), 0, "claim withdrawn");
+        assertTrue(vault.ownerStillActive(), "countdown restored");
+        assertEq(wld.balanceOf(address(vault)), 100 ether, "funds never left");
+        assertEq(wld.balanceOf(heir), 0, "heir still has nothing");
     }
 
     // ================================================================
@@ -604,45 +649,50 @@ contract InheritanceVaultWLDTest is Test {
         assertFalse(vault.claimableNow(), "not finalizable without a claim");
     }
 
-    function test_RevertWhen_PingAfterExpiryWithoutClaim() public {
-        // 기한이 지났고 상속인이 아직 아무것도 하지 않은 상태 — owner 는 여기서 막힌다.
+    function test_PingAfterExpiryWithoutClaimResetsTheTimer() public {
+        // 기한이 지났고 상속인이 아직 아무것도 하지 않은 상태 — 여기도 갱신은 열린다.
         //
-        // 막다른 곳이라고 알고 일부러 둔 것이다. 되찾는 통로(1년 유예 같은 것)를 만들어
-        // 봤다가 되돌렸다: owner 가 새벽도착할 수 있게 되면 상속인에게는 "언젠가 내 돈이
-        // 온다" 는 보장이 없고, 이 앱이 하는 일이 달라진다. 이 상태에서 유일한 길은
-        // 상속인이 신청하는 것이고 자금은 그때 이동한다. 잃는 사람이 없으니 되찾기
-        // 통로는 상속인의 권리만 약화시킨다.
-        _expire();
-        vm.prank(owner);
-        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
-        vault.ping();
-    }
-
-    function test_OwnerStaysLockedOutHoweverLongNobodyFiles() public {
-        // 위 막다른 곳이 "잠시" 가 아니라 영구임을 고정한다. 나중에 되찾기 통로를 넣는
-        // 변경이 이 테스트를 깨뜨려야 하고, 그때는 이 결정이 뒤집힌 걸로 보인다.
+        // "상속인이 신청하기 전에는 주인이 갱신할 수 없다" 는 규칙이 아니었다. 상속은
+        // 피상속인이 갱신을 멈출 때 성립하는 것이지, 상속인이 손을 대기 전까지 완성되는
+        // 것이 아니다. 갱신을 막으면 상속인에게 "언젠가 온다" 는 신호가 아예 없어진다.
         _expire();
         assertTrue(vault.isExpired(), "expired");
-        assertEq(vault.claimOutstanding(), false, "no claim to cancel");
+        assertEq(vault.claimFiledAt(), 0, "nobody has claimed");
 
-        // 1년 뒤에도, 10년 뒤에도
-        vm.warp(block.timestamp + 365 days);
-        vm.prank(owner);
-        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
-        vault.ping();
-
-        vm.warp(block.timestamp + 3650 days);
-        vm.prank(owner);
-        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
-        vault.ping();
-
-        // 상속인이 신청하면 길은 열린다
-        _fileOnly(vault, heir);
-        assertTrue(vault.claimOutstanding(), "now there is a claim to cancel");
         vm.prank(owner);
         vault.ping();
+
         assertTrue(vault.ownerStillActive(), "countdown restored");
+        assertFalse(vault.claimableNow(), "heir still cannot finalize");
         assertEq(wld.balanceOf(address(vault)), 100 ether, "funds never left");
+    }
+
+    function test_OwnerCanRenewHoweverLongNobodyFiles() public {
+        // 기한이 지난 뒤 아무도 신청하지 않아도 주인은 계속 갱신할 수 있다.
+        // 1년 뒤에도, 10년 뒤에도. 상속이 성립하려면 피상속인이 멈춰야 하고,
+        // 그 멈춤을 표현할 방법이 남아 있어야 한다.
+        _expire();
+        vm.warp(block.timestamp + 3650 days);
+        assertTrue(vault.isExpired(), "still expired after ten years");
+
+        vm.prank(owner);
+        vault.ping();
+        assertTrue(vault.ownerStillActive(), "still able to signal");
+    }
+
+    function test_HeirStillCannotFinalizeDuringTheChallengeWindow() public {
+        // 주인의 갱신 권한이 무제한이라는 것과 상속인의 7일이 사라진다는 건 다르다.
+        // 주인은 기간을 늘릴 수는 있어도 줄일 수는 없다.
+        _expire();
+        _fileOnly(vault, heir);
+        vm.prank(heir);
+        vm.expectRevert(InheritanceVaultWLD.ChallengeStillRunning.selector);
+        vault.finalizeClaim();
+
+        vm.warp(block.timestamp + vault.CHALLENGE_PERIOD() - 1);
+        vm.prank(heir);
+        vm.expectRevert(InheritanceVaultWLD.ChallengeStillRunning.selector);
+        vault.finalizeClaim();
     }
 
     function test_PingDuringChallengeCancelsTheClaim() public {

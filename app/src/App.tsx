@@ -2250,15 +2250,13 @@ export default function App() {
                   finished and empty — then the slot releases.
                 </div>
               </div>
-              {/* 이 문장은 사실 주장이라 컨트랙트에서 검증했다. 금고의 WLD 가 나오는
-                  경로는 finalizeClaim 하나뿐이고 그건 상속인이 직접 눌러야 한다.
-                  "여전히 당신 것" 이라고 쓰면 안 된다 — 기한 후에는 주인도 인출할 수
-                  없다. ownerWithdrawWLD/updateHeir/cancelInheritance 가 전부 Expired 로
-                  막힌다(0x203d82d8). 그래서 "금고에 남는다" 고 정확히 쓴다. */}
+              {/* 이 문장은 사실 주장이라 컨트랙트에서 검증했다. 금고의 WLD 가 나가는
+                  경로는 finalizeClaim 하나뿐이고 그건 상속인이 직접 누를 때만 실행된다.
+                  갱신(ping) 은 자금을 옮기지 않는다 — 신청을 취소하고 카운트다운만
+                  되돌린다. 그래서 "자동으로 옮겨지지 않는다" 가 정확하다. */}
               <div className="text-sm text-gray-700 border-l-2 border-blue-200 pl-3">
-                The countdown ending <b>moves nothing.</b> Your WLD stays in the vault until your
-                heir files a claim — and from then on you can renew to cancel it any time before
-                they actually withdraw.
+                The countdown ending <b>moves nothing on its own.</b> Your WLD stays in the vault
+                until your heir files a claim, waits 7 days, and withdraws it.
               </div>
               </CardContent>
               </Card>
@@ -2407,15 +2405,15 @@ export default function App() {
                 A notification only reaches a wallet that has already opened World App. Your heir
                 may never open it, so do not rely on one — tell them yourself.
               </div>
-              {/* 기한이 지나면 상속인이 신청하기 전까지 주인은 아무것도 할 수 없다.
-                  알고리즘을 알아야 상속인에게 미리 말할 수 있다. 되찾는 통로(1년 유예
-                  같은 것)는 일부러 만들지 않았다 — owner 가 되찾을 수 있게 하면 상속인
-                  보장이 사라진다. */}
+              {/* 상속은 "피상속인이 갱신을 멈춘다" 는 사실 위에 성립한다. 갱신은 살아있다는
+                  신호이지 실패가 아니다 — 그래서 주인은 상속인이 실제로 받기 전까지 언제든
+                  갱신할 수 있고, 상속인은 그 신호가 끊기길 기다린다. 시간표를 약속하지
+                  않지만, 주인이 멈추면 반드시 진행된다는 사실이 보장된다. */}
               <div className="text-xs text-gray-600">
-                Worth knowing: once the countdown ends you cannot move the WLD yourself until your
-                heir files a claim — there is no way back for you at that point. They can renew to
-                cancel a claim at any time before they withdraw, so a claim only becomes final when
-                they act. If they never file anything, the balance simply sits there.
+                Renewing is how you stay reachable, so you can renew at any time — the heir waits
+                for you to stop. Once they file a claim they cannot withdraw for 7 days no matter
+                what you do; after that you can still renew and cancel until they actually
+                take it. If you keep renewing they keep waiting, and no date is promised.
               </div>
               {heirUsername ? (
                 <>
