@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "app/**"
+      - "backend/**"
+      - "scripts/test-notify-alerts.mjs"
+      - "scripts/test-notify-db.mjs"
       - "package.json"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
@@ -94,3 +97,53 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: app
           command: pages deploy
+
+  # 알림 백엔드. 별도 job 인 이유는 프론트엔드와 실패 조건이 다르기 때문이다 —
+  # 프론트 배포가 성공해도 백엔드가 죽어 있으면 "알림이 안 온다" 는 형태로만 드러난다.
+  notify:
+    name: Deploy notification backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 결정 함수 테스트만으로는 DB 쓰기 경로를 아무도 안 건드린다. 실제로
+      # 자리표시자 13개에 바인딩 12개를 주는 saveWatcher 가 그 초록 상태로 배포돼
+      # 금고 등록이 500 이고 알림이 한 번도 안 갔다. 그래서 배포 전에 돌린다.
+      - name: Test notification decision logic
+        run: node ../scripts/test-notify-alerts.mjs
+
+      - name: Test notification DB writes
+        run: node ../scripts/test-notify-db.mjs
+
+      - name: Deploy notification Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: backend
+          command: deploy
+
+      # 배포가 성공했다고 DB 가 동작한다고는 보장되지 않는다. /api/health 로
+      # 확인해 본다 — 여기가 조용히 깨지면 사용자는 알림이 조용히 안 오는 것만 안다.
+      - name: Verify the deployed Worker answers
+        run: |
+          set -euo pipefail
+          URL="https://world-inheritance-notify.rkddkwl725.workers.dev/api/health"
+          for i in 1 2 3 4 5 6; do
+            if BODY=$(curl -sf -m 20 "$URL"); then
+              echo "$BODY"
+              case "$BODY" in
+                *'"status":"ok"'*) echo "Worker 확인 OK"; exit 0 ;;
+                *) echo "::error::응답 형식이 이상합니다: $BODY"; exit 1 ;;
+              esac
+            fi
+            echo "시도 $i 실패, 재시도…"; sleep 10
+          done
+          echo "::error::배포된 Worker 가 응답하지 않습니다."; exit 1

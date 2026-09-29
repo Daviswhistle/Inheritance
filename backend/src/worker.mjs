@@ -335,10 +335,15 @@ const saveWatcher = async (env, watcher) => {
       watcher.lastVaultBalance,
       watcher.notifiedHeirAddress,
       watcher.notifiedAt,
-      watcher.lastError
+      watcher.lastError,
+        // alerts 는 반드시 bind 안으로 들어가야 한다. 예전에는 .bind() 에 12개만 주고
+        // 13번째를 .run(x) 로 넘겼는데, D1 은 "Wrong number of parameter bindings" 로
+        // 거절한다 — 즉 saveWatcher 가 **한 번도 성공한 적이 없다**. 그래서 금고 등록이
+        // 500 이고 watcher 가 영영 늘지 않았으며 알림 기능 전체가 죽어 있었다.
+        // 순수 결정 함수만 테스트해서 눈치채지 못했다.
+        JSON.stringify(watcher.alerts || {})
     )
-    .run(      JSON.stringify(watcher.alerts || {}),
-    );
+      .run();
 };
 
 const getWatcherByVault = async (env, vaultAddress) => {
@@ -904,6 +909,16 @@ const handleRequest = async (request, env) => {
 
   return jsonResponse(404, { status: "error", message: "Not found" }, cors.headers);
 };
+
+/**
+ * 테스트 전용 노출.
+ *
+ * 결정 함수(decideAlerts 등)만 테스트하면 DB 쓰기 경로는 아무도 안 건드린다. 그래서
+ * saveWatcher 가 자리표시자 13개에 바인딩 12개를 주고 .run(x) 로 하나를 밀어 넣은
+ * 채로도 테스트는 초록이었다. 정작 실제 D1 은 매번 거절하고 있었다.
+ * DB 를 만지는 함수는 밖에서 그대로 쓸 수 있게 여는 게 이 클래스를 막는다.
+ */
+export const __test = { saveWatcher, getWatcherByVault, listWatchers, rowToWatcher, getVaultSnapshot };
 
 export default {
   async fetch(request, env) {

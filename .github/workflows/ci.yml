@@ -87,3 +87,9 @@ jobs:
 
       - name: Syntax check worker
         run: node --check src/worker.mjs
+
+      # 순수 결정 함수만으로는 DB 쓰기 경로가 비어 있다. saveWatcher 가 자리표시자
+      # 13개에 바인딩 12개를 주고도 이 테스트는 통과했다 — 실제 D1 은 매번 거절했고,
+      # 그래서 알림 기능 전체가 죽어 있었는데 아무도 몰랐다.
+      - name: Test notification DB writes
+        run: node ../scripts/test-notify-db.mjs
