@@ -66,21 +66,22 @@ jobs:
       # 정의가 없는 className 은 빌드도 타입체크도 린트도 통과하고 화면에서는
       # 아무 일도 일어나지 않는다. 실제로 .bg-black/50 때문에 모달 배경이
       # 없고 .font-medium 때문에 제목이 굵어지지 않았다.
-        - name: Check CSS classes are defined
-          run: node ../scripts/check-css-classes.mjs
+      - name: Check CSS classes are defined
+        run: node ../scripts/check-css-classes.mjs
 
-        # supported_languages 는 ["en"] 뿐이다. 알림 발송 실패 안내(가장 중요한 실패
-        # 경로)가 한국어였고, 코드 주석도 한국어라 검토자가 놓쳤다. 사용자 노출 문자열만 본다.
-        - name: No Korean on screen (source)
-          run: node ../scripts/check-no-cjk.mjs
+      # supported_languages 는 ["en"] 뿐이다. 알림 발송 실패 안내(가장 중요한 실패
+      # 경로)가 한국어였고, 코드 주석도 한국어라 검토자가 놓쳤다. 사용자 노출 문자열만 본다.
+      - name: No Korean on screen (source)
+        run: node ../scripts/check-no-cjk.mjs
 
-        - name: Build
-          run: pnpm build
+      - name: Build
+        run: pnpm build
 
-        # 빌드된 번들도 본다 — minify 이후 형태를 소스 검사만으로는 못 잡는다.
-        - name: No Korean on screen (built bundle)
-          working-directory: app
-          run: node ../scripts/check-no-cjk.mjs
+      # 빌드된 번들도 본다 — minify 이후 형태를 소스 검사만으로는 못 잡는다.
+      - name: No Korean on screen (built bundle)
+        working-directory: app
+        run: node ../scripts/check-no-cjk.mjs
+
 
   backend:
     name: Notification backend
