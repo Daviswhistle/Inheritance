@@ -615,7 +615,7 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
       alerts.push({
         kind: ALERT.OWNER_CLAIM_FILED,
         to: snapshot.ownerAddress,
-        title: "A claim was filed on your vault",
+        title: "A claim was filed",
         message: endsAt
           ? `Your heir can withdraw unless you renew before ${endsAt}.`
           : "Your heir can withdraw unless you renew during the review window.",
@@ -643,7 +643,7 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
       alerts.push({
         kind: ALERT.HEIR_FINALIZABLE,
         to: snapshot.heirAddress,
-        title: "Your inheritance is ready to withdraw",
+        title: "Your inheritance is ready",
         message: "The review window has passed. Open the app to withdraw.",
       });
     }

@@ -235,6 +235,53 @@ check("기록이 아예 없으면 보낸다", () => {
 });
 
 // ---------------------------------------------------------------- 결과
+  // ── 알림 페이로드가 실제 API 제약을 만족하는가 ──────────────────
+  //
+  // World App 알림 API 는 title 을 30자로 제한한다. 넘으면 400 validation_error 로
+  // 거절되고 그 알림은 아예 전달되지 않는다. 발송 경로에 오류 처리와 재시도가 있어도
+  // "영구히 실패" 라는 사실은 로그에만 남는다 — 사용자는 알림이 없다고 믿는다.
+  //
+  // 실제로 "A claim was filed on your vault"(31자)와 "Your inheritance is ready to
+  // withdraw"(37자) 가 넘고 있었다. 네 종 중 두 종이 상속인에게 전달될 수 없었다.
+  check("알림 제목이 API 제한(30자) 안이다", () => {
+    const over = [];
+    const now = Date.parse("2026-06-01T00:00:00Z");
+    // decideAlerts 는 잔액·소유자·상속인이 모두 실제로 있어야 알림을 만든다.
+    // 빠뜨리면 alerts 가 0 개가 되고 검사가 "통과" 한 것처럼 보인다 — 실제로 그랬다.
+    const OWNER = "0x1111111111111111111111111111111111111111";
+    const HEIR = "0x2222222222222222222222222222222222222222";
+    const base = {
+      vaultBalance: 5n * 10n ** 18n, ownerAddress: OWNER, heirAddress: HEIR,
+      claimedAt: 0n, cancelled: false, challengeEndsAt: 0n,
+    };
+    const states = [
+      // 여유 있는 카운트다운 — 아직 아무 알림도 아니다.
+      { ...base, ownerStillActive: true, isExpired: false, timeRemaining: 3600n, heartbeatInterval: 86400n, claimPending: false, claimableNow: false },
+      // 주기의 5% 미만 — 곧 만료 경고.
+      { ...base, ownerStillActive: true, isExpired: false, timeRemaining: 100n, heartbeatInterval: 86400n, claimPending: false, claimableNow: false },
+      // 만료, 아직 신청 없음 — 상속인에게.
+      { ...base, ownerStillActive: false, isExpired: true, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: false, claimableNow: false },
+      // 신청됨, 이의제기 중 — 피상속인에게.
+      { ...base, ownerStillActive: false, isExpired: true, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: true, claimableNow: false },
+      // 7일 경과 — 상속인에게 출금 안내.
+      { ...base, ownerStillActive: false, isExpired: true, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: true, claimableNow: true },
+    ];
+    const seen = new Set();
+    for (const snap of states) {
+      const { alerts } = decideAlerts(snap, {}, now);
+      for (const a of alerts) {
+        if (seen.has(a.kind)) continue;
+        seen.add(a.kind);
+        if (a.title.length > 30) over.push(`${a.kind}: ${a.title.length}자 "${a.title}"`);
+        if (!a.to) over.push(`${a.kind}: 수신자 없음`);
+        if (!a.message || !a.message.trim()) over.push(`${a.kind}: 본문 없음`);
+      }
+    }
+    // 네 종이 모두 실제로 만들어지는지 (새 알림 종류가 생겨도 검사에 걸리도록)
+    if (seen.size < 4) over.push(`알림 종류 ${seen.size}개만 확인됨 (기대 4): ${[...seen].join(",")}`);
+    assert.equal(over.length, 0, over.join("\n        "));
+  });
+
 console.log("\n  === 알림 결정 로직 ===");
 for (const r of results) {
   console.log(`  ${r.ok ? "OK  " : "NG  "}${r.name}${r.msg ? "\n        " + r.msg.split("\n")[0] : ""}`);
