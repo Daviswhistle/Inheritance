@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FACTORY_ABI, VAULT_ABI } from "./abis";
+import { errorText } from "./errors";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,48 +29,7 @@ import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermiss
 // 컨트랙트는 `invalid_contract` 로 막는다. 사용자마다 주소가 다른 금고를 앱이
 // 직접 두드리면 목록에 올릴 수 없으므로, 모든 사용자 액션은 팩토리가 중계한다.
 // 금고는 calldata 인자로만 전달된다.
-const FACTORY_ABI = [
-  "event VaultCreated(address indexed owner, address indexed heir, address vault, uint256 heartbeatInterval)",
-  "event VaultReleased(address indexed owner, address indexed vault)",
-  "function createVault(address heir, uint256 heartbeatInterval) external returns (address)",
-  "function vaultOf(address owner) external view returns (address)",
-  "function myVault() external view returns (address)",
-  "function releaseMyVault() external returns (bool)",
-  "function deposit(uint256 amount) external",
-  "function pingMyVault() external",
-  "function updateMyHeir(address newHeir) external",
-  "function changeMyPeriod(uint256 newInterval) external",
-  "function cancelMyInheritance() external",
-  "function withdrawFromMyVault(address to, uint256 amount) external",
-  "function rescueFromMyVault(address token, uint256 amount, address to) external",
-  "function sweepSettledVaultFor(address to) external",
-  "function fileClaimFor(address vault) external",
-  "function finalizeClaimFor(address vault) external",
-  "function isHeirOf(address owner, address vault) external view returns (bool)",
-];
 
-const VAULT_ABI = [
-  "function WLD() view returns (address)",
-  "function heir() view returns (address)",
-  "function owner() view returns (address)",
-  "function factory() view returns (address)",
-  "function heartbeatInterval() view returns (uint256)",
-  "function lastPing() view returns (uint256)",
-  "function deadline() view returns (uint256)",
-  "function claimFiledAt() view returns (uint256)",
-  "function claimedAt() view returns (uint256)",
-  "function CHALLENGE_PERIOD() view returns (uint256)",
-  // 만료만으로는 자금이 움직이지 않는다. 아래 세 함수가 상속의 단계를 나타낸다.
-  "function ownerStillActive() view returns (bool)",
-  "function isExpired() view returns (bool)",
-  "function claimPending() view returns (bool)",
-  "function challengeRunning() view returns (bool)",
-  "function claimableNow() view returns (bool)",
-  "function challengeEndsAt() view returns (uint256)",
-  "function inheritanceCancelled() view returns (bool)",
-  "function timeRemaining() view returns (uint256)",
-  "function isSettled() view returns (bool)",
-];
 
 const ERC20_ABI = [
   "function symbol() view returns (string)",
@@ -79,7 +40,7 @@ const ERC20_ABI = [
 ];
 
 /**
- * 금고가 상속 파이프라인에서处于 어느 단계인지.
+ * 금고가 상속 파이프라인에서 어느 단계인지.
  * 컨트랙트의 `ownerStillActive` / `isExpired` / `claimPending` / `challengeRunning` /
  * `claimableNow` / `claimedAt` / `inheritanceCancelled` 를 한 곳에서 합쳐 만든다.
  * UI 는 개별 불리언을 나열하는 대신 이 값 하나만 분기한다.
@@ -120,91 +81,6 @@ const TABS: { key: TabKey; label: string; needsVault: boolean }[] = [
  */
 const LOG_SCAN_CHUNK = 90;
 
-const readErrorValue = (error: unknown, key: "reason" | "shortMessage" | "message"): string | undefined => {
-  if (!error || typeof error !== "object") return undefined;
-  const value = (error as Record<string, unknown>)[key];
-  return typeof value === "string" && value ? value : undefined;
-};
-
-/**
- * 사용자 모르는 revert 셀렉터를 사람이 읽을 문장으로.
- *
- * 컨트랙트는 상태를 모르는 셀렉터로 거부한다. 사용자는 4바이트를 볼 수 없고, 셀렉터만
- * 던져도 "왜" 를 알 수 없으므로 최소한 "무엇을 하면 되는가" 를 말해야 한다. 일부는
- * 이 앱의 컨트랙트에서 직접 읽어 이름을 되살린다.
- */
-const REVERT_HINTS: Record<string, string> = {
-  "0x203d82d8": "The countdown has already ended, so this cannot be changed now.",
-  "0x0e87a172": "The vault holds a balance. Withdraw or sweep it before releasing the slot.",
-  "0x3bd3a771": "Only the vault owner can do this.",
-  "0x8419e550": "Only the named heir can do this.",
-  "0x49ba9c81": "The vault is not empty yet, so the slot cannot be released.",
-  "0x4f109875": "This wallet already has a vault.",
-  "0xe6c4247b": "That address is not valid.",
-  "0x0b8b7c78": "That renewal period is outside the allowed 1–365 day range.",
-  "0xd0404f85": "The countdown has not ended yet.",
-  "0xe7c47b46": "That renewal period is outside the allowed 1–365 day range.",
-};
-
-/**
- * ethers 의 문구에서 사람이 볼 필요 없는 덩어리를 걷어낸다.
- *
- * ethers v6 의 revert 메시지는 이렇게 생겼다:
- *   `execution reverted (unknown custom error) (action="estimateGas", data="0x203d82d8",
- *    reason=null, transaction={ "data": "0x06c84352…", "from": "0x…", "to": "0x…" },
- *    invocation=null, revert=null, code=CALL_EXCEPTION, version=6.15.0)`
- *
- * 이걸 그대로 토스트에 넣으면 (1) 사용자가 아무것도 할 수 없는 4바이트 셀렉터가 보이고
- * (2) 390px 화면을 넘쳐 **앱 전체가 옆으로 밀린다**(측정: 594px). 그래서 후행 괄호
- * 덩어리를 잘라내고 셀렉터를 문장으로 바꾼다.
- */
-const humanizeRevert = (raw: string): string => {
-  // `transaction={ … }` 같은 객체 덩어리를 먼저 제거한다.
-  let s = raw
-    .replace(/\b\w+=\{\s*"[\s\S]*?\}\s*,?/g, "")
-    .replace(/\s*,\s*/g, ", ")
-    .trim();
-  // 남은 `key=value` 목록
-  s = s.replace(/\s*\((?:action|reason|invocation|revert|code|version|transaction|data)=[\s\S]*$/i, "").trim();
-  s = s.replace(/,?\s*\)$/, "").trim();
-  // "unknown custom error" 를 셀렉터로 바꿔 해석한다.
-  const sel = s.match(/0x[0-9a-fA-F]{8}/)?.[0]?.toLowerCase();
-  if (/unknown custom error/i.test(s) || !/^[A-Za-z]/.test(s)) {
-    if (sel && REVERT_HINTS[sel]) return REVERT_HINTS[sel];
-    if (sel) return `The contract rejected this (${sel}). Nothing was changed.`;
-    return "The contract rejected this. Nothing was changed.";
-  }
-  if (sel) return `${s.replace(/,?$/, "")} (${sel})`;
-  return s;
-};
-
-/**
- * 오류에서 사람이 읽을 수 있는 문구를 뽑는다.
- *
- * ethers v6 는 노드의 JSON-RPC 오류를 분류하지 못하면
- * `could not coalesce error` 라는 범용 메시지만 남기고, 진짜 원인은
- * `info.error.message` 안쪽에 숨긴다. 예전 구현은 `reason` 만 읽으므로
- * 사용자에게 "could not coalesce error" 가 그대로 노출됐다.
- * 그래서 중첩 구조를 한 단계 파고들어 본문을 찾는다.
- */
-const errorText = (error: unknown, depth = 0): string => {
-  const direct =
-    readErrorValue(error, "reason") ?? readErrorValue(error, "shortMessage") ?? readErrorValue(error, "message");
-  const generic = direct === "could not coalesce error" || direct === "unknown error";
-  if (direct && !generic) return humanizeRevert(direct);
-
-  if (depth < 3 && error && typeof error === "object") {
-    for (const key of ["info", "error", "cause", "payload"]) {
-      const nested = (error as Record<string, unknown>)[key];
-      if (nested && typeof nested === "object") {
-        const found = errorText(nested, depth + 1);
-        if (found && found !== String(nested)) return found;
-      }
-    }
-  }
-  if (generic && direct) return `${direct} (see the developer console for details)`;
-  return direct ?? String(error);
-};
 
 /**
  * 읽기 전용 provider 생성.
@@ -345,6 +221,15 @@ export default function App() {
   const [vaultOwner, setVaultOwner] = useState<string>("");
   const [vaultHeir, setVaultHeir] = useState<string>("");
   const [vaultHeartbeat, setVaultHeartbeat] = useState<number>(0);
+  /**
+   * 체인의 현재 시각(초, unix).
+   *
+   * 상대 시간 표시의 기준. 예전에는 `Date.now()` 를 썼는데, 휴대전화 시계가 며칠
+   * 틀어져 있으면 "이의제기 7일 남음" 같은 표시가 실제보다 며칠 길어진다. 그 사이
+   * 상대는 이미 수령했고 돈은 옮겨졌다. 그래서 블록 타임스탬프를 읽어 상대 시간을
+   * 계산한다. 체인을 못 읽으면(오프라인) 0 이고, 그때만 장치 시계로 물러난다.
+   */
+  const [chainNow, setChainNow] = useState<number>(0);
   const [vaultLastPing, setVaultLastPing] = useState<number>(0);
   const [vaultCreatedBlock, setVaultCreatedBlock] = useState<number | null>(null);
   const [vaultCreatedTime, setVaultCreatedTime] = useState<number | null>(null);
@@ -411,9 +296,26 @@ export default function App() {
    * 항상 실패하는 버튼을 사용자에게 활성화해 보낸다. 신청 대기(`expired`) 와
    * 이의제기 중(`challenging`) 을 모두 포함시켜야 한다.
    */
-  const isExpiredOrLater = awaitingClaim || challengeRunning || canClaim || isSettledClaim;
-  /** 이의제기 기간의 남은 초. 0 아래로 내려가지 않게 한다. */
-  const challengeRemaining = Math.max(0, challengeEndsAt - Math.floor(Date.now() / 1000));
+  /**
+   * 마감이 끝난 뒤의 모든 상태.
+   *
+   * `cancelled` 를 반드시 포함해야 한다. 상속 취소(heir = owner)는 기한이 지난 상태에서
+   * 성립하므로 카운트다운은 이미 끝났고, 잔액이 0 이면 슬롯을 해제할 수 있다. 그런데 이
+   * 값에서 빠지면 `Release slot` 게이트가 영영 false 라서 **사용자가 자기 금고 자리를
+   * 되돌려받을 수 없고 두 번째 금고를 만들 수 없다.** 취소된 금고는 상속인이 따로
+   * 없으므로 `awaitingClaim` 도 `challengeRunning` 도 아니다.
+   */
+  const isExpiredOrLater =
+    awaitingClaim || challengeRunning || canClaim || isSettledClaim || vaultPhase === "cancelled";
+  /**
+   * 이의제기 기간의 남은 초. 0 아래로 내려가지 않게 한다.
+   *
+   * 기준은 **장치 시계가 아니라 체인** 이다. 예전에는 `Date.now()` 를 썼는데, 휴대전화
+   * 시계가 며칠 느리면 소유자에게 그만큼 더 남았다고 보이고 — 그 사이 상속인이 수령해
+   * 버린다. "7일 남았다" 고 표시하는데 실제로는 2일 남은 상황이 가능하다. 상대 시간은
+   * 체인에서 온 값만 쓴다.
+   */
+  const challengeRemaining = Math.max(0, challengeEndsAt - (chainNow > 0 ? chainNow : Math.floor(Date.now() / 1000)));
   /** 이의제기 기간(일). 컨트랙트 상수를 읽되 실패하면 기본값으로 버틴다. */
   const [challengeDays, setChallengeDays] = useState(7);
 
@@ -672,22 +574,37 @@ export default function App() {
    * 소유 여부는 on-chain owner 로 판단해야 한다.
    */
   const isMyVault = Boolean(vaultOwner) && account.toLowerCase() === vaultOwner.toLowerCase();
+  /**
+   * 내가 상속인으로 지정됐는가.
+   *
+   * `!isMyVault` 만 쓰면 "소유자" 와 "나 아닌 사람" 의 **두 갈래**가 되어 세 번째 경우
+   * (주인도 아니고 상속인도 아닌 타인)가 소유자 문구를 받는다. `?vault=` 링크는 공개
+   * 주소라 아무나 열 수 있다 — 그래서 상속인이 아닌 지갑에게 "You can now file a
+   * claim" 이라고 말하는 일이 있었다. 버튼은 없는데도 **수익자를 단정**하는 셈이다.
+   */
+  const iAmHeir = Boolean(account) && Boolean(vaultHeir) && account.toLowerCase() === vaultHeir.toLowerCase();
+  const iAmInvolved = isMyVault || iAmHeir;
 
   /**
-   * 남은 시간에 따른 시각적紧急度.
+   * 남은 시간에 따른 시각적 긴급도.
    *
    * 이 앱은 사용자가 매 주기마다 자금을 "회수당할 위험"에 두게 한다. 그래서
    * 기한이 임박했을 때 화면이 조용하면 사용자가 그대로 잊어버리고 자금을 잃는다.
    * 주기 대비 비율로 판단한다 — 30일 주기면 3일/1일 남았을 때 경고.
    */
   const timerUrgency = useMemo(() => {
+    /* 정산·취소된 금고에는 "갱신" 이 없다. 계약상 ping 이 Expired() 로 막힌다.
+       그런데 timeRemaining() 은 만료 이후 **모든** 상태에서 0 이라서 ratio 가 0 이 되고,
+       이미 돈을 받은 금고에 "Renew urgently" 배지가 붙었다. Send 탭에서도 같았다 —
+       갱신할 수 없는 금고를 급하다 고 말하는 셈이다. */
+    if (isSettledClaim || vaultPhase === "cancelled") return "";
     if (canClaim) return "timer-expired";
     const period = vaultHeartbeat || 1;
     const ratio = timeRemaining / period;
     if (ratio <= 0.05) return "timer-critical";
     if (ratio <= 0.2) return "timer-urgent";
     return "";
-  }, [canClaim, timeRemaining, vaultHeartbeat]);
+  }, [canClaim, timeRemaining, vaultHeartbeat, isSettledClaim, vaultPhase]);
 
   const isHeirSuspicious = (): boolean => {
     const c = heirResolved?.address && ethers.isAddress(heirResolved.address)
@@ -1065,7 +982,7 @@ export default function App() {
    * 저장된 세션 복원.
    *
    * 예전에는 `localStorage` 의 주소만 있으면 그대로 로그인된 것으로 취급했다.
-   * 그 값은任何人이든 브라우저에서 고칠 수 있으므로, **서버가 검증한 세션만**
+   * 그 값은 누구든 브라우저에서 고칠 수 있으므로, **서버가 검증한 세션만**
    * 복원한다. `readSessionAddress` 는 검증에 통과한 세션에서만 값이 들어 있으므로
    * 여기의 존재 여부가 곧 "서명 검증이 끝났는지" 다.
    *
@@ -1431,6 +1348,18 @@ export default function App() {
       }
       setTimeRemaining(Number(rem));
       setStale(true);
+      // 체인 시계를 갱신한다 — 상대 시간("이의제기 N 시간 남음") 의 기준.
+      // 상대 시간의 기준을 장치 시계에서 떼어내는 작업이다. 휴대전화 시계가 며칠
+      // 틀어져 있으면 "이의제기 7일 남음" 표시가 실제보다 며칠 길어지고, 그 사이 상대는
+      // 이미 돈을 가져간다. 블록 시각을 읽으면 그 시계는 체인 기준이 된다.
+      if (provider) {
+        try {
+          const blk = await provider.getBlock("latest");
+          if (blk) setChainNow(Number(blk.timestamp));
+        } catch {
+          // 블록을 못 읽으면 기존 값을 유지한다(장치 시계 폴백은 challengeRemaining 에서).
+        }
+      }
     } catch (e: unknown) {
       // 이 함수가 15초마다 도는 폴이다. 즉 사용자가 체인을 잃었을 때 가장 먼저, 가장
       // 자주 잡히는 지점이다. 예전에는 여기서 console.warn 만 남기고 조용히 넘어갔다.
@@ -1440,7 +1369,7 @@ export default function App() {
       setStale(false);
       console.warn("refreshTimer failed:", errorText(e));
     }
-  }, [vaultCtr]);
+  }, [vaultCtr, provider]);
   useEffect(() => { if (vaultCtr) void refreshTimer(); }, [vaultCtr, refreshTimer]);
   useEffect(() => {
     if (!vaultCtr) return;
@@ -1661,7 +1590,7 @@ export default function App() {
    * 상속인 카드를 첫 화면에 내보낼 가치가 있는가.
    *
    * 진짜 상속인(누군가에게 지정됐다면)에게는 이 카드가 이 앱을 열 이유 그 자체다 — 자기
-   * 금고가 없는데 상속 신청权的 존재를 알아야 하기 때문이다. 그래서 결과가 있으면
+   * 금고가 없는데 상속 신청의 존재를 알아야 하기 때문이다. 그래서 결과가 있으면
    * 맨 위로 올린다.
    *
    * 반대로 아무것도 없는 사람에게는 질문할 이유가 없다. 화면에 "No vault names you as
@@ -2277,7 +2206,19 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-2">
                   <div>Heir:</div>
-                  <div><b>{vaultHeir ? short(vaultHeir) : '-'}</b></div>
+                  {/* 정산이 끝나면 계약이 heir 를 0x0 으로 지운다. 그래서 이 자리가
+                      "Heir: 0x0000…0000" 이 되는데, 사람처럼 보이는 주소라
+                      "누군가의 금고" 로 읽힌다. 상태를 말하는 게 아니라 이 앱의
+                      목적을 말해야 한다. 상속 취소(heir == owner)도 같은 취급. */}
+                  <div>
+                    <b>
+                      {!vaultHeir || vaultHeir === ethers.ZeroAddress
+                        ? "nobody — the inheritance has already completed"
+                        : vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()
+                          ? "nobody — inheritance was cancelled"
+                          : short(vaultHeir)}
+                    </b>
+                  </div>
                 </div>
                 <div className="text-xs">
                   <button
@@ -2336,7 +2277,7 @@ export default function App() {
                   ) : <b className="break-all">-</b>}
                   {WLD_ADDRESS && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${WLD_ADDRESS}`} target="_blank" rel="noreferrer">View</a>}
                 </div>
-                {/* 블록 번호는 탐색기에 "View" 링크로만提供. 숫자를 그대로 노출하면
+                {/* 블록 번호는 탐색기에 "View" 링크로만 제공. 숫자를 그대로 노출하면
                     사용자에게 의미가 없고 테스트 체인에서 "4" 같은 값이 오히려
                     완성되지 않은 화면처럼 보인다. */}
                 {vaultCreatedBlock !== null ? (
@@ -2383,7 +2324,7 @@ export default function App() {
                     <Button
                       variant="primary"
                       onClick={deposit}
-                      disabled={!miniInstalled || !account || isSettledClaim}
+                      disabled={!miniInstalled || !account || isExpiredOrLater}
                     >
                       Deposit
                     </Button>
@@ -2400,6 +2341,18 @@ export default function App() {
                   This vault is closed, so deposits are turned off here — create a new vault
                   first. If you already sent WLD to this vault address, you can still sweep it
                   back to you from the Inherit tab.
+                </div>
+              )}
+              {/* 마감 이후에도 입금을 막는다. 상속인이 이미 수령할 수 있는 상태에서
+                  입금하면 그 돈까지 상속인이 가져간다. 실제로 5 WLD 위에 10 WLD 를
+                  입금하고 상속인이 15 WLD 전부를 가져간 경우가 있었다. 화면에는
+                  "Claimable" 배지와 활성화된 입금 폼만 있었다. 막되 **왜** 막는지
+                  말하지 않으면 사용자는 버그로 여긴다. */}
+              {!isSettledClaim && isExpiredOrLater && (
+                <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
+                  The countdown has ended, so deposits are turned off. Your heir can take
+                  whatever is in the vault at any point now, and anything you add would go to
+                  them too. Deposit only into a fresh vault.
                 </div>
               )}
               <div className="text-xs text-gray-500">
@@ -2428,7 +2381,17 @@ export default function App() {
                       <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
                         value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
                       <Button onClick={setWithdrawMax}>All</Button>
-                      <Button onClick={ownerWithdraw} disabled={isExpiredOrLater}>Withdraw to myself</Button>
+                      {/* 라벨이 실제 수신자를 말한다. 예전엔 "Withdraw to myself" 가
+                          고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
+                          라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
+                          이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
+                      <Button onClick={ownerWithdraw} disabled={isExpiredOrLater}>
+                        {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
+                          ? "Withdraw to myself"
+                          : withdrawTo
+                            ? `Withdraw to ${short(withdrawTo)}`
+                            : "Withdraw"}
+                      </Button>
                     </div>
                   </div>
                   </div>
@@ -2443,6 +2406,18 @@ export default function App() {
           <Card>
             <CardHeader><CardTitle>Inheritance Status</CardTitle></CardHeader>
             <CardContent className="grid gap-3">
+              {/* 주인이도 상속인도 아닌 지갑. `?vault=` 링크는 공개 주소다 — 블록
+                  탐색기 페이지에도 있으므로 아무나 열 수 있다. 예전에는 이 경우를
+                  "소유자가 아닌 사람" 으로만 묶어 상속인 문구를 보여줬고, 그래서
+                  주체도 아니고 권한도 없는 사람에게 "You can now file a claim" 이라고
+                  말했다. 할 수 있는 일이 하나도 없는데 할 수 있다고 읽히는 문장이라
+                  사실을 거짓말로 바꾼다. 여기서 분명히 밝힌다. */}
+              {!iAmInvolved && (
+                <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded py-2 px-3">
+                  You are neither the owner nor the heir of this vault, so there is nothing for
+                  you to do here. You can watch its status, but only those two wallets can act.
+                </div>
+              )}
               <div className="text-sm text-gray-700">
                 {/* 이 문장을 피상속인과 상속인에게 다르게 말한다. 예전에는 항상
                     피상속인 목소리("your heir", "You can renew") 로 적혀 있었는데,
@@ -2455,12 +2430,22 @@ export default function App() {
                     withdraw that claim, including after those {challengeDays} days — until they
                     actually take it.
                   </>
-                ) : (
+                ) : iAmHeir ? (
                   <>
                     Funds move only after the countdown runs out <b>and</b> you file a claim,
                     and then wait {challengeDays} more days. The owner can renew at any point to
                     withdraw your claim, including after those {challengeDays} days — until you
                     actually take the balance.
+                  </>
+                ) : (
+                  /* 주인이도 상속인도 아닌 지갑. 이 단계들은 그 사람이 하는 일이 아니다.
+                     앞에서 "You can now file a claim" 라고 말하는 버그가 있었고, 여기서도
+                     같은 구조로 "you" 가 나왔다. 공개 링크를 열었을 뿐인 사람에게
+                     자기 절차처럼 보이는 문장을 보여주면 안 된다. */
+                  <>
+                    Funds move only after the countdown runs out, the named heir files a claim,
+                    and {challengeDays} more days pass. You can watch that here, but only the
+                    heir and the owner can act on this vault.
                   </>
                 )}
               </div>
@@ -2469,7 +2454,13 @@ export default function App() {
                   "내 돈이 언제 이동하는가"를 머릿속에서 계산할 필요가 없어진다. */}
               <ol className="pipeline">
                 {[
-                  { k: "Counting down", done: vaultPhase === "active" },
+                  /* "Counting down" 의 `done` 은 **진행 중일 때** 가 아니라 **지나간
+                     단계일 때** 다. 예전에는 `vaultPhase === "active"` 라서 두 방향으로
+                     틀렸다 — 카운트다운이 돌아가는 동안 1단계가 "완료" 로 찍히고(눈에
+                     이미 끝난 단계와 똑같이), 카운트다운이 끝난 뒤엔 다시 "미완료" 로
+                     돌아가 첫 단계가 아직 시작 안 된 것처럼 보였다. 이 파이프라인의
+                     모든 `done` 은 "지나갔다" 다. */
+                  { k: "Counting down", done: vaultPhase !== "active" },
                   { k: "Countdown ended", done: awaitingClaim || challengeRunning || canClaim || isSettledClaim },
                   { k: "Heir files a claim", done: challengeRunning || canClaim || isSettledClaim },
                   { k: `${challengeDays}-day review window`, done: canClaim || isSettledClaim },
@@ -2492,7 +2483,7 @@ export default function App() {
                   {/* 이 문장은 같은 카드의 첫 문단("You can renew at any point to
                       withdraw that claim, including after those 7 days — until they
                       actually take it") 과 정반대였다. 계약상 소유자의 거부는 무제한이다.
-                      `ownerMayStillAct()` 은 `claimedAt != 0` 일 때만 막는다 — 즉
+                      ownerMayStillAct() 는 claimedAt 이 0 이 아닐 때만 막는다 — 즉
                       소유자가 **실제로 수령하기 전까지는** 언제든 갱신해서 청산을 철회시킬
                       수 있다. 7일이 지나도 같다.
                       그래서 "After that the claim cannot be stopped" 는 거짓이고,
@@ -2531,8 +2522,13 @@ export default function App() {
                 account.toLowerCase() === vaultHeir.toLowerCase() && (
                   <div className="grid gap-2">
                     <div className="text-sm">
-                      The countdown has ended, so the balance is now available to you. File a
-                      claim to start the {challengeDays}-day review window.
+                      {/* 잔액이 0 인 금고에도 청산 절차를 밟게 뒀다. 계약은 막지 않고
+                          상속인 입장에서 절차는 동일하므로 막을 이유가 없다. 다만
+                          "the balance is now available to you" 라고 말하면 없는 돈을
+                          약속하는 셈이라 실제 잔액에 따라 문장을 바꾼다. */}
+                      {vaultWld > 0n
+                        ? `The countdown has ended, so the ${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} balance is now available to you. File a claim to start the ${challengeDays}-day review window.`
+                        : `The countdown has ended. This vault currently holds nothing, so a claim would move no funds — file one only if WLD arrives before the review window ends.`}
                     </div>
                     <Button variant="primary" onClick={fileClaim} disabled={!miniInstalled}>
                       File claim
@@ -2544,7 +2540,9 @@ export default function App() {
                 account.toLowerCase() === vaultHeir.toLowerCase() && (
                   <div className="grid gap-2">
                     <div className="text-sm">
-                      The review window has passed, so you can withdraw. Renewing would still cancel their claim until they do.
+                      {/* 여기서 주어는 상속인(당신)이다. "their claim" 이면 자기
+                          청산을 남의 것으로 읽힌다. 소유자용 변형은 따로 있다. */}
+                      The review window has passed, so you can withdraw. Renewing would still cancel your claim until you do.
                     </div>
                     <Button variant="primary" onClick={claim} disabled={!miniInstalled || vaultWld === 0n}>
                       Withdraw {fmtUnits(vaultWld)} {wldSymbol}
@@ -2621,7 +2619,15 @@ export default function App() {
                           (vaultWld > 0n
                             ? `${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} left in this closed vault.`
                             : "This vault is closed and holds nothing.")
-                        : "The heir can withdraw the vault balance."}
+                        /* 주어가 세 갈래다. 소유자에게는 "상속인이", 상속인에게는
+                           "당신이", 주인이도 상속인도 아닌 타인에게는 "상속인이" 다.
+                           예전에는 소유자/상속인 구분 없이 "The heir…" 고정이라
+                           상속인이 자기 금고 화면에서 남을 3인칭으로 읽었다. */
+                        : isMyVault
+                          ? "The heir can withdraw the vault balance."
+                          : iAmHeir
+                            ? "You can withdraw the vault balance."
+                            : "The heir can withdraw the vault balance."}
                     </div>
                   </>
                 ) : challengeRunning ? (
@@ -2642,10 +2648,16 @@ export default function App() {
                     <div className="timer-value">Waiting for a claim</div>
                     <div className="text-xs text-gray-600">
                       {/* 여기서도 주어가 갈린다. "Your heir can now file a claim" 을
-                          상속인에게 보여주면 남이 대신 신청해야 한다는 뜻으로 읽힌다. */}
+                          상속인에게 보여주면 남이 대신 신청해야 한다는 뜻으로 읽힌다.
+                          그리고 세 번째 사람이 있다 — `?vault=` 링크는 공개 주소라 아무나
+                          열 수 있다. 주인이도 상속인도 아닌 지갑에게 "You can now file a
+                          claim" 이라고 말하면 **수익자라는 사실relation을 없는 사실로**
+                          말하는 셈이다. 계약상 그 지갑은 아무것도 할 수 없다. */}
                       {isMyVault
                         ? `Your heir can now file a claim. You would then have ${challengeDays} days to renew.`
-                        : `You can now file a claim. The owner would then have ${challengeDays} days to renew.`}
+                        : iAmHeir
+                          ? `You can now file a claim. The owner would then have ${challengeDays} days to renew.`
+                          : `The countdown has ended. Only the heir named on this vault can file a claim on it.`}
                     </div>
                   </>
                 ) : (
@@ -2703,7 +2715,14 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
+              {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() &&
+                // 정산·취소된 금고에는 "갱신" 이 존재하지 않는다. 계약상 `ping` 도
+                // `changeMyPeriod` 도 `Expired()` 로 막힌다. 그런데 여기는 여전히
+                // "Reset before the countdown ends. If you stop, your heir can claim…"
+                // 라고 instructing 하고 있었다 — 이미 끝난 카운트다운에 대한 지시다.
+                // 상속인은 이미 돈을 받았거나, 상속 자체가 취소되었는데 화면은 그렇다고
+                // 전혀 말하지 않는다. 버튼만 비활성이고 문구는 살아 있다.
+                !isSettledClaim && vaultPhase !== "cancelled" && (
                 <>
                   <div className="text-sm text-gray-700">
                     {challengeRunning
@@ -2742,7 +2761,7 @@ export default function App() {
                           placeholder="30"
                           onChange={e => onPeriodChange(e.target.value)}
                         />
-                        <Button onClick={changePeriod} disabled={!miniInstalled || !account || !periodValid}>
+                        <Button onClick={changePeriod} disabled={!miniInstalled || !account || !periodValid || isExpiredOrLater}>
                           Change period
                         </Button>
                       </div>
@@ -2767,7 +2786,7 @@ export default function App() {
                         <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
                       )
                     )}
-                    <Button onClick={updateHeir} disabled={!miniInstalled || !account || !newHeirResolved?.address}>Update heir</Button>
+                    <Button onClick={updateHeir} disabled={!miniInstalled || !account || !newHeirResolved?.address || isExpiredOrLater}>Update heir</Button>
                     {/* cancelInheritance 는 컨트랙트에서 만기 후 Expired 로 거부한다.
                         형제 버튼인 withdraw 처럼 만료 이후에는 항상 실패하므로
                         클릭을 사용자에게 노출하지 않는다. */}
@@ -3072,7 +3091,13 @@ export default function App() {
             월드앱 알림은 이 미니앱을 깔지 않은 지갑에 닿지 않는다("User not found").
             상속인 단말에 뭐가 깔려 있든 통하는 유일한 채널은 주인이 직접 보내는 링크다.
             이게 없으면 "상속인으로 지정된 사실" 자체가 상속인에게 전달되지 않는다. */}
-        {tab === "inherit" && isMyVault && vault && vaultHeir && gate2(
+        {tab === "inherit" && isMyVault && vault && vaultHeir &&
+          /* 정산이 끝나면 계약이 heir 를 0x0 으로 지운다(InheritanceVaultWLD.sol).
+             그런데 `vaultHeir` 가 "0x0000…0000" 도 참이라 이 카드가 살아 있었고,
+             소유자는 0x0 에 World Chat 을 보내라는 안내를 받았다. 상속 자체가
+             취소된 금고(heir == owner)에서는 **자기 자신에게** 보내라는 안내가 된다.
+             사람이 있는 상속인일 때만 이 카드를 띄운다. */
+          vaultHeir !== ethers.ZeroAddress && vaultHeir.toLowerCase() !== (vaultOwner ?? "").toLowerCase() && gate2(
           <Card>
             <CardHeader><CardTitle>Tell your heir</CardTitle></CardHeader>
             <CardContent className="grid gap-2">

@@ -170,7 +170,7 @@ export const MiniKit = {
       //
       // ethers 의 JsonRpcSigner 는 signer 인스턴스 단위로 nonce 를 기억하는데,
       // 블록 하나에 approve → deposit 두 건을 연달아 보내면 같은 nonce 가 두 번
-      // 쓰이고 두 번째가 "nonce too low" 로 떨어진다. 그래서 입금这一步가
+      // 쓰이고 두 번째가 "nonce too low" 로 떨어진다. 그래서 입금 이 단계가
       // 조용히 실패했는데 E2E 는 calldata 만 확인해서 통과로 보고했다.
       //
       // 월드앱의 실제 경로는 번들러가 nonce 를 처리하므로 이 문제가 없다 —

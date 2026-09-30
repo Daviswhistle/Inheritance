@@ -508,6 +508,13 @@ body {
   background-color: #f1f5f9;
 }
 
+/* 중립 안내 박스(주인도 상속인도 아닌 타인에게 보이는 알림)의 배경.
+   bg-gray-100 보다 한 단계 옅게 두어, 노란 경고 박스와 같은 무게감으로 보이지 않게
+   한다 — 이 안내는 위험 신호가 아니라 사실 확인이다. */
+.bg-gray-50 {
+  background-color: #f9fafb;
+}
+
 .border-blue-200 {
   border-color: #bfdbfe;
 }

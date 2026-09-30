@@ -21,6 +21,15 @@ const REPO = path.resolve(HERE, "..");
 const APP_SRC = path.join(REPO, "app", "src");
 
 const HANGUL = /[가-힣㄰-㆏]/;
+// 한자(중국어) · 히라가나·카타카나. 영어 전용 앱에 이것도 들어가지 않는다.
+const HAN = /[\u4E00-\u9FFF\u3040-\u30FF]/;
+
+const cjkLabel = (s) => {
+  const kinds = [];
+  if (HANGUL.test(s)) kinds.push("한글");
+  if (HAN.test(s)) kinds.push("한자/가나");
+  return kinds.join("·");
+};
 
 /**
  * 주석을 지워 한글 검사가 문자열 안만 보게 한다.
@@ -86,11 +95,23 @@ function walk(dir, acc = []) {
 }
 
 const findings = [];
+const hanFindings = [];
 for (const file of walk(APP_SRC)) {
   const raw = readFileSync(file, "utf8");
+
+  /* 한자·가나는 **주석 안이어도** 금지한다.
+     이 코드베이스의 주석 관례는 한국어다(사용자는 한국어로 말하고, 주석은 그에 맞춰
+     썼다). 그래서 한자가 나타나면 언제나 오타다 — 실제로 몇 개 있었다:
+     "시각적紧急度", "상속 신청权의 존재", "이 函数에 넣어". 사용자에게는 안 보이지만
+     나중에 그 주석을 읽는 사람이 같은 혼선을 그대로 받는다.
+     한글은 주석에 허용하므로 이 검사는 한자/가나만 본다. */
+  raw.split("\n").forEach((line, i) => {
+    if (HAN.test(line)) hanFindings.push({ file: path.relative(REPO, file), line: i + 1, text: line.trim().slice(0, 100) });
+  });
+
   const src = stripComments(raw);
   src.split("\n").forEach((line, i) => {
-    if (!HANGUL.test(line)) return;
+    if (!HANGUL.test(line) && !HAN.test(line)) return;
     // Still inside a string? Compare with the raw line: if the raw line's Hangul is
     // entirely within a comment, stripComments already removed it.
     findings.push({ file: path.relative(REPO, file), line: i + 1, text: line.trim().slice(0, 100) });
@@ -105,7 +126,7 @@ try {
   for (const e of readdirSync(path.join(dist, "assets"))) {
     if (!e.endsWith(".js")) continue;
     const js = readFileSync(path.join(dist, "assets", e), "utf8");
-    const m = js.match(HANGUL);
+    const m = js.match(HANGUL) ?? js.match(HAN);
     if (m) {
       const at = js.indexOf(m[0]);
       findings.push({ file: `app/dist/assets/${e}`, line: 0, text: "… " + js.slice(Math.max(0, at - 60), at + 40).replace(/\s+/g, " ") + " …" });
@@ -116,8 +137,17 @@ try {
   // dist 가 없으면 (개발 중) 소스 검사만 한다.
 }
 
-if (findings.length) {
-  console.log("\n  === 영어 전용 위반: 화면에 한국어가 있습니다 ===\n");
+if (hanFindings.length) {
+  console.log("\n  === 한자/가나가 섞여 있습니다 (주석 포함) ===\n");
+  for (const f of hanFindings) {
+    console.log(`  ${f.file}:${f.line}`);
+    console.log(`      ${f.text}\n`);
+  }
+  console.log("  이 저장소의 주석은 한국어로 씁니다. 한자가 남은 것은 오타입니다.\n");
+}
+
+if (findings.length || hanFindings.length) {
+  console.log("\n  === 영어 전용 위반: 화면에 CJK 가 있습니다 ===\n");
   const seen = new Set();
   for (const f of findings) {
     const k = `${f.file}:${f.line}:${f.text}`;
@@ -127,9 +157,10 @@ if (findings.length) {
     console.log(`      ${f.text}\n`);
   }
   console.log(`  supported_languages 는 ["en"] 입니다. 주석은 한국어여도 괜찮고,`);
-  console.log(`  사용자에게 보이는 문자열만 영어여야 합니다.\n`);
+  console.log(`  사용자에게 보이는 문자열만 영어여야 합니다.`);
+  console.log(`  한자·가나(중국어/일본어)는 주석에도 넣지 않습니다.\n`);
   console.log(`  번들 검사: ${bundleChecked ? "수행" : "dist 없음 (소스만 검사)"}\n`);
   process.exit(1);
 }
 
-console.log(`  OK  화면에 한국어 없음${bundleChecked ? " (소스 + 빌드 번들)" : " (소스만 — dist 없음)"}`);
+console.log(`  OK  화면에 CJK 없음${bundleChecked ? " (소스 + 빌드 번들)" : " (소스만 — dist 없음)"}`);

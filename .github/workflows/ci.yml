@@ -35,6 +35,13 @@ jobs:
       - name: Test
         run: forge test -vvv
 
+      # revert 를 이름으로 해독하려면 ABI 에 커스텀 에러 항목이 있어야 한다. 예전에
+      # 이게 없어서 ethers 가 revert 를 4바이트 셀렉터로만 남겼고, 사용자에게
+      # `execution reverted (unknown custom error) (action=…, transaction={…})` 가
+      # 그대로 나갔다. 계약이 바뀌면 생성물도 함께 바뀌어야 하므로 여기서 확인한다.
+      - name: Generate custom error ABI
+        run: node scripts/gen-abi-errors.mjs --check
+
   app:
     name: Mini App
     runs-on: ubuntu-latest
@@ -68,6 +75,11 @@ jobs:
       # 없고 .font-medium 때문에 제목이 굵어지지 않았다.
       - name: Check CSS classes are defined
         run: node ../scripts/check-css-classes.mjs
+
+      # revert 문장화 검증. 실제 인코딩된 revert 데이터를 넣고 무엇이 나오는지 본다.
+      # tsc 와 vite build 는 이 경로를 검사하지 않는다 — 예전 버그가 그 둘을 통과했다.
+      - name: Revert messages are human sentences
+        run: node ../scripts/test-error-text.mjs
 
       # supported_languages 는 ["en"] 뿐이다. 알림 발송 실패 안내(가장 중요한 실패
       # 경로)가 한국어였고, 코드 주석도 한국어라 검토자가 놓쳤다. 사용자 노출 문자열만 본다.

@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import type { InterfaceAbi } from "ethers";
 import { CHAIN_ID } from "@/config";
 
 /**
@@ -11,7 +12,13 @@ import { CHAIN_ID } from "@/config";
  */
 export type ContractCall = {
   address: string;
-  abi: string[];
+  /**
+   * ABI 는 문자열 조각만으로 안 된다. revert 를 이름으로 해독하려면 **커스텀 에러
+   * 항목**이 ABI 에 들어 있어야 하는데(ethers 의 Interface 가 그래야 decodeError 를
+   * 한다), 그건 객체 형태다. 예전 타입은 `string[]` 라서 커스텀 에러를 넣을 수 없고,
+   * 그래서 이 앱은 revert 를 4바이트 셀렉터로만 보여주고 있었다.
+   */
+  abi: InterfaceAbi;
   functionName: string;
   args?: unknown[];
 };
