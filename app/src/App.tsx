@@ -1604,6 +1604,21 @@ export default function App() {
    * (a) 링크가 자기 금고로 덮이고 (b) 여기 카드가 없어서 신청 수단이 사라진다.
    * 두 곳에 쓰이므로 변수로 뺀다.
    */
+  /**
+   * 상속인 카드를 첫 화면에 내보낼 가치가 있는가.
+   *
+   * 진짜 상속인(누군가에게 지정됐다면)에게는 이 카드가 이 앱을 열 이유 그 자체다 — 자기
+   * 금고가 없는데 상속 신청权的 존재를 알아야 하기 때문이다. 그래서 결과가 있으면
+   * 맨 위로 올린다.
+   *
+   * 반대로 아무것도 없는 사람에게는 질문할 이유가 없다. 화면에 "No vault names you as
+   * heir" 가 남으면 "내가 뭘 놓치고 있나" 하는 불안을制造하고, 정작 해야 할 일
+   * (금고 만들기)을 화면 아래로 민다.
+   *
+   * 스캔 중에는 짧은 줄로 자리 잡고, 결과를 받았는데 아무것도 없으면 완전히 감춘다.
+   */
+  const notifyHeirWorthShowing = findingHeirVaults || heirFoundVaults.length > 0 || !heirScanAttempted;
+
   const heirStatusCard = gate2(
     <Card>
       <CardHeader><CardTitle>Are you named as someone&apos;s heir?</CardTitle></CardHeader>
@@ -2765,7 +2780,16 @@ export default function App() {
             평생 "누군가가 나를 상속인으로 지명했나" 를 알 방법이 없었다. 상속인 링크를
             받아도 (a) 링크가 자기 금고로 덮이면 (b) 여기 카드가 없으므로 신청 수단이
             사라진다. 두 곳에서 쓰이므로 변수로 뺀다. */}
-        {tab === "inherit" && account && heirStatusCard}
+        {/* 상속인 카드는 **스캔 결과가 있을 때만** 맨 위에 둔다.
+            앞선 커밋에서 "상속인이 이 앱을 여는 이유니까" 라고 올렸는데, 그건 스캔 결과가
+            있을 때만 성립하는 이야기다. 결과가 없으면 화면에 "No vault names you as heir"
+            라는 카드가 남고, 아무것도 안 한 사람에게 "당신이 상속인일 수 있습니다" 라고
+            말한 뒤 "아니오" 라고 대답하는 셈이다. 답이 없는 질문은 질문하지 말아야 한다.
+            첫 화면에서 진짜 중요한 건 "금고 만들기" 다.
+
+            "Check again" 도 함께 사라지는데, 자동 스캔이 열 때마다 도는 중이고
+            수동 재확인이 필요한 경우는 거의 없다. 필요하면 Help 탭에 남긴다. */}
+        {tab === "inherit" && account && notifyHeirWorthShowing && heirStatusCard}
 
         {/* ===== Inherit 탭: 상속 설정과 상속 진행 상태 =====
 
@@ -3018,6 +3042,30 @@ export default function App() {
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && (
         <>
+          {/* 상속인 카드를 첫 화면에서 뺐으므로 수동 재확인은 여기로 온다.
+              자동 스캔이 열 때마다 돌지만, 그 사이에 상속인으로 지정받은 경우를
+              확인하려면 필요하고, 그 수단을 통째로 버리면 안 된다. */}
+          {account && (
+            <Card>
+              <CardHeader><CardTitle>Named as an heir?</CardTitle></CardHeader>
+              <CardContent className="grid gap-2">
+                <div className="text-xs text-gray-600">
+                  {findingHeirVaults
+                    ? "Checking the chain for vaults that name you…"
+                    : heirScanAttempted
+                      ? heirFoundVaults.length > 0
+                        ? `You are the heir of ${heirFoundVaults.length} vault${heirFoundVaults.length > 1 ? "s" : ""}. Open the Inherit tab to see them.`
+                        : "No vault on World Chain currently names you as heir."
+                      : "This app checks the chain for you as soon as you open it."}
+                </div>
+                <div>
+                  <Button size="sm" onClick={findHeirVaults} disabled={findingHeirVaults}>
+                    {findingHeirVaults ? "Searching..." : "Check again"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         <Card>
           <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-700">

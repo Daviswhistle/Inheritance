@@ -250,5 +250,60 @@ log("\n[7] 처음 쓰는 사람이 금고를 만들기 전에 알림을 알게 �
   await fresh.close();
 }
 
+log("\n[8] 상속인 카드는 결과가 있을 때만 첫 화면에 나온다");
+// 앞선 커밋에서 상속인 카드를 맨 위로 올렸다. 그건 "상속인이 이 앱을 여는 이유니까"
+// 였는데 — 스캔 결과가 있을 때만 성립하는 이야기다. 결과가 없으면 "No vault names you
+// as heir" 카드가 그대로 남고, 아무것도 안 한 사람에게 "당신이 상속인일 수 있습니다" 를
+// 말한 뒤 "아니오" 라고 답하는 셈이다. 정작 할 일(금고 만들기)은 화면 아래로 밀린다.
+{
+  const plain = await launch({ pk: A.a11.pk, url: APP });
+  await sleep(2800);
+  await plain.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await sleep(6500);
+  const t = await plain.ev("return document.body.innerText;");
+  check("스캔 결과가 없으면 첫 화면에 상속인 카드가 없다",
+    !/Are you named as someone/i.test(t), /Are you named as someone/i.test(t) ? "나오고 있다" : "없음");
+  check("\'아니오\' 라는 답도 화면에 남지 않는다", !/No vault names you as heir/i.test(t),
+    /No vault names you as heir/i.test(t) ? "남아 있다" : "없음");
+  // 수동 재확인은 Help 탭에 남겨 둔다 — 통째로 버리면 안 된다.
+  await plain.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].find(x=>/help/i.test(x.innerText));if(e)e.click();return 1;})()`);
+  await sleep(1200);
+  const th = await plain.ev("return document.body.innerText;");
+  check("Help 탭에서 다시 확인할 수 있다", /Named as an heir/i.test(th) && /Check again/i.test(th),
+    /Named as an heir/i.test(th) ? "카드 있음" : "없음");
+  await plain.close();
+}
+
+log("\n[9] 진짜 상속인에게는 여전히 첫 화면에 보여야 한다");
+// 위 조건을 걸면 "결과가 있으면 보여라" 만 남는다. 그것이 실제로 성립하는지 확인한다 —
+// 이 카드가 없으면 상속인은 자기 신청권을 발견하지 못한다.
+{
+  // 소유자를 직접 고르는 건 신뢰할 수 없다 — 앞 단계([6])가 이미 a10 에 금고를
+  // 만들어 놔서 createVault 가 AlreadyHasVault 로 revert 하고, 지정한 상속인은
+  // 아무것도 아닌 계정이었다(실제로 그랬다). 체인에서 실제 상속인을 **읽어** 쓴다.
+  const ownerAddr = A.a10.a;
+  const v = cast(["call", FACTORY, `vaultOf(address)(address)`, ownerAddr, "--rpc-url", "http://127.0.0.1:8546"]);
+  if (v === "0x" + "0".repeat(40)) { console.log("    a10 에 금고가 없다 — [9] 건너뜀"); }
+  const realHeir = cast(["call", v, "heir()(address)", "--rpc-url", "http://127.0.0.1:8546"]);
+  const heirAcct = Object.values(A).find((x) => x.a.toLowerCase() === realHeir.toLowerCase());
+  log(`    금고 ${v.slice(0, 12)}… 실제 상속인 ${realHeir}`);
+  if (!heirAcct) { console.log("    상속인 키를 찾을 수 없다 — [9] 건너뜀"); }
+  const heir = heirAcct ? await launch({ pk: heirAcct.pk, url: APP }) : null;
+  if (heir) {
+  await sleep(2800);
+  await heir.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await sleep(9000);
+  const th = await heir.ev("return document.body.innerText;");
+  check("상속인에게는 상속인 카드가 보인다", /Are you named as someone/i.test(th),
+    (th.match(/[^\n]*You are the heir of[^\n]*/i) || ["(없음)"])[0].slice(0, 80));
+  // 개수는 정확히 1 이 아닐 수 있다 — 이 파일 앞부분이 a4/a9 금고도 만들어 둔다.
+  // 중요한 건 "몇 개인지" 를 말하는지 여부다.
+  check("몇 개인지 알려준다", /You are the heir of \d+ vault/i.test(th),
+    (th.match(/You are the heir of[^\n]*/i) || ["(없음)"])[0]);
+  await heir.shot("notify-real-heir");
+  }
+  if (heir) await heir.close();
+}
+
 log(`\n  통과 ${pass} / 실패 ${fail}`);
 process.exit(fail ? 1 : 0);
