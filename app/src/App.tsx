@@ -279,6 +279,19 @@ export default function App() {
    * 갖는데, 상속인이 7일 전에 돈을 가져갈 수 없다는 뜻이라 UI 에 그대로 쓰면 안 된다.
    */
   const [vaultPhase, setVaultPhase] = useState<VaultPhase>("active");
+  /**
+   * 상속 취소 여부 (heir == owner). **생애 단계와 분리**한다.
+   *
+   * 예전에는 `vaultPhase === "cancelled"` 로 알았다. 그런데 취소는 **갱신 기한 전**에
+   * 도는 행동이라서, 취소한 직후에도 카운트다운이 계속 돈다. 그때까지 "cancelled"
+   * 로 잡으면 카운트다운이 도는 금고가 만료된 것처럼 취급되어:
+   *   - 입금이 막히고 (계약은 허용)
+   *   - 기간변경·상속인변경이 비활성화된다 (계약은 허용 — 취소를 되돌릴 수 있다)
+   *   - 잔액이 0 이면 슬롯 해제 버튼이 보인다 (그 순간 계약은 NotExpired 로 거절한다)
+   * 즉 계약이 허용하는 일들을 UI 가 막고, 계약이 거절할 일을 권하는 잘못된 방향.
+   * 계약 테스트(test_CancelledVaultControlMatrixAfterExpiry)가 이 차이를 고정한다.
+   */
+  const [cancelledFlag, setCancelledFlag] = useState<boolean>(false);
   const [challengeEndsAt, setChallengeEndsAt] = useState<number>(0);
   /** 최종 수령이 지금 가능한 상태인지 (= 이의제기 기간이 지났고 신청이 들어옴). */
   const canClaim = vaultPhase === "claimable";
@@ -286,7 +299,7 @@ export default function App() {
   const challengeRunning = vaultPhase === "challenging";
   /** 기한이 지났지만 상속인이 아직 신청하지 않은 상태. */
   const awaitingClaim = vaultPhase === "expired";
-  const inheritanceCancelled = vaultPhase === "cancelled";
+  const inheritanceCancelled = cancelledFlag;
   const isSettledClaim = vaultPhase === "settled";
   /**
    * 기한이 지나 상속 파이프라인이 시작된 상태인가.
@@ -1328,7 +1341,8 @@ export default function App() {
       // 상속 상태를 한 번에 읽어 단계로 정리한다. 이 RPC 묶음은 UI 의 모든
       // 분기를 결정하므로 일부가 실패하면 안 된다.
       const [
-        ownerActive,
+        // `ownerActive` 는 예전에 단계 계산에 쓰였지만 이제 필요 없다. 만료 판정은
+        // `expired` 가 하고, 기한 전(갱신 가능) 상태는 else 분기가 처리한다.
         expired,
         pending,
         challenging,
@@ -1337,7 +1351,6 @@ export default function App() {
         cancelled,
         challengeEnd,
       ] = await Promise.all([
-        vaultCtr.ownerStillActive(),
         vaultCtr.isExpired(),
         vaultCtr.claimPending(),
         vaultCtr.challengeRunning(),
@@ -1346,22 +1359,24 @@ export default function App() {
         vaultCtr.inheritanceCancelled(),
         vaultCtr.challengeEndsAt(),
       ]);
-      const phase: VaultPhase = cancelled
-        ? "cancelled"
-        : claimedAt > 0n
-          ? "settled"
-          : finalizable
-            ? "claimable"
-            : challenging
+      /* 취소를 가장 먼저 보면 "아직 카운트다운이 도는 취소 금고"를 표현할 수 없다
+         (위 cancelledFlag 주석 참고). 만료를 먼저 판정하고, 취소는 만료 뒤에만
+         "cancelled" 단계로 둔다. */
+      const phase: VaultPhase = claimedAt > 0n
+        ? "settled"
+        : finalizable
+          ? "claimable"
+          : challenging
+            ? "challenging"
+            : pending
               ? "challenging"
-              : pending
-                ? "challenging"
-                : expired
-                  ? "expired"
-                  : ownerActive
-                    ? "active"
-                    : "expired";
+              : expired
+                ? cancelled
+                  ? "cancelled"
+                  : "expired"
+                : "active";
       setVaultPhase(phase);
+      setCancelledFlag(cancelled);
       setChallengeEndsAt(Number(challengeEnd));
       try {
         const cp: bigint = await vaultCtr.CHALLENGE_PERIOD();
@@ -2487,6 +2502,26 @@ export default function App() {
 
               {/* 파이프라인을 단계로 보여준다. 어느 단계에 있는지가 한눈에 들어가야
                   "내 돈이 언제 이동하는가"를 머릿속에서 계산할 필요가 없어진다. */}
+              {inheritanceCancelled ? (
+                /* 상속이 취소된 금고에 5단계 상속 파이프라인을 보여주면 안 된다.
+                   "상속인이 신청한다 → 7일 → 상속인이 인출한다" 는 여기서 일어나지
+                   않는다. 예전에는 이 상태가 파이프라인에서 `expired` 와 구분되지
+                   않아, 취소된 금고에 "Countdown ended" 가 **미완료** 로 남아
+                   "아직 신청 전" 처럼 읽혔다. 상속이 없으므로 절차도 없다. */
+                <ol className="pipeline">
+                  {[
+                    { k: "Inheritance cancelled", done: true },
+                    { k: "No one can claim this vault", done: true },
+                    { k: "Withdraw it back to yourself", done: vaultWld === 0n },
+                  ].map((s, i) => (
+                    <li key={i} className={s.done ? "pipeline-done" : ""}>
+                      <span className="pipeline-dot" aria-hidden="true" />
+                      {s.k}
+                      {s.done && <span className="sr-only"> (completed)</span>}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
               <ol className="pipeline">
                 {[
                   /* "Counting down" 의 `done` 은 **진행 중일 때** 가 아니라 **지나간
@@ -2508,6 +2543,7 @@ export default function App() {
                   </li>
                 ))}
               </ol>
+              )}
 
               {challengeRunning && (
                 <div className="text-sm">
@@ -2623,8 +2659,17 @@ export default function App() {
 
               {inheritanceCancelled && (
                 <div className="text-sm text-gray-600">
+                  {/*
+                    취소는 **갱신 기한 전에는 되돌릴 수 있다** — 계약의
+                    `updateHeir` 가 `ownerStillActiveOnly` 이고 heir 를 다시 지정하면
+                    상속이 재개된다(forge: test_CancelCanBeUndoneBeforeExpiry).
+                    "되돌릴 수 없다" 고 말하면 사용자가 확인도 하지 않고 포기한다.
+                    기한이 지나면 되돌릴 수 없으므로 그때는 분명히 말해야 한다. */}
                   Inheritance was cancelled, so no one inherits this vault. The balance is
                   yours and you can withdraw it whenever you want.
+                  {vaultPhase === "cancelled"
+                    ? " The countdown has also ended, so the cancellation can no longer be undone — release your slot below to make a different vault."
+                    : " You can still undo this by setting a heir again before the countdown ends."}
                 </div>
               )}
             </CardContent>
@@ -2651,14 +2696,36 @@ export default function App() {
                   {vaultWld > 0n
                     ? isSettledClaim
                       ? "— the inheritance already completed, so this is only what is left behind."
-                      : "— this is what your heir receives if you stop renewing."
-                    : "— nothing yet. Deposit WLD to start protecting it."}
+                      : inheritanceCancelled
+                        /* 상속인이 없다(heir == owner). "상속인이 받는다" 는 명제 자체가
+                           성립하지 않는다. */
+                        ? "— no one inherits this vault, so it stays yours."
+                        : "— this is what your heir receives if you stop renewing."
+                    : inheritanceCancelled
+                      ? "— nothing left in this vault."
+                      : "— nothing yet. Deposit WLD to start protecting it."}
                 </span>
               </div>
               {/* 이 앱의 존재 이유가 "타이머가 다 되지 않았는가" 다. 그래서 카드의 맨 위에
                   크고 눈에 띄게 두고, 남은 시간에 따라 색을 바꾼다. */}
               <div className={`timer-block ${timerUrgency}`}>
-                {canClaim || isSettledClaim ? (
+                {vaultPhase === "cancelled" ? (
+                  /* 취소 + 만료. 이 앱에서 가장 어긋나기 쉬운 자리였다.
+                     예전에는 이 상태가 `active` 가 아니라서 아래의 "Time left to renew" /
+                     "0d 0h 0m 0s" / 어제 날짜짜로 떨어졌다. "갱신하라" 고 말하면서
+                     갱신 버튼은 없었고, 실제로 갱신하면 슬롯 해제만 한 주기 막힌다.
+                     여기서 말해야 할 것은 하나다: 상속은 끝났고, 돈은 내 것이며,
+                     자리를 되돌려받으려면 잔액을 비우고 해제하면 된다. */
+                  <>
+                    <div className="text-xs font-semibold uppercase">Inheritance cancelled</div>
+                    <div className="timer-value">Nobody will inherit this vault</div>
+                    <div className="text-xs text-gray-700">
+                      {vaultWld > 0n
+                        ? `The ${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} is yours — withdraw it, or release your slot to keep it.`
+                        : "The balance is yours. Release your slot below to make a different vault — this one is over."}
+                    </div>
+                  </>
+                ) : canClaim || isSettledClaim ? (
                   <>
                     <div className="text-xs font-semibold uppercase">
                       {isSettledClaim ? "Inheritance completed" : "Review window passed"}

@@ -12,7 +12,7 @@
 // This scans the source for Hangul inside string/template literals, and separately
 // checks the built bundle, which catches anything that only becomes user-visible after
 // minification. Comments are excluded, so the Korean comments can stay.
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -94,6 +94,41 @@ function walk(dir, acc = []) {
   return acc;
 }
 
+/* 한자·가나는 저장소 전체에서 금지한다 — 주석이어도.
+   app/src 밖(테스트, 하네스, 컨트랙트)에서도 실제로 세 번 생겼다:
+   `입금这一步가`, `시각적紧急도`, `이론上는`. 전부 주석 안의 오타였고 그 주석을 나중에
+   읽는 사람이 그대로 혼선을 받는다. 여기서는 언어 관례(한국어 주석)는 허용하되
+   한자/가나만 막는다. */
+const HAN_SCAN_DIRS = ["scripts", "test", "contracts"];
+const HAN_SCAN_EXT = /\.(ts|tsx|mjs|sol|sh|md|yml|yaml|json)$/;
+
+const hanFindingsAll = [];
+for (const dirName of HAN_SCAN_DIRS) {
+  const dir = path.join(REPO, dirName);
+  if (!existsSync(dir)) continue;
+  const stack = [dir];
+  while (stack.length) {
+    const cur = stack.pop();
+    for (const e of readdirSync(cur)) {
+      if (e === "node_modules" || e === ".wrangler" || e === "dist") continue;
+      const p = path.join(cur, e);
+      if (statSync(p).isDirectory()) {
+        stack.push(p);
+        continue;
+      }
+      if (!HAN_SCAN_EXT.test(e)) continue;
+      // 이 파일 자신은 제외한다 — 위반 예시를 주석에 들고 있어야 하므로
+      // 자기 자신만은 반드시 걸린다(그 예시도 화면에 나가는 문장이 아니다).
+      if (p === fileURLToPath(import.meta.url)) continue;
+      readFileSync(p, "utf8")
+        .split("\n")
+        .forEach((line, i) => {
+          if (HAN.test(line)) hanFindingsAll.push({ file: path.relative(REPO, p), line: i + 1, text: line.trim().slice(0, 100) });
+        });
+    }
+  }
+}
+
 const findings = [];
 const hanFindings = [];
 for (const file of walk(APP_SRC)) {
@@ -136,6 +171,8 @@ try {
 } catch {
   // dist 가 없으면 (개발 중) 소스 검사만 한다.
 }
+
+for (const f of hanFindingsAll) hanFindings.push(f);
 
 if (hanFindings.length) {
   console.log("\n  === 한자/가나가 섞여 있습니다 (주석 포함) ===\n");

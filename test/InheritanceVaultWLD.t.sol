@@ -559,6 +559,181 @@ contract InheritanceVaultWLDTest is Test {
         assertEq(factory.vaultOf(owner), v2, "new vault");
     }
 
+    // ---------------------------------------------------------------
+    //  취소(cancel) 후 슬롯 해제 — 앱이 최근에 처음 열어준 경로
+    // ---------------------------------------------------------------
+
+    /// @dev 상속 취소(heir = owner)는 **만료 뒤에만** 성공하므로 취소된 금고는
+    ///      `awaitingClaim` 도 `challengeRunning` 도 아니다. 팩토리의 해제 조건은
+    ///      `isSettled()` 인데, 취소는 `inheritanceCancelled` 만 세우고 settled 는
+    ///      아니므로 계약상으로는 통과한다. 실제로 통과한다는 것을 고정해 둔다 —
+    ///      이 경로가 막히면 상속을 취소한 사용자는 자기 자리를 영영 못 되돌려받고
+    ///      두 번째 금고를 만들 수 없다. (앱 UI 도 이 때문에 `cancelled` 를
+    ///      `isExpiredOrLater` 에 넣었다.)
+    function test_ReleaseAfterCancelFreesTheSlot() public {
+        /* 취소는 **만료 전**에만 가능하다(`ownerStillActiveOnly`). 처음엔 만료 뒤에
+          _cancel_ 할 수 있다고 알고 있었고 그 순서로 짜니 전부 `Expired()` 로
+           떨어졌다. 계약의 순서를 그대로 따랐다. */
+        assertFalse(vault.isExpired(), "not expired yet");
+        vm.prank(owner);
+        vault.cancelInheritance();
+        assertTrue(vault.inheritanceCancelled(), "cancelled");
+        assertFalse(vault.isSettled(), "not settled yet");
+
+        _expire();
+        // 만료 후 `isSettled()` 이 true 가 되어야 팩토리가 해제를 허락한다.
+        assertTrue(vault.isSettled(), "settled once expired");
+
+        // 잔액을 회수하고 나면 슬롯을 되돌려받을 수 있다.
+        vm.prank(owner);
+        vault.ownerWithdrawWLD(100 ether, owner);
+        assertEq(wld.balanceOf(owner), 100 ether, "refunded");
+
+        vm.prank(owner);
+        assertTrue(factory.releaseMyVault(), "released after cancel");
+        assertEq(factory.vaultOf(owner), address(0), "slot freed");
+    }
+
+    /// @dev 취소 → 해제 → 새 금고. 사용자가 실제로 겪는 전체 동선.
+    function test_ReleaseAfterCancelThenCreateSecondVault() public {
+        vm.prank(owner);
+        vault.cancelInheritance();
+        _expire();
+        vm.prank(owner);
+        vault.ownerWithdrawWLD(100 ether, owner);
+        vm.prank(owner);
+        factory.releaseMyVault();
+
+        vm.prank(owner);
+        address v2 = factory.createVault(heir, 60 days);
+        assertEq(factory.vaultOf(owner), v2, "second vault registered");
+
+        // 새 금고는 정상 작동한다 — 취소가 이전 금고의 상태를 오염시키지 않아야 한다.
+        wld.mint(address(v2), 50 ether);
+        assertEq(wld.balanceOf(v2), 50 ether, "second vault holds funds");
+        InheritanceVaultWLD vault2 = InheritanceVaultWLD(payable(v2));
+        vm.prank(owner);
+        vault2.ping();
+        vm.warp(block.timestamp + 60 days);
+        vm.prank(heir);
+        vault2.fileClaim();
+        assertTrue(vault2.challengeRunning(), "second vault claim runs");
+    }
+
+    /// @dev 취소된 금고에서 원래 상속인은 아무것도 할 수 없다. 슬롯을 해제했든
+    ///      안 했든 — `heir == owner` 이므로 신청/수령 권한이 소유자에게로 옮겨간다.
+    function test_CancelledVaultIsUnreachableByTheOriginalHeir() public {
+        vm.prank(owner);
+        vault.cancelInheritance();
+        _expire();
+
+        vm.prank(heir);
+        vm.expectRevert(InheritanceVaultWLD.NotHeir.selector);
+        vault.fileClaim();
+
+        vm.prank(heir);
+        vm.expectRevert(InheritanceVaultWLD.NotHeir.selector);
+        vault.finalizeClaim();
+    }
+
+    /// @dev 취소 후 만료된 금고에서 **무엇이 막히고 무엇이 열려 있는지**를 고정한다.
+    ///
+    ///      처음엔 전부 막힐 것으로 알고 있었는데실측하니 `ping` 은 성공한다.
+    ///      이유: `ping` 은 `ownerMayStillAct`(claimedAt != 0 일 때만 막음) 라서이고,
+    ///      `updateHeir` / `updateHeartbeat` / `cancelInheritance` 는
+    ///      `ownerStillActiveOnly`(갱신 기한 전) 라서다. 계약의 의도된 차이다 —
+    ///      소유자의 무제한 거부는 상속이 **진행 중이거나 이의제기 기간**일 때의
+    ///      것이지, 이미 상속인이 없는(heir == owner) 상태까지 묶어 둔 게 아니다.
+    ///
+    ///      다만 여기서 실질적 함정 하나가 나온다: `ping` 은 `lastPing` 를 갱신하므로
+    ///      `isExpired()` 가 다시 false 가 되고, 그 결과 `isSettled()` 도 false 가 되어
+    ///      **슬롯 해제가 다시 막힌다.** 취소한 사용자가 갱신 버튼을 한 번 누르면 30일
+    ///      동안 금고 자리를 못 되돌려받는다. 돈이 사라지지는 않지만 "자리를 못
+    ///      돌려받는" 문제는 이 앱에서 진짜 손해다 — 두 번째 금고를 못 만들기 때문.
+    ///      앱은 취소된 금고에서 갱신 UI 를 아예 감추는 것으로 이걸 막는다.
+    function test_CancelledVaultControlMatrixAfterExpiry() public {
+        vm.prank(owner);
+        vault.cancelInheritance();
+        _expire();
+
+        // 갱신 기한 전 조건에 걸리는 것들 — 전부 막힌다.
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.updateHeartbeat(60 days);
+
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.updateHeir(stranger);
+
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLD.Expired.selector);
+        vault.cancelInheritance();
+
+        // `ping` 은 열려 있다 — 그리고 슬롯 해제를 다시 막는다.
+        assertTrue(vault.isSettled(), "settled before ping");
+        vm.prank(owner);
+        vault.ping();
+        assertFalse(vault.isExpired(), "ping revived the countdown");
+        assertFalse(vault.isSettled(), "no longer settled");
+
+        vm.prank(owner);
+        vm.expectRevert(InheritanceVaultWLDFactoryOnePerOwner.NotExpired.selector);
+        factory.releaseMyVault();
+
+        // 한 주기 기다리면 다시 해제할 수 있다 — 진짜로 막힌 게 아니다.
+        _expire();
+        assertTrue(vault.isSettled(), "settled again");
+        vm.prank(owner);
+        vault.ownerWithdrawWLD(100 ether, owner);
+        vm.prank(owner);
+        assertTrue(factory.releaseMyVault(), "releasable after waiting");
+    }
+
+    /// @dev 취소를 **되돌릴 수 있다** — 갱신 기한 전에는. heir 를 다시 지정하면
+    ///      상속이 그대로 재개된다. 취소가 되돌릴 수 없는 실수여야 한다면
+    ///      그렇지 않다. 앱의 "Cancel (set heir to me)" 라벨이 이 사실과 맞는지
+    ///      확인할 근거가 된다.
+    function test_CancelCanBeUndoneBeforeExpiry() public {
+        vm.prank(owner);
+        vault.cancelInheritance();
+        assertTrue(vault.inheritanceCancelled(), "cancelled");
+
+        vm.prank(owner);
+        vault.updateHeir(heir);
+        assertFalse(vault.inheritanceCancelled(), "cancel undone");
+        assertEq(vault.heir(), heir, "heir restored");
+    }
+
+    /// @dev 슬롯을 해제하면 이전 금고는 **고아** 가 된다 — 팩토리가 더 이상 가리키지
+    ///      않는다. 그 주소로 WLD 가 보내지면(누군가 주소만 알고) 소유자만 회수할 수
+    ///      있다. 해제 전과 동일한 소유권이라는 것을 고정해 둔다 — "해제했으니 이제
+    ///      아무도 못 건진다" 는 잘못된 인식이 생기지 않도록.
+    function test_OrphanedCancelledVaultStillBelongsToTheOwner() public {
+        vm.prank(owner);
+        vault.cancelInheritance();
+        _expire();
+        vm.prank(owner);
+        vault.ownerWithdrawWLD(100 ether, owner);
+        vm.prank(owner);
+        factory.releaseMyVault();
+
+        // 슬롯은 비었지만 이전 금고 주소로 입금하면 소유자에게 돌아온다.
+        wld.mint(address(vault), 7 ether);
+        assertEq(wld.balanceOf(address(vault)), 7 ether, "stranded funds arrive");
+
+        // `ownerWithdrawWLD` 는 `onlyOwner` 이므로 상속인에게 NotOwner 다
+        // (NotHeir 가 아니다 — 청산 권한이 아니라 소유자 전용 함수다).
+        vm.prank(heir);
+        vm.expectRevert(InheritanceVaultWLD.NotOwner.selector);
+        vault.ownerWithdrawWLD(7 ether, heir);
+
+        // 이 테스트 앞부분에서 이미 100 ether 를 돌려받았으므로 증가분을 본다.
+        uint256 before = wld.balanceOf(owner);
+        vm.prank(owner);
+        vault.ownerWithdrawWLD(7 ether, owner);
+        assertEq(wld.balanceOf(owner) - before, 7 ether, "owner recovers the stranded funds");
+    }
+
     /// @dev 회귀: finalizeClaim() 후 isExpired() 가 false 가 되므로, 슬롯 해제 조건이
     ///      isExpired() 만 보면 상속을 이미 수령한 사용자가 영원히 새 금고를 못 만든다.
     function test_ReleaseWorksAfterClaimEvenThoughCanClaimIsFalse() public {
