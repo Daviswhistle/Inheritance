@@ -12,17 +12,24 @@ const FACTORY = "0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88";
 const WLD = "0x2cfc85d8e48f8eab294be644d9e25c3030863003";
 const BLOCK = 35672936;
 
-const src = readFileSync(REPO + "/app/src/App.tsx", "utf8");
-function abiFrom(name) {
-  const i = src.indexOf(`const ${name} = [`);
-  const start = src.indexOf("[", i);
-  let d = 0, end = start;
-  for (let k = start; k < src.length; k++) { if (src[k] === "[") d++; else if (src[k] === "]") { d--; if (!d) { end = k; break; } } }
-  const body = src.slice(start, end + 1).split("\n").map(l => l.replace(/\/\/.*$/, "")).join(" ").replace(/,\s*]/g, " ]").trim();
-  return JSON.parse(body);
+/* 앱의 ABI 를 **실제로 import** 한다. 예전에는 App.tsx 를 문자열로 파싱해서 배열을
+   꺼냈는데, ABI 를 abis.ts 로 옮기자 조용히 빈 배열이 되어 `encodeFunctionData
+   ("vaultOf")` 가 "unknown function" 으로 죽었다. 이 단계는 "앱이 메인넷에서 무엇을
+   읽는가" 를 확인하는 마지막 문지기인데, 그 문지기가 앱의 ABI 를 제대로 못 보고 있었다. */
+const { createServer } = await import(REPO + "/app/node_modules/vite/dist/node/index.js");
+const vite = await createServer({
+  root: REPO + "/app",
+  configFile: false,
+  logLevel: "error",
+  server: { middlewareMode: true },
+  optimizeDeps: { noDiscovery: true },
+});
+const { FACTORY_ABI, VAULT_ABI } = await vite.ssrLoadModule("/src/abis.ts");
+await vite.close();
+if (!FACTORY_ABI?.length || !VAULT_ABI?.length) {
+  console.error("\n  abis.ts 에서 FACTORY_ABI / VAULT_ABI 를 읽지 못했습니다.\n");
+  process.exit(1);
 }
-const FACTORY_ABI = abiFrom("FACTORY_ABI");
-const VAULT_ABI = abiFrom("VAULT_ABI");
 const f = new ethers.Interface(FACTORY_ABI);
 const v = new ethers.Interface(VAULT_ABI);
 
