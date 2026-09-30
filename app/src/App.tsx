@@ -362,6 +362,16 @@ export default function App() {
   type WatchState = "unknown" | "registered" | "not_registered";
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [notifyPermission, setNotifyPermission] = useState<NotifyPermissionState>("unknown");
+  /**
+   * 이 앱이 직접 권한을 요청한 적이 있는가.
+   *
+   * MiniKit 2.x 의 `getPermissions` 는 `notifications: boolean` 만 준다. 그래서
+   * **"아직 요청하지 않았다" 와 "요청하고 거절당했다" 가 구분되지 않는다.** 둘 다
+   * false 다. 구분하지 않으면 처음 들어온 사람에게 "World App is blocking
+   * notifications" 라고 말하는데, 아무것도 막은 사람이 없다 — 그저 아직 켜지 않은
+   * 뿐이다. 그래서 우리가 직접 물어봤는지를 따로 기억한다.
+   */
+  const [notifyAsked, setNotifyAsked] = useState<boolean>(false);
   const [notifyWatchState, setNotifyWatchState] = useState<WatchState>("unknown");
   const [notifyBusy, setNotifyBusy] = useState<boolean>(false);
   const [watchBusy, setWatchBusy] = useState<boolean>(false);
@@ -392,10 +402,14 @@ export default function App() {
     // 버튼을 화면 아래로 밀어낸다. "무엇이 되고 있지 않은가" + "그래서 무엇을 놓치는가"
     // 만 남기고 나머진 Help 탭으로 보낸다.
     const NOBODY = "nobody will be told";
-    if (notifyPermission === "denied") {
+    if (notifyPermission === "denied" && notifyAsked) {
+      // 우리가 물어봤는데 여전히 false 다. 누군가 actively 거절한 상태이므로 "꺼짐"
+      // 보다 강한 말��� 이 자리가 필요하다.
       return { level: "broken" as const, text: `World App is blocking notifications — ${NOBODY} if you stop renewing.` };
     }
     if (notifyPermission !== "granted") {
+      // 아직 켜지 않았거나 알 수 없는 경우. "누가 막았다" 고 말할 근거가 없으므로
+      // 그렇게 말하지 않는다.
       return { level: "off" as const, text: `Notifications are off — ${NOBODY} if you stop renewing.` };
     }
     if (notifyWatchState === "not_registered") {
@@ -411,7 +425,7 @@ export default function App() {
       return { level: "ok" as const, text: "You and your heir are told before the countdown ends and at each claim step." };
     }
     return { level: "checking" as const, text: "Checking notification status…" };
-  }, [NOTIFY_BACKEND_ENABLED, notifyPermission, notifyWatchState, notifyDeliveryNote]);
+  }, [NOTIFY_BACKEND_ENABLED, notifyPermission, notifyWatchState, notifyDeliveryNote, notifyAsked]);
 
   /**
    * 알림이 실제로 필요할 때만 배너를 띄우기 위한 판정.
@@ -709,21 +723,19 @@ export default function App() {
     }
   };
 
-  const refreshNotifyPermission = useCallback(async () => {
+  const refreshNotifyPermission = useCallback(async (): Promise<"granted" | "denied" | "unknown"> => {
     if (!miniInstalled) {
       setNotifyPermission("unknown");
-      return;
+      return "unknown";
     }
     // 알림 권한 조회는 앱 전체를 막지 않는다. 실패해도 "모름" 으로 두고 진행한다.
     // minikit.ts 가 MiniKit 2.x 의 `data.permissions` 감싸짐을 풀어 준다. 예전에는
     // 최상위 `permissions` 를 읽었는데 거기엔 없고 `data` 안에만 있어서 값이 항상
     // undefined 였다 — 권한을 켜도 화면이 "꺼짐" 으로 남았다.
     const res = await getNotifyPermission();
-    if (res) {
-      setNotifyPermission(res.notifications ? "granted" : "denied");
-    } else {
-      setNotifyPermission("unknown");
-    }
+    const next = res ? (res.notifications ? "granted" : "denied") : "unknown";
+    setNotifyPermission(next);
+    return next;
   }, [miniInstalled]);
 
   const requestNotifyPermission = async () => {
@@ -733,17 +745,28 @@ export default function App() {
     }
     setNotifyBusy(true);
     try {
-      const res = (await askNotifyPermission()) as { description?: string } | null;
-      if (res) {
-        pushToast("success", "Notifications enabled for this wallet.");
-      } else {
-        pushToast("error", "Notification permission was not granted.");
-      }
+      await askNotifyPermission();
     } catch (e: unknown) {
       pushToast("error", "Permission error: " + errorText(e));
-    } finally {
       await refreshNotifyPermission();
       setNotifyBusy(false);
+      return;
+    }
+    /* 결과를 다시 **읽어서** 말한다. 예전에는 호출이 null 이 아니면 곧바로
+       "Notifications enabled for this wallet." 를 띄웠는데, MiniKit 2.x 는 거절을
+       throw 하지 않고 결과로 돌려줄 수 있다 — 즉 함수가 아무 예외 없이 끝났다는
+       사실은 "허용됐다" 는 뜻이 아니었다. 알림 테스트에서 이미 같은 실수를 한 번
+       했고(sent:false 인데 "요청했다"고 말함), 여기도 같았다.
+       그래서 실제로 권한 상태를 다시 읽고 그 값으로 말한다. */
+    const state = await refreshNotifyPermission();
+    setNotifyAsked(true);
+    setNotifyBusy(false);
+    if (state === "granted") {
+      pushToast("success", "Notifications are on for this wallet.");
+    } else if (state === "denied") {
+      pushToast("error", "Still off — World App is not granting notifications. Turn them on in World App → Settings → Notifications.");
+    } else {
+      pushToast("error", "Could not read the notification setting back. Check World App → Settings → Notifications.");
     }
   };
 
@@ -2613,6 +2636,25 @@ export default function App() {
           <Card>
             <CardHeader><CardTitle>Vault & Controls</CardTitle></CardHeader>
             <CardContent className="space-y-2">
+              {/* **금액을 카운트다운보다 먼저** 보여준다.
+                  이 탭의 목적은 "얼마를 지키고 있고 언제까지 지키는지" 를 한 눈에 넣는
+                  것이다. 그런데 카운트다운만 크고 금액은 다른 탭(Send) 에만 있었다. 앱은
+                  이미 잔액을 갖고 있으면서 — 알림 판단도 잔액 기준이다 — 정작 보호 대상인
+                  금액을 이 화면에서 감췄다. "얼마가 걸려 있는지" 를 모르고 기한을 지키라는
+                  지시를 받는 것은 순서가 뒤집힌 안내다. */}
+              <div className="text-sm">
+                At stake in this vault:{" "}
+                <b className={vaultWld > 0n ? "text-base" : ""}>
+                  {fmtUnits(vaultWld, wldDecimals)} {wldSymbol}
+                </b>{" "}
+                <span className="text-xs text-gray-600">
+                  {vaultWld > 0n
+                    ? isSettledClaim
+                      ? "— the inheritance already completed, so this is only what is left behind."
+                      : "— this is what your heir receives if you stop renewing."
+                    : "— nothing yet. Deposit WLD to start protecting it."}
+                </span>
+              </div>
               {/* 이 앱의 존재 이유가 "타이머가 다 되지 않았는가" 다. 그래서 카드의 맨 위에
                   크고 눈에 띄게 두고, 남은 시간에 따라 색을 바꾼다. */}
               <div className={`timer-block ${timerUrgency}`}>

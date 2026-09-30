@@ -42,11 +42,32 @@ const clickTab = async (n) => {
 log("\n[1] 카운트다운 탭에 알림 상태가 있는가");
 await clickTab("vault");
 const t = await b.ev("return document.body.innerText;");
-// 헤딩을 제거했으므로 "Notifications on" 같은 문자열을 찾으면 안 된다.
-// 무엇이 되고 있는지를 말하는 문장으로 찾는다.
-const onVaultTab = /Notifications (are off|is blocking|not being watched|took the request)|and your heir get told/i.test(t);
+/* 헤딩을 제거했으므로 "Notifications on" 같은 문자열을 찾으면 안 된다. 무엇이 되고
+   있는지를 말하는 문장으로 찾는다.
+
+   문구를 특정 문구에 묶지 않는다 — 묶으면 문구가 바뀔 때마다 검사가 "위반" 으로
+   알리지만 실제로는 개선인 경우도 있다. 예전 알림 권한 읽기 버그를 고치면서
+   `unknown` → 실제 값(denied/off) 이 되면서 문구가 달라졌고, 이 정규식이 그걸
+   "사라졌다" 고 읽었다. 상태 종류(꺼짐 / 막힘 / 미등록 / 미전달)만 확인한다. */
+const STATES = [
+  /Notifications are off/i,
+  /World App is blocking notifications/i,
+  /not being watched/i,
+  /took the request/i,
+  /and your heir get told/i,
+];
+const onVaultTab = STATES.some((r) => r.test(t));
 check("Vault 탭에 알림 상태가 보인다", onVaultTab,
-  onVaultTab ? (t.match(/[^\n]*Notifications[^\n]*/i) || [""])[0].slice(0, 110) : "없음 — Help 탭에만 있다");
+  onVaultTab ? (t.match(/[^\n]*(?:Notifications|nobody will be told)[^\n]*/i) || [""])[0].slice(0, 110)
+             : "없음 — Help 탭에만 있다");
+
+/* 아직 아무에게도 묻지 않은 지갑에게 "누가 알림을 막았다" 고 말하면 근거가 없다.
+   MiniKit 2.x 는 "아직 요청 안 함" 과 "요청하고 거절당함" 을 구분해 주지 않는다
+   (둘 다 notifications: false). 그래서 앱은 우리가 직접 물어봤는지를 따로 기억하고,
+   물어보기 전에는 중립적인 문구를 쓴다. 여기서는 그 구분이 실제로 지켜지는지 본다. */
+check("요청하지 않은 상태에서 '누가 막았다' 고 말하지 않는다",
+  !/World App is blocking notifications/i.test(t),
+  /World App is blocking notifications/i.test(t) ? "아직 묻지 않았는데 막혔다고 말한다" : "중립적 문구");
 
 log("\n[2] 내부 상태값을 그대로 노출하지 않는가");
 const leaked = ["unknown", "not registered", "enabled", "disabled"].filter(
@@ -304,6 +325,57 @@ log("\n[9] 진짜 상속인에게는 여전히 첫 화면에 보여야 한다");
   }
   if (heir) await heir.close();
 }
+
+log("\n[10] 'Turn on notifications' 를 누르면 화면이 실제로 바뀌는가");
+
+/* 이 검사가 없으면 알림 UX 의 핵심 버그를 못 잡는다.
+   실제로 있었던 일: MiniKit 2.x 는 권한을 {executedWith, data:{permissions}} 로
+   감싸서 돌려주는데 앱은 최상위 permissions 를 읽었다. 거기엔 없으므로 값이 항상
+   undefined 였고 앱은 영영 "꺼짐" 이라고 말했다. 그런데 그 상태에서도 "Turn on
+   notifications" 를 누르면 **성공 토스트가 떴다** — 사용자는 켠 줄 알고 화면은
+   "꺼짐" 그대로였다. 하네스는 그 버튼을 한 번도 누른 적이 없었다.
+   그래서 (1) 누르기 전 상태를 기억하고 (2) 누르고 (3) 상태가 실제로 바뀌었는지 본다. */
+/* 금고가 있는 계정이어야 한다. 금고가 없으면 Vault 탭의 알림 줄이 아예 렌더링되지
+   않으므로(잔액 0 기준) 전제 조건이 없는 검사가 되어 통과가 아무 의미가 없어진다.
+   a4 는 이 파일 맨 앞에서 금고를 만든 계정이다. 이 단계 앞의 [5] 에서 `b`(=a4)를
+   이미 닫아 놨으므로 여기서 새로 띄운다. */
+const perm = await launch({ pk: A.a4.pk, url: APP });
+await sleep(2800);
+await perm.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+await sleep(6000);
+await perm.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim().toLowerCase().includes("vault"));if(e)e.click();return 1;})()`);
+await sleep(1500);
+const before = await perm.ev("return document.body.innerText;");
+const wasBlocked = /World App is blocking notifications/i.test(before);
+const wasOff = /Notifications are off/i.test(before);
+check("누르기 전에는 알림이 꺼짐/막힘 으로 보인다", wasOff || wasBlocked,
+    wasBlocked ? "이미 막힘" : wasOff ? "꺼짐" : "표시 없음");
+
+/* 라벨이 두 곳에 있다 — Vault 탭의 조용한 고침 버튼은 "Turn on", 금고 생성 카드와
+   Help 탭은 "Turn on notifications". 어느 쪽이든 고쳐야 하는 동작이 같으므로 둘 다
+   찾는다. */
+const clicked = await perm.ev(`return (()=>{
+  const btn=[...document.querySelectorAll("button")].find(x=>/^turn on( notifications)?$/i.test(x.innerText.trim()) && !x.disabled);
+  if(!btn) return false; btn.click(); return true;
+})()`);
+check("알림 켜기 버튼을 누를 수 있다", clicked === true, clicked === true ? "눌렀다" : "버튼 없음/비활성");
+
+await sleep(3500);
+const after = await perm.ev("return document.body.innerText;");
+  const stillBroken = /World App is blocking notifications/i.test(after);
+  check("누른 뒤 화면이 '꺼짐/막힘' 에서 벗어나야 한다", !(stillBroken || /Notifications are off/i.test(after)),
+    stillBroken ? "여전히 막힘이라고 표시" : /Notifications are off/i.test(after) ? "여전히 꺼짐이라고 표시" : "바뀜");
+
+  /* 성공 토스트를 띄웠다면 그것이 거짓말이 아니어야 한다. 예전에는 호출이 예외 없이
+     끝났다는 사실만으로 "enabled" 를 말했는데, MiniKit 2.x 는 거절도 throw 하지 않고
+     결과로 돌려줄 수 있다. */
+const claimed = /Notifications are on for this wallet/i.test(after);
+const truthy = !/Notifications are off/i.test(after) && !/World App is blocking/i.test(after);
+check("'켜짐' 토스트는 실제 상태와 일치한다", !claimed || truthy,
+    claimed ? (truthy ? "켜짐=true, 화면도 켜짐" : "켜짐이라 했지만 화면은 꺼짐 — 거짓말") : "켜짐 토스트 없음");
+await perm.shot("notify-permission-roundtrip");
+await perm.close();
+
 
 log(`\n  통과 ${pass} / 실패 ${fail}`);
 process.exit(fail ? 1 : 0);
