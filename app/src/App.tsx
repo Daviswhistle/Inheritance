@@ -2895,7 +2895,48 @@ export default function App() {
               <div className="text-xs text-red-600">
                 {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
               </div>
+              {/* 알림을 **금고를 만들 때** 먼저 알린다.
+                  알림 안내를 Vault 탭에만 두면 안 된다 — Vault 탭은 금고가 있어야
+                  보이는데(`needsVault`), 금고가 없으면 그 탭 자체가 없다. 처음 쓰는
+                  사람은 Inherit 탭(기본 탭)에서 금고를 만들 텐데, 알림을 그때 알려주지
+                  않으면 존재를 모른 채 지나가고 Help 탭을 열어볼 일도 없다.
+
+                  또 알림은 **잔액이 0 이면 아무것도 보내지 않는다**(백엔드가 그렇게
+                  되어 있다). 그러므로 "알려줄게요" 라고 해놓고 실제로는 입금 이후에야
+                  통보가 시작되는데, 그 사실까지 말하는 편이 정직하다. */}
+              {NOTIFY_BACKEND_ENABLED && !vault && notifyHealth.level !== "checking" && (
+                <div
+                  className={
+                    // 여기서는 `notifyNeedsAttention` 을 쓰면 안 된다. 그 판정은
+                    // "잔액이 있는 금고" 를 전제하는데, 지금은 금고가 없으므로 항상
+                    // false 다. 결과적으로 "켜라"고 말하면서 **초록(정상) styling** 이
+                    // 붙었다. 색은 "알림이 켜져 있는가" 로만 정한다.
+                    notifyHealth.level === "off" || notifyHealth.level === "broken"
+                      ? "text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3"
+                      : "text-xs text-green-800 bg-green-100 border border-green-200 rounded py-2 px-3"
+                  }
+                  role={notifyPermission === "granted" ? "status" : "alert"}
+                  aria-live="polite"
+                >
+                  <div className="font-medium">Turn on notifications first</div>
+                  <div className="mb-2">
+                    {notifyHealth.level === "off" || notifyHealth.level === "broken"
+                      ? "Without them, if you stop renewing nobody is told — not you, not your heir."
+                      : "You and your heir will be told before the countdown ends and at each claim step."}
+                  </div>
+                  <div className="mb-2">
+                    Notices start once the vault holds WLD.
+                  </div>
+                  {notifyPermission !== "granted" && (
+                    <Button size="sm" variant={notifyNeedsAttention ? "primary" : "outline"}
+                      onClick={requestNotifyPermission} disabled={!miniInstalled || notifyBusy}>
+                      {notifyBusy ? "Working…" : "Turn on notifications"}
+                    </Button>
+                  )}
               <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || isMyVault || !periodValid || !heirResolved?.address}>Create vault</Button>
+
+                </div>
+              )}
               {isMyVault && (
                 <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
               )}

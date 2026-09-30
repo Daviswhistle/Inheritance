@@ -193,5 +193,62 @@ log("\n[6] 금고 만들면 자동으로 등록되는가");
   await c2.close();
 }
 
+log("\n[7] 처음 쓰는 사람이 금고를 만들기 전에 알림을 알게 되는가");
+// 알림 안내를 Vault 탭에만 두면 안 된다. Vault 탭은 `needsVault` 이라 **금고가 없으면
+// 보이지 않는다.** 처음 쓰는 사람은 기본 탭(Inherit)에서 금고를 만들 텐데, 알림을
+// 그때 알려주지 않으면 존재를 모른 채 지나간다. 이 검사는 바로 그 경우를 본다.
+{
+  const fresh = await launch({ pk: A.a11.pk, url: APP });
+  await sleep(2800);
+  await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await sleep(5000);
+  const tabs = await fresh.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
+  check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.some((t) => /vault/i.test(t)),
+    `탭: ${tabs.join(" | ")}`);
+  check("그래도 알림 안내가 보인다 (보이는 탭 어딘가)",
+    /Turn on notifications/i.test(await fresh.ev("return document.body.innerText;")),
+    (await fresh.ev("return document.body.innerText;")).match(/[^\n]*Turn on notifications[^\n]*/i)?.[0] || "없음");
+  // "Create vault" 바로 위에 있는가. 기하(좌표)로 재면 컨테이너 높이 따라 조상 찾기가
+  // 뒤틀린다 — 앞선 두 판이 그랬다. **두 요소의 공통 조상 카드를 찾는 것**이 곧
+  // "같은 카드" 다. 기하 없이 직접 답을 얻고, 순서만 좌표로 본다.
+  const placement = await fresh.ev(`return (() => {
+    const btn = [...document.querySelectorAll("button")].find((x) => /create vault/i.test(x.innerText));
+    const leaf = [...document.querySelectorAll("div,span,p")].find(
+      (d) => d.children.length === 0 && /^Turn on notifications/.test((d.innerText || "").trim()));
+    if (!btn || !leaf) return { err: "missing", btn: !!btn, leaf: !!leaf };
+    const chain = [];
+    for (let n = leaf; n; n = n.parentElement) chain.push(n);
+    const card = chain.find((n) => n.contains(btn));
+    if (!card) return { err: "no common card" };
+    const b = btn.getBoundingClientRect();
+    // 카드 안에서 leaf 를 담는 가장 작은 박스를 찾는다.
+    let box = null;
+    for (const k of card.children) {
+      if (!k.contains(leaf)) continue;
+      const r = k.getBoundingClientRect();
+      if (r.height > 0 && (!box || r.height < box.height)) box = r;
+    }
+    if (!box) return { err: "no note box" };
+    return { sameCard: true, before: box.bottom <= b.top + 2, gap: Math.round(b.top - box.bottom) };
+  })();`);
+  check("금고 만들기 버튼과 같은 카드 안이다", !!placement && placement.sameCard === true,
+    placement ? (placement.err || "같은 카드") : "측정 실패");
+  check("버튼보다 **위에** 있다 (액션 전에 읽혀야 한다)", !!placement && placement.before === true,
+    placement && placement.gap !== undefined ? `버튼 위 ${placement.gap}px` : "측정 실패");
+  // "켜라" 고 말하면서 정상(초록) styling 이 붙으면 모순이다.
+  const tone = await fresh.ev(`return (() => {
+    const el = [...document.querySelectorAll("div")].find(
+      (d) => /^Turn on notifications/.test((d.innerText || "").trim()) && d.className.indexOf("rounded") >= 0);
+    if (!el) return "missing";
+    return /bg-green-100/.test(el.className) ? "ok-tone" : /bg-yellow-50/.test(el.className) ? "warn-tone" : "plain";
+  })();`);
+  check("'켜라'고 말할 때는 경고 톤이다", tone === "warn-tone", `톤 ${tone}`);
+  check("알림이 잔액 0 일 때는 간다고 말하지 않는다",
+    /Notices start once the vault holds WLD/i.test(await fresh.ev("return document.body.innerText;")),
+    (await fresh.ev("return document.body.innerText;")).match(/[^\n]*Notices start[^\n]*/i)?.[0] || "없음");
+  await fresh.shot("notify-first-run");
+  await fresh.close();
+}
+
 log(`\n  통과 ${pass} / 실패 ${fail}`);
 process.exit(fail ? 1 : 0);
