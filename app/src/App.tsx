@@ -127,6 +127,58 @@ const readErrorValue = (error: unknown, key: "reason" | "shortMessage" | "messag
 };
 
 /**
+ * 사용자 모르는 revert 셀렉터를 사람이 읽을 문장으로.
+ *
+ * 컨트랙트는 상태를 모르는 셀렉터로 거부한다. 사용자는 4바이트를 볼 수 없고, 셀렉터만
+ * 던져도 "왜" 를 알 수 없으므로 최소한 "무엇을 하면 되는가" 를 말해야 한다. 일부는
+ * 이 앱의 컨트랙트에서 직접 읽어 이름을 되살린다.
+ */
+const REVERT_HINTS: Record<string, string> = {
+  "0x203d82d8": "The countdown has already ended, so this cannot be changed now.",
+  "0x0e87a172": "The vault holds a balance. Withdraw or sweep it before releasing the slot.",
+  "0x3bd3a771": "Only the vault owner can do this.",
+  "0x8419e550": "Only the named heir can do this.",
+  "0x49ba9c81": "The vault is not empty yet, so the slot cannot be released.",
+  "0x4f109875": "This wallet already has a vault.",
+  "0xe6c4247b": "That address is not valid.",
+  "0x0b8b7c78": "That renewal period is outside the allowed 1–365 day range.",
+  "0xd0404f85": "The countdown has not ended yet.",
+  "0xe7c47b46": "That renewal period is outside the allowed 1–365 day range.",
+};
+
+/**
+ * ethers 의 문구에서 사람이 볼 필요 없는 덩어리를 걷어낸다.
+ *
+ * ethers v6 의 revert 메시지는 이렇게 생겼다:
+ *   `execution reverted (unknown custom error) (action="estimateGas", data="0x203d82d8",
+ *    reason=null, transaction={ "data": "0x06c84352…", "from": "0x…", "to": "0x…" },
+ *    invocation=null, revert=null, code=CALL_EXCEPTION, version=6.15.0)`
+ *
+ * 이걸 그대로 토스트에 넣으면 (1) 사용자가 아무것도 할 수 없는 4바이트 셀렉터가 보이고
+ * (2) 390px 화면을 넘쳐 **앱 전체가 옆으로 밀린다**(측정: 594px). 그래서 후행 괄호
+ * 덩어리를 잘라내고 셀렉터를 문장으로 바꾼다.
+ */
+const humanizeRevert = (raw: string): string => {
+  // `transaction={ … }` 같은 객체 덩어리를 먼저 제거한다.
+  let s = raw
+    .replace(/\b\w+=\{\s*"[\s\S]*?\}\s*,?/g, "")
+    .replace(/\s*,\s*/g, ", ")
+    .trim();
+  // 남은 `key=value` 목록
+  s = s.replace(/\s*\((?:action|reason|invocation|revert|code|version|transaction|data)=[\s\S]*$/i, "").trim();
+  s = s.replace(/,?\s*\)$/, "").trim();
+  // "unknown custom error" 를 셀렉터로 바꿔 해석한다.
+  const sel = s.match(/0x[0-9a-fA-F]{8}/)?.[0]?.toLowerCase();
+  if (/unknown custom error/i.test(s) || !/^[A-Za-z]/.test(s)) {
+    if (sel && REVERT_HINTS[sel]) return REVERT_HINTS[sel];
+    if (sel) return `The contract rejected this (${sel}). Nothing was changed.`;
+    return "The contract rejected this. Nothing was changed.";
+  }
+  if (sel) return `${s.replace(/,?$/, "")} (${sel})`;
+  return s;
+};
+
+/**
  * 오류에서 사람이 읽을 수 있는 문구를 뽑는다.
  *
  * ethers v6 는 노드의 JSON-RPC 오류를 분류하지 못하면
@@ -139,7 +191,7 @@ const errorText = (error: unknown, depth = 0): string => {
   const direct =
     readErrorValue(error, "reason") ?? readErrorValue(error, "shortMessage") ?? readErrorValue(error, "message");
   const generic = direct === "could not coalesce error" || direct === "unknown error";
-  if (direct && !generic) return direct;
+  if (direct && !generic) return humanizeRevert(direct);
 
   if (depth < 3 && error && typeof error === "object") {
     for (const key of ["info", "error", "cause", "payload"]) {
@@ -746,11 +798,12 @@ export default function App() {
       return;
     }
     // 알림 권한 조회는 앱 전체를 막지 않는다. 실패해도 "모름" 으로 두고 진행한다.
-    const res = (await getNotifyPermission()) as
-      | { permissions?: Record<string, unknown> }
-      | null;
-    if (res && res.permissions) {
-      setNotifyPermission(res.permissions.notifications ? "granted" : "denied");
+    // minikit.ts 가 MiniKit 2.x 의 `data.permissions` 감싸짐을 풀어 준다. 예전에는
+    // 최상위 `permissions` 를 읽었는데 거기엔 없고 `data` 안에만 있어서 값이 항상
+    // undefined 였다 — 권한을 켜도 화면이 "꺼짐" 으로 남았다.
+    const res = await getNotifyPermission();
+    if (res) {
+      setNotifyPermission(res.notifications ? "granted" : "denied");
     } else {
       setNotifyPermission("unknown");
     }
@@ -889,10 +942,10 @@ export default function App() {
         // 알 수 없다.
         const advice =
           reason === "User has disabled notifications"
-            ? "World App → Settings → Notifications 에서 이 앱을 켜세요."
+            ? "Turn it on in World App → Settings → Notifications."
             : reason === "User not found"
-              ? "이 지갑은 World App 에 등록되어 있지 않습니다. World App 으로 로그인해 보세요."
-              : "World App 설정을 확인하세요.";
+              ? "This wallet is not registered with World App. Open it in World App and sign in."
+              : "Check your World App notification settings.";
         pushToast("error", `Not delivered: ${advice}`);
       }
     } catch (e: unknown) {
@@ -1612,7 +1665,7 @@ export default function App() {
    * 맨 위로 올린다.
    *
    * 반대로 아무것도 없는 사람에게는 질문할 이유가 없다. 화면에 "No vault names you as
-   * heir" 가 남으면 "내가 뭘 놓치고 있나" 하는 불안을制造하고, 정작 해야 할 일
+   * heir" 가 남으면 "내가 뭘 놓치고 있나" 하는 불안을 만들고, 정작 해야 할 일
    * (금고 만들기)을 화면 아래로 민다.
    *
    * 스캔 중에는 짧은 줄로 자리 잡고, 결과를 받았는데 아무것도 없으면 완전히 감춘다.
@@ -2436,18 +2489,32 @@ export default function App() {
                       상속인에게 그대로 보여주면 자기 상속 신청이 남의 것으로 읽히고
                       "당신이 갱신하라" 는 지시처럼 보인다. 상속인에게는 자기 절차의
                       다음 단계와 남은 시간을 알려야 한다. */}
+                  {/* 이 문장은 같은 카드의 첫 문단("You can renew at any point to
+                      withdraw that claim, including after those 7 days — until they
+                      actually take it") 과 정반대였다. 계약상 소유자의 거부는 무제한이다.
+                      `ownerMayStillAct()` 은 `claimedAt != 0` 일 때만 막는다 — 즉
+                      소유자가 **실제로 수령하기 전까지는** 언제든 갱신해서 청산을 철회시킬
+                      수 있다. 7일이 지나도 같다.
+                      그래서 "After that the claim cannot be stopped" 는 거짓이고,
+                      계약을 모르는 사람에게는 기한이 보장된 것처럼 읽힌다. 상속인에게
+                      "그 날짜가 지나면 반드시 받는다" 라고 말하는 셈이다.
+                      정직한 문장: 기한은 **아무도** 보장하지 않는다. 상속인이 언제든
+                      다시 신청할 수 있고, 소유자가 갱신할 때마다 그 수령 시점이 한 주기
+                      밀린다. */}
                   {isMyVault ? (
                     <>
-                      Your heir has filed a claim. Renew the countdown before{" "}
+                      Your heir has filed a claim. Renew before{" "}
                       <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
-                      to keep the funds. After that the claim cannot be stopped.
+                      to withdraw it. You can still renew after that date — as many times as you
+                      like, right up until they actually take the balance.
                     </>
                   ) : (
                     <>
-                      You filed a claim. The owner has until{" "}
-                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
-                      to renew and withdraw it. After that your claim can no longer be stopped,
-                      and you can withdraw the balance.
+                      You filed a claim. The owner can withdraw it until{" "}
+                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>
+                      , and can renew again after that. Each time they do, the wait starts over.
+                      You can withdraw the balance whenever you are able to — but no date is
+                      guaranteed to you.
                     </>
                   )}
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
@@ -2546,7 +2613,14 @@ export default function App() {
                     </div>
                     <div className="timer-value">
                       {isSettledClaim
-                        ? "This vault is closed and holds nothing."
+                        ? // 잔액이 남을 수 있다 — 상속인이 가져간 뒤 늦게 들어온 WLD.
+                          // 예전에는 Inherit 탭만 고치고 이 자리는 그대로 둬서, 앱이
+                          // "비어 있다" 고 말하는 동안 실제로 2 WLD 가 금고에 있는
+                          // 화면이 남았다. 같은 정보를 두 탭이 다르게 말하는 건
+                          // 어느 쪽도 믿을 수 없게 만든다.
+                          (vaultWld > 0n
+                            ? `${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} left in this closed vault.`
+                            : "This vault is closed and holds nothing.")
                         : "The heir can withdraw the vault balance."}
                     </div>
                   </>
@@ -2957,16 +3031,25 @@ export default function App() {
                       {notifyBusy ? "Working…" : "Turn on notifications"}
                     </Button>
                   )}
-              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || isMyVault || !periodValid || !heirResolved?.address}>Create vault</Button>
-
                 </div>
               )}
+
+              {/* 주 액션. 알림 안내 블록 **밖** 이다.
+                  알림 안내를 옮기면서 이 버튼이 조건 블록 안으로 딸려 들어간 적이 있다.
+                  그러면 VITE_NOTIFY_BACKEND_URL 이 빠진 빌드에서 "Create vault" 가
+                  화면에서 사라지고, 아무도 금고를 만들 수 없게 된다 — 부가 기능이
+                  주 액션을 삼킨 구조. 알림은 없어도 금고 만들기는 가능해야 한다. */}
+              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || isMyVault || !periodValid || !heirResolved?.address}>Create vault</Button>
               {isMyVault && (
                 <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
               )}
               {vault && (
                 <div className="text-xs text-gray-600 break-all">
-                  Your vault:
+                  {/* "Your vault" 는 **내 소유** 일 때만 사실이다. 상속인이 `?vault=` 링크로
+                      남의 금고를 보고 있으면 이 라벨은 소유권을 주장하는 셈이 되고, 같은
+                      화면에 "Withdraw 15.0 WLD" 까지 있으니 훨씬 나쁘다. 상속인에게는
+                      그것이 누구의 금고인지로 말해야 한다. */}
+                  {isMyVault ? "Your vault:" : "Vault you were named heir of:"}
                   <button className="ml-1 underline text-blue-700" onClick={() => copyText(vault, "vault")}>
                     {short(vault)}
                   </button>
@@ -3098,7 +3181,7 @@ export default function App() {
                 <div className="text-xs text-yellow-800">
                   Last attempt was not delivered: <b>{notifyDeliveryNote}</b>
                   {notifyDeliveryNote === "User has disabled notifications" &&
-                    " — World App → Settings → Notifications 에서 이 앱을 켜세요."}
+                    " — turn it on in World App → Settings → Notifications."}
                 </div>
               )}
               <div className="flex gap-2 flex-wrap">

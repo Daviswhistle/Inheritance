@@ -721,8 +721,11 @@ body {
 }
 
 .toast {
-  min-width: 240px;
-  max-width: 420px;
+  /* 뷰포트를 넘지 않게 한다. `max-width: 420px` 만 두면 390px 기기에서 토스트가
+     좌우로 넘쳐서 **앱 전체가 옆으로 밀린다**(측정: clientWidth 390 → scrollWidth 594).
+     좌우 여백 24px 을 뺀 값과 420px 중 작은 쪽을 쓴다. */
+  min-width: min(240px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
@@ -730,6 +733,9 @@ body {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .08), 0 4px 6px -4px rgba(0, 0, 0, .06);
   font-size: 0.875rem;
   color: #0f172a;
+  /* 긴 식별자(hex, 파일명)가 줄바꿈되지 않으면 가로로 넘친다. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .toast-info {

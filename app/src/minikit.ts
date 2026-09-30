@@ -141,10 +141,31 @@ export async function walletAuth(nonce: string): Promise<
 }
 
 /** 알림 권한 조회/요청. 실패해도 앱 전체를 막지 않으므로 오류를 던지지 않는다. */
-export async function getNotifyPermission(): Promise<unknown> {
+/**
+ * 알림 권한을 **안정된 형태**로 돌려준다.
+ *
+ * MiniKit 2.x 는 결과를 감싼다:
+ *
+ *   { executedWith: "minikit", data: { permissions: { notifications: boolean }, timestamp } }
+ *
+ * 예전 코드는 `getPermissions()` 의 반환값에서 곧바로 `.permissions` 를 읽었다. 그런데
+ * 2.x 의 최상위에는 `executedWith` 와 `data` 만 있고 `permissions` 는 `data` 안에
+ * 있다. 그래서 그 값은 항상 `undefined` 였고, 앱은 **영영 "알림이 꺼져 있다"** 고
+ * 알려렸다 — 켜도 마찬가지였다. 권한을 켜도 화면이 안 바뀌는 이유.
+ *
+ * 감싸인 형태와 벗겨진 형태를 모두 받아 정규화한다. 브리지 버전이 payload 를 직접
+ * 주는 경우에도 동작해야 하기 때문이다.
+ */
+export async function getNotifyPermission(): Promise<{ notifications: boolean } | null> {
   try {
     const { MiniKit } = await loadMiniKitModule();
-    return await MiniKit.getPermissions();
+    const res = (await MiniKit.getPermissions()) as
+      | { data?: { permissions?: { notifications?: unknown } }; permissions?: { notifications?: unknown } }
+      | null
+      | undefined;
+    const perms = res?.data?.permissions ?? res?.permissions;
+    if (!perms || typeof perms.notifications !== "boolean") return null;
+    return { notifications: perms.notifications };
   } catch {
     return null;
   }
