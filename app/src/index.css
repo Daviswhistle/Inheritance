@@ -1093,3 +1093,14 @@ input::placeholder {
   padding-top: 0.125rem;
   padding-bottom: 0.125rem;
 }
+
+/* Confirm 모달의 확인 체크박스.
+   브라우저 기본값은 13x13 이고 label 텍스트를 눌러도 반응하지만, 보이는 네모 자체만
+   노려 누르면 빗나간다. 20px 로 키우고 accent-color 를 맞춰 상태가 한눈에 보이게 한다. */
+.release-ack {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  accent-color: #0284c7;
+}

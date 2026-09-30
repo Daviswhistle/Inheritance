@@ -12,32 +12,30 @@ const REPO = path.resolve(HERE, "..", "..");
 import { readFileSync } from "node:fs";
 // 저장소 밖의 app/node_modules 에 있으니 정적 import 경로로 쓸 수 없다.
 const { ethers } = await import(REPO + "/app/node_modules/ethers/lib.esm/index.js");
+const { createServer } = await import(REPO + "/app/node_modules/vite/dist/node/index.js");
 
 const ART = REPO + "/out/InheritanceVaultWLDFactoryOnePerOwner.sol/InheritanceVaultWLDFactoryOnePerOwner.json";
 const VART = REPO + "/out/InheritanceVaultWLD.sol/InheritanceVaultWLD.json";
-const APP = REPO + "/app/src/App.tsx";
 
-// The ABIs as the app declares them, pulled straight out of the source.
-const src = readFileSync(APP, "utf8");
-function abiFrom(name) {
-  const i = src.indexOf(`const ${name} = [`);
-  if (i < 0) throw new Error(`${name} not found in App.tsx`);
-  const start = src.indexOf("[", i);
-  let depth = 0, end = start;
-  for (let k = start; k < src.length; k++) {
-    if (src[k] === "[") depth++;
-    else if (src[k] === "]") { depth--; if (!depth) { end = k; break; } }
-  }
-  // 배열 안에는 `//` 주석이 섞여 있다. 줄 단위로 주석을 지운 뒤 JSON 으로 읽는다.
-  // 줄마다 `//` 주석을 지우고, 마지막 원소 뒤의 쉼표만 제거한다.
-  // (원소마다 쉼표를 지우면 첫 원소가 문자열 하나만 남아 깨진다.)
-  const body = src.slice(start, end + 1)
-    .split("\n")
-    .map((l) => l.replace(/\/\/.*$/, ""))
-    .join(" ")
-    .replace(/,\s*]/g, " ]")
-    .trim();
-  return JSON.parse(body);
+/*
+ * 앱의 ABI 를 **실제로 import** 한다. 예전에는 App.tsx 를 문자열로 파싱해서 배열을
+ * 꺼냈는데 그랬더니 (1) ABI 를 abis.ts 로 옮기는 순간 이 검사가 조용히 죽었고
+ * (2) 파싱한 것이 앱이 진짜 쓰는 것과 같은지는 아무도 확인하지 않았다.
+ * 이제 Vite 의 SSR 모듈 로더로 읽으므로 앱이 쓰는 것과 같은 객체다.
+ */
+const vite = await createServer({
+  root: REPO + "/app",
+  configFile: false,
+  logLevel: "error",
+  server: { middlewareMode: true },
+  optimizeDeps: { noDiscovery: true },
+});
+const { FACTORY_ABI, VAULT_ABI } = await vite.ssrLoadModule("/src/abis.ts");
+await vite.close();
+
+if (!FACTORY_ABI?.length || !VAULT_ABI?.length) {
+  console.error("\n  abis.ts 에서 FACTORY_ABI / VAULT_ABI 를 읽지 못했습니다.\n");
+  process.exit(1);
 }
 
 const art = JSON.parse(readFileSync(ART, "utf8"));
@@ -47,18 +45,24 @@ const vcode = vart.deployedBytecode.object;
 
 let fail = 0;
 const rows = [];
-for (const [label, rawAbi, hex] of [["factory", abiFrom("FACTORY_ABI"), code], ["vault", abiFrom("VAULT_ABI"), vcode]]) {
-  // 앱의 ABI 는 사람이 읽는 형태(문자열 배열)다. 이걸 그대로 순회하면 fn.type 이
-  // undefined 라서 전부 건너뛰고 "확인 0개" 가 된다 — 실제로 그랬다.
-  const isHuman = rawAbi.every((x) => typeof x === "string");
+for (const [label, rawAbi, hex] of [["factory", FACTORY_ABI, code], ["vault", VAULT_ABI, vcode]]) {
+  /* 앱의 ABI 는 **문자열 조각**과 **커스텀 에러 객체**가 섞여 있다
+     (`...VAULT_ERROR_ABI` 로 뒤에 붙는다). 원소별로 종류를 판단해야 한다 —
+     배열 전체로 `every` 로 재면 하나라도 객체가 섞여 있어 전부 문자열이 아니라고
+     판단해 함수를 하나도 못 세고 "확인 0개" 로 통과해 버린다. 실제로 그랬다.
+     통과한 것처럼 보이는 게 제일 나쁜 실패다. */
   const iface = new ethers.Interface(rawAbi);
-  // human-readable 항목은 "name(type,type)" 형태이므로 여기서 직접 파싱한다.
-  // 앱 ABI 는 사람이 읽는 형태다. "event Foo(...)" 도 괄호를 포함하므로 함수로 세면
-  // 안 되고, 조각에서 다시 조립한 타입 문자열을 getFunction 에 넘기면 이름이 섞여
-  // INVALID_ARGUMENT 가 난다. 원본 조각 문자열을 그대로 시그니처로 쓰는 게 맞다.
   const frags = rawAbi
-    .filter((f) => (isHuman ? !/^\s*(event|error)\b/.test(f) && f.includes("(") : f.type === "function"))
-    .map((f) => (isHuman ? f : `${f.name}(${(f.inputs || []).map((i) => i.type).join(",")})`));
+    .map((f) => {
+      if (typeof f === "string") {
+        // "function foo(...)" / "event Foo(...)" / "error Bar()"
+        if (!/^\s*function\b/.test(f) || !f.includes("(")) return null;
+        return f;
+      }
+      if (f?.type !== "function") return null;
+      return `${f.name}(${(f.inputs || []).map((i) => i.type).join(",")})`;
+    })
+    .filter(Boolean);
   for (const sig of frags) {
     const name = sig.slice(0, sig.indexOf("("));
     const sel = iface.getFunction(sig).selector;
@@ -76,6 +80,15 @@ for (const r of rows) {
   console.log(`  ${r.present ? "OK  " : "MISS"}  ${r.label}/${r.fn}  ${r.sel}`);
 }
 console.log(`\n  확인 ${rows.length}개 중 누락 ${fail}개`);
+
+/* 하나도 못 셌으면 실패로 본다.
+   ABI 를 못 읽었는데 "누락 0개" 로 초록이 나오는 게 이 검사가 놓치는 가장 나쁜
+   형태다. 실제로 그랬다 — App.tsx 파싱이 깨졌는데 조용히 0개를 확인한 채 통과했다.
+   배포 직전 마지막 방어선이 이 검사를 믿고 통과하므로, 0개면 절대 통과시키지 않는다. */
+if (rows.length === 0) {
+  console.error("  확인할 함수 조각을 하나도 읽지 못했습니다. ABI 파싱이 실패한 것입니다.\n");
+  process.exit(1);
+}
 
 // Also confirm the bytecode the app will meet is the bytecode we audited locally.
 console.log(`  팩토리 런타임 코드: ${(code.length - 2) / 2} 바이트`);

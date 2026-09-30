@@ -2151,7 +2151,9 @@ export default function App() {
             aria-live="polite"
           >
             Not connected to World Chain right now, so the numbers below may be out of date.
-            Your funds are unaffected on-chain. Pull to retry, or reopen the app.
+            Your funds are unaffected on-chain. This screen checks again on its own every few
+            seconds — or reopen the app. Pull-to-refresh is turned off here on purpose, so
+            swiping down will not retry.
           </div>
         )}
 
@@ -2265,7 +2267,17 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                <div>Heartbeat: <b>{vaultHeartbeat ? Math.floor(vaultHeartbeat / 86400) : 0} days</b></div>
+                <div>
+                  {/* "1 days" 는 사소해 보이지만 이 앱에서 기한은 돈과 맞닿아 있다.
+                      1일 주기면 하루라고 쓰는 게 맞다. */}
+                  Heartbeat:{" "}
+                  <b>
+                    {(() => {
+                      const d = vaultHeartbeat ? Math.floor(vaultHeartbeat / 86400) : 0;
+                      return `${d} ${d === 1 ? "day" : "days"}`;
+                    })()}
+                  </b>
+                </div>
                 <div>Last ping: <b>{vaultLastPing ? new Date(vaultLastPing * 1000).toLocaleString() : "-"}</b></div>
                 <div>
                   Token (WLD):
@@ -2669,7 +2681,7 @@ export default function App() {
                     </div>
                     <div className="timer-value">{fmt(timeRemaining)}</div>
                     <div className="text-xs text-gray-600">
-                      Expires {expiryLocal} <span className="text-gray-400">({deviceTimeZone})</span>
+                      Expires {expiryLocal} <span className="text-gray-500">({deviceTimeZone})</span>
                     </div>
                   </>
                 )}
@@ -3296,19 +3308,46 @@ export default function App() {
         ))}
       </div>
       {showReleaseConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        /* 슬롯을 놓는 Confirm 은 되돌릴 수 없다(팩토리의 1인 1금고 매핑이 사라진다).
+           그럼에도 이 모달은 (1) 열려도 포커스를 안 받고(activeElement = BODY)
+           (2) Escape 로 닫히지 않고 (3) Tab 이 뒤쪽 탭 바로 빠져나간다.
+           키보드·스크린리더 사용자는 지금 어디가 모달인지, 어디서 나갈 수 있는지를
+           알 수 없다. `aria-modal="true"` 를 붙여놓고 그 수단을 안 하면 거짓말이다. */
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setShowReleaseConfirm(false);
+            }
+          }}
+        >
           <div
             className="bg-white rounded-md shadow-lg max-w-sm w-full p-4"
             role="dialog"
             aria-modal="true"
             aria-labelledby="release-modal-title"
+            aria-describedby="release-modal-desc"
+            /* 열릴 때 첫 조작 요소로 포커스를 옮긴다. 그래야 Enter/Space 가 곧바로
+               동작하고 스크린리더가 제목을 읽어 준다. */
+            ref={(el) => {
+              if (!el) return;
+              el.querySelector<HTMLElement>("input, button")?.focus();
+            }}
           >
             <div id="release-modal-title" className="text-lg font-semibold mb-2">Release vault slot?</div>
-            <div className="text-sm text-gray-700 mb-3">
-              You can release only after expiry and when the vault WLD balance is 0. Releasing keeps the vault contract on-chain and clears only the factory's one-per-owner mapping. Continue?
+            <div id="release-modal-desc" className="text-sm text-gray-700 mb-3">
+              You can release only after expiry and when the vault WLD balance is 0. Releasing keeps the vault contract on-chain and clears only the factory's one-per-owner mapping. It cannot be undone.
             </div>
             <label className="flex items-start gap-2 text-sm text-gray-700 mb-3">
-              <input type="checkbox" checked={releaseAcknowledge} onChange={e => setReleaseAcknowledge(e.target.checked)} />
+              {/* 기본 체크박스는 13x13 이라 손가락으로 누르기엔 작다(권장 44px 면적).
+                 20px 로 키우고 label 전체가 눌리는 면적이 되게 한다. */}
+              <input
+                type="checkbox"
+                className="release-ack"
+                checked={releaseAcknowledge}
+                onChange={e => setReleaseAcknowledge(e.target.checked)}
+              />
               <span>I understand the conditions and want to proceed.</span>
             </label>
             <div className="flex justify-end gap-2">
