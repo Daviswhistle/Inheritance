@@ -348,6 +348,8 @@ export default function App() {
   const [copied, setCopied] = useState<null | "vault" | "owner" | "heir" | "wld">(null);
   const [supportsRelease, setSupportsRelease] = useState<boolean>(RELEASE_SUPPORTED);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
+  /** 모달 안의 포커스 대상을 순환시키기 위한 ref (Tab 가두기). */
+  const releaseDialogRef = useRef<HTMLDivElement | null>(null);
   const [releasing, setReleasing] = useState<boolean>(false);
   const [sweeping, setSweeping] = useState<boolean>(false);
   const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
@@ -760,7 +762,15 @@ export default function App() {
     try {
       await askNotifyPermission();
     } catch (e: unknown) {
-      pushToast("error", "Permission error: " + errorText(e));
+      /* 여기 도달하면 World App 이 아니라 **이 앱 쪽** 문제다(브리지 명령이 없거나
+         형태가 다르다 — 옛 World App 에서 실제로 그렇다). "World App 이 허용하지
+         않습니다" 라고 하면 원인이 다른 곳을 향한다. 되읽은 값이 granted 여도
+         마찬가지: 살아만 있으면서 이 요청 경로가 깨진 것이므로, 배선 불량이라고
+         알린다.
+         원문은 개발자 콘솔에 남긴다 — 사용자 화면에는 원인을 담지 않되 사라뜨리지도
+         않는다(버그 신고에 필요). */
+      console.warn("requestPermission failed (bridge/app side):", e);
+      pushToast("error", "This version of World App could not ask for notifications. Turn them on in World App → Settings → Notifications instead.");
       await refreshNotifyPermission();
       setNotifyBusy(false);
       return;
@@ -1326,6 +1336,24 @@ export default function App() {
     }
   }, [provider, account, vault]);
   useEffect(() => { void refreshBalances(); }, [refreshBalances]);
+
+  /* 알림 권한을 **주기적으로 다시 읽는다**.
+     예전에는 마운트·계정 변경·권한 요청 때만 읽었다. 그 결과 사용자가 World App
+     설정에서 알림을 꺼도 앱은 계속
+       "You and your heir are told before the countdown ends…"
+     라고 말했고, 실제로는 아무 통보도 가지 않는 상태였다. 이 문장은 이 앱에서 가장
+     위험한 약속이다 — 상속인이 갱신 사실을 못 받는 것과 직결되므로.
+     `refreshTimer`(15초) 와 `refreshBalances`(30초) 에 붙어 있는 것과 같은 폴링
+     방식을 따른다. 되읽기는 되돌아오지 않으므로 사용자가 끈 걸 앱이 대신 알아야
+     하고, 무한정 "켜짐" 이라고 말할 근거가 없다. */
+  useEffect(() => {
+    if (!miniInstalled) return;
+    const id = setInterval(() => { void refreshNotifyPermission(); }, 30000);
+    const onVis = () => { if (document.visibilityState === "visible") void refreshNotifyPermission(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
+  }, [miniInstalled, refreshNotifyPermission]);
+
   useEffect(() => {
     if (!provider || !account) return;
     const id = setInterval(() => { void refreshBalances(); }, 30000);
@@ -1843,6 +1871,15 @@ export default function App() {
     if (!vaultCtr) return;
     const resolved = newHeirResolved || await resolveHeirInput(newHeir);
     if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
+    // 0x0 은 계약의 InvalidAddress 로 거절된다. `createVault` 에는 이 가드가 있는데
+    // `updateHeir` 에는 없었고 — 버튼이 비활성이라 실제로는 닿기 어려운 경로지만,
+    // 렌더가 한 박자 뒤처진 상황에서 0x0 이 들어가면 gas 를 태우고 실패한다.
+    // 경고만 띄우고 진행하면 반드시 실패하는 트랜잭션이 만들어지므로 여기서 막는다.
+    if (resolved.address === ethers.ZeroAddress) {
+      setStatus("Heir cannot be the zero address");
+      pushToast("error", "Heir cannot be the zero address");
+      return;
+    }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "updateMyHeir", args: [resolved.address]  }]);
@@ -2027,10 +2064,30 @@ export default function App() {
         },
       });
       setStatus("Released. You can create a new vault.");
-      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
-      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
-      void refreshVaultDetails();
+        /* 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
+           화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
+
+           그리고 `vaultOwner` 도 함께 지운다. 예전에는 `vault` 만 비웠는데, `isMyVault` 은
+           `vaultOwner` 로 계산되므로(계정이 그 주소의 소유자인지) 낡은 소유자가 그대로 남았다.
+           결과적으로 `isMyVault` 이 계속 true 였고, 금고 생성 폼이 `!isMyVault` 로 게이트돼
+           있어 **해제에 성공했다는 안내 바로 아래에 폼이 아예 없었다.** 사용자는 성공 안내를
+           읽고 빈 화면을 보게 되고, 새로고침해야 고쳐지는 걸 아무도 말해주지 않는다.
+           말로 알리지 말고 고쳐야 하는 문제다.
+
+           `refreshVaultDetails` 로는 정리되지 않는다: `vaultCtr` 이 null 이면 첫 줄에서
+           반환하기 때문. 그래서 여기서 상태를 직접 비운다. */
       setVault("");
+      setVaultOwner("");
+      setVaultHeir("");
+      /* `canClaim` / `challengeRunning` / `awaitingClaim` 은 저장된 값이 아니라
+         `vaultPhase` 에서 파생된다(별도 state 가 없다). 단계만 되돌리면 함께 초기화된다.
+         존재하지 않는 setter 를 부르면 컴파일이 안 되므로 여기서 지킨다. */
+      setVaultPhase("active");
+      setCancelledFlag(false);
+      setTimeRemaining(0);
+      setChallengeEndsAt(0);
+      setVaultWld(0n);
+      setStale(false);
       await loadVault();
       ok = true;
     } catch (e: unknown) {
@@ -2215,8 +2272,24 @@ export default function App() {
                   {(() => {
                     if (vaultHeir && vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()) return badge("Inheritance cancelled", "yellow");
                     if (canClaim) return badge("Claimable", "green");
-                    if (timerUrgency === "timer-critical") return badge("Renew urgently", "yellow");
-                    if (timerUrgency === "timer-urgent") return badge("Renew soon", "yellow");
+                    /* "갱신하라" 는 **소유자에게만** 줄 수 있는 지시다. 상속인에게는 갱신
+                       권한이 없고, 주인이도 상속인도 아닌 타인에게는 더더욱 없다. 예전에는
+                       주인을 따지지 않아 타인 화면에 "Renew urgently" 가 떴고, 그건 아무도
+                       실행할 수 없는 거래를 재촉하는 셈이었다. */
+                    if (timerUrgency === "timer-critical") {
+                      return isMyVault
+                        ? badge("Renew urgently", "yellow")
+                        : iAmHeir
+                          ? badge("Waiting on the owner", "yellow")
+                          : badge("Countdown running", "gray");
+                    }
+                    if (timerUrgency === "timer-urgent") {
+                      return isMyVault
+                        ? badge("Renew soon", "yellow")
+                        : iAmHeir
+                          ? badge("Waiting on the owner", "gray")
+                          : badge("Countdown running", "gray");
+                    }
                     return badge("Active", "gray");
                   })()}
                 </div>
@@ -2400,9 +2473,17 @@ export default function App() {
                   말하지 않으면 사용자는 버그로 여긴다. */}
               {!isSettledClaim && isExpiredOrLater && (
                 <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
-                  The countdown has ended, so deposits are turned off. Your heir can take
-                  whatever is in the vault at any point now, and anything you add would go to
-                  them too. Deposit only into a fresh vault.
+                  {inheritanceCancelled
+                    /* 상속인이 없다(heir == owner). "당신의 상속인이 가져간다" 는 이
+                       자리에서 명제가 아니다 — 유일한 당사자는 읽는 사람 자신이고,
+                       꺼낼 방법도 있으므로 위험이 아니다. */
+                    ? "This vault's inheritance is cancelled, so nothing is inheriting it. Deposits are turned off because a cancelled vault is finished — withdraw what is here, or release your slot."
+                    : !isMyVault
+                      /* 소유자 전용 지시다. "당신의 상속인이 가져간다", "Deposit only into
+                         a fresh vault" 를 상속인이나 타인에게 말하면 그들이 할 수 있는 일이
+                         아니다. 사실을 말하되 지시하지 않는다. */
+                      ? "The countdown has ended, so deposits are turned off for this vault."
+                      : "The countdown has ended, so deposits are turned off. Your heir can take whatever is in the vault at any point now, and anything you add would go to them too. Deposit only into a fresh vault."}
                 </div>
               )}
               <div className="text-xs text-gray-500">
@@ -2413,7 +2494,17 @@ export default function App() {
                 <>
                 <div className="space-y-2 border-t pt-3">
                   <div className="text-xs text-gray-500">
-                    Emergency withdraw (before the countdown ends)
+                    {/* 제목이 지시하는 조건이 두 개다. 계약의 `ownerMayWithdraw` 는
+                        `!ownerStillActive() && !inheritanceCancelled()` 일 때만 막으므로
+                        취소된 금고에서는 만료 후에도 회수할 수 있다 — 그것이 **유일한**
+                        출구다(잔액이 남아 있으면 슬롯 해제도 안 된다). 예전에는
+                        `isExpiredOrLater` 로만 막아서, 취소된 금고에 돈이 남으면
+                        " withdraw it" 라고 말하면서 버튼은 비활성이었고 sweep 도
+                        없었다(계약이 `claimedAt == 0` 이므로 sweep 도 불가능).
+                        그 상태에서 사용자는 앱을 나가지 않는 한 자금을 꺼낼 수 없다. */}
+                    {inheritanceCancelled
+                      ? "Withdraw (inheritance was cancelled — this stays yours)"
+                      : "Emergency withdraw (before the countdown ends)"}
                   </div>
                   <div className="field-row">
                     <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn WLD to</label>
@@ -2435,7 +2526,7 @@ export default function App() {
                           고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
                           라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
                           이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
-                      <Button onClick={ownerWithdraw} disabled={isExpiredOrLater}>
+                      <Button onClick={ownerWithdraw} disabled={isExpiredOrLater && !inheritanceCancelled}>
                         {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
                           ? "Withdraw to myself"
                           : withdrawTo
@@ -2570,13 +2661,25 @@ export default function App() {
                       to withdraw it. You can still renew after that date — as many times as you
                       like, right up until they actually take the balance.
                     </>
-                  ) : (
+                  ) : iAmHeir ? (
                     <>
                       You filed a claim. The owner can withdraw it until{" "}
                       <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>
                       , and can renew again after that. Each time they do, the wait starts over.
                       You can withdraw the balance whenever you are able to — but no date is
                       guaranteed to you.
+                    </>
+                  ) : (
+                    /* `?vault=` 는 공개 주소라 주인이도 상속인도 아닌 지갑이 열 수 있다.
+                       예전에는 이 분기가 "상속인" 몫이라 타인에게 **자기 청산**을
+                       말하고 있었다 — 세 줄 앞에 "여기서는 아무것도 할 수 없습니다" 라고
+                       말해 놓고 세 줄 뒤에 "당신이 신청했습니다"라고 하는 모순이
+                       실제로 렌더링됐다. */
+                    <>
+                      The heir of this vault has filed a claim. The owner can withdraw it until{" "}
+                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>
+                      , and can renew again after that. You are neither of them, so there is
+                      nothing here for you to do.
                     </>
                   )}
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
@@ -2693,17 +2796,34 @@ export default function App() {
                   {fmtUnits(vaultWld, wldDecimals)} {wldSymbol}
                 </b>{" "}
                 <span className="text-xs text-gray-600">
+                  {/* 이 줄은 **역할마다 다른 문장**이어야 한다. 예전에는 소유자 문장
+                      ("your heir receives") 하나뿐이어서, `?vault=` 링크로 들어온 상속인에게는
+                      "상속인이 받는다" 고 자기 상속에 대해 말했고, 주인이도 상속인도 아닌
+                      타인에게는 "당신은 갱신하라" 는 지시처럼 읽혔다. 3단계 × 2역할 × 2탭
+                      = 24건이 전부 이 한 줄에서 새어나왔다. */}
                   {vaultWld > 0n
                     ? isSettledClaim
                       ? "— the inheritance already completed, so this is only what is left behind."
                       : inheritanceCancelled
                         /* 상속인이 없다(heir == owner). "상속인이 받는다" 는 명제 자체가
                            성립하지 않는다. */
-                        ? "— no one inherits this vault, so it stays yours."
-                        : "— this is what your heir receives if you stop renewing."
+                        ? "— no one inherits this vault, so it stays with the owner."
+                        : isMyVault
+                          ? "— this is what your heir receives if you stop renewing."
+                          : iAmHeir
+                            ? "— this is what you receive once the review window passes."
+                            : "— held here for the owner's named heir."
                     : inheritanceCancelled
                       ? "— nothing left in this vault."
-                      : "— nothing yet. Deposit WLD to start protecting it."}
+                      : isExpiredOrLater
+                        /* 여기는 Deposit 이 비활성인 상태다(settled / expired / 이의제기
+                           / 수령 가능). "Deposit WLD to start protecting it" 은 바로 아래
+                           비활성 버튼을 가리키는 지시라 그대로 두면 사용자는 거짓말
+                           안내를 받는다. */
+                        ? "— nothing left in this vault, and deposits are turned off at this stage."
+                        : isMyVault
+                          ? "— nothing yet. Deposit WLD to start protecting it."
+                          : "— nothing here yet."}
                 </span>
               </div>
               {/* 이 앱의 존재 이유가 "타이머가 다 되지 않았는가" 다. 그래서 카드의 맨 위에
@@ -2752,13 +2872,27 @@ export default function App() {
                     </div>
                   </>
                 ) : challengeRunning ? (
+                  /* 주어가 세 갈래다. "you can still stop it" 는 **소유자에게만**
+                     사실이다 — 청산을 철회할 수 있는 사람은 소유자뿐이다(갱신).
+                     상속인에게 이 문장은 자신이 가진 적 없는 거부권을 주는 셈이고,
+                     같은 탭의 "The owner can withdraw it until …" 과 정면으로 모순된다.
+                     (3인칭으로 상속인을 부르던 버그의 거울상.) 타인에게는 아무것도
+                     할 수 없으므로 그 사실을 말해야지 거부권이 있다는 듯이 말하면 안 된다. */
                   <>
                     <div className="text-xs font-semibold uppercase text-gray-600">
-                      Claim filed — you can still stop it
+                      {isMyVault
+                        ? "Claim filed — you can still stop it"
+                        : iAmHeir
+                          ? "Claim filed — waiting for the review window"
+                          : "Claim filed — review window running"}
                     </div>
                     <div className="timer-value">{fmt(challengeRemaining)}</div>
                     <div className="text-xs text-gray-600">
-                      left in the review window. Renewing withdraws the claim.
+                      {isMyVault
+                        ? "left in the review window. Renewing withdraws the claim."
+                        : iAmHeir
+                          ? "left in the review window. The owner can still withdraw the claim, even after it ends."
+                          : "left in the review window. Only the owner and the heir can act on this."}
                     </div>
                   </>
                 ) : awaitingClaim ? (
@@ -2846,13 +2980,22 @@ export default function App() {
                 !isSettledClaim && vaultPhase !== "cancelled" && (
                 <>
                   <div className="text-sm text-gray-700">
-                    {challengeRunning
-                      ? `Your heir filed a claim. Renew before ${challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"} to withdraw it.`
-                      : canClaim
-                        ? "The review window has passed, so the heir can take the balance. You can still renew to withdraw the claim, until they actually do."
-                        : awaitingClaim
-                          ? "The countdown has ended. Your heir can now file a claim, and you can keep renewing to cancel it until they actually take the balance."
-                          : `Reset before the countdown ends. If you stop, your heir can claim the balance after a ${challengeDays}-day review window.`}
+                    {/* 취소됐지만 아직 만료 전이면 이 카드의 문구가 거짓말이 된다.
+                        `cancelledFlag` 를 단계에서 분리했으므로 그 상태는 `active` 로
+                        표시되고, 아래 "If you stop, your heir can claim the balance" 는
+                        존재하지 않는 상속인을 말하며 같은 화면의 "At stake … no one
+                        inherits this vault" 와 정면으로 어긋난다. 상속인이 없으므로
+                        "갱신하라"는 의미가 없다 — 다만 기한 전에는 상속인을 다시 지정해
+                        **취소를 되돌릴 수 있으므로** 그 길을 안내하는 게 맞다. */}
+                    {inheritanceCancelled
+                      ? "You cancelled this vault's inheritance, so no one will inherit it and the balance stays yours. Set a heir again below to undo the cancellation — after the countdown ends that stops being possible."
+                      : challengeRunning
+                        ? `Your heir filed a claim. Renew before ${challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"} to withdraw it.`
+                        : canClaim
+                          ? "The review window has passed, so the heir can take the balance. You can still renew to withdraw the claim, until they actually do."
+                          : awaitingClaim
+                            ? "The countdown has ended. Your heir can now file a claim, and you can keep renewing to cancel it until they actually take the balance."
+                            : `Reset before the countdown ends. If you stop, your heir can claim the balance after a ${challengeDays}-day review window.`}
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     {/* canClaim 로 비활성화하지 않는다. 계약은 상속인이 실제로 수령하기
@@ -2920,7 +3063,11 @@ export default function App() {
                     </Button>
                     {supportsRelease && vaultWld === 0n && isExpiredOrLater && (
                       <div className="flex items-center gap-2">
-                        <Button onClick={() => setShowReleaseConfirm(true)} disabled={!miniInstalled || !account}>Release slot</Button>
+                        {/* 모달을 **여는** 순간 동의 상태를 초기화한다. 예전에는 성공한
+                          releaseSlot 의 finally 안에서만 초기화했으므로, Cancel 이나 Escape 로
+                          닫고 다시 열면 이전 동의가 남아 Confirm 이 살아 있었다. 확인란의 문구는
+                          "다시 한번 동의해야 한다" 는 뜻인데 앱이 그걸 지키지 않았다. */}
+                      <Button onClick={() => { setReleaseAcknowledge(false); setShowReleaseConfirm(true); }} disabled={!miniInstalled || !account}>Release slot</Button>
                         <span className="text-xs text-gray-500">* Available only after expiry and when vault balance is 0. The contract remains on-chain; only the factory mapping is cleared.</span>
                       </div>
                     )}
@@ -3428,6 +3575,27 @@ export default function App() {
             if (e.key === "Escape") {
               e.stopPropagation();
               setShowReleaseConfirm(false);
+              return;
+            }
+            /* Tab 을 모달 안에 가둔다. `aria-modal="true"` 는 "나머지 내용은
+               보조기구에 숨겨진다" 는 약속인데, 실제로는 모달 뒤의 탭 바로로
+               포커스가 넘어갔다. 약속한 대로 만들지 않으면 그 속성은 거짓말이다.
+               모달 안의 유일한 포커스 대상(체크박스, Cancel, Confirm)을 순환시킨다. */
+            if (e.key === "Tab") {
+              const focusables = releaseDialogRef.current?.querySelectorAll<HTMLElement>(
+                'input:not([disabled]), button:not([disabled])',
+              );
+              if (!focusables || focusables.length === 0) return;
+              const first = focusables[0];
+              const last = focusables[focusables.length - 1];
+              const activeEl = document.activeElement;
+              if (e.shiftKey && (activeEl === first || !releaseDialogRef.current?.contains(activeEl))) {
+                e.preventDefault();
+                last.focus();
+              } else if (!e.shiftKey && activeEl === last) {
+                e.preventDefault();
+                first.focus();
+              }
             }
           }}
         >
@@ -3440,6 +3608,7 @@ export default function App() {
             /* 열릴 때 첫 조작 요소로 포커스를 옮긴다. 그래야 Enter/Space 가 곧바로
                동작하고 스크린리더가 제목을 읽어 준다. */
             ref={(el) => {
+              releaseDialogRef.current = el;
               if (!el) return;
               el.querySelector<HTMLElement>("input, button")?.focus();
             }}

@@ -173,5 +173,26 @@ export const errorText = (error: unknown, depth = 0): string => {
   return direct ?? String(error);
 };
 
+/**
+ * MiniKit 이 돌려준 **문자열**을 사람이 읽을 문장으로.
+ *
+ * 이것이 `errorText` 와 다른 입구다. `errorText(error)` 는 예외 **객체**를 받고
+ * 객체 안에서 `data` 를 찾아 해독하는데, MiniKit 2.x 는 `sendTransaction` 결과를
+ * `{ executedWith, data: { status, error } }` 로 **문자열**로 돌려준다. 그 문자열을
+ * 그대로 토스트에 넣으면 `errorText` 는 실행조차 되지 않는다.
+ *
+ * 실제로 그랬다: 11개 호출부 모두 `if (sent.ok) … else pushToast(sent.error)` 이고
+ * `sendWorldChainTx` 는 throw 하지 않는다. 즉 `catch (e) { errorText(e) }` 형태의
+ * 11개 방어 코드가 revert 실패에서는 **전부 죽어 있었다.** 사용자에게 나간 것은
+ *
+ *   execution reverted (unknown custom error) (action="estimateGas", data="0x203d82d8",
+ *   reason=null, transaction={ … }, payload={ …, "params": ["0x02f8…"] }, version=6.15.0)
+ *
+ * 이었고, 이 길이가 390px 화면을 넘어 **앱 전체를 옆으로 밀었다**(scrollWidth 594).
+ * `errors.ts` 주석에 "고렸다"고 써둔 그 문제가 다른 경로로 그대로 살아 있었다.
+ * 배선 지점은 하나뿐이어야 한다 — 그래서 문자열은 MiniKit 래퍼에서 여기서 통과시킨다.
+ */
+export const humanizeRevertText = (raw: string): string => humanizeRevert(raw);
+
 /** 이 함수 자체를 테스트에서 검증한다. */
 export const __testing = { REVERT_HINTS, humanizeRevert, decodeRevertName, REVERT_IFACE };

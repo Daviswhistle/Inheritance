@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import type { InterfaceAbi } from "ethers";
 import { CHAIN_ID } from "@/config";
+import { humanizeRevertText } from "./errors";
 
 /**
  * MiniKit 2.x 로 보내는 트랜잭션의 한 건.
@@ -105,8 +106,17 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
         reason?: string;
       } | undefined;
       if (!data || data.status !== "success") {
+        /* 여기서 사람이 읽을 문장으로 바꾼다 — MiniKit 이 돌려준 문자열은 ethers 의
+           원본 메시지라 셀렉터·트랜잭션 덤프·서명된 페이로드를 전부 포함한다.
+           호출부는 `catch` 를 통해 `errorText` 를 부르지만 이 함수는 throw 하지 않으므로
+           그 방어 코드가 revert 실패에서 실행되지 않는다. 배선 지점은 여기 하나뿐이어야
+           한다 — 11개 호출부에 각각 붙이면 하나씩 빠진다(그리고 그렇게 빠졌었다). */
         const reason = (data?.error || data?.reason || "").toString().trim();
-        return { ok: false, error: reason || "The transaction did not go through", userFacing: true };
+        return {
+          ok: false,
+          error: reason ? humanizeRevertText(reason) : "The transaction did not go through",
+          userFacing: true,
+        };
       }
     return { ok: true, tx: { hash: data.userOpHash ?? data.transaction_hash, executedWith: result.executedWith } };
   } catch (e) {
@@ -114,7 +124,7 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
     if (isUserRejection(msg)) {
       return { ok: false, error: "You cancelled the transaction", userFacing: false };
     }
-    return { ok: false, error: msg, userFacing: true };
+    return { ok: false, error: humanizeRevertText(msg), userFacing: true };
   }
 }
 
@@ -143,7 +153,7 @@ export async function walletAuth(nonce: string): Promise<
     if (isUserRejection(msg)) {
       return { ok: false, error: "You cancelled sign-in", userFacing: false };
     }
-    return { ok: false, error: msg, userFacing: true };
+    return { ok: false, error: humanizeRevertText(msg), userFacing: true };
   }
 }
 
@@ -178,14 +188,19 @@ export async function getNotifyPermission(): Promise<{ notifications: boolean } 
   }
 }
 
+/**
+ * 알림 권한을 요청한다.
+ *
+ * **throw 를 삼키지 않는다.** 예전에는 `catch { return null }` 였는데, 그러면
+ * 호출부의 `catch` 가 죽어서 **브리지 자체가 실패했을 때** 사용자에게
+ * "World App 이 알림을 허용하지 않습니다" 라고 했다 — 앱 안에서 난 오류를 World App
+ * 탓으로 진단한 것이다. 옛 World App 에서 실제로 그렇다(브리지 명령이 없거나 형태가
+ * 다름). 원인을 지우면 "앱이 권한 상태를 읽지 못했습니다" 라고 말할 수 없다.
+ */
 export async function requestNotifyPermission(): Promise<unknown> {
-  try {
-    const { Permission } = await import("@worldcoin/minikit-js/commands");
-    const { MiniKit } = await loadMiniKitModule();
-    return await MiniKit.requestPermission({ permission: Permission.Notifications });
-  } catch {
-    return null;
-  }
+  const { Permission } = await import("@worldcoin/minikit-js/commands");
+  const { MiniKit } = await loadMiniKitModule();
+  return await MiniKit.requestPermission({ permission: Permission.Notifications });
 }
 
 /* ===== 상속인에게 알리기 =====

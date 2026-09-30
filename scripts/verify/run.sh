@@ -35,7 +35,7 @@ fails=0
 note() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 # ── 선택자: 빌드와 무관하게 배포 바이트코드에서 확인 ───────────────
-note "[1/6] 선택자 — 앱 ABI ↔ 배포 바이트코드"
+note "[1/8] 선택자 — 앱 ABI ↔ 배포 바이트코드"
 if ! node "$HERE/selectors.mjs" | tail -4; then fails=$((fails+1)); fi
 
 # 로컬 체인이 필요한 단계
@@ -52,24 +52,32 @@ need_chain() {
 run_stage() {
   case "$1" in
     e2e)
-      note "[2/6] E2E — 브라우저에서 모든 상태 구동"
+      note "[2/8] E2E — 브라우저에서 모든 상태 구동"
       FACTORY="$FACTORY_ADDR" node "$HERE/verify.mjs" 2>&1 | tail -4
       ;;
     ux)
-      note "[3/6] UX 감사 — 390x844, 8개 상태 × 전 탭"
+      note "[3/8] UX 감사 — 390x844, 8개 상태 × 전 탭"
       FACTORY="$FACTORY_ADDR" node "$HERE/ux2.mjs" 2>&1 | tail -3
       ;;
     stale)
       # 반드시 마지막. 이 단계가 anvil 을 재시작한다.
-      note "[6/6] 연결 두절 — 체인 죽음/복구"
+      note "[7/8] 연결 두절 — 체인 죽음/복구"
       FACTORY="$FACTORY_ADDR" node "$HERE/stale2.mjs" 2>&1 | tail -3
       ;;
     notify)
-      note "[4/6] 알림 UX — 카운트다운 탭·자동 등록·신규 사용자 생성"
+      note "[4/8] 알림 UX — 카운트다운 탭·자동 등록·신규 사용자 생성"
       FACTORY="$FACTORY_ADDR" node "$HERE/notify-ux.mjs" 2>&1 | tail -3
       ;;
+      rolematrix)
+        note "[6/8] 역할 x 단계 x 탭 — 소유자 화법 누출"
+        FACTORY="$FACTORY_ADDR" node "$HERE/rolematrix.mjs" 2>&1 | tail -3
+        ;;
+      cancelled)
+        note "[5/8] 취소된 금고 — 슬롯 해제와 두 번째 금고"
+        FACTORY="$FACTORY_ADDR" node "$HERE/cancelled.mjs" 2>&1 | tail -3
+        ;;
     mainnet)
-      note "[6/6] 메인넷 읽기 경로"
+      note "[8/8] 메인넷 읽기 경로"
       node "$HERE/mainnet-read.mjs" 2>&1 | tail -3
       ;;
   esac
@@ -87,7 +95,7 @@ else
       # stale 이 anvil 을 **재시작**한다(체인을 죽음/복구로 검증하므로). 그래서 마지막에
       # 둬야 한다. 앞에 두면 뒤 단계들이 초기화된 체인 — 그리고 다른 팩토리 주소 — 를
       # 상대로 돌아 조용히 실패한다. 실제로 그랬다.
-      for st in e2e ux notify stale; do
+      for st in e2e ux notify cancelled rolematrix stale; do
         run_stage "$st" || fails=$((fails+1))
       done
       run_stage mainnet || fails=$((fails+1))

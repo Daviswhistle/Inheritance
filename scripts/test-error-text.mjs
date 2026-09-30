@@ -44,8 +44,17 @@ const check = (name, got, want) => {
   }
   fails.push({ name, got, want });
 };
+/** 참/거짓 단언용. 이 파일의 `check` 는 문자열을 정확히 비교하는 헬퍼라서
+ *  불리언에 쓰면 통과/실패가 뒤집혀 보인다. */
+const ok = (name, cond, detail) => {
+  if (cond) {
+    pass++;
+    return;
+  }
+  fails.push({ name, got: detail ?? "거짓", want: "참" });
+};
 
-const { errorText, __testing } = await vite.ssrLoadModule("/src/errors.ts");
+const { errorText, humanizeRevertText, __testing } = await vite.ssrLoadModule("/src/errors.ts");
 const { REVERT_IFACE } = __testing;
 
 // --- 1) 계약의 커스텀 에러가 실제로 해독되는가 -------------------------------
@@ -181,6 +190,62 @@ for (const [name, sentence] of Object.entries(sentences)) {
   // 노드가 revert 없이 그냥 실패
   const got = errorText(new Error("could not coalesce error"));
   check("coalesce 오류", /developer console/.test(got), true);
+}
+
+// --- 6b) 실제로 관측된 MiniKit 문자열 — 서명된 페이로드까지 포함 -------------
+/* 서브에이전트가 브라우저에서 그대로 캡처한 문자열이다. MiniKit 2.x 는
+   `sendTransaction` 결과를 문자열로 돌려주는데, 그 문자열 안에 ethers 원본이
+   그대로 들어 있고 `payload={ … "params": ["0x02f8…"] }` 로 **서명된 트랜잭션
+   페이로드**까지 따라온다. 이게 토스트로 가면 390px 화면을 넘어 앱 전체가 옆으로
+   밀렸다(실측 scrollWidth 594 / clientWidth 390). */
+{
+  const observed =
+    'execution reverted (unknown custom error) (action="estimateGas", data="0x203d82d8", reason=null, ' +
+    'transaction={ "data": "0x06c8435200" + "278d00", "from": "0x7099", "to": "0x9A67" }, ' +
+    'invocation=null, revert=null, code=CALL_EXCEPTION, version=6.15.0)';
+  const got = humanizeRevertText(observed);
+  check("관측된 MiniKit 문자열 → 문장", got, sentences.Expired);
+}
+
+/* 더 나쁜 형태: 이중 탭으로 펜_payload 가 실려 들어온 경우. 서명된 트랜잭션이
+   사용자에게 그대로 노출된다. */
+{
+  const observed =
+    'execution reverted (unknown custom error) (action="sendTransaction", data="0x203d82d8", ' +
+    'payload={ "id": 10, "jsonrpc": "2.0", "method": "eth_sendRawTransaction", ' +
+    '"params": [ "0x02f890827a69f0c9d0d8a0b4b0b0e4a3d9c8e2f1a0b7c6d5e4f3a2b1c0d9e8f7" ] }, ' +
+    'revert=null, code=CALL_EXCEPTION, version=6.15.0)';
+  const got = humanizeRevertText(observed);
+  check("페이로드 포함 문자열 → 문장", got, sentences.Expired);
+  ok("서명된 트랜잭션이 노출되지 않는다", !/0x02f890|eth_sendRawTransaction|payload=/.test(got), got);
+}
+
+/* --- 6c) 배선 검사 — 단위가 아니라 배선을 검증한다 ---------------------------
+   이 테스트가 46/46 으로 초록이면서도 사용자에게 원본 메시지가 나갔던 이유가 이것이다.
+   `errorText()` 를 직접 부르면 통과하는데, 실제로는 `sendWorldChainTx` 가 throw 하지
+   않아서 그 함수가 revert 실패에서 한 번도 실행되지 않았다. 배선 자체를 단언한다. */
+{
+  const { readFileSync } = await import("node:fs");
+  const mk = readFileSync(REPO + "/app/src/minikit.ts", "utf8");
+  // (a) MiniKit 래퍼는 사람이 읽을 문장으로 바꾸는 함수를 불러야 한다.
+  ok("minikit.ts 가 문장화를 불러온다", /import\s*\{[^}]*humanizeRevertText/.test(mk), "import 없음");
+  // (b) MiniKit 이 돌려주는 값에서 파생된 오류는 반드시 그 함수를 거쳐야 한다.
+  //     `{ ok: false, error: <변수> }` 형태가 남아 있으면 그건 원본 통과로, 버그다.
+  const rawPass = [...mk.matchAll(/\{\s*ok:\s*false,\s*error:\s*([A-Za-z_$][\w$]*)\s*[,}]/g)].filter(
+    (m) => m[1] !== "humanizeRevertText",
+  );
+  ok("원본 문자열을 그대로 넘기는 분기가 없다", rawPass.length === 0,
+    rawPass.length ? rawPass.map((m) => m[0]).join(" | ") : "없음");
+  /* (c) 문장화는 **래퍼 안에서** 일어난다 — 한 곳이어야 한다. 11개 호출부에 각각
+     붙이면 하나씩 빠진다(그리고 그렇게 빠졌었다). 그래서 호출부는 이미 정리된
+     `sent.error` 를 그대로 쓰는 것이 맞고, 여기선 그 설계가 유지되는지 본다. */
+  const used = (mk.match(/humanizeRevertText\(/g) || []).length; // import 는 괄호가 없어 세어지지 않는다
+  ok("문장화 지점이 셋(결과 / 트랜잭션 catch / 로그인 catch) 모두에 있다", used >= 3, `${used}곳`);
+  // 한 곳이라도 새 실패 분기가 생기면 사람 문장을 우회할 수 있으니, 오류 반환부에
+  // 문자열 리터럴이 아닌 변수가 그대로 들어가는 형태가 남아 있는지도 본다.
+  const app = readFileSync(REPO + "/app/src/App.tsx", "utf8");
+  ok("App.tsx 가 MiniKit 결과를 raw 로 다시 꺼내지 않는다", !/result\.data\?\.error|result\.data\.error/.test(app),
+    "raw 접근 발견");
 }
 
 // --- 7) 제네릭 문자열(재vert 아님)은 그대로 통과 ------------------------------

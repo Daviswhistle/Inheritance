@@ -946,9 +946,13 @@ input::placeholder {
   padding: 0.5rem 0.25rem;
 }
 
+/* 현재 탭 라벨.
+   #0284c7 은 흰 배경에서 4.095:1 이고 13px 는 WCAG 의 large text 가 아니라 4.5:1 이
+   필요하므로 기준에 못 미친다(앱 전체에서 유일하게 실패하던 대비). #0369a1 은 5.93:1.
+   밑줄(box-shadow) 은 비텍스트 표시라 그대로 둔다 — 색이 바뀌어도 탭 구분은 유지된다. */
 .tab-item-active {
-  color: #0284c7;
-  box-shadow: inset 0 -2px 0 #0284c7;
+  color: #0369a1;
+  box-shadow: inset 0 -2px 0 #0369a1;
 }
 
 /* ===== Inheritance pipeline =====
