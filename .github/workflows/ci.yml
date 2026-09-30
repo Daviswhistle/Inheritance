@@ -93,3 +93,7 @@ jobs:
       # 그래서 알림 기능 전체가 죽어 있었는데 아무도 몰랐다.
       - name: Test notification DB writes
         run: node ../scripts/test-notify-db.mjs
+
+  # 브라우저 하네스는 여기서 돌리지 않는다 — Chrome 이 필요하고 anvil/vite 를 띄워야
+  # 해서 CI 와 로컬의 결과가 어긋난다. 로컬에서 scripts/verify/run.sh 로 돌린다.
+  # (주키esten 은 알림 payload 검사까지 CI 에서 돈다)

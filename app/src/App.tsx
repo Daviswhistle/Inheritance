@@ -201,7 +201,10 @@ export default function App() {
    * 않고 "Change period" 을 누르면 30일로 바뀌고 마감이 170일 앞당겨진다. 조작하지 않은
    * 필드가 조작한 것처럼 보이면 그대로 눌러 버린다.
    */
-  const [periodInput, setPeriodInput] = useState<string>("");
+  // 초기값은 30일. 금고가 없을 때 시드할 값이 없으므로 빈 칸으로 두면 periodValid 가
+  // false 가 되어 "Create vault" 가 영영 켜지지 않는다 — 아무도 금고를 만들 수 없다.
+  // 금고가 있으면 아래 시드가 실제 값(예: 90일)으로 덮어쓴다.
+  const [periodInput, setPeriodInput] = useState<string>("30");
   const [periodTouched, setPeriodTouched] = useState<boolean>(false);
   const onPeriodChange = (raw: string) => {
     // allow only digits; keep empty while editing
@@ -408,6 +411,77 @@ export default function App() {
   const [notifyWatchState, setNotifyWatchState] = useState<WatchState>("unknown");
   const [notifyBusy, setNotifyBusy] = useState<boolean>(false);
   const [watchBusy, setWatchBusy] = useState<boolean>(false);
+  /**
+   * 실제 발송 결과에서 온 마지막 사유.
+   *
+   * World App 알림 API 는 200 을 주면서도 `sent:false` 로 "User has disabled
+   * notifications" 나 "User not found" 를 돌려준다. 이걸 화면에 안 띄우면 사용자는
+   * "알림이 안 온다" 는 사실조차 모르고, 자기 설정 탭을 뒤지다가 돌아온다. 실제로
+   * 확인된 값: World App 유저인데 설정을 꺼둬서 이 사유로 발송이 막혔다.
+   */
+  const [notifyDeliveryNote, setNotifyDeliveryNote] = useState<string>("");
+
+  /**
+   * 알림이 지금 "되고 있는가" 를 사용자 언어로.
+   *
+   * 예전 화면은 `unknown` / `not_registered` / `enabled` 라는 내부 상태값을 그대로
+   * 노출했다. 사용자는 그것을 보고 무엇을 해야 하는지 알 수 없었다. 이 앱에서 알림은
+   * 선택이 아니라 핵심 경로다 — 카운트다운이 끝나기 전에 알림이 없으면 피상속인은
+   * 갱신을 잊고, 상속인은 신청 시점을 놓친다. 그래서 "무엇이 되고 있지 않은가" 를
+   * 무엇을 고쳐야 하는지와 함께 말한다.
+   */
+  const notifyHealth = useMemo(() => {
+    if (!NOTIFY_BACKEND_ENABLED) {
+      return { level: "checking" as const, text: "" };
+    }
+    // 카피는 짧게 유지한다. 카운트다운 바로 아래에 붙는 자리라 길어지면 실제 조작
+    // 버튼을 화면 아래로 밀어낸다. "무엇이 되고 있지 않은가" + "그래서 무엇을 놓치는가"
+    // 만 남기고 나머진 Help 탭으로 보낸다.
+    const NOBODY = "nobody will be told";
+    if (notifyPermission === "denied") {
+      return { level: "broken" as const, text: `World App is blocking notifications — ${NOBODY} if you stop renewing.` };
+    }
+    if (notifyPermission !== "granted") {
+      return { level: "off" as const, text: `Notifications are off — ${NOBODY} if you stop renewing.` };
+    }
+    if (notifyWatchState === "not_registered") {
+      return { level: "broken" as const, text: `This vault is not being watched — ${NOBODY} about it.` };
+    }
+    if (notifyWatchState === "registered") {
+      if (notifyDeliveryNote) {
+        return {
+          level: "broken" as const,
+          text: `World App took the request but did not deliver it (${notifyDeliveryNote}) — ${NOBODY}.`,
+        };
+      }
+      return { level: "ok" as const, text: "You and your heir are told before the countdown ends and at each claim step." };
+    }
+    return { level: "checking" as const, text: "Checking notification status…" };
+  }, [NOTIFY_BACKEND_ENABLED, notifyPermission, notifyWatchState, notifyDeliveryNote]);
+
+  /**
+   * 알림이 실제로 필요할 때만 배너를 띄우기 위한 판정.
+   *
+   * 잔액이 0 이면 보낼 알림이 없다(백엔드가 그러게 되어 있다). 그때 경고하면
+   * "알림이 안 되는데 아무 일도 안 일어나는" 노이즈가 된다.
+   */
+  const notifyNeedsAttention =
+    NOTIFY_BACKEND_ENABLED &&
+    vaultWld > 0n &&
+    (notifyHealth.level === "broken" || notifyHealth.level === "off");
+  /**
+   * 알림 경고를 **올릴** 시점.
+   *
+   * 알림이 꺼져 있다는 사실만으로 박자를 칠하면 노이즈가 된다 — 사용자가 고칠 수 있는
+   * 일이 없을 수도 있기 때문이다(카운트다운이 며칠 남았으면 굳이 급하지 않다).
+   * 진짜 급한 건 "마감이 임박했는데 아무도 통보받지 못하는 상태" 다. 그때만 올린다.
+   * 경과 25% 이내(또는 이미 지났으면) + 알림이 안 되고 있을 때.
+   */
+  // 둘 다 number 다. `4n` 으로 나누면 "Cannot mix BigInt and other types" 로 앱이 죽는다 —
+  // tsc 는 이걸 잡지 못하고 브라우저에서만 터진다(실제로 그랬다).
+  const notifyEscalate =
+    notifyNeedsAttention &&
+    (isExpiredOrLater || (vaultPhase === "active" && vaultHeartbeat > 0 && timeRemaining < vaultHeartbeat / 4));
   const pushToast = (type: ToastType, msg: string) => {
     // Date.now() 는 같은 밀리초에 여러 토스트가 올라오면 id 가 겹칠 수 있다.
     const id = ++toastSeqRef.current;
@@ -793,7 +867,34 @@ export default function App() {
       if (!res.ok || data?.status !== "success") {
         throw new Error(data?.message || "Failed to send test notification");
       }
-      pushToast("success", "Test notification requested.");
+      // 백엔드는 200 이어도 이 지갑에 전달하지 못할 수 있다. World App 알림 API 는
+      // 요청 유효성(200)과 실제 전달(sent)을 구분해서 돌려준다.
+      //
+      //   "User has disabled notifications" — World App 유저인데 설정을 꺼둔 경우
+      //   "User not found"                 — World App 에 등록되지 않은 지갑
+      //
+      // 예전 코드는 여기를 무시하고 "Test notification requested." 만 토스트로
+      // 띄웠다. 그래서 발송이 조용히 실패해도 사용자는 성공으로 알고 화면을 닫았다.
+      const row =
+        (data?.result?.result as { walletAddress?: string; sent?: boolean; reason?: string }[] | undefined)
+          ?.find((r) => r?.walletAddress?.toLowerCase() === account.toLowerCase()) ??
+        (data?.result?.result as { sent?: boolean; reason?: string }[] | undefined)?.[0];
+      if (row?.sent === true) {
+        setNotifyDeliveryNote("");
+        pushToast("success", "Notification delivered. Check World App.");
+      } else {
+        const reason = String(row?.reason || "not delivered");
+        setNotifyDeliveryNote(reason);
+        // 사람 언어로 바꾼다. 원문 사유를 그대로 보여주면 사용자가 무엇을 해야 하는지
+        // 알 수 없다.
+        const advice =
+          reason === "User has disabled notifications"
+            ? "World App → Settings → Notifications 에서 이 앱을 켜세요."
+            : reason === "User not found"
+              ? "이 지갑은 World App 에 등록되어 있지 않습니다. World App 으로 로그인해 보세요."
+              : "World App 설정을 확인하세요.";
+        pushToast("error", `Not delivered: ${advice}`);
+      }
     } catch (e: unknown) {
       pushToast("error", "Test notify error: " + errorText(e));
     } finally {
@@ -1117,8 +1218,15 @@ export default function App() {
       setVaultHeir(h);
       setVaultHeartbeat(Number(hb));
       // 주기 입력 필드를 실제 값으로 맞춘다. 사용자가 편집 중이면 건드리지 않는다.
+      //
+      // **금고가 없을 때(heartbeat = 0) 는 30일로 채워야 한다.** 이 필드를 처음엔
+      // 고정값 "30" 으로 시작했다가 "실제 값으로 시드" 하도록 바꿨는데, 금고가 없는
+      // 사용자에게는 시드할 값이 없으므로 필드가 빈 채로 남는다. 그러면 periodValid 가
+      // false 고 "Create vault" 버튼이 **영영 활성화되지 않는다** — 아무도 금고를 만들
+      // 수 없는 상태였다. 로컬 E2E 는 캐스트로 금고를 만들어서 이 경로를 안 밟았다.
       if (!periodTouched) {
-        setPeriodInput(String(Math.round(Number(hb) / 86400)));
+        const days = Math.round(Number(hb) / 86400);
+        setPeriodInput(String(days > 0 ? days : 30));
       }
       setVaultLastPing(Number(lp));
       // 수금처 기본값은 "한 번만" 채운다. `withdrawTo` 를 deps 에 두면
@@ -2465,6 +2573,47 @@ export default function App() {
                   </>
                 )}
               </div>
+
+              {/* 알림 상태를 카운트다운 바로 아래에 한 줄로 둔다.
+                  이 앱에서 알림은 부가 기능이 아니라 핵심 경로다: 카운트다운이 끝나기
+                  전에 알림이 없으면 피상속인은 갱신을 잊고, 상속인은 신청 시점을 놓친다.
+                  그런데 이 정보는 Help 탭 깊숙이, 내부 상태값("unknown" / "not_registered")
+                  으로만 있었다.
+
+                  형태를 고르는 기준: **카운트다운이 주인공**이어야 한다. 처음엔 노란
+                  상자 + 큰 버튼으로 넣었더니 알림 박스가 카운트다운보다 눈을 끌었다 —
+                  알림은 중요하지만 이 화면에서 사용자가 해야 할 일은 "갱신"이다.
+                  그래서 평소에는 회색 한 줄 + 작은 ghost 버튼으로 낮추고, Really 급할
+                  때(카운트다운이 임박했는데 알림이 꺼짐)만 상자를 칠해 올린다.
+
+                  잔액이 0 이면 보낼 알림이 없으므로 아예 표시하지 않는다. */}
+              {NOTIFY_BACKEND_ENABLED && vaultWld > 0n && notifyHealth.level !== "checking" && (
+                <div
+                  className={
+                    notifyEscalate
+                      ? "text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3"
+                      : "text-xs text-gray-600"
+                  }
+                  role={notifyEscalate ? "alert" : "status"}
+                  aria-live="polite"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>{notifyEscalate ? "⚠ " : ""}{notifyHealth.text}</span>
+                    {notifyHealth.level !== "ok" && notifyPermission !== "granted" && (
+                      <Button size="sm" variant="ghost" onClick={requestNotifyPermission}
+                        disabled={!miniInstalled || notifyBusy}>
+                        {notifyBusy ? "Working…" : "Turn on"}
+                      </Button>
+                    )}
+                    {notifyHealth.level !== "ok" && isMyVault && notifyPermission === "granted" && (
+                      <Button size="sm" variant="ghost" onClick={registerHeirAlert}
+                        disabled={!miniInstalled || watchBusy}>
+                        {watchBusy ? "Working…" : "Watch this vault"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
               {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                 <>
                   <div className="text-sm text-gray-700">
@@ -2852,22 +3001,15 @@ export default function App() {
                 actually open: the countdown is close to ending, your heir has filed a claim, or the 7-day review
                 window has passed. Nothing is sent while the vault holds no WLD.
               </div>
-              <div className="text-xs text-gray-600">
-                Notifications for this wallet:{" "}
-                <b>
-                  {notifyPermission === "granted" ? "enabled" : notifyPermission === "denied" ? "disabled" : "unknown"}
-                </b>
-              </div>
-              {account && vault && (
-                <div className="text-xs text-gray-600">
-                  Current vault watch:{" "}
-                  <b>
-                    {notifyWatchState === "registered"
-                      ? "registered"
-                      : notifyWatchState === "not_registered"
-                        ? "not registered"
-                        : "unknown"}
-                  </b>
+              {/* 상태값("unknown" / "not registered") 을 그대로 보여주지 않는다.
+                  사용자는 그것으로 무엇을 해야 하는지 알 수 없다. 대신 무엇이 되고 있지
+                  않은지와 그 대처를 함께 말하고, 카운트다운 탭에도 같은 내용을 둔다. */}
+              <div className="text-xs text-gray-700">{notifyHealth.text}</div>
+              {notifyDeliveryNote && (
+                <div className="text-xs text-yellow-800">
+                  Last attempt was not delivered: <b>{notifyDeliveryNote}</b>
+                  {notifyDeliveryNote === "User has disabled notifications" &&
+                    " — World App → Settings → Notifications 에서 이 앱을 켜세요."}
                 </div>
               )}
               <div className="flex gap-2 flex-wrap">
