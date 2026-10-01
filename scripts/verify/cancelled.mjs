@@ -49,7 +49,8 @@ const WLD = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const RPC = "http://127.0.0.1:8546";
 const PORT = Number(process.env.PORT || 7713);
 const APP = `http://127.0.0.1:${PORT}/`;
-// a2 는 다른 단계에서 한 번만 참조된다. 그래도 시작할 때 정리한다(아래).
+// a2's earlier renewal fixture can be expired and still hold WLD. Clean its actual
+// phase before reuse; CLI completion alone does not establish transaction success.
 const owner = ACCOUNTS.a2;
 const heir = ACCOUNTS.a3;
 
@@ -59,8 +60,13 @@ if (!F) {
 }
 
 const cast = (args) => {
-  const r = spawnSync("cast", args, { encoding: "utf8" });
-  return { ok: r.status === 0, out: (r.stdout || "").trim(), err: (r.stderr || "").trim() };
+  const r = spawnSync("cast", args[0] === "send" ? [...args, "--json"] : args, { encoding: "utf8" });
+  const out = (r.stdout || "").trim();
+  let ok = r.status === 0;
+  if (ok && args[0] === "send") {
+    try { ok = BigInt(JSON.parse(out).status) === 1n; } catch { ok = false; }
+  }
+  return { ok, out, err: (r.stderr || "").trim() || (!ok ? out : "") };
 };
 /** cast 출력에 붙는 ` [5e18]` 같은 사람용 접미사를 벗겨 BigInt 로 읽는다. */
 const castUint = (args) => {
@@ -93,8 +99,8 @@ const send = (to, sig, args = []) =>
  * `vaultOf[msg.sender]` 를 따라간다. 금고에 직접 부르면 조용히 실패한다. 실제로 이
  * 시나리오가 그래서 두 번 죽었다.
  *
- * 정리는 **최선**이다 — 실패해도 경고만 남기고 진행한다. 정리가 실패한 채로 시나리오가
- * 죽으면 원인이 두 개로 흩어져 디버깅이 어려워진다.
+ * Fixture cleanup is mandatory. A failed receipt must not be mistaken for a
+ * successful cleanup, creation or cancellation and then tested as another state.
  */
 function emptySlot() {
   const v = vaultOf(owner.a);
@@ -105,17 +111,35 @@ function emptySlot() {
      이 시나리오는 거기서 죽었다.) */
   const bal = castUint(["call", WLD, "balanceOf(address)(uint256)", v, "--rpc-url", RPC]);
   if (bal > 0n) {
-    const r = send(F, "rescueFromMyVault(address,uint256,address)", [WLD, bal.toString(), owner.a]);
-    if (!r.ok) log(`  (WLD 회수 실패 — 무시하고 진행: ${(r.err || r.out).slice(0, 90)})`);
+    const claimed = castUint(["call", v, "claimedAt()(uint256)", "--rpc-url", RPC]);
+    let r;
+    if (claimed > 0n) {
+      r = send(F, "sweepSettledVaultFor(address)", [owner.a]);
+    } else {
+      const active = castUint(["call", v, "ownerStillActive()(bool)", "--rpc-url", RPC]);
+      const cancelled = castUint(["call", v, "inheritanceCancelled()(bool)", "--rpc-url", RPC]);
+      if (!active && !cancelled) {
+        const renewed = send(F, "pingMyVault()");
+        if (!renewed.ok) throw new Error("Fixture renewal failed: " + renewed.err.slice(0, 200));
+      }
+      r = send(F, "withdrawFromMyVault(address,uint256)", [owner.a, bal.toString()]);
+    }
+    if (!r.ok) throw new Error("Fixture WLD recovery failed: " + r.err.slice(0, 200));
   }
   // 강제 입금된 ETH 도 있을 수 있다 — 이것이 남아 있으면 해제가 막힌다.
-  const eth = cast(["call", v, "balance()(uint256)", "--rpc-url", RPC]).out.split(/\s+/)[0];
+  const eth = cast(["balance", v, "--rpc-url", RPC]).out.split(/\s+/)[0];
   if (eth && BigInt(eth) > 0n) {
     const r = send(v, "sweepEth(address)", [owner.a]);
-    if (!r.ok) log(`  (ETH 회수 실패 — 무시하고 진행: ${(r.err || r.out).slice(0, 90)})`);
+    if (!r.ok) throw new Error("Fixture ETH recovery failed: " + r.err.slice(0, 200));
+  }
+  if (!castUint(["call", v, "isSettled()(bool)", "--rpc-url", RPC])) {
+    const ping = castUint(["call", v, "lastPing()(uint256)", "--rpc-url", RPC]);
+    const interval = castUint(["call", v, "heartbeatInterval()(uint256)", "--rpc-url", RPC]);
+    if (!cast(["rpc", "evm_setNextBlockTimestamp", (ping + interval + 1n).toString(), "--rpc-url", RPC]).ok ||
+        !cast(["rpc", "evm_mine", "--rpc-url", RPC]).ok) throw new Error("Fixture expiry failed");
   }
   const rel = send(F, "releaseMyVault()");
-  if (!rel.ok) log(`  (슬롯 해제 실패 — 무시하고 진행: ${(rel.err || rel.out).slice(0, 90)})`);
+  if (!rel.ok || vaultOf(owner.a) !== ZERO) throw new Error("Fixture release failed: " + rel.err.slice(0, 200));
   return v;
 }
 
@@ -196,7 +220,7 @@ check("체인: 취소 + 만료 + settled", isCancelled === 1n && isSettled === 1
 // ── 2) 화면이 그 상태를 어떻게 말하는가 ─────────────────────────────────────
 const b = await launch({ pk: owner.pk, url: APP });
 await sleep(3000);
-await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(6500);
 const goto = (tab) =>
   b.ev(

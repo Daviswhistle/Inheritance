@@ -1,41 +1,31 @@
-# Reviewer Notes
+# Reviewer notes
 
-This mini app runs inside World App using World App MiniKit.
+App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`
+URL: https://inheritance.pages.dev/
+Language: English. Platform: World App iOS and Android.
 
-## Custody model
-- Non‑custodial: The app never holds user assets or keys.
-- Transactions are initiated via `@worldcoin/minikit-js` (MiniKit) and must be approved by the user in World App.
-- Funds live either in the user’s World App wallet or their per‑user vault contract deployed by the factory. No pooled or server custody.
+## Sign-in and custody
 
-Relevant implementation points
-- Login: uses `MiniKit.commandsAsync.walletAuth` exclusively for login/session. No verification flow is used as a login gate.
-- Optional verification (post‑login only): if `VITE_REQUIRE_VERIFY=true`, the app requests `MiniKit.commandsAsync.verify` AFTER a successful wallet login. Users can also trigger verification explicitly via the CTA once connected.
-- No auto‑connect on load; wallet auth is triggered by a user tap. The mount effect only initialises the MiniKit bridge. A previously saved address is restored from `localStorage` for display, which involves no signature and is not an auth gate.
-- Being an heir in someone else's vault does not prevent creating your own vault. Heir vaults are only surfaced through the explicit “Find vaults where I am heir” action.
-- User identity surfaces the World App username (if available) instead of showing the full wallet address; full addresses are available behind an “Advanced details” toggle.
-- Transaction confirmation: every MiniKit `sendTransaction` path sets a pending state, waits for the on‑chain receipt via `provider.waitForTransaction(...)`, and then polls a state predicate (`waitForTxOrEvent`) before marking the action complete. A missing provider raises an error rather than skipping the wait.
-- Sends: `MiniKit.commandsAsync.sendTransaction` is used for all state‑changing calls (create vault, deposit, extend timer, withdraw, claim).
-- There is no desktop/dev signer path in the frontend; all writes go through World App + MiniKit. Reading uses a plain read‑only JSON‑RPC provider.
-- Environment variables are validated at startup (`app/src/config.ts`). A missing or malformed address renders an in‑app setup screen instead of failing silently; an unexpected runtime error is caught by an error boundary.
-- Fonts: system fonts only, no remote font loads.
+Tap **Continue with World App** to sign in; opening the app initializes the bridge without requesting a signature. World ID verification is not required. Pages verifies the MiniKit SIWE signature, origin, statement, chain and address, consumes a one-use random nonce in D1, and issues a one-hour session. The notification Worker independently verifies this session and current vault permissions. Expired sessions return to the sign-in screen.
 
-## Scrolling fixes (World App WebView)
-- Replaced `min-h-screen` wrapper with `.app-shell` that uses dynamic viewport units (`svh`/`dvh`) to avoid iOS/Android UI chrome height bugs.
-- Added `html { height: -webkit-fill-available }` and `body { -webkit-overflow-scrolling: touch; overflow-y: auto; margin: 0 }` to ensure reliable scrolling.
-- Ensured fixed toasts do not intercept gestures (`pointer-events: none`).
-- Added bottom safe‑area padding utility (`.safe-pb`) and applied it to the main container.
+User keys never reach our servers. Deposited WLD lives in a user's vault contract. User transactions go through the allowlisted WLD token and current or legacy factory, with World App approval. A dedicated infrastructure signer pays gas for eligible automated transfers; it cannot choose the recipient, file an heir's claim or withdraw an active owner's funds.
 
-Tested scenarios (manual)
-- iOS Safari and in‑app webview: content scrolls with sticky header; no scroll lock.
-- Android Chrome/WebView: no overscroll blocking; dynamic viewport respected.
+## The inheritance flow
 
-CSS notes
-- `app/src/index.css` is a hand‑written utility set, not Tailwind. An undefined class fails silently, so every `className` in the JSX was cross‑checked against the selectors in that file.
-- `.app-shell` declares `100vh` → `100svh` → `100dvh`. Order matters because it is the same property repeated; the static fallback must come first or it wins and re‑introduces the iOS URL‑bar height bug.
-- Responsive variants must live inside their breakpoint. `sm:inline` was previously top‑level, where it tied with `.hidden` on specificity and won on order, so it never hid anything.
+1. Choose an heir from contacts, a username or an address and set a 1–365-day timer. Creating the vault deposits no WLD.
+2. Use **Send** to deposit. Use **Vault** to renew, manage the heir or withdraw. **Tell your heir** offers World Chat and a shareable vault link. Notification permission is separate and is required on each recipient's World App.
+3. After expiry the named heir files a claim. WLD stays in the vault for the fixed seven-day review window.
+4. For registered new vaults, the service can execute the eligible transfer after the review window. Only the named heir receives the funds. Manual completion remains available. Legacy vaults require manual completion.
+5. The owner can renew to cancel the claim until the actual transfer executes, including after the seven days. Transaction ordering determines which action wins.
 
-Additional review items
-- Remote font loads removed; only system fonts are used.
-- In‑app links to Privacy Policy, Terms, and Support are present.
-- The status line and toasts are `aria-live` regions; the details disclosure reports `aria-expanded`; the release modal is a labelled `aria-modal` dialog.
-- 5 unused npm dependencies and 2 dead template files were removed.
+Automation depends on registration, network/service availability, gas funding and spending caps. The interface shows service availability and keeps manual completion available. It does not promise execution at an exact time. A timer is not death verification, a legal will or an investment product.
+
+## Interface and verification
+
+The public landing explains the plan and opens World App; authenticated users have a four-tab mobile interface. Empty Vault/Send tabs stay hidden until a vault exists. Linked heir vaults remain distinct from the user's own vault. Discovery checks the authenticated monitoring index and bounded recent chain history; older unregistered vaults can be opened directly from a shared link. Current heir identity and canonical factory membership are checked before listing results.
+
+MiniKit user-operation hashes are resolved through the official transaction-status API before waiting for the canonical transaction receipt. Success requires a successful receipt and observed contract outcome; cancellation, failed operations, timeout and unavailable refreshed state remain explicit. Duplicate action taps are blocked. Switching vaults immediately invalidates the prior roles and transaction route; new actions wait for canonical verification. Reauthentication restores a preserved shared-vault selection. System fonts, safe-area spacing, focus styles, labelled inputs, live status regions and a keyboard-accessible release dialog are provided.
+
+Local verification uses real Anvil transactions, contract state, browser automation, actual Pages SIWE verification and SQLite-backed notification/automation paths. These tests do not certify native World App permission dialogs or real device behavior. Real iPhone/Android World App wallet approval and notification delivery remain external verification items. There is no independent third-party security audit; the app and store do not claim one.
+
+Privacy and terms disclose session data, monitoring records, automatic transfer rules, risks and support. Source and contract information are linked from Help.

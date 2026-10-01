@@ -64,11 +64,18 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
+      - name: Install Worker execution dependencies for shared auth tests
+        working-directory: .
+        run: npm ci --no-audit --no-fund
+
       - name: Typecheck
         run: pnpm typecheck
 
       - name: Lint
         run: pnpm lint
+
+      - name: Test server sessions, notification authorization and durable dedupe
+        run: node ../scripts/test-notify-auth.mjs
 
       # 정의가 없는 className 은 빌드도 타입체크도 린트도 통과하고 화면에서는
       # 아무 일도 일어나지 않는다. 실제로 .bg-black/50 때문에 모달 배경이
@@ -80,6 +87,9 @@ jobs:
       # tsc 와 vite build 는 이 경로를 검사하지 않는다 — 예전 버그가 그 둘을 통과했다.
       - name: Revert messages are human sentences
         run: node ../scripts/test-error-text.mjs
+
+      - name: Resolve user operations and verify canonical transaction outcomes
+        run: node ../scripts/test-transaction-confirmation.mjs
 
       # supported_languages 는 ["en"] 뿐이다. 알림 발송 실패 안내(가장 중요한 실패
       # 경로)가 한국어였고, 코드 주석도 한국어라 검토자가 놓쳤다. 사용자 노출 문자열만 본다.
@@ -103,13 +113,30 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      - name: Install Worker execution dependencies
+        working-directory: .
+        run: npm ci --no-audit --no-fund
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.3.2
+
+      - name: Validate contract-enforced automated transfers on Anvil
+        working-directory: .
+        run: forge build && node scripts/test-finalizer.mjs
+
       - name: Syntax check worker
         run: node --check src/worker.mjs
+
+      - name: Test notification decision logic
+        run: node ../scripts/test-notify-alerts.mjs
 
       # 순수 결정 함수만으로는 DB 쓰기 경로가 비어 있다. saveWatcher 가 자리표시자
       # 13개에 바인딩 12개를 주고도 이 테스트는 통과했다 — 실제 D1 은 매번 거절했고,

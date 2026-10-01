@@ -36,7 +36,7 @@ if (!up) process.exit(1);
 
 const b = await launch({ pk: ACCOUNTS.a4.pk, url: `http://127.0.0.1:${PORT}/` });
 await sleep(3000);
-await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
 let t = await b.ev("return document.body.innerText;");
 check("로그인 성공", /Connected|@e2e_/.test(t), (t.match(/@e2e_[0-9a-f]+/) || ["(없음)"])[0]);

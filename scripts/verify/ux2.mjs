@@ -94,7 +94,7 @@ async function audit(name, acct, url = APP) {
   console.log(`\n[${name}]`);
   const b = await launch({ pk: acct.pk, url });
   await sleep(2800);
-  await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(4500);
   const tabs = await b.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
   let issues = 0;

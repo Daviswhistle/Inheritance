@@ -18,9 +18,11 @@
     "notify:deploy": "npx wrangler deploy --config backend/wrangler.toml",
     "notify:d1:local": "npx wrangler d1 migrations apply world-inheritance-notify --local --config backend/wrangler.toml",
     "notify:d1:remote": "npx wrangler d1 migrations apply world-inheritance-notify --remote --config backend/wrangler.toml",
-    "notify:tail": "npx wrangler tail --config backend/wrangler.toml"
+    "notify:tail": "npx wrangler tail --config backend/wrangler.toml",
+    "finalizer:test": "forge build && node scripts/test-finalizer.mjs"
   },
   "dependencies": {
-    "@worldcoin/minikit-js": "^1.9.6"
+    "@worldcoin/minikit-js": "^1.9.6",
+    "ethers": "6.15.0"
   }
 }

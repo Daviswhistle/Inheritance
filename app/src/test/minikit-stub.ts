@@ -204,6 +204,8 @@ export const MiniKit = {
       // 2.x 는 userOpHash 를 돌려준다. 웹 폴백에서는 tx hash 다.
       return ok({
         userOpHash: lastHash,
+        // Local signer returns a mined transaction, not a World App user operation.
+        transaction_hash: lastHash,
         status: "success" as const,
         version: 2,
         from,

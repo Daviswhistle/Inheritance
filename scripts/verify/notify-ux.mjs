@@ -102,7 +102,7 @@ log(`    setup: vault=${vault.slice(0, 12)}… 잔액=${bal.split(" ")[0]}`);
 
 const b = await launch({ pk: A.a4.pk, url: APP });
 await sleep(2800);
-await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
 
 const clickTab = async (n) => {
@@ -125,7 +125,7 @@ const STATES = [
   /World App is blocking notifications/i,
   /not being watched/i,
   /took the request/i,
-  /and your heir get told/i,
+  /Reminders are enabled for you/i,
 ];
 const onVaultTab = STATES.some((r) => r.test(t));
 check("Vault 탭에 알림 상태가 보인다", onVaultTab,
@@ -170,7 +170,7 @@ check("큰 헤딩 없이 문장으로 말한다", !/^\s*Notifications (on|need a
 // 것이므로, 블록을 식별하는 조건도 그 블록 고유의 것(무엇이 되고 있지 않은가)으로 둔다.
 const metrics = await b.ev(`return (() => {
   const el = [...document.querySelectorAll("[role=alert],[role=status]")]
-    .find((n) => /Notifications are off|and your heir get told|is blocking|not being watched|took the request/i.test(n.innerText || ""));
+    .find((n) => /Notifications are off|Reminders are enabled for you|is blocking|not being watched|took the request/i.test(n.innerText || ""));
   if (!el) return null;
   const r = el.getBoundingClientRect();
   const timer = document.querySelector(".timer-block");
@@ -202,7 +202,7 @@ log("\n[5] 잔액 0 이면 경고하지 않는가");
 await b.close();
 const c = await launch({ pk: A.a9.pk, url: APP });
 await sleep(2800);
-await c.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+await c.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
 await c.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim().toLowerCase().includes("vault"));if(e)e.click();return 1;})()`);
 await sleep(1000);
@@ -220,7 +220,7 @@ log("\n[6] 새 사용자도 금고를 만들 수 있는가");
 {
   const c3 = await launch({ pk: A.a11.pk, url: APP });
   await sleep(2800);
-  await c3.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await c3.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   // `sleep(5000)` 은 추측이고 여기서는 관측이 필요하다. 지갑 연결이 끝나기 전에
   // 폼이 mounts 되지 않으면 그 다음 줄 `s.call(null, …)` 이 예외를 던져, 이 단계가
   // "실패" 가 아니라 스크립트 크래시로 죽는다 — 어느 검사가 왜 죽었는지 로그에 안 남는다.
@@ -270,7 +270,7 @@ log("\n[6] 금고 만들면 자동으로 등록되는가");
     };
     return 1;
   })()`);
-  await c2.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await c2.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5000);
   const setHeir = await c2.ev(`return (()=>{
     const inp = document.querySelector('input[placeholder*="username"], input[placeholder*="0x"]');
@@ -296,6 +296,9 @@ log("\n[6] 금고 만들면 자동으로 등록되는가");
   check("등록 본문에 금고 주소가 들어간다",
     !!(regCalls[0] && regCalls[0].body && /vaultAddress/.test(regCalls[0].body)),
     regCalls[0] && regCalls[0].body ? String(regCalls[0].body).slice(0, 110) : "(본문 없음)");
+  const createdUi = await c2.ev("return {form: Boolean(document.getElementById('heir-input')), heading: document.querySelector('.page-intro h1')?.textContent};");
+  check("금고 생성 직후 새로고침 없이 관리 화면으로 바뀐다",
+    !createdUi.form && createdUi.heading === "Your person. Your plan.", JSON.stringify(createdUi));
   await c2.close();
 }
 
@@ -306,7 +309,7 @@ log("\n[7] 처음 쓰는 사람이 금고를 만들기 전에 알림을 알게 �
 {
   const fresh = await launch({ pk: A.a11.pk, url: APP });
   await sleep(2800);
-  await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5000);
   const tabs = await fresh.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
   check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.some((t) => /vault/i.test(t)),
@@ -362,13 +365,29 @@ log("\n[8] 상속인 카드는 결과가 있을 때만 첫 화면에 나온다")
 // as heir" 카드가 그대로 남고, 아무것도 안 한 사람에게 "당신이 상속인일 수 있습니다" 를
 // 말한 뒤 "아니오" 라고 답하는 셈이다. 정작 할 일(금고 만들기)은 화면 아래로 밀린다.
 {
-  const plain = await launch({ pk: A.a11.pk, url: APP });
+  // This case asserts a completed empty search, not an unavailable production API.
+  // Actual RPC failures and retry are covered by heir-discovery.mjs.
+  const plain = await launch({ pk: A.a11.pk, url: APP, preload: `
+    const realFetch = window.fetch.bind(window);
+    window.__emptyIndexReads = 0;
+    window.fetch = (input, init) => {
+      const url = new URL(typeof input === 'string' ? input : input.url, location.origin);
+      if (url.origin === 'https://world-inheritance-notify.rkddkwl725.workers.dev'
+        && url.pathname === '/api/notifications' && (!init?.method || init.method === 'GET')) {
+        window.__emptyIndexReads++;
+        return Promise.resolve(Response.json({status:'success',watchers:[],nextCursor:null}));
+      }
+      return realFetch(input, init);
+    };
+  ` });
   await sleep(2800);
-  await plain.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await plain.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(6500);
   const t = await plain.ev("return document.body.innerText;");
+  const completeEmpty = await plain.ev("return window.__emptyIndexReads > 0;");
   check("스캔 결과가 없으면 첫 화면에 상속인 카드가 없다",
-    !/Are you named as someone/i.test(t), /Are you named as someone/i.test(t) ? "나오고 있다" : "없음");
+    completeEmpty && !/incomplete|Are you named as someone/i.test(t),
+    completeEmpty ? (/Are you named as someone/i.test(t) ? "나오고 있다" : "완료된 빈 조회 — 카드 없음") : "인덱스 조회 없음");
   check("\'아니오\' 라는 답도 화면에 남지 않는다", !/No vault names you as heir/i.test(t),
     /No vault names you as heir/i.test(t) ? "남아 있다" : "없음");
   // 수동 재확인은 Help 탭에 남겨 둔다 — 통째로 버리면 안 된다.
@@ -397,7 +416,7 @@ log("\n[9] 진짜 상속인에게는 여전히 첫 화면에 보여야 한다");
   const heir = heirAcct ? await launch({ pk: heirAcct.pk, url: APP }) : null;
   if (heir) {
   await sleep(2800);
-  await heir.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await heir.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(9000);
   const th = await heir.ev("return document.body.innerText;");
   check("상속인에게는 상속인 카드가 보인다", /Are you named as someone/i.test(th),
@@ -426,7 +445,7 @@ log("\n[10] 'Turn on notifications' 를 누르면 화면이 실제로 바뀌는�
    이미 닫아 놨으므로 여기서 새로 띄운다. */
 const perm = await launch({ pk: A.a4.pk, url: APP });
 await sleep(2800);
-await perm.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+await perm.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(6000);
 await perm.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim().toLowerCase().includes("vault"));if(e)e.click();return 1;})()`);
 await sleep(1500);

@@ -81,8 +81,8 @@ async function openApp(acct, url = APP) {
   const b = await launch({ pk: acct.pk, url });
   await sleep(2800);
   // 앱은 자동 로그인하지 않는다. Connect 를 눌러야 SIWE 서명 → 서버 검증이 돈다.
-  // 이걸 빠뜨리면 모든 검사가 "Connect" 화면을 검사하게 되어 아무것도 검증 못 한다.
-  const r = await click(b, "Connect");
+  // 이걸 빠뜨리면 모든 검사가 "Continue with World App" 화면을 검사하게 되어 아무것도 검증 못 한다.
+  const r = await click(b, "Continue with World App");
   if (r !== "OK") log(`    (Connect 클릭 실패: ${r})`);
   await sleep(4500);
   const t = await text(b);
@@ -168,6 +168,9 @@ log("\n[1] 정산 후 늦게 들어온 잔액 회수 (P0-1)");
     const own = await wld(owner.a);
     check("스위프: 금고 잔액 0", after === 0n, `${F(after)} WLD`);
     check("스위프: 잔액 전액이 내 주소로 옴", own - before === expected, `+${F(own - before)} WLD (기대 ${F(expected)})`);
+    const afterText = await text(b);
+    check("스위프: 확인 완료 안내", /Swept the remaining balance to your address/.test(afterText),
+      afterText.split("\n").find((line) => /Swept|Pending|Sweep error/.test(line)) || "안내 없음");
     await shot(b, "verify-sweep-after");
   }
   await b.close();
@@ -292,6 +295,10 @@ log("\n[6] 자기 행동 뒤 화면이 갱신되는가 (P1-3)");
   // [1] 에서 쓰인 금고는 정산 상태라 갱신 버튼이 없다. 아직 갱신 가능한 금고로 본다.
   const who = A.a2;
   await tx(FACTORY, "createVault(address,uint256)", [A.a9.a, "604800"], who);
+  await tx(WLD, "approve(address,uint256)", [FACTORY, E(2).toString()], who);
+  await tx(FACTORY, "deposit(uint256)", [E(2).toString()], who);
+  const renewalVault = await vaultOf(who.a);
+  const balanceBefore = await wld(renewalVault);
   const b = await openApp(who);
   await clickTab(b, "vault");
   await sleep(1800);
@@ -323,9 +330,9 @@ log("\n[6] 자기 행동 뒤 화면이 갱신되는가 (P1-3)");
   check("화면 'Last ping' 이 체인 갱신 시각으로 바뀐다",
     shownBefore !== shownAfter && /Last ping: \d/.test(shownAfter),
     `전 "${shownBefore}" → 후 "${shownAfter}"`);
-  const st = await text(b);
-  check("갱신 직후 잔액이 안 줄었다 (갱신은 출금이 아니다)", /Deposit complete|Reset|reset/i.test(st) || true,
-    shownAfter);
+  const balanceAfter = await wld(renewalVault);
+  check("갱신 직후 잔액이 안 줄었다 (갱신은 출금이 아니다)", balanceBefore > 0n && balanceAfter === balanceBefore,
+    `${F(balanceBefore)} → ${F(balanceAfter)} WLD`);
   await shot(b, "verify-refresh-after-action");
   await b.close();
 }
@@ -333,5 +340,5 @@ log("\n[6] 자기 행동 뒤 화면이 갱신되는가 (P1-3)");
 log("\n════ 결과 ════");
 results.forEach((r) => log("  " + r));
 log(`\n  통과 ${pass} / 실패 ${fail}`);
-writeFileSync(new URL("./verify-results.txt", import.meta.url).pathname, results.join("\n") + `\n\n통과 ${pass} / 실패 ${fail}\n`);
+writeFileSync(path.join(process.env.VERIFY_TMP || "/tmp/wld-verify", "verify-results.txt"), results.join("\n") + `\n\n통과 ${pass} / 실패 ${fail}\n`);
 process.exit(fail ? 1 : 0);

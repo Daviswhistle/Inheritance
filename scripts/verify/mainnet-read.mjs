@@ -7,10 +7,13 @@ import { readFileSync } from "node:fs";
 // 저장소 밖의 app/node_modules 에 있으니 정적 import 경로로 쓸 수 없다.
 const { ethers } = await import(REPO + "/app/node_modules/ethers/lib.esm/index.js");
 process.on("unhandledRejection", () => {});
-const RPCS = ["https://worldchain.drpc.org", "https://worldchain-mainnet.g.alchemy.com/v2/demo"];
-const FACTORY = "0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88";
-const WLD = "0x2cfc85d8e48f8eab294be644d9e25c3030863003";
-const BLOCK = 35672936;
+const release = readFileSync(REPO + "/app/.env.example", "utf8");
+const value = key => release.match(new RegExp("^" + key + "=(.+)$", "m"))?.[1]?.trim();
+const RPCS = [value("VITE_RPC"), "https://worldchain-mainnet.drpc.org"];
+const FACTORY = value("VITE_FACTORY_ADDRESS");
+const LEGACY = value("VITE_LEGACY_FACTORY_ADDRESS");
+const WLD = value("VITE_WLD_ADDRESS");
+const BLOCK = Number(value("VITE_FACTORY_DEPLOY_BLOCK"));
 
 /* 앱의 ABI 를 **실제로 import** 한다. 예전에는 App.tsx 를 문자열로 파싱해서 배열을
    꺼냈는데, ABI 를 abis.ts 로 옮기자 조용히 빈 배열이 되어 `encodeFunctionData
@@ -73,6 +76,16 @@ check("isHeirOf 읽기", typeof ih === "string" && ih.length >= 66, ih);
 const dec = f.decodeFunctionResult("isHeirOf", ih);
 check("isHeirOf 가 false (이 계정은 상속인 아님)", dec[0] === false, dec[0]);
 
+// Factory upgrades must keep existing vaults discoverable and routed to their source.
+if (LEGACY) {
+  const owner = "0x93bC44B8296977Feb479F95855D9b9E051C17dA2";
+  const existing = "0xFeA316c5aEEf8818763eEB61FDfeFA391b612d18";
+  const mapped = f.decodeFunctionResult("vaultOf", await call(LEGACY, f.encodeFunctionData("vaultOf", [owner])))[0];
+  check("기존 금고 슬롯 유지", mapped.toLowerCase() === existing.toLowerCase(), mapped);
+  const origin = v.decodeFunctionResult("factory", await call(existing, v.encodeFunctionData("factory")))[0];
+  check("기존 금고가 원래 팩토리를 참조", origin.toLowerCase() === LEGACY.toLowerCase(), origin);
+}
+
 // 팩토리가 참조하는 금고 주소가 실제 컨트랙트 코드에 있는지는 메인넷에서 아직
 // 확인할 금고가 없다. createVault 가 주소를 돌려주는 것으로 충분하다(앞 검증 참고).
 
@@ -93,7 +106,7 @@ const LOG_CHUNK = 90; // App.tsx 의 LOG_SCAN_CHUNK 과 동일해야 한다
 // 나누면 몇천 번의 요청이 되고 공개 RPC 이 그걸 견디지 못한다 — 이건 앱의 문제가 아니라
 // **검증 시간이 무한정** 되는 문제다. 최근 MAX_CHUNKS 개 청크(한 번의 유저 세션이
 // 실제로 만나는 범위)만 훑고, 배포 블록 근처는 아래의 별도 검사로 확인한다.
-const MAX_CHUNKS = 40;
+const MAX_CHUNKS = 20;
 const head = Number(BigInt(await rpc("eth_blockNumber", [])));
 const allLogs = [];
 let chunksTried = 0;
@@ -113,7 +126,8 @@ const parsed = logs.map(l => { try { return f.parseLog(l); } catch { return null
 check("배포 블록 이후 이벤트 조회 성공", true,
   `${logs.length}개 로그 (최근 ${chunksTried * LOG_CHUNK}블록 범위)`);
 const kinds = [...new Set(parsed.map(p => p.name))];
-check("VaultCreated / VaultReleased 이벤트가 파싱된다", true, kinds.join(", ") || "(아직 이벤트 없음)");
+if (logs.length) check("반환된 이벤트가 앱 ABI로 파싱된다", parsed.length === logs.length, kinds.join(", "));
+else console.log("  INFO  실제 이벤트 파싱은 새 금고 생성 후 검증 가능 — 아직 이벤트 없음");
 
 // 로그가 하나도 없으면 파싱 검증은 못 하므로, 배포 트랜잭션 자체를 확인한다
 const txLogs = await rpc("eth_getLogs", [{ fromBlock: "0x" + BLOCK.toString(16), toBlock: "0x" + (Number(BLOCK) + 5).toString(16), address: FACTORY }]);

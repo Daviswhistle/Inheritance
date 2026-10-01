@@ -82,7 +82,7 @@ export const VAULT_ERROR_ABI = [
   },
 ];
 
-/** InheritanceVaultWLDFactoryOnePerOwner 만에 있는 커스텀 에러 5종. */
+/** InheritanceVaultWLDFactoryOnePerOwner 만에 있는 커스텀 에러 6종. */
 export const FACTORY_ERROR_ABI = [
   {
     type: "error",
@@ -99,6 +99,10 @@ export const FACTORY_ERROR_ABI = [
   {
     type: "error",
     name: "NotExpired",
+  },
+  {
+    type: "error",
+    name: "NotOurVault",
   },
   {
     type: "error",
@@ -135,5 +139,6 @@ export const ERROR_SOURCE_BY_NAME: Record<string, "vault" | "factory"> = {
   "NoVault": "factory",
   "NotAContract": "factory",
   "NotExpired": "factory",
+  "NotOurVault": "factory",
   "VaultNotEmpty": "factory",
 };

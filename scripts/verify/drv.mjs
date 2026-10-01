@@ -1,7 +1,7 @@
 // Reusable CDP driver for the WLD inheritance mini app QA pass.
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { rmSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { rmSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -35,28 +35,31 @@ export const WLD = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 export const OUT = path.join(RUNDIR, "shots");
 mkdirSync(OUT, { recursive: true });
 
-let portCursor = 9100 + Math.floor(Math.random() * 400);
-
 export async function launch({ pk, url, profile, preload = "" } = {}) {
-  const PORT = portCursor++;
-  const PROFILE = profile || path.join(RUNDIR, `prof-${PORT}`);
-  rmSync(PROFILE, { recursive: true, force: true });
+  const PROFILE = profile || mkdtempSync(path.join(RUNDIR, "prof-"));
+  if (profile) rmSync(PROFILE, { recursive: true, force: true });
   const chrome = spawn("google-chrome", [
-    "--headless=new", `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
+    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${PROFILE}`,
     "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--no-first-run",
     "--hide-scrollbars", "--window-size=390,844", "about:blank",
   ], { stdio: "ignore" });
 
   let wsUrl = null;
+  let startupError = "";
+  chrome.on("error", (error) => { startupError = error.message; });
   for (let i = 0; i < 100; i++) {
+    if (startupError || chrome.exitCode !== null) break;
     try {
+      // Chrome selects a free port; never connect to a previous test's browser.
+      const PORT = Number(readFileSync(path.join(PROFILE, "DevToolsActivePort"), "utf8").split("\n")[0]);
+      if (!Number.isSafeInteger(PORT) || PORT < 1) throw new Error("Missing Chrome debug port");
       const l = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
       const p = l.find((t) => t.type === "page");
       if (p?.webSocketDebuggerUrl) { wsUrl = p.webSocketDebuggerUrl; break; }
     } catch {}
     await sleep(200);
   }
-  if (!wsUrl) { chrome.kill(); throw new Error("no devtools"); }
+  if (!wsUrl) { chrome.kill(); throw new Error(`no devtools${startupError ? ": " + startupError : ""}`); }
   const ws = new WebSocket(wsUrl);
   await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
 
@@ -66,6 +69,7 @@ export async function launch({ pk, url, profile, preload = "" } = {}) {
     const m = JSON.parse(e.data);
     if (m.id && pend.has(m.id)) {
       const p = pend.get(m.id); pend.delete(m.id);
+      clearTimeout(p.timer);
       m.error ? p.reject(new Error(JSON.stringify(m.error))) : p.resolve(m.result);
       return;
     }
@@ -78,9 +82,10 @@ export async function launch({ pk, url, profile, preload = "" } = {}) {
     }
   };
   const send = (m, p = {}) => new Promise((res, rej) => {
-    const k = id++; pend.set(k, { resolve: res, reject: rej });
+    const k = id++;
+    const timer = setTimeout(() => { if (pend.has(k)) { pend.delete(k); rej(new Error("timeout " + m)); } }, 120000);
+    pend.set(k, { resolve: res, reject: rej, timer });
     ws.send(JSON.stringify({ id: k, method: m, params: p }));
-    setTimeout(() => { if (pend.has(k)) { pend.delete(k); rej(new Error("timeout " + m)); } }, 120000);
   });
   const ev = async (code) => {
     const r = await send("Runtime.evaluate", { expression: `(async()=>{${code}})()`, returnByValue: true, awaitPromise: true });

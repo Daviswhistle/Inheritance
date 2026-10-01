@@ -37,6 +37,7 @@ contract InheritanceVaultWLDFactoryOnePerOwner {
     error NotHeir();
     error NotExpired();
     error VaultNotEmpty();
+    error NotOurVault();
 
     /// @notice 상속 대상 토큰 (고정).
     address public immutable WLD;
@@ -178,6 +179,17 @@ contract InheritanceVaultWLDFactoryOnePerOwner {
     function finalizeClaimFor(address vault) external {
         if (InheritanceVaultWLD(payable(vault)).heir() != msg.sender) revert NotHeir();
         InheritanceVaultWLD(payable(vault)).finalizeClaim();
+    }
+
+    /// @notice 누구나 기간이 끝난 신청의 지급을 실행할 수 있다. 수령자는 금고의 상속인으로 고정된다.
+    /// @dev 신청 권한과 owner의 갱신 권한은 바뀌지 않는다. 이 팩토리의 현재 금고만 중계한다.
+    function executeInheritance(address vault) external {
+        if (vault.code.length == 0) revert NotOurVault();
+        InheritanceVaultWLD target = InheritanceVaultWLD(payable(vault));
+        if (target.factory() != address(this) || target.WLD() != WLD || vaultOf[target.owner()] != vault) {
+            revert NotOurVault();
+        }
+        target.finalizeClaim();
     }
 
     /// @notice 내가 상속인으로 지정된 모든 금고 중 상속이 진행 중인 것만 골라낸다.

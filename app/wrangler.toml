@@ -1,8 +1,6 @@
 # Cloudflare Pages — 사이트와 서버 함수를 함께 배포한다.
 #
-# SIWE 로그인 검증은 Pages Functions 로 넣었다. 별도 Workers 로 분리하면
-# D1 database_id 가 자리표시자 상태라 라이브에 못 올리고, 무엇보다 배포가
-# 두 번으로 갈라진다. 사이트와 같은 배포에 묶으면 항상 함께 올라간다.
+# Pages와 알림 Worker는 일회용 nonce, 요청 제한, 알림 상태를 같은 D1에 저장한다.
 name = "inheritance"
 compatibility_date = "2026-09-01"
 pages_build_output_dir = "dist"
@@ -11,5 +9,11 @@ pages_build_output_dir = "dist"
 [vars]
 FRONTEND_ORIGIN = "https://inheritance.pages.dev"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "world-inheritance-notify"
+database_id = "3f42cdf7-9a53-409a-8f59-b27ef8ee631a"
+migrations_dir = "../backend/migrations"
+
 # SIWE_SECRET 은 반드시 secret 으로 넣는다 (wrangler secret put SIWE_SECRET).
-# 서명된 nonce 를 발급하는 키이므로 공개되면 로그인 무력화된다.
+# Pages와 Worker가 공유하는 1시간 세션 서명 키이므로 공개되면 로그인이 무력화된다.

@@ -1,110 +1,75 @@
-# World Inheritance
+# Inheritance
 
-World App에서 동작하는 WLD 상속 금고 Mini App입니다. 사용자가 금고 컨트랙트를 만들고
-WLD를 입금한 뒤, 정해진 기간 동안 생존 신호(ping)를 보내지 않으면 상속인이 잔액을 수령합니다.
+[Live app](https://inheritance.pages.dev/) · WLD를 선택한 사람에게 남기는 World App 미니앱입니다.
+소유자가 타이머를 갱신하는 동안 자금을 관리합니다. 갱신을 멈추면 상속인이 신청하고,
+7일 검토 기간 뒤 지정된 주소로 이체할 수 있습니다. 새 금고는 등록된 서버 감시가
+자동 이체를 실행하며, 상속인의 수동 수령도 가능합니다.
 
-```
-app/        World App Mini App (React + Vite + MiniKit)
-contracts/  상속 금고 / 팩토리 Solidity 컨트랙트 (Foundry)
-backend/    푸시 알림용 Cloudflare Worker (선택)
-docs/       World App 심사 대응 문서
-script/     배포 스크립트
-test/       Foundry 테스트
-```
+## WLD 금고의 실제 규칙
 
-## 핵심 규칙
+| 단계 | 소유자 | 지정된 상속인 | 자동 실행 서비스 |
+| --- | --- | --- | --- |
+| 타이머 유효 | 갱신, 기간·상속인 변경, 출금, 상속 취소 | 신청 불가 | 이체 불가 |
+| 타이머 만료 | 갱신 가능. 갱신 후 관리·출금 가능 | 신청 가능 | 신청을 대신하지 않음 |
+| 신청 후 7일 | 갱신으로 신청 취소 가능 | 기다림 | 이체 불가 |
+| 7일 경과, 미정산 | 실제 이체 전까지 갱신으로 취소 가능 | 수동 수령 가능 | 새 금고의 정해진 상속인에게만 이체 가능 |
+| 정산 완료 | 잔여 WLD 회수, 빈 슬롯 해제 | 완료 | 재이체 불가 |
 
-상속이 의미를 가지려면 **만기 이후 소유자의 권한이 완전히 정지**해야 합니다.
+타이머 종료는 사망 확인이 아닙니다. 법적 유언장이나 신원·상속권 판단을 제공하지 않습니다.
+거래 순서에 따라 소유자의 갱신과 만기 후 실행 중 먼저 확정된 것이 적용됩니다.
+자동 실행은 감시 등록, 서버·RPC 가용성, 가스 잔액 및 지출 한도를 필요로 합니다.
+정확히 7일째의 실행이나 알림 도착을 보장하지 않습니다. 독립 외부 보안 감사는 없습니다.
 
-| 호출 | 만기 전 | 만기 후 |
-| --- | --- | --- |
-| `ping` | 가능 | 불가 (`Expired`) |
-| `updateHeir` / `updateHeartbeat` / `cancelInheritance` | 가능 | 불가 (`Expired`) |
-| `ownerWithdrawWLD` | 가능 | 불가 (`Expired`) |
-| `claim` | 불가 | **누구나 가능** |
+## 구성과 신뢰 경계
 
-이 규칙이 없으면 소유자가 만기 직전에 `ping` 로 금고를 되살리거나, `updateHeir` 로
-상속인을 자기 자신으로 바꾼 뒤 `claim` 해서 전액을 되가져갈 수 있습니다.
+- `app/`: React/Vite/MiniKit 화면 및 Pages SIWE 인증 함수.
+- `contracts/InheritanceVaultWLD*.sol`: 현재 WLD 전용 금고 및 주소당 하나의 금고를 관리하는 팩토리.
+- `backend/`: Cloudflare D1을 공유하는 인증된 알림 API와 제한된 자동 실행기.
+- `test/`, `scripts/verify/`: 계약 검증 및 실제 로컬 체인·브라우저 검증.
+- `DEPLOYMENTS.md`: 배포 주소, 블록과 실제 거래 기록.
 
-`claim` 은 실행 직후 금고를 최종 상태로 만듭니다(`claimed` 플래그, 상속인 초기화).
-그래야 나중에 들어온 입금이 상속인이 아닌 누구에게 다시 sweep되지 않습니다.
+소유자·상속인 키는 서버에 전송하지 않습니다. WLD는 사용자별 금고 컨트랙트에 보관됩니다.
+자동 실행기의 전용 키는 가스만 지급하며 수령자를 바꾸거나 활성 소유자 자금을 인출할 권한이 없습니다.
+새 팩토리는 임의 호출자의 `executeInheritance(vault)`도 허용하지만 금고 소속과 계약 조건을 확인합니다.
+기존 팩토리의 금고는 기존 주소와 수동 수령 경로를 그대로 사용합니다.
+다중 토큰 계약은 현재 UI와 운영 배포의 대상이 아닙니다.
 
-## 빠른 시작
+## 로컬 실행
 
-### 1. 컨트랙트
-
-```shell
-forge build
-forge test        # 72 tests
-```
-
-로컬 체인에서 테스트 토큰을 배포하려면 `CHAIN_ID=31337` 이 강제됩니다.
-
-```shell
-anvil
-WLD_ADDRESS=<token addr> CHAIN_ID=31337 forge script script/DeployTestToken.s.sol:DeployTestToken --rpc-url http://127.0.0.1:8545 --private-key <anvil key>
-WLD_ADDRESS=<token addr> forge script script/DeployWLDFactory.s.sol:DeployWLDFactory --rpc-url http://127.0.0.1:8545 --private-key <anvil key>
-```
-
-### 2. Mini App
-
-```shell
+```sh
+npm ci
+pnpm --dir app install --frozen-lockfile
 cp app/.env.example app/.env
-# VITE_FACTORY_ADDRESS, VITE_WLD_ADDRESS, VITE_FACTORY_DEPLOY_BLOCK 입력
-pnpm --dir app install
+# 로컬 팩토리·토큰·RPC 주소를 app/.env에 지정
 pnpm --dir app dev
 ```
 
-`.env` 가 없거나 주소 형식이 틀리면 흰 화면 대신 설정 안내 화면이 표시됩니다.
+실제 World App 지갑 쓰기는 MiniKit 브리지 안에서만 가능합니다. 일반 브라우저는 공개 안내와
+World App 열기 링크를 표시합니다. `scripts/verify/run.sh all`은 별도 E2E 설정으로
+Anvil 테스트 체인, 실제 Pages 서명 검증 핸들러와 브라우저를 실행합니다.
 
-배포 후에는 반드시 아래 두 값을 맞출 것:
+## 검증과 배포
 
-- `VITE_FACTORY_ADDRESS` — 배포된 팩토리 주소
-- `VITE_FACTORY_DEPLOY_BLOCK` — `broadcast/<ChainId>/<Block>/run-latest.json` 의
-  `receipt.blockNumber`. 부정확하면 `VaultCreated` 로그 조회가 틀려서
-  상속인 금고 탐색이 누락됩니다.
-
-### 3. 알림 백엔드 (선택)
-
-`VITE_NOTIFY_BACKEND_URL` 이 비어 있으면 알림 카드 전체가 비활성화됩니다.
-자세한 내용은 [`backend/README.md`](backend/README.md) 참고.
-
-## 검증 명령어
-
-```shell
-forge fmt --check          # 포맷
-forge test -vvv            # 컨트랙트 테스트
-pnpm --dir app typecheck   # 타입
-pnpm --dir app lint        # 린트
-pnpm --dir app build       # 프로덕션 빌드
+```sh
+forge fmt --check
+forge test
+node scripts/gen-abi-errors.mjs --check
+pnpm --dir app typecheck
+pnpm --dir app lint
+pnpm --dir app build
+node scripts/test-notify-auth.mjs
+node scripts/test-notify-alerts.mjs
+node scripts/test-notify-db.mjs
+node scripts/test-transaction-confirmation.mjs
+node scripts/test-finalizer.mjs
+scripts/verify/run.sh all
 ```
 
-모두 `.github/workflows/ci.yml` 에서 자동 실행됩니다.
+main push는 GitHub Actions로 Pages와 Worker를 배포합니다. 공유 D1 마이그레이션과
+동일한 `SIWE_SECRET` 준비가 성공해야 두 배포가 실행됩니다. 공개 팩토리·토큰·기존
+팩토리 주소와 블록은 저장소 변수 및 배포 설정에 일치시킵니다. 키는 비공개 secret에만 저장합니다.
+프론트는 MiniKit 사용자 작업 해시를 공식 상태 API로 실제 거래 해시에 변환하고 성공 레시트를 확인합니다.
 
-## 컨트랙트 구성
-
-| 컨트랙트 | 역할 |
-| --- | --- |
-| `InheritanceVaultWLD` | WLD 전용 상속 금고. 펙토리가 생성합니다. |
-| `InheritanceVaultWLDFactoryOnePerOwner` | 주소당 금고 1개 강제. 슬롯 해제 지원. |
-| `InheritanceVaultTokens` | 허용목록 기반 다중 토큰 금고 (현재 UI 미연결). |
-| `InheritanceVaultTokensFactoryOnePerOwner` | 위 금고의 팩토리. |
-| `SafeERC20Lib` | 반환값 없는 비표준 토큰(USDT 스타일) 처리. |
-
-입금은 `deposit()` 없이 ERC20 `transfer` 로 금고 주소에 직접 보내는 방식입니다.
-
-## 알아둘 점
-
-- ETH 는 상속 대상이 아닙니다. `receive` 가 revert 하므로 정상 입금이 불가능하고,
-  `SELFDESTRUCT` 로 강제 입금된 ETH 만 `sweepEth` 로 회수할 수 있습니다.
-- 상속 대상이 아닌 오입금 ERC20 은 만기 후에도 `ownerRescueUnknownERC20` 로 회수할 수
-  있습니다. (만기 후 회수 경로가 없으면 잘못 전송된 토큰이 영구히 잠깁니다.)
-- WLD 금고는 만기 후 소유자가 `ping` 할 수 없습니다. 되살리기를 허용하면 상속이 무의미해집니다.
-- 금고는 주소당 1개입니다. 새 금고가 필요하면 만기 후 잔액을 비운 뒤
-  `releaseMyVault()` 로 슬롯을 해제해야 합니다.
-
-## 문서
-
-- [`docs/REVIEW_NOTES.md`](docs/REVIEW_NOTES.md) — World App 심사 대응 및 결정 사항
-- [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md) — 출시 전 점검 목록
-- [Foundry 문서](https://book.getfoundry.sh/)
+[백엔드 설정](backend/README.md), [보안 경계](SECURITY.md),
+[심사 안내](docs/REVIEW_NOTES.md), [출시 검증](docs/QA_CHECKLIST.md),
+[개인정보 처리](https://inheritance.pages.dev/privacy.html), [약관](https://inheritance.pages.dev/terms.html).

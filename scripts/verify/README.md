@@ -9,6 +9,7 @@ scripts/verify/run.sh              # 전체 (로컬 체인을 새로 만들어 �
 scripts/verify/run.sh e2e          # 브라우저 상태 전수 구동
 scripts/verify/run.sh ux           # 390×844 레이아웃 감사
 scripts/verify/run.sh stale        # 체인 끊김/복구
+scripts/verify/run.sh selection    # 금고 전환 중 거래 차단과 공유 링크 재로그인
 scripts/verify/run.sh mainnet      # 배포된 팩토리 읽기 경로
 scripts/verify/run.sh selectors    # 앱 ABI ↔ 배포 바이트코드 (로컬 불필요)
 ```
@@ -24,6 +25,7 @@ scripts/verify/run.sh selectors    # 앱 ABI ↔ 배포 바이트코드 (로컬 
 | `verify.mjs` (E2E) | 모든 상태를 실제로 조작하고, 각 단언을 `cast` 출력과 대조 | 계약에만 있고 앱에 없던 정산 잔액 회수, 라벨이 거짓말하던 인출 버튼, 200일 금고를 30일로 바꾸던 기간 필드, 자기 금고가 있는 사람에게 버려지던 상속 링크 |
 | `ux2.mjs` (UX) | 390×844, 계정 상태 8종 × 전 탭 — 넘침, 탭바 가림, 터치 영역, 빈 탭 | 연결로 남의 금고를 봤을 때 Owner 화법 온보딩이 튀어나오던 문제 |
 | `stale2.mjs` | 체인이 죽고 복구될 때 화면 | 체인 죽어도 15초 폴이 실패를 삼켜 "돈이 사라졌다" 고 보이던 문제 |
+| `vault-selection.mjs` | 두 팩토리 사이 금고 전환과 공유 링크 재로그인 후 실제 입금·청구 | 조회 중 이전 팩토리로 입금되는 문제와 세션 만료 후 공유 금고 선택이 풀리는 문제 |
 | `mainnet-read.mjs` | 앱의 실제 읽기 경로가 배포된 팩토리에서 동작하는가 | — |
 
 ## 지원 파일

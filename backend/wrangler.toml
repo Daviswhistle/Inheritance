@@ -14,7 +14,22 @@ migrations_dir = "migrations"
 
 [vars]
 RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public"
-# Optional: set to exact frontend origin to restrict CORS.
+# Exact session audience and allowed browser origin; authentication also applies without Origin.
 FRONTEND_ORIGIN = "https://inheritance.pages.dev"
+FACTORY_ADDRESS = "0xb74342FC15C504108cFD91366493590A9d570D26"
+# Keep the original factory trusted when FACTORY_ADDRESS advances to a reviewed release.
+LEGACY_FACTORY_ADDRESS = "0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88"
+WLD_ADDRESS = "0x2cfc85d8e48f8eab294be644d9e25c3030863003"
+# SIWE_SECRET is a secret, shared with Pages. Never put it in [vars].
 # Set your app id here or with: wrangler secret put WORLD_APP_ID
 # WORLD_APP_ID = "app_xxx"
+
+# Dedicated gas-only executor. The key is a Worker secret, never a frontend variable.
+FINALIZER_ENABLED = "true"
+FINALIZER_CHAIN_ID = "480"
+FINALIZER_BATCH_SIZE = "1"
+FINALIZER_SCAN_LIMIT = "3"
+FINALIZER_MAX_GAS = "250000"
+FINALIZER_MAX_FEE_GWEI = "0.01"
+FINALIZER_DAILY_GAS_CAP_ETH = "0.00001"
+FINALIZER_EXTRA_FEE_RESERVE_ETH = "0.000001"

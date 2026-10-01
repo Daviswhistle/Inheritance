@@ -27,6 +27,7 @@ export type ContractCall = {
 export type TxSubmission = {
   /** World App 은 user operation hash, 웹 폴백은 트랜잭션 해시. */
   hash?: string;
+  hashType: "transaction" | "user-operation";
   /** 폴백 실행 경로. 월드앱 안이면 항상 "minikit". */
   executedWith: string;
 };
@@ -118,7 +119,7 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
           userFacing: true,
         };
       }
-    return { ok: true, tx: { hash: data.userOpHash ?? data.transaction_hash, executedWith: result.executedWith } };
+    return { ok: true, tx: { hash: data.transaction_hash ?? data.userOpHash, hashType: data.transaction_hash ? "transaction" : "user-operation", executedWith: result.executedWith } };
   } catch (e) {
     const msg = unwrap(e);
     if (isUserRejection(msg)) {

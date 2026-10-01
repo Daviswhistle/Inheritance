@@ -192,6 +192,11 @@ check("결과 행이 없으면 실패로 잡는다 (낙관적 판정 금지)", (
   assert.equal(r.delivered, false);
 });
 
+check("다른 지갑의 성공 행은 요청한 지갑의 전달 근거가 아니다", () => {
+  const r = readDelivery({ success: true, result: [{ walletAddress: OWNER, sent: true }] }, HEIR);
+  assert.equal(r.delivered, false);
+});
+
 check("결과의 delivered:false 는 24시간 뒤에 다시 보낸다", () => {
   const now = Date.parse("2026-09-27T00:00:00Z");
   const prev = {};

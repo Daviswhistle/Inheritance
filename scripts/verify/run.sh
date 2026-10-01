@@ -17,6 +17,7 @@
 #   ux (ux2.mjs)       390x844 across 8 account states x every tab: overflow, content
 #                      hidden behind the tab bar, tap targets, empty tabs, stray CJK.
 #   stale (stale2.mjs) chain dies mid-session, then recovers.
+#   recovery           one failed identity read, restored controls and a real renewal.
 #   mainnet-read.mjs   the app's own read path against the deployed factory.
 #
 # Usage:
@@ -101,6 +102,18 @@ run_stage() {
       note "[7/8] 연결 두절 — 체인 죽음/복구"
       FACTORY="$FACTORY_ADDR" show_stage 3 node "$HERE/stale2.mjs" 2>&1
       ;;
+    recovery)
+      note "Role recovery — interrupted identity read and renewed timer"
+      show_stage 3 node "$HERE/role-recovery.mjs" 2>&1
+      ;;
+    selection)
+      note "Vault selection — verified routing and renewed shared-link sessions"
+      show_stage 4 node "$HERE/vault-selection.mjs" 2>&1
+      ;;
+    discovery)
+      note "Heir discovery — partial RPC failures and verified results on retry"
+      show_stage 8 node "$HERE/heir-discovery.mjs" 2>&1
+      ;;
     notify)
       note "[4/8] 알림 UX — 카운트다운 탭·자동 등록·신규 사용자 생성"
       FACTORY="$FACTORY_ADDR" show_stage 3 node "$HERE/notify-ux.mjs" 2>&1
@@ -132,7 +145,7 @@ else
       # stale 이 anvil 을 **재시작**한다(체인을 죽음/복구로 검증하므로). 그래서 마지막에
       # 둬야 한다. 앞에 두면 뒤 단계들이 초기화된 체인 — 그리고 다른 팩토리 주소 — 를
       # 상대로 돌아 조용히 실패한다. 실제로 그랬다.
-      for st in e2e ux notify cancelled rolematrix stale; do
+      for st in e2e ux notify cancelled rolematrix recovery selection discovery stale; do
         run_stage "$st" || fails=$((fails+1))
       done
       run_stage mainnet || fails=$((fails+1))

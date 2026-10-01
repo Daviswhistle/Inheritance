@@ -128,7 +128,7 @@ if (!up) process.exit(1);
 
 const mk = (pk, url) => launch({ pk, url });
 const connect = async (page) => {
-  await page.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await page.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5500);
 };
 const goto = (page, tab) =>

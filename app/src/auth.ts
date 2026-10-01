@@ -1,51 +1,71 @@
-/**
- * 서버가 검증한 로그인 세션.
- *
- * 왜 서버 세션이 필요한가 — 월드앱 미니앱 로그인은 SIWE 서명을 받지만, 서명을
- * **서버에서 검증하지 않으면** 그 서명을 누가 만들었는지 확인할 사람이 없다.
- * 규칙도 "Always verify the returned SIWE payload on your backend" 라고 명시한다.
- * 검증은 Pages Function(`/api/auth/verify`)이 하고, 여기서는 그 결과만 신뢰한다.
- *
- * 세션에는 검증된 주소만 담는다. 서명·메시지는 저장하지 않는다 — 로그인 한 번의
- * 목적은 "이 사람이 이 주소의 소유자임을 확인" 이고, 그 확인이 끝났으면 서명
- * 자체를 들고 다닐 필요가 없다.
- */
-
+/** Previously server-verified credentials stay in this tab, expire after one hour,
+ * and are reverified by the Worker on every notification request. A cached address
+ * alone (including legacy localStorage records) grants no notification access. */
 const SESSION_KEY = "wld-session";
 const ADDRESS_KEY = "wld-account";
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+type Session = { address: string; token: string; expiresAt: number };
+let memorySession: Session | null = null;
 
-/** 앱이 실제로 서빙되는 origin. 백엔드의 FRONTEND_ORIGIN 과 같아야 한다. */
 function origin(): string {
   return typeof location !== "undefined" ? location.origin : "";
 }
 
-function store(key: string, value: string | null) {
+function validSession(value: unknown): value is Session {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<Session>;
+  if (typeof session.address !== "string" || !ADDRESS_RE.test(session.address) || typeof session.token !== "string"
+    || typeof session.expiresAt !== "number" || session.expiresAt <= Date.now()) return false;
+  const parts = session.token.split(".");
+  if (parts.length !== 3 || parts[0] !== "v1" || !/^[A-Za-z0-9_-]+$/.test(parts[1]) || !/^[0-9a-f]{64}$/.test(parts[2])) return false;
   try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
+    // This checks local expiry/identity consistency; only the server verifies the HMAC.
+    const claims = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
+      sub?: string; aud?: string; iat?: number; exp?: number;
+    };
+    return claims.sub === session.address.toLowerCase() && claims.aud === origin()
+      && Number.isSafeInteger(claims.iat) && Number.isSafeInteger(claims.exp)
+      // Issuance uses the server clock. The Worker verifies its authenticated iat;
+      // a slow device clock must not reject a newly verified sign-in.
+      && claims.exp! - claims.iat! === 3600
+      && claims.exp! * 1000 === session.expiresAt;
   } catch {
-    // 임베디드 컨텍스트에서 localStorage 가 막힐 수 있다. 로그인 자체는
-    // 서버에서 이미 검증되었으므로, 저장 실패가 로그인 실패를 뜻하지 않는다.
-    void 0;
+    return false;
   }
 }
 
-/**
- * 서버에서 로그인 nonce 를 받아온다.
- *
- * 클라이언트가 직접 만들면 안 된다. 서명은 서버가 발급한 nonce 와 한 쌍으로만
- * 유효하므로, 클라이언트가 만든 nonce 는 서버가 검증할 수 없고(위조 가능),
- * 규칙 위반이기도 하다.
- *
- * 서버에 닿지 못하면(로컬 개발, Pages Functions 미배포) null 을 돌려준다. 이
- * 경우 호출자는 로그인을 진행할 수 있지만 **검증 안 됨** 을 명시해야 한다.
- */
+function readSession(): Session | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (raw) {
+      const session: unknown = JSON.parse(raw);
+      if (validSession(session)) return session;
+      clearSession();
+      return null;
+    }
+  } catch {
+    // Storage may be unavailable in embedded contexts. Memory lasts only this page.
+  }
+  if (validSession(memorySession)) return memorySession;
+  clearSession();
+  return null;
+}
+
+function saveSession(session: Session): void {
+  memorySession = session;
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* tab memory fallback */ }
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(ADDRESS_KEY);
+  } catch { /* optional legacy cleanup */ }
+}
+
 export async function fetchAuthNonce(): Promise<string | null> {
   try {
-    const r = await fetch("/api/auth/nonce", { headers: { accept: "application/json" } });
-    if (!r.ok) return null;
-    const j = (await r.json()) as { nonce?: string };
-    return j.nonce ?? null;
+    const response = await fetch("/api/auth/nonce", { headers: { accept: "application/json" }, cache: "no-store" });
+    if (!response.ok) return null;
+    const data = await response.json() as { nonce?: string };
+    return typeof data.nonce === "string" && /^[0-9a-f]{64}$/.test(data.nonce) ? data.nonce : null;
   } catch {
     return null;
   }
@@ -55,62 +75,101 @@ export type AuthResult =
   | { ok: true; address: string; verified: boolean }
   | { ok: false; error: string; userFacing: boolean };
 
-/**
- * 월드앱에 로그인을 요청하고, 서버에서 서명을 검증받는다.
- *
- * `verified` 가 false 인 성공은 **서버 검증 없이 로그인한 것**을 뜻한다. 서버가
- * 닿지 않는 환경(로컬 개발)에서만 발생해야 하며, 그 사실을 숨기지 않기 위해
- * 결과에 담아서 돌려준다.
- */
-export async function signInWithWorldApp(signature: (nonce: string) => Promise<{ ok: true; address: string; message: string; signature: string } | { ok: false; error: string; userFacing: boolean }>): Promise<AuthResult> {
+export async function signInWithWorldApp(signature: (nonce: string) => Promise<{
+  ok: true; address: string; message: string; signature: string;
+} | { ok: false; error: string; userFacing: boolean }>): Promise<AuthResult> {
   const nonce = await fetchAuthNonce();
-  if (!nonce) {
-    return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
-  }
-
+  if (!nonce) return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
   const signed = await signature(nonce);
   if (!signed.ok) return signed;
-
   try {
-    const r = await fetch("/api/auth/verify", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        nonce,
-        payload: { message: signed.message, signature: signed.signature, address: signed.address },
-      }),
+    const response = await fetch("/api/auth/verify", {
+      method: "POST", headers: { "content-type": "application/json" }, cache: "no-store",
+      body: JSON.stringify({ nonce, payload: { message: signed.message, signature: signed.signature, address: signed.address } }),
     });
-    const j = (await r.json()) as { isValid?: boolean; address?: string; message?: string };
-    if (!r.ok || !j.isValid || !j.address) {
-      return { ok: false, error: j.message || "Signature verification failed", userFacing: true };
+    const data = await response.json() as {
+      isValid?: boolean; address?: string; token?: string; expiresAt?: number; message?: string;
+    };
+    if (!response.ok || !data.isValid || typeof data.address !== "string" || data.address.toLowerCase() !== signed.address.toLowerCase()) {
+      return { ok: false, error: data.message || "Signature verification failed", userFacing: true };
     }
-    // 서명이 가리키는 주소와 서명 요청 시 고른 주소가 같은지 확인한다.
-    if (j.address.toLowerCase() !== signed.address.toLowerCase()) {
-      return { ok: false, error: "The signed address does not match", userFacing: true };
-    }
-    store(ADDRESS_KEY, j.address);
-    store(SESSION_KEY, JSON.stringify({ address: j.address, at: Date.now() }));
-    return { ok: true, address: j.address, verified: true };
+    const session = { address: data.address, token: data.token, expiresAt: data.expiresAt };
+    if (!validSession(session)) return { ok: false, error: "The sign-in server returned an invalid session", userFacing: true };
+    saveSession(session);
+    return { ok: true, address: session.address, verified: true };
   } catch {
     return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
   }
 }
 
-/** 저장된 세션 주소. 없으면 null. */
+/** Restore the address only when the tab holds a consistent, unexpired session. */
 export function readSessionAddress(): string | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const j = JSON.parse(raw) as { address?: string };
-    return j.address ?? null;
-  } catch {
-    return null;
-  }
+  return readSession()?.address ?? null;
 }
 
-export function clearSession() {
-  store(SESSION_KEY, null);
-  store(ADDRESS_KEY, null);
+export function clearSession(): void {
+  memorySession = null;
+  try { sessionStorage.removeItem(SESSION_KEY); } catch { /* storage may be blocked */ }
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(ADDRESS_KEY);
+  } catch { /* legacy storage may be blocked */ }
+}
+
+export async function notificationFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const session = readSession();
+  if (!session) {
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("inheritance:session-expired"));
+    return new Response(JSON.stringify({ status: "error", message: "Your sign-in expired. Sign in again." }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${session.token}`);
+  const response = await fetch(url, { ...init, headers, cache: "no-store", redirect: "error" });
+  if (response.status === 401) {
+    // A request from the previous login may finish after a successful reconnect.
+    const current = readSession();
+    if (!current || current.token === session.token) {
+      clearSession();
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("inheritance:session-expired"));
+    }
+  }
+  return response;
+}
+
+export type RegisteredVaultWatcher = { vaultAddress: string; [key: string]: unknown };
+
+/** Follow bounded server pages. A capped scan is explicitly incomplete; malformed
+ * or nonadvancing cursors fail instead of quietly dropping registered vaults. */
+export async function fetchRegisteredVaults(baseUrl: string, maxPages = 25): Promise<{
+  watchers: RegisteredVaultWatcher[]; truncated: boolean;
+}> {
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1) throw new Error("Invalid notification page limit");
+  const endpoint = new URL(`${baseUrl.replace(/\/$/, "")}/api/notifications`, origin());
+  const watchers = new Map<string, RegisteredVaultWatcher>();
+  let cursor: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const url = new URL(endpoint);
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const response = await notificationFetch(url.toString(), { headers: { accept: "application/json" } });
+    const data = await response.json() as { status?: string; message?: string; watchers?: unknown; nextCursor?: unknown };
+    if (!response.ok || data.status !== "success") throw new Error(data.message || "Could not load registered vaults");
+    if (!Array.isArray(data.watchers)) throw new Error("Invalid registered vault list");
+    for (const value of data.watchers) {
+      if (!value || typeof value !== "object" || typeof value.vaultAddress !== "string" || !ADDRESS_RE.test(value.vaultAddress)) {
+        throw new Error("Invalid registered vault list");
+      }
+      watchers.set(value.vaultAddress.toLowerCase(), value as RegisteredVaultWatcher);
+    }
+    // Older/local mock responses omit nextCursor to indicate a complete scan.
+    if (data.nextCursor === undefined || data.nextCursor === null) return { watchers: [...watchers.values()], truncated: false };
+    if (typeof data.nextCursor !== "string" || !ADDRESS_RE.test(data.nextCursor)) throw new Error("Invalid registered vault cursor");
+    const next = data.nextCursor.toLowerCase();
+    if (cursor && next <= cursor) throw new Error("Registered vault cursor did not advance");
+    cursor = next;
+  }
+  return { watchers: [...watchers.values()], truncated: true };
 }
 
 export { origin as authOrigin };

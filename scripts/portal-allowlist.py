@@ -7,9 +7,10 @@
 "미저장"으로 오진하고, 대시보드를 직접 만지라诱导하게 된다. 실제로는 저장돼 있었다.
 쓰기 응답을 믿지 말고 GraphQL 로 다시 읽어 확인한다.
 
-앱이 실제로 트랜잭션을 보내는 주소는 두 곳이다:
+앱이 실제로 트랜잭션을 보내는 주소는 세 곳이다:
   1. WLD 토큰  — 입금 시 approve 의 대상
-  2. 팩토리    — deposit / pingMyVault / fileClaimFor / finalizeClaimFor
+  2. 현재 팩토리 — 새 금고 생성과 deposit / pingMyVault / fileClaimFor / finalizeClaimFor
+  3. 기존 팩토리 — 해당 금고의 관리와 수동 수령
 하나라도 없으면 백엔드가 invalid_contract 로 막는다.
 
 주의: urllib 로 이 GraphQL 엔드포인트는 403 이 된다(curl 은 된다). 환경에 따라
@@ -32,7 +33,8 @@ ENDPOINTS = (
 # 팩토리를 갈아끼울 때 여기도 같이 갱신해야 한다. 안 갱신하면 이 스크립트가 옛 주소를
 # "누락" 으로 진단하고 되살리려 시도한다 — 실제로 교체된 팩토리를 allowlist 에
 # 되돌릴 뻔했다.
-FACTORY = "0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88"
+FACTORY = "0xb74342FC15C504108cFD91366493590A9d570D26"
+LEGACY_FACTORY = "0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88"
 WLD = "0x2cfc85d8e48f8eab294be644d9e25c3030863003"
 META_ID = "meta_9cf3b324ec9a1838a56c5b6d98be8674"
 
@@ -41,6 +43,7 @@ META_ID = "meta_9cf3b324ec9a1838a56c5b6d98be8674"
 REQUIRED = {
     WLD.lower(): "WLD 토큰 (approve 대상)",
     FACTORY.lower(): "팩토리 (입금/갱신/신청/수령)",
+    LEGACY_FACTORY.lower(): "기존 금고 팩토리 (수동 수령 포함)",
 }
 
 READ_QUERY = "{ app { app_metadata { id contracts permit2_tokens associated_domains } } }"
@@ -103,7 +106,7 @@ def main() -> int:
     if "errors" in res:
         print("  읽기 실패:", json.dumps(res["errors"])[:200])
         return 1
-    meta = res["data"]["app"][0]["app_metadata"][0]
+    meta = next(m for app in res["data"]["app"] for m in app["app_metadata"] if m["id"] == META_ID)
     stored = {a.lower() for a in (meta.get("contracts") or [])}
 
     print("=== 저장된 allowlist (GraphQL 직접 조회) ===")
@@ -118,14 +121,14 @@ def main() -> int:
         print(f"  누락 {len(missing)}건 등록 시도: {missing}")
         out = gql(
             SET_MUTATION,
-            {"id": META_ID, "contracts": [WLD, FACTORY], "permit": [WLD]},
+            {"id": META_ID, "contracts": list(dict.fromkeys([*(meta.get("contracts") or []), WLD, FACTORY, LEGACY_FACTORY])), "permit": list(dict.fromkeys([*(meta.get("permit2_tokens") or []), WLD]))},
         )
         if "errors" in out:
             print("  실패:", json.dumps(out["errors"])[:300])
             return 1
 
     # 쓰기 응답을 믿지 않고 다시 읽어 확정한다
-    after = gql(READ_QUERY)["data"]["app"][0]["app_metadata"][0]
+    after = next(m for app in gql(READ_QUERY)["data"]["app"] for m in app["app_metadata"] if m["id"] == META_ID)
     final = {a.lower() for a in (after.get("contracts") or [])}
     print()
     print("=== 재조회로 확정 ===")
@@ -135,7 +138,7 @@ def main() -> int:
         ok &= hit
         print(f"  {label:28} {'등록됨' if hit else '누락'}")
     print()
-    print("  판정:", "두 주소 모두 등록 — 트랜잭션 차단 위험 없음" if ok else "누락 있음")
+    print("  판정:", "필수 주소 등록 확인" if ok else "누락 있음")
     return 0 if ok else 1
 
 

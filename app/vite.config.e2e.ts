@@ -2,8 +2,16 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import path from "path";
-import { verifySiweMessage } from "@worldcoin/minikit-js/siwe";
-import { issueNonce, verifyNonce } from "./functions/_lib/siwe";
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import { onRequestGet as getNonce } from "./functions/api/auth/nonce";
+import { onRequestPost as verifyLogin } from "./functions/api/auth/verify";
+import { preflight, type Env } from "./functions/_lib/siwe";
+
+// The local fixture has one factory. Never inherit the production legacy address
+// from app/.env; a dual-factory test must configure its own local address explicitly.
+process.env.VITE_LEGACY_FACTORY_ADDRESS ??= "";
+process.env.VITE_LEGACY_FACTORY_DEPLOY_BLOCK ??= "";
 
 /**
  * E2E 용 Pages Functions 대체.
@@ -17,54 +25,52 @@ import { issueNonce, verifyNonce } from "./functions/_lib/siwe";
  * 틀리면 여기서 거부된다.
  */
 function localAuth(): Plugin {
-  const SECRET = "e2e-only-secret-not-a-real-credential";
+  // A test-only in-memory D1 adapter. The real Pages handlers issue and consume
+  // nonces and return the same signed session contract as production.
+  const db = new DatabaseSync(":memory:");
+  db.exec(readFileSync(path.resolve(__dirname, "../backend/migrations/0003_auth.sql"), "utf8"));
+  const DB: NonNullable<Env["DB"]> = {
+    prepare(sql) {
+      return {
+        bind(...args) {
+          return {
+            async run() { return db.prepare(sql).run(...args); },
+            async first<T>() { return (db.prepare(sql).get(...args) as T | undefined) ?? null; },
+          };
+        },
+      };
+    },
+  };
   return {
     name: "e2e-local-auth",
     configureServer(server) {
-      server.middlewares.use("/api/auth/nonce", async (_req, res) => {
-        const n = await issueNonce(SECRET);
-        res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ status: "success", nonce: n.value, expiresAt: n.expiresAt }));
-      });
-      server.middlewares.use("/api/auth/verify", async (req, res) => {
-        let raw = "";
-        for await (const chunk of req) raw += chunk;
-        res.setHeader("content-type", "application/json");
-        let body: { payload?: { message?: string; signature?: string }; nonce?: string };
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          res.statusCode = 400;
-          res.end(JSON.stringify({ status: "error", message: "bad body" }));
-          return;
-        }
-        const { message, signature } = body.payload || {};
-        if (!message || !signature || !body.payload?.address || !body.nonce) {
-          res.statusCode = 400;
-          res.end(JSON.stringify({ status: "error", message: "missing message/signature/address/nonce" }));
-          return;
-        }
-        if (!(await verifyNonce(SECRET, body.nonce))) {
-          res.statusCode = 401;
-          res.end(JSON.stringify({ status: "error", message: "bad nonce" }));
-          return;
-        }
-        try {
-          const v = await verifySiweMessage({ message, signature, address: body.payload.address }, body.nonce);
-          const d = v as { isValid?: boolean; siweMessageData?: { address?: string; domain?: string } };
-          res.end(
-            JSON.stringify({
-              status: "success",
-              isValid: Boolean(d.isValid),
-              address: d.siweMessageData?.address,
-              domain: d.siweMessageData?.domain,
-            }),
-          );
-        } catch (e) {
-          res.statusCode = 401;
-          res.end(JSON.stringify({ status: "error", message: (e as Error).message }));
-        }
-      });
+      for (const [endpoint, method, handler] of [
+        ["/api/auth/nonce", "GET", getNonce],
+        ["/api/auth/verify", "POST", verifyLogin],
+      ] as const) {
+        server.middlewares.use(endpoint, async (req, res) => {
+          try {
+            const frontendOrigin = `http://${req.headers.host}`;
+            const env: Env = { DB, SIWE_SECRET: "e2e-only-secret-not-a-real-credential", FRONTEND_ORIGIN: frontendOrigin };
+            const headers = new Headers();
+            if (typeof req.headers.origin === "string") headers.set("Origin", req.headers.origin);
+            let raw = "";
+            for await (const chunk of req) raw += chunk;
+            const request = new Request(frontendOrigin + endpoint, {
+              method: req.method, headers, ...(req.method === "POST" ? { body: raw } : {}),
+            });
+            const response = req.method === "OPTIONS" ? preflight(request.headers.get("Origin"), env)
+              : req.method === method ? await handler({ request, env }) : new Response(null, { status: 405 });
+            res.statusCode = response.status;
+            response.headers.forEach((value, key) => res.setHeader(key, value));
+            res.end(await response.text());
+          } catch {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ status: "error", message: "Local auth failed" }));
+          }
+        });
+      }
+      server.httpServer?.once("close", () => db.close());
     },
   };
 }

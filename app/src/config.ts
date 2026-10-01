@@ -22,6 +22,9 @@ for (const key of REQUIRED_ADDRESSES) {
     problems.push(`${key} is not a valid EVM address: ${value}`);
   }
 }
+if (raw.VITE_LEGACY_FACTORY_ADDRESS && !ADDRESS_RE.test(raw.VITE_LEGACY_FACTORY_ADDRESS.trim())) {
+  problems.push("The earlier vault configuration is invalid.");
+}
 
 /** 환경변수 문제로 앱을 시작할 수 없을 때 채워지는 안내 문자열. null 이면 정상. */
 export const CONFIG_ERROR: string | null =
@@ -50,6 +53,9 @@ export const EXPLORER = "https://worldscan.org";
 // 잘못된 설정일 때는 빈 문자열을 쓴다. CONFIG_ERROR 가 있는 상태에서는
 // App 이 설정 안내 화면만 그리기 때문에 이 값들이 실제 호출에 쓰이지는 않는다.
 export const FACTORY_ADDRESS = (raw.VITE_FACTORY_ADDRESS ?? "").trim();
+/** The previous immutable factory remains accessible for existing vaults. */
+export const LEGACY_FACTORY_ADDRESS = (raw.VITE_LEGACY_FACTORY_ADDRESS ?? "").trim();
+export const LEGACY_FACTORY_DEPLOY_BLOCK = Number(raw.VITE_LEGACY_FACTORY_DEPLOY_BLOCK) || null;
 export const WLD_ADDRESS = (raw.VITE_WLD_ADDRESS ?? "").trim();
 export const RPC_URL =
   (raw.VITE_RPC ?? "").trim() || "https://worldchain-mainnet.g.alchemy.com/public";

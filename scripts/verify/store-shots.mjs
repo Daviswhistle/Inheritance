@@ -12,7 +12,7 @@
 import { launch, ACCOUNTS, APP } from "/home/davis/world-inheritance-miniapp/scripts/verify/drv.mjs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 
 const F = process.env.FACTORY;
 if (!F) { console.error("FACTORY 필요"); process.exit(2); }
@@ -62,9 +62,21 @@ const goto = async (p, t) => {
 
 const connect = async (p) => {
   await sleep(3000);
-  await p.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
+  await p.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(7000);
 };
+const capture = async (p, name) => {
+  const shot = await p.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+  writeFileSync(`/tmp/wld-verify/shots/${name}.png`, Buffer.from(shot.data, "base64"));
+};
+
+// The public welcome screen is the store's first impression.
+{
+  const p = await launch({ pk: ACCOUNTS.a1.pk, url: APP, preload: PRELOAD });
+  await sleep(2000);
+  await capture(p, "store-0-welcome");
+  await p.close();
+}
 
 // ── 1. 첫 진입 (금고 만들기) ──────────────────────────────────────────
 // 폼을 **빈 채로** 찍지 않는다. 그렇게 하면 이 한 장이 "모든 것이 회색으로 죽은 화면"
@@ -83,7 +95,7 @@ const connect = async (p) => {
   })()`);
   if (String(set).trim() !== "ok") console.log(`  상속인 입력 실패: ${set}`);
   await sleep(4000);
-  await p.shot("store-1-create");
+  await capture(p, "store-1-create");
   await p.close();
 }
 
@@ -104,17 +116,17 @@ console.log("  금고 잔액:", BigInt(bal.split(" ")[0] || 0) / 10n ** 18n, "WL
 // 그래서 카운트다운이 흐르지 않은 채 30d 0h 0m 0s 가 그대로 찍혔다.
 const adv = cast(["rpc", "evm_increaseTime", "216000", "--rpc-url", RPC]);
 if (!adv.ok) console.log(`  시간 이동 실패: ${adv.out.slice(0, 100)}`);
-cast(["rpc", "evm_mine", "1", "--rpc-url", RPC]);
+cast(["rpc", "evm_mine", "--rpc-url", RPC]);
 await sleep(1000);
 {
   const p = await launch({ pk: owner.pk, url: APP, preload: PRELOAD });
   await connect(p);
   await goto(p, "vault");
   await sleep(1800);
-  await p.shot("store-2-countdown");
+  await capture(p, "store-2-countdown");
   await goto(p, "inherit");
   await sleep(1800);
-  await p.shot("store-3-steps");
+  await capture(p, "store-3-steps");
   await p.close();
 }
 

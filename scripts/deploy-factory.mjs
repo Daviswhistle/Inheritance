@@ -69,6 +69,8 @@ log(`\n  배포자 ${from}`);
 log(`  체인 ${CHAIN_ID}, RPC ${RPCS.join(" / ")}`);
 
 const bal = await anyCall("잔액", (p) => p.getBalance(from));
+const actualChain = await anyCall("chain ID", (p) => p.send("eth_chainId", []));
+check("RPC 의 실제 체인이 World Chain 이다", BigInt(actualChain) === BigInt(CHAIN_ID));
 log(`  잔액 ${ethers.formatEther(bal)} ETH`);
 const nonce = await anyCall("nonce", (p) => p.getTransactionCount(from));
 log(`  nonce ${nonce}`);
@@ -100,15 +102,27 @@ if (est && est < MIN_CREATE_GAS) {
 
 const fee = await anyCall("fee", (p) => p.getFeeData());
 const cost = GAS * (fee.maxFeePerGas ?? 0n);
+check("유효한 현재 가스 가격이다", (fee.maxFeePerGas ?? 0n) > 0n && (fee.maxFeePerGas ?? 0n) < ethers.parseUnits("1", "gwei"));
 check("잔액이 충분하다", bal > cost * 2n, `${ethers.formatEther(bal)} ETH 보유, 상한 ${ethers.formatEther(cost)} ETH`);
+
+if (fail) { console.error("  배포 사전 검증 실패 — 전송하지 않습니다"); process.exit(1); }
 
 const tx = await wallet.signTransaction({
   chainId: CHAIN_ID, nonce, to: null, data: createCode, gasLimit: GAS, type: 2,
-  maxFeePerGas: fee.maxFeePerGas ?? 0x2e5f3a1000n,
-  maxPriorityFeePerGas: fee.maxPriorityFeePerGas ?? 0x5f5e100n,
+  maxFeePerGas: fee.maxFeePerGas,
+  maxPriorityFeePerGas: fee.maxPriorityFeePerGas ?? 0n,
 });
 const hash = ethers.keccak256(tx);
 log(`\n  서명 ${hash}`);
+
+
+const oracle = new ethers.Interface(["function getL1Fee(bytes) view returns (uint256)"]);
+const l1Fee = await anyCall("L1 data fee", async p => {
+  const out = await p.call({ to: "0x420000000000000000000000000000000000000F", data: oracle.encodeFunctionData("getL1Fee", [tx]) });
+  return BigInt(oracle.decodeFunctionResult("getL1Fee", out)[0]);
+});
+check("실행 및 L1 수수료를 충당한다", bal > cost + l1Fee * 2n, `${ethers.formatEther(l1Fee)} ETH data fee estimate`);
+if (fail) { console.error("  수수료 검증 실패 — 전송하지 않습니다"); process.exit(1); }
 
 if (process.env.DRY_RUN) {
   log("  DRY_RUN — 브로드캐스트하지 않는다");
@@ -178,7 +192,9 @@ check("0 주소 상속인은 거부된다", bad.out === undefined,
     ? "InvalidAddress" : JSON.stringify(bad.err).slice(0, 70));
 
 if (fail === 0) {
-  const row = `\n| ${new Date().toISOString().slice(0, 10)} | \`${deployed}\` | ${receipt.blockNumber} | \`${hash}\` | ${receipt.gasUsed} | ${ethers.formatEther(BigInt(receipt.gasUsed) * (fee.maxFeePerGas ?? 0n))} ETH |\n`;
+  const rawReceipt = await anyCall("receipt fees", p => p.send("eth_getTransactionReceipt", [hash]));
+  const paid = BigInt(receipt.gasUsed) * BigInt(receipt.gasPrice) + BigInt(rawReceipt.l1Fee || 0);
+  const row = `\n| ${new Date().toISOString().slice(0, 10)} | \`${deployed}\` | ${receipt.blockNumber} | \`${hash}\` | ${receipt.gasUsed} | ${ethers.formatEther(paid)} ETH (execution + L1) |\n`;
   let cur = "";
   try { cur = readFileSync(DEPLOYMENTS, "utf8"); } catch {}
   if (!cur.includes("## 메인넷")) {

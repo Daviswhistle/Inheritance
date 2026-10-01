@@ -1,11 +1,15 @@
+import { DEFAULT_FRONTEND_ORIGIN, takeCooldown, takeRateLimit, verifySession } from "./session.mjs";
+import { runFinalizerCycle, readFinalizerHealth } from "./finalizer.mjs";
+
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
 // 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
 // (한동안 옛 코드가 도는 것 같아 이 필드로 판별했다).
-const CODE_VERSION = "two-step-1";
+const CODE_VERSION = "inheritance-release-2";
 const SEND_NOTIFICATION_URL = "https://developer.world.org/api/v2/minikit/send-notification";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const WATCHER_PAGE_SIZE = 4;
 
 // 두 단계 상속 컨트랙트(InheritanceVaultWLD)의 함수 셀렉터.
 //
@@ -20,6 +24,8 @@ const SELECTORS = {
   OWNER: "0x8da5cb5b",              // owner()
   HEIR: "0x91f2ebb8",               // heir()
   WLD: "0xde061d66",                // WLD()
+  FACTORY: "0xc45a0155",            // factory()
+  VAULT_OF: "0x0709df45",           // vaultOf(address)
   BALANCE_OF: "0x70a08231",         // balanceOf(address)
   IS_EXPIRED: "0x2f13b60c",         // isExpired()          카운트다운 종료, 상속인 미신청
   CLAIM_PENDING: "0x03a9f06e",      // claimPending()       상속인 신청함
@@ -53,6 +59,15 @@ CREATE TABLE IF NOT EXISTS watchers (
 let schemaReady = null;
 
 const nowIso = () => new Date().toISOString();
+
+class HttpError extends Error {
+  constructor(status, message, headers = {}, code = null) {
+    super(message);
+    this.status = status;
+    this.headers = headers;
+    this.code = code;
+  }
+}
 
 /**
  * 알림 dedupe 상태를 읽는다.
@@ -88,7 +103,7 @@ const padAddress = (address) => {
 const encodeBalanceOf = (address) => `${SELECTORS.BALANCE_OF}${padAddress(address)}`;
 
 const decodeAddress = (hex) => {
-  if (typeof hex !== "string" || !hex.startsWith("0x") || hex.length < 42) {
+  if (typeof hex !== "string" || !/^0x0{24}[0-9a-fA-F]{40}$/.test(hex)) {
     // 이 주소에 컨트랙트가 없거나 함수 호출이 revert 했다. eth_call 은 둘 다 빈
     // 결과를 돌려주므로 구분되지 않는다 — 어느 쪽이든 "여기에 금고가 없다" 고
     // 말하는 게 호출자에게 쓸모 있는 답이다.
@@ -111,21 +126,11 @@ const resolveCors = (request, env) => {
   const origin = request.headers.get("Origin");
   if (!origin) return { allowed: true, headers: {} };
 
-  const allowedOrigin = (env.FRONTEND_ORIGIN || "").trim();
+  const allowedOrigin = (env.FRONTEND_ORIGIN || DEFAULT_FRONTEND_ORIGIN).trim();
   const base = {
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   };
-
-  if (!allowedOrigin) {
-    return {
-      allowed: true,
-      headers: {
-        ...base,
-        "Access-Control-Allow-Origin": "*",
-      },
-    };
-  }
 
   if (origin !== allowedOrigin) {
     return { allowed: false, headers: {} };
@@ -146,6 +151,7 @@ const jsonResponse = (status, payload, corsHeaders = {}) => {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
       ...corsHeaders,
     },
   });
@@ -153,6 +159,7 @@ const jsonResponse = (status, payload, corsHeaders = {}) => {
 
 const readJson = async (request) => {
   const text = await request.text();
+  if (text.length > 8192) throw new Error("Request body is too large");
   if (!text) return {};
   try {
     return JSON.parse(text);
@@ -183,6 +190,7 @@ const rpc = async (env, method, params = []) => {
       method,
       params,
     }),
+    signal: AbortSignal.timeout(20_000),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -192,8 +200,23 @@ const rpc = async (env, method, params = []) => {
   return data.result;
 };
 
-const ethCall = async (env, to, data) => {
-  return rpc(env, "eth_call", [{ to, data }, "latest"]);
+const ethCall = async (env, to, data, blockTag = "latest") => {
+  return rpc(env, "eth_call", [{ to, data }, blockTag]);
+};
+
+// Latest state gates access and sending. Only finalized state can permanently
+// retire a watcher; a manual payout or slot release can disappear before finality.
+const terminalFinalized = async (env, identity, released = false) => {
+  try {
+    if (released) {
+      const mapped = decodeAddress(await ethCall(env, identity.factoryAddress,
+        SELECTORS.VAULT_OF + padAddress(identity.ownerAddress), "finalized"));
+      return mapped !== identity.vaultAddress;
+    }
+    return decodeUint(await ethCall(env, identity.vaultAddress, SELECTORS.CLAIMED_AT, "finalized")) > 0n;
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -221,12 +244,51 @@ const readUint = async (env, to, selector, fallback = null) => {
  * 두 단계 상속이라 "지금 돈을 뺄 수 있나" 를 뜻하는 단일 불리언으로는 부족하다.
  * 누구에게 무엇을 알릴지가 이 값들에 달려 있으므로 전부 읽는다.
  */
-const getVaultSnapshot = async (env, vaultAddress) => {
+const getVaultIdentity = async (env, vaultAddress) => {
   const vault = normalizeAddress(vaultAddress);
   if (!vault) throw new Error("Invalid vault address");
+  const factory = normalizeAddress(env.FACTORY_ADDRESS);
+  const legacyFactory = normalizeAddress(env.LEGACY_FACTORY_ADDRESS);
+  const wld = normalizeAddress(env.WLD_ADDRESS);
+  if (!factory || factory === ZERO_ADDRESS || !wld || wld === ZERO_ADDRESS) {
+    throw new HttpError(503, "Canonical vault configuration is missing");
+  }
+  const [ownerAddress, heirAddress, factoryAddress, tokenAddress, claimedAt] = await Promise.all([
+    ethCall(env, vault, SELECTORS.OWNER).then(decodeAddress),
+    ethCall(env, vault, SELECTORS.HEIR).then(decodeAddress),
+    ethCall(env, vault, SELECTORS.FACTORY).then(decodeAddress),
+    ethCall(env, vault, SELECTORS.WLD).then(decodeAddress),
+    // Settlement clears heir. Its timestamp must be known before granting heir access.
+    ethCall(env, vault, SELECTORS.CLAIMED_AT).then(decodeUint),
+  ]);
+  if (ownerAddress === ZERO_ADDRESS
+    || (factoryAddress !== factory && (!legacyFactory || factoryAddress !== legacyFactory)) || tokenAddress !== wld) {
+    throw new HttpError(400, "Vault is not from the configured WLD factory");
+  }
+  const registeredVault = decodeAddress(await ethCall(env, factoryAddress, SELECTORS.VAULT_OF + padAddress(ownerAddress)));
+  if (registeredVault !== vault) {
+    throw Object.assign(new HttpError(400, "Vault is not the owner's current factory vault", {}, "vault_not_current"), {
+      identity: { vaultAddress: vault, ownerAddress, factoryAddress },
+    });
+  }
+  if (heirAddress === ZERO_ADDRESS && claimedAt === 0n) {
+    throw new HttpError(400, "A vault without an heir must have a completed claim");
+  }
+  return { vaultAddress: vault, ownerAddress, heirAddress, factoryAddress, tokenAddress, claimedAt };
+};
 
-  const ownerAddress = decodeAddress(await ethCall(env, vault, SELECTORS.OWNER));
-  const heirAddress = decodeAddress(await ethCall(env, vault, SELECTORS.HEIR));
+const requireVaultAccess = async (env, vaultAddress, walletAddress, ownerOnly = false) => {
+  const identity = await getVaultIdentity(env, vaultAddress);
+  if (!addrEq(walletAddress, identity.ownerAddress)
+    && (ownerOnly || identity.claimedAt > 0n || !addrEq(walletAddress, identity.heirAddress))) {
+    throw new HttpError(403, ownerOnly ? "Only the vault owner can disable reminders" : "Wallet is not the vault owner or heir");
+  }
+  return identity;
+};
+
+const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
+  const checked = identity || await getVaultIdentity(env, vaultAddress);
+  const { vaultAddress: vault, ownerAddress, heirAddress, tokenAddress } = checked;
 
   const [isExpired, claimPending, claimableNow, cancelled, claimedAt,
     challengeEndsAt, timeRemaining, heartbeatInterval] = await Promise.all([
@@ -234,18 +296,11 @@ const getVaultSnapshot = async (env, vaultAddress) => {
     readFlag(env, vault, SELECTORS.CLAIM_PENDING, null),
     readFlag(env, vault, SELECTORS.CLAIMABLE_NOW, null),
     readFlag(env, vault, SELECTORS.CANCELLED, null),
-    readUint(env, vault, SELECTORS.CLAIMED_AT, null),
+    checked.claimedAt,
     readUint(env, vault, SELECTORS.CHALLENGE_ENDS_AT, null),
     readUint(env, vault, SELECTORS.TIME_REMAINING, null),
     readUint(env, vault, SELECTORS.HEARTBEAT_INTERVAL, null),
   ]);
-
-  let tokenAddress = null;
-  try {
-    tokenAddress = decodeAddress(await ethCall(env, vault, SELECTORS.WLD));
-  } catch {
-    tokenAddress = null;
-  }
 
   let vaultBalance = 0n;
   if (tokenAddress && tokenAddress !== ZERO_ADDRESS) {
@@ -361,7 +416,8 @@ const getWatcherByVault = async (env, vaultAddress) => {
         last_vault_balance,
         notified_heir_address,
         notified_at,
-        last_error
+        last_error,
+        alerts
       FROM watchers
       WHERE vault_address = ?
       LIMIT 1
@@ -373,42 +429,25 @@ const getWatcherByVault = async (env, vaultAddress) => {
   return row ? rowToWatcher(row) : null;
 };
 
-const listWatchers = async (env, onlyActive = false) => {
-  const sql = onlyActive
-    ? `
-      SELECT
-        vault_address,
-        owner_address,
-        heir_address,
-        active,
-        created_at,
-        updated_at,
-        last_checked_at,
-        last_claimable,
-        last_vault_balance,
-        notified_heir_address,
-        notified_at,
-        last_error
-      FROM watchers
-      WHERE active = 1
-    `
-    : `
-      SELECT
-        vault_address,
-        owner_address,
-        heir_address,
-        active,
-        created_at,
-        updated_at,
-        last_checked_at,
-        last_claimable,
-        last_vault_balance,
-        notified_heir_address,
-        notified_at,
-        last_error
-      FROM watchers
-    `;
-  const result = await env.DB.prepare(sql).all();
+const listWatchers = async (env, onlyActive = false, walletAddress = null, page = null) => {
+  const conditions = [];
+  const bindings = [];
+  if (onlyActive) conditions.push("active = 1");
+  if (walletAddress) {
+    conditions.push("(owner_address = ? OR heir_address = ?)");
+    bindings.push(walletAddress, walletAddress);
+  }
+  if (page?.after) {
+    conditions.push("vault_address > ?");
+    bindings.push(page.after);
+  }
+  if (page) bindings.push(page.limit);
+  const sql = `SELECT vault_address, owner_address, heir_address, active, created_at, updated_at,
+    last_checked_at, last_claimable, last_vault_balance, notified_heir_address, notified_at, last_error, alerts
+    FROM watchers ${conditions.length ? "WHERE " + conditions.join(" AND ") : ""}
+    ${page ? "ORDER BY vault_address ASC LIMIT ?" : onlyActive && !walletAddress ? "ORDER BY COALESCE(last_checked_at,created_at),vault_address LIMIT 2" : ""}`;
+  const statement = env.DB.prepare(sql);
+  const result = await (bindings.length ? statement.bind(...bindings) : statement).all();
   return (result.results || []).map(rowToWatcher);
 };
 
@@ -417,39 +456,63 @@ const countWatchers = async (env) => {
   return Number(row?.count || 0);
 };
 
-const upsertWatcherFromSnapshot = async (env, snapshot) => {
+// A D1 lease prevents cron, check-now and registration from overwriting each other's
+// delivery records. RPC/notification requests have 20 s timeouts; 5 min bounds a check.
+const withWatcherLease = async (env, vaultAddress, operation) => {
+  const token = crypto.randomUUID();
+  const now = Date.now();
+  const locked = await env.DB.prepare(`
+    INSERT INTO notification_leases (vault_address, lock_token, expires_at) VALUES (?, ?, ?)
+    ON CONFLICT(vault_address) DO UPDATE SET lock_token = excluded.lock_token, expires_at = excluded.expires_at
+    WHERE notification_leases.expires_at <= ? RETURNING lock_token
+  `).bind(vaultAddress, token, now + 300_000, now).first();
+  if (!locked) throw new HttpError(409, "Vault reminders are being updated; try again shortly");
+  try {
+    return await operation();
+  } finally {
+    await env.DB.prepare("DELETE FROM notification_leases WHERE vault_address = ? AND lock_token = ?")
+      .bind(vaultAddress, token).run();
+  }
+};
+
+const upsertWatcherFromSnapshot = async (env, snapshot) => withWatcherLease(env, snapshot.vaultAddress, async () => {
   const prev = await getWatcherByVault(env, snapshot.vaultAddress);
   const stamp = nowIso();
-  const keepNotifiedHeir = prev?.notifiedHeirAddress && addrEq(prev.notifiedHeirAddress, snapshot.heirAddress);
+  const observedSettled = snapshot.claimedAt > 0n;
+  const settled = observedSettled && await terminalFinalized(env, snapshot);
+  const keepNotifiedHeir = prev?.notifiedHeirAddress && (observedSettled || addrEq(prev.notifiedHeirAddress, snapshot.heirAddress));
   const watcher = {
     vaultAddress: snapshot.vaultAddress,
     ownerAddress: snapshot.ownerAddress,
-    heirAddress: snapshot.heirAddress,
-    active: true,
+    heirAddress: observedSettled && !settled ? prev?.heirAddress || snapshot.heirAddress : snapshot.heirAddress,
+    active: !settled,
     createdAt: prev?.createdAt || stamp,
     updatedAt: stamp,
     lastCheckedAt: prev?.lastCheckedAt || null,
-    lastClaimable: snapshot.canClaim,
+    lastClaimable: !observedSettled && snapshot.claimableNow === true,
     lastVaultBalance: snapshot.vaultBalance.toString(),
     notifiedHeirAddress: keepNotifiedHeir ? prev.notifiedHeirAddress : null,
-    notifiedAt: keepNotifiedHeir && snapshot.canClaim ? prev.notifiedAt : null,
+    notifiedAt: keepNotifiedHeir ? prev.notifiedAt : null,
     lastError: null,
+    alerts: parseAlerts(prev?.alerts),
   };
+  if (prev && !observedSettled && !addrEq(prev.heirAddress, snapshot.heirAddress)) {
+    delete watcher.alerts[ALERT.HEIR_CLAIMABLE];
+    delete watcher.alerts[ALERT.HEIR_FINALIZABLE];
+  }
   await saveWatcher(env, watcher);
   return watcher;
-};
+});
 
 /**
  * 월드앱 딥링크.
  *
- * 형식이 엄격하다. `/?vault=0x...` 같은 상대경로는 매번
- * "mini_app_path must be a valid WorldApp or World ID deeplink" 로 거절된다.
- * 반드시 `worldapp://mini-app?app_id=app_...` 여야 하고, 뒤에 파라미터를
- * 덧붙이는 것은 허용된다 (그래서 금고 주소를 함께 실었다).
+ * 알림 API 는 worldapp://mini-app 딥링크를 받는다. 앱 내부 금고 경로는
+ * 공식 path 파라미터에 URL 인코딩해서 넣어야 World App 이 전달한다.
  */
 const miniAppDeepLink = (appId, vaultAddress) => {
   const base = `worldapp://mini-app?app_id=${appId}`;
-  return vaultAddress ? `${base}&vault=${vaultAddress}` : base;
+  return vaultAddress ? `${base}&path=${encodeURIComponent(`/?vault=${vaultAddress}`)}` : base;
 };
 
 /**
@@ -464,7 +527,7 @@ const readDelivery = (res, walletAddress) => {
   const rows = Array.isArray(res?.result) ? res.result : [];
   const row = rows.find(
     (r) => typeof r?.walletAddress === "string" && r.walletAddress.toLowerCase() === walletAddress.toLowerCase(),
-  ) || rows[0];
+  );
   if (!row) return { delivered: false, reason: "no result row" };
   if (row.sent === true) return { delivered: true, reason: null };
   return { delivered: false, reason: String(row.reason || "not delivered") };
@@ -500,6 +563,7 @@ const sendWorldNotification = async (env, { walletAddress, title, message, vault
       message,
         mini_app_path: miniAppDeepLink(appId, vaultAddress),
     }),
+    signal: AbortSignal.timeout(20_000),
   });
 
   // 본문을 그대로 붙잡는다. JSON 이 아닐 수 있다 — 앞단에 막히면 HTML 이 온다.
@@ -580,7 +644,7 @@ const markAlert = (prevAlerts, kind, stamp, delivered, reason = null) => {
   prevAlerts[kind] = delivered ? { at: stamp, delivered: true } : { at: stamp, delivered: false, reason };
 };
 
-/** 기한 임박 기준: 주기의 20% 이내. 주기 대비 비율이라 기간 길이와 무관하다. */
+/** 기한 임박 기준: 주기의 5% 이내. 주기 대비 비율이라 기간 길이와 무관하다. */
 const EXPIRING_RATIO = 5n;
 const EXPIRING_DIVISOR = 100n;
 
@@ -672,91 +736,98 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
   return { alerts, reason: alerts.length ? "pending" : "nothing_to_say" };
 };
 
-const checkWatcher = async (env, watcher) => {
-  const stamp = nowIso();
-  let lastErrorSeen = null;
+const checkWatcher = async (env, watcher, caller = null) => {
   try {
-    const snapshot = await getVaultSnapshot(env, watcher.vaultAddress);
-    const prevAlerts = parseAlerts(watcher.alerts);
-
-    const next = {
-      ...watcher,
-      ownerAddress: snapshot.ownerAddress,
-      heirAddress: snapshot.heirAddress,
-      active: true,
-      updatedAt: stamp,
-      lastCheckedAt: stamp,
-      lastClaimable: snapshot.claimableNow === true,
-      lastVaultBalance: snapshot.vaultBalance.toString(),
-      lastError: null,
-    };
-
-    // 상태가 원래대로 돌아오면(갱신으로 신청 취소 등) 해당 단계의 dedupe 를 푼다.
-    // 그래야 같은 알림이 필요할 때 다시 간다.
-    if (snapshot.ownerStillActive !== false || snapshot.claimPending !== true) {
-      delete prevAlerts[ALERT.OWNER_CLAIM_FILED];
-    }
-    if (snapshot.isExpired !== true || snapshot.claimPending === true) {
-      delete prevAlerts[ALERT.HEIR_CLAIMABLE];
-    }
-    if (snapshot.timeRemaining === null || snapshot.timeRemaining > (snapshot.heartbeatInterval || 0n)) {
-      delete prevAlerts[ALERT.OWNER_EXPIRING];
-    }
-    if (snapshot.claimableNow !== true || snapshot.claimPending !== true) {
-      delete prevAlerts[ALERT.HEIR_FINALIZABLE];
-    }
-
-    const { alerts, reason } = decideAlerts(snapshot, prevAlerts, Date.parse(stamp));
-    next.alerts = prevAlerts;
-
-    if (!alerts.length) {
-      await saveWatcher(env, next);
-      return { notified: false, reason };
-    }
-
-    const sent = [];
-    const undelivered = [];
-    for (const a of alerts) {
-      // 수신자별로 결과를 봐야 한다. API 는 "요청이 유효했다" 는 200 과
-      // "이 지갑에는 전달하지 못했다" 는 sent:false 를 함께 돌려준다.
-      // 지갑 단위로 판정하므로 수신자 여럿을 한 번에 넘길 수 없다.
+    return await withWatcherLease(env, watcher.vaultAddress, async () => {
+      // The cron list is only navigation. Read the latest row while holding the lease.
+      const current = await getWatcherByVault(env, watcher.vaultAddress);
+      if (!current?.active) return { notified: false, reason: "disabled" };
+      const stamp = nowIso();
+      let next = { ...current, updatedAt: stamp, lastCheckedAt: stamp };
       try {
-        const res = await sendWorldNotification(env, {
-          walletAddress: a.to,
-          title: a.title,
-          message: a.message,
-          vaultAddress: snapshot.vaultAddress,
-        });
-        const outcome = readDelivery(res, a.to);
-        markAlert(prevAlerts, a.kind, stamp, outcome.delivered, outcome.reason);
-        if (outcome.delivered) {
-          sent.push(a.kind);
-        } else {
-          undelivered.push(`${a.kind}: ${outcome.reason}`);
+        const snapshot = await getVaultSnapshot(env, current.vaultAddress);
+        if (caller && !addrEq(caller, snapshot.ownerAddress)
+          && (snapshot.claimedAt > 0n || !addrEq(caller, snapshot.heirAddress))) {
+          throw new HttpError(403, "Wallet is not the vault owner or heir");
         }
+        if (snapshot.claimedAt > 0n) {
+          const finalized = await terminalFinalized(env, snapshot);
+          await saveWatcher(env, {
+            ...next, ownerAddress: snapshot.ownerAddress,
+            heirAddress: finalized ? snapshot.heirAddress : current.heirAddress,
+            active: !finalized, lastClaimable: false, lastVaultBalance: snapshot.vaultBalance.toString(), lastError: null,
+          });
+          return { notified: false, reason: finalized ? "already_settled" : "settlement_pending_finality" };
+        }
+        const prevAlerts = { ...parseAlerts(current.alerts) };
+        if (!addrEq(current.heirAddress, snapshot.heirAddress)) {
+          delete prevAlerts[ALERT.HEIR_CLAIMABLE];
+          delete prevAlerts[ALERT.HEIR_FINALIZABLE];
+        }
+        next = {
+          ...next, ownerAddress: snapshot.ownerAddress, heirAddress: snapshot.heirAddress,
+          lastClaimable: snapshot.claimableNow === true,
+          lastVaultBalance: snapshot.vaultBalance.toString(), lastError: null, alerts: prevAlerts,
+        };
+        // Unknown flags retain delivery history; only observed resets rearm a stage.
+        if (snapshot.claimPending === false) delete prevAlerts[ALERT.OWNER_CLAIM_FILED];
+        if (snapshot.isExpired === false || snapshot.claimPending === true) delete prevAlerts[ALERT.HEIR_CLAIMABLE];
+        if (snapshot.timeRemaining !== null && snapshot.heartbeatInterval !== null
+          && snapshot.timeRemaining > snapshot.heartbeatInterval * EXPIRING_RATIO / EXPIRING_DIVISOR) {
+          delete prevAlerts[ALERT.OWNER_EXPIRING];
+        }
+        if (snapshot.claimableNow === false || snapshot.claimPending === false) delete prevAlerts[ALERT.HEIR_FINALIZABLE];
+
+        const { alerts, reason } = decideAlerts(snapshot, prevAlerts, Date.parse(stamp));
+        if (!alerts.length) {
+          await saveWatcher(env, next);
+          return { notified: false, reason };
+        }
+        // Persist attempts before the external send. A crash after API acceptance must
+        // retain the 24 h cooldown, even if its delivery response was never saved.
+        for (const alert of alerts) markAlert(prevAlerts, alert.kind, stamp, false, "delivery in progress");
+        await saveWatcher(env, next);
+        const sent = [];
+        const undelivered = [];
+        for (const alert of alerts) {
+          try {
+            const response = await sendWorldNotification(env, {
+              walletAddress: alert.to, title: alert.title, message: alert.message,
+              vaultAddress: snapshot.vaultAddress,
+            });
+            const outcome = readDelivery(response, alert.to);
+            markAlert(prevAlerts, alert.kind, stamp, outcome.delivered, outcome.reason);
+            if (outcome.delivered) sent.push(alert.kind);
+            else undelivered.push(`${alert.kind}: ${outcome.reason}`);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            markAlert(prevAlerts, alert.kind, stamp, false, message);
+            undelivered.push(`${alert.kind}: ${message}`);
+          }
+        }
+        next.lastError = undelivered.length ? `undelivered ${undelivered.join("; ")}` : null;
+        await saveWatcher(env, next);
+        return { notified: sent.length > 0, reason: "sent", sent, undelivered };
       } catch (error) {
-        // 한 건이 실패해도 나머지는 보낸다.
-        const msg = error instanceof Error ? error.message : String(error);
-        markAlert(prevAlerts, a.kind, stamp, false, msg);
-        undelivered.push(`${a.kind}: ${msg}`);
-        lastErrorSeen = msg;
+        if (error instanceof HttpError && error.status === 403) throw error;
+        if (error instanceof HttpError && error.code === "vault_not_current") {
+          // Access stays denied immediately. Preserve monitoring until a slot
+          // release is final, so a removed release cannot orphan an eligible vault.
+          const finalized = await terminalFinalized(env, error.identity, true);
+          next.active = !finalized;
+          next.lastError = error.message;
+          await saveWatcher(env, next);
+          return { notified: false, reason: finalized ? "no_longer_current" : "release_pending_finality" };
+        }
+        // Preserve any already-reserved delivery attempts when saving an error.
+        next.lastError = error instanceof Error ? error.message : String(error);
+        await saveWatcher(env, next);
+        return { notified: false, reason: "error", error: next.lastError };
       }
-    }
-    next.alerts = prevAlerts;
-    // 미달한 게 있으면 반드시 드러낸다. 조용히 성공한 것처럼 보이면
-    // "알림이 없다" 는 사실을 아무도 모르게 된다.
-    next.lastError = undelivered.length ? `undelivered ${undelivered.join("; ")}` : null;
-    await saveWatcher(env, next);
-    return { notified: sent.length > 0, reason: "sent", sent, undelivered };
+    });
   } catch (error) {
-    const next = {
-      ...watcher,
-      updatedAt: stamp,
-      lastCheckedAt: stamp,
-      lastError: error instanceof Error ? error.message : String(error),
-    };
-    await saveWatcher(env, next);
-    return { notified: false, reason: "error", error: next.lastError };
+    if (error instanceof HttpError && error.status === 409) return { notified: false, reason: "busy" };
+    throw error;
   }
 };
 
@@ -773,141 +844,130 @@ const runCheckCycle = async (env) => {
   return { checked, notified };
 };
 
+const authenticate = async (request, env) => {
+  if (!env.SIWE_SECRET) throw new HttpError(503, "Notification authentication is not configured");
+  const authorization = request.headers.get("Authorization") || "";
+  const token = /^Bearer ([^ ]+)$/.exec(authorization)?.[1];
+  const claims = await verifySession(env.SIWE_SECRET, token, (env.FRONTEND_ORIGIN || DEFAULT_FRONTEND_ORIGIN).trim());
+  if (!claims) throw new HttpError(401, "Your sign-in expired or is invalid. Sign in again.");
+  return claims.sub;
+};
+
+const requireCooldown = async (env, key) => {
+  if (!await takeCooldown(env.DB, key, 60_000)) {
+    throw new HttpError(429, "Please wait one minute before trying again", { "Retry-After": "60" });
+  }
+};
+
 const handleRequest = async (request, env) => {
-  await ensureSchema(env);
   const cors = resolveCors(request, env);
-  if (!cors.allowed) {
-    return jsonResponse(403, { status: "error", message: "Origin not allowed" }, cors.headers);
-  }
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: cors.headers });
-  }
-
+  if (!cors.allowed) throw new HttpError(403, "Origin not allowed");
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors.headers });
   const url = new URL(request.url);
-
+  if (request.method === "GET" && url.pathname === "/api/automation/health") {
+    return jsonResponse(200, { status: "success", automation: await readFinalizerHealth(env) }, cors.headers);
+  }
   if (request.method === "GET" && url.pathname === "/api/health") {
-    const watchers = await countWatchers(env);
-    return jsonResponse(
-      200,
-      {
-        status: "ok",
-        rpcUrl: (env.RPC_URL || DEFAULT_RPC_URL).trim() || DEFAULT_RPC_URL,
-        watchers,
-        hasWorldAppId: Boolean((env.WORLD_APP_ID || "").trim()),
-        hasNotifyApiKey: Boolean((env.WORLD_NOTIFY_API_KEY || "").trim()),
-        codeVersion: CODE_VERSION,
-        // CORS 가 실제로 잠겨 있는지 확인하려고 노출한다.
-        frontendOrigin: (env.FRONTEND_ORIGIN || "").trim() || "(unset → CORS *)",
-        frontendOrigin: (env.FRONTEND_ORIGIN || "").trim() || "(unset → CORS *)",
-      },
-      cors.headers
-    );
+    await ensureSchema(env);
+    return jsonResponse(200, {
+      status: "ok", rpcUrl: (env.RPC_URL || DEFAULT_RPC_URL).trim() || DEFAULT_RPC_URL,
+      watchers: await countWatchers(env), hasWorldAppId: Boolean((env.WORLD_APP_ID || "").trim()),
+      hasNotifyApiKey: Boolean((env.WORLD_NOTIFY_API_KEY || "").trim()),
+      hasSessionSecret: Boolean(env.SIWE_SECRET), codeVersion: CODE_VERSION,
+      frontendOrigin: (env.FRONTEND_ORIGIN || DEFAULT_FRONTEND_ORIGIN).trim(),
+    }, cors.headers);
+  }
+  if (!/^\/api\/notifications(?:\/|$)/.test(url.pathname)) throw new HttpError(404, "Not found");
+  // Authentication is independent of CORS and precedes reads, RPC and notification work.
+  const caller = await authenticate(request, env);
+  await ensureSchema(env);
+  if (!await takeRateLimit(env.DB, `api:${caller}`, 60, 60_000)) {
+    throw new HttpError(429, "Too many notification requests; try again shortly", { "Retry-After": "60" });
   }
 
   if (request.method === "GET" && url.pathname === "/api/notifications") {
-    const watchers = await listWatchers(env, false);
-    return jsonResponse(200, { status: "success", watchers }, cors.headers);
+    const cursorParam = url.searchParams.get("cursor");
+    if (cursorParam !== null && !ADDRESS_RE.test(cursorParam)) throw new HttpError(400, "Invalid vault-address cursor");
+    const cursor = cursorParam?.toLowerCase() || null;
+    // One SQL lookahead determines continuation; only four candidates incur RPCs.
+    const candidates = await listWatchers(env, false, caller, { after: cursor, limit: WATCHER_PAGE_SIZE + 1 });
+    const page = candidates.slice(0, WATCHER_PAGE_SIZE);
+    const nextCursor = candidates.length > WATCHER_PAGE_SIZE ? page.at(-1).vaultAddress : null;
+    const watchers = [];
+    for (const watcher of page) {
+      try {
+        const identity = await requireVaultAccess(env, watcher.vaultAddress, caller);
+        watchers.push({ ...watcher, ownerAddress: identity.ownerAddress, heirAddress: identity.heirAddress });
+      } catch (error) {
+        // Known stale membership/noncanonical identity grants no access. Transport,
+        // config and subrequest-limit failures must never masquerade as a full page.
+        if (error instanceof HttpError && (error.status === 400 || error.status === 403)) continue;
+        if (error instanceof HttpError) throw error;
+        throw new HttpError(503, "Could not verify your registered vaults. Try again shortly.");
+      }
+    }
+    return jsonResponse(200, { status: "success", watchers, nextCursor }, cors.headers);
   }
-
   if (request.method === "GET" && url.pathname === "/api/notifications/status") {
-    const vaultAddress = normalizeAddress(url.searchParams.get("vaultAddress") || "");
-    if (!vaultAddress) {
-      return jsonResponse(400, { status: "error", message: "vaultAddress is required" }, cors.headers);
-    }
-    const watcher = await getWatcherByVault(env, vaultAddress);
-    return jsonResponse(200, { status: "success", watcher }, cors.headers);
+    const vault = normalizeAddress(url.searchParams.get("vaultAddress"));
+    if (!vault) throw new HttpError(400, "vaultAddress is required");
+    await requireVaultAccess(env, vault, caller);
+    return jsonResponse(200, { status: "success", watcher: await getWatcherByVault(env, vault) }, cors.headers);
   }
+  if (request.method !== "POST") throw new HttpError(404, "Not found");
+  let body;
+  try {
+    body = await readJson(request);
+  } catch (error) {
+    throw new HttpError(400, error.message);
+  }
+  const vault = normalizeAddress(body?.vaultAddress);
 
-  if (request.method === "POST" && url.pathname === "/api/notifications/register") {
-    let body;
-    try {
-      body = await readJson(request);
-    } catch (error) {
-      return jsonResponse(400, { status: "error", message: error.message }, cors.headers);
+  if (url.pathname === "/api/notifications/register") {
+    if (!vault) throw new HttpError(400, "vaultAddress is required");
+    const identity = await requireVaultAccess(env, vault, caller);
+    for (const field of ["ownerAddress", "heirAddress"]) {
+      if (body?.[field] !== undefined && !addrEq(body[field], identity[field])) throw new HttpError(400, `${field} mismatch`);
     }
-
-    const vaultAddress = normalizeAddress(body?.vaultAddress || "");
-    const ownerAddress = normalizeAddress(body?.ownerAddress || "");
-    const heirAddress = normalizeAddress(body?.heirAddress || "");
-    if (!vaultAddress) {
-      return jsonResponse(400, { status: "error", message: "vaultAddress is required" }, cors.headers);
-    }
-
-    let snapshot;
-    try {
-      snapshot = await getVaultSnapshot(env, vaultAddress);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return jsonResponse(400, { status: "error", message }, cors.headers);
-    }
-    if (ownerAddress && !addrEq(ownerAddress, snapshot.ownerAddress)) {
-      return jsonResponse(400, { status: "error", message: "ownerAddress mismatch" }, cors.headers);
-    }
-    if (heirAddress && !addrEq(heirAddress, snapshot.heirAddress)) {
-      return jsonResponse(400, { status: "error", message: "heirAddress mismatch" }, cors.headers);
-    }
-
+    const snapshot = await getVaultSnapshot(env, vault, identity);
     const watcher = await upsertWatcherFromSnapshot(env, snapshot);
     return jsonResponse(200, { status: "success", watcher }, cors.headers);
   }
-
-  if (request.method === "POST" && url.pathname === "/api/notifications/unregister") {
-    let body;
-    try {
-      body = await readJson(request);
-    } catch (error) {
-      return jsonResponse(400, { status: "error", message: error.message }, cors.headers);
-    }
-    const vaultAddress = normalizeAddress(body?.vaultAddress || "");
-    if (!vaultAddress) {
-      return jsonResponse(400, { status: "error", message: "vaultAddress is required" }, cors.headers);
-    }
-
-    const stamp = nowIso();
-    const current = await getWatcherByVault(env, vaultAddress);
-    if (current) {
-      await saveWatcher(env, {
-        ...current,
-        active: false,
-        updatedAt: stamp,
-      });
-    }
-
-    return jsonResponse(200, { status: "success", removed: Boolean(current) }, cors.headers);
+  if (url.pathname === "/api/notifications/unregister") {
+    if (!vault) throw new HttpError(400, "vaultAddress is required");
+    await requireVaultAccess(env, vault, caller, true);
+    const removed = await withWatcherLease(env, vault, async () => {
+      const current = await getWatcherByVault(env, vault);
+      if (current) await saveWatcher(env, { ...current, active: false, updatedAt: nowIso() });
+      return Boolean(current);
+    });
+    return jsonResponse(200, { status: "success", removed }, cors.headers);
   }
-
-  if (request.method === "POST" && url.pathname === "/api/notifications/test") {
-    let body;
-    try {
-      body = await readJson(request);
-    } catch (error) {
-      return jsonResponse(400, { status: "error", message: error.message }, cors.headers);
+  if (url.pathname === "/api/notifications/test") {
+    if (body?.walletAddress !== undefined && !addrEq(body.walletAddress, caller)) {
+      throw new HttpError(403, "Test notifications can only be sent to your signed-in wallet");
     }
-
-    const walletAddress = normalizeAddress(body?.walletAddress || "");
-    const vaultAddress = normalizeAddress(body?.vaultAddress || "");
-    if (!walletAddress) {
-      return jsonResponse(400, { status: "error", message: "walletAddress is required" }, cors.headers);
+    if (body?.vaultAddress !== undefined) {
+      if (!vault) throw new HttpError(400, "Invalid vaultAddress");
+      await requireVaultAccess(env, vault, caller);
     }
-    const title = typeof body?.title === "string" && body.title ? body.title : "WLD Inheritance Test";
-    const message =
-      typeof body?.message === "string" && body.message ? body.message : "Test notification from your mini app.";
-
+    await requireCooldown(env, `test:${caller}`);
     const result = await sendWorldNotification(env, {
-      walletAddress,
-      title,
-      message,
-        vaultAddress,
+      walletAddress: caller, title: "WLD Inheritance Test", message: "Test notification from your mini app.", vaultAddress: vault,
     });
     return jsonResponse(200, { status: "success", result }, cors.headers);
   }
-
-  if (request.method === "POST" && url.pathname === "/api/notifications/check-now") {
-    const summary = await runCheckCycle(env);
-    return jsonResponse(200, { status: "success", summary }, cors.headers);
+  if (url.pathname === "/api/notifications/check-now") {
+    if (!vault) throw new HttpError(400, "vaultAddress is required; global checks are scheduled only");
+    await requireVaultAccess(env, vault, caller);
+    await requireCooldown(env, `check:${caller}`);
+    const watcher = await getWatcherByVault(env, vault);
+    const result = watcher ? await checkWatcher(env, watcher, caller) : { notified: false, reason: "not_registered" };
+    return jsonResponse(200, {
+      status: "success", summary: { checked: watcher?.active ? 1 : 0, notified: result.notified ? 1 : 0 }, result,
+    }, cors.headers);
   }
-
-  return jsonResponse(404, { status: "error", message: "Not found" }, cors.headers);
+  throw new HttpError(404, "Not found");
 };
 
 /**
@@ -918,7 +978,7 @@ const handleRequest = async (request, env) => {
  * 채로도 테스트는 초록이었다. 정작 실제 D1 은 매번 거절하고 있었다.
  * DB 를 만지는 함수는 밖에서 그대로 쓸 수 있게 여는 게 이 클래스를 막는다.
  */
-export const __test = { saveWatcher, getWatcherByVault, listWatchers, rowToWatcher, getVaultSnapshot };
+export const __test = { saveWatcher, getWatcherByVault, listWatchers, rowToWatcher, getVaultSnapshot, upsertWatcherFromSnapshot, checkWatcher, runCheckCycle };
 
 export default {
   async fetch(request, env) {
@@ -927,13 +987,21 @@ export default {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const cors = resolveCors(request, env);
-      return jsonResponse(500, { status: "error", message }, cors.headers);
+      return jsonResponse(error instanceof HttpError ? error.status : 500, { status: "error", message }, { ...cors.headers, ...(error.headers || {}) });
     }
   },
 
-  async scheduled(_controller, env, ctx) {
+  async scheduled(controller, env, ctx) {
     ctx.waitUntil(
       (async () => {
+        // Alternate the two tasks to respect existing Free-plan subrequest limits.
+        // Bounded batches advance persisted cursors; each task runs every two minutes.
+        if (Math.floor(controller.scheduledTime / 60_000) % 2 === 0) {
+          await ensureSchema(env);
+          const result = await runFinalizerCycle(env);
+          console.log(`[finalizer] checked=${result.checked || 0} finalized=${result.finalized || 0} reason=${result.reason}`);
+          return;
+        }
         const summary = await runCheckCycle(env);
         if (summary.notified > 0) {
           console.log(`[notify] sent=${summary.notified} checked=${summary.checked}`);

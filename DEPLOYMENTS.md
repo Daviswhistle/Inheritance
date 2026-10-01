@@ -1,61 +1,27 @@
 # 배포 기록
 
-앱이 실제로 대화하는 주소를 한 곳에 모았습니다. 여기 없는 주소가 코드나 저장소 변수에
-들어 있으면 그 앱은 트랜잭션을 보낼 수 없습니다.
+World Chain mainnet, chain ID 480. 현재 팩토리와 기존 팩토리를 함께 지원합니다.
 
-## 메인넷 (World Chain, chainId 480)
+| 항목 | 현재 계약 | 기존 계약 |
+| --- | --- | --- |
+| 팩토리 | `0xb74342FC15C504108cFD91366493590A9d570D26` | `0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88` |
+| 배포 블록 | 35771900 | 35672936 |
+| 배포 tx | `0xe779588a080786df48f6e5ed13f5ca38597faf0a9d8dd14726e8438ad38d6f92` | `0x6674f81c833de535b13c4e2d450d8441e2c7f7d0d548c36c5c1f606ea4140cf6` |
+| 런타임 코드 | 11906 bytes, immutable WLD 제외 아티팩트와 완전 일치 | 11307 bytes, 동일 방식 검증 |
+| 수령 방식 | 7일 대기 후 permissionless 실행 또는 상속인 수동 수령 | 상속인 수동 수령 |
 
-| 항목 | 값 |
-|---|---|
-| 팩토리 | `0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88` |
-| 배포 블록 | `35672936` |
-| WLD | `0x2cfc85d8e48f8eab294be644d9e25c3030863003` |
-| 배포 tx | `0x6674f81c833de535b13c4e2d450d8441e2c7f7d0d548c36c5c1f606ea4140cf6` |
-| 런타임 코드 | 11307 바이트 (forge 아티팩트와 불변 제외 바이트 단위 일치 확인) |
+WLD: `0x2cfc85d8e48f8eab294be644d9e25c3030863003`. World App 허용 목록에는 WLD와 두 팩토리가 필요합니다. 앱은 선택한 금고의 원래 팩토리로 거래를 보냅니다. 새 금고는 현재 팩토리에만 생성하며, 기존 슬롯과 공유 링크는 계속 조회합니다.
 
-앱이 트랜잭션을 보내는 주소는 이 둘뿐입니다. World App 은 allowlist 에 없는
-주소로의 호출을 막으므로, 사용자마다 다른 금고 주소는 직접 호출할 수 없고 팩토리가
-`vaultOf` 로 호출자를 다시 뽑아 라우팅합니다.
+## 2026-10-01 UTC 계약 배포
 
-## 교체한 팩토리
+배포자는 `0x93bC44B8296977Feb479F95855D9b9E051C17dA2`, nonce 5입니다. receipt status 1, gas used 2618059, 실제 execution + L1 비용은 **0.00000506105250456 ETH**입니다. 체인 ID, WLD 코드, 현재 가스 가격과 예산을 전송 전에 검사했고, 전송 후 온체인 런타임 11906바이트를 로컬 아티팩트와 대조했습니다. createVault 시뮬레이션 성공과 zero-address heir 거부도 확인했습니다. 이 배포는 사용자 WLD를 이동하지 않았습니다.
 
-| 주소 | 상태 |
-|---|---|
-| `0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88` | 현재 사용 중 |
-| `0x39721e856f5efa361b6428f056D437124F70C55E` | 폐기. 금고 0개라 교체 비용 없었음 |
+가스 전용 실행 지갑 `0x8C31Bbc49C371d431f884aB18Ba5aA25B0D9170b`에 0.00002 ETH를 충전했습니다. 충전 tx `0xe839716d0d31f521bf51b3b4dd35fc3ca8b2d2b6692a120737661187d5968181`, block 35771921, receipt status 1, 충전 후 잔액 0.00002 ETH입니다. 이 잔액은 실행 예산이며 전액 사용 비용을 뜻하지 않습니다. 키는 Worker/GitHub secret에만 두고, 프론트엔드에는 넣지 않습니다. 검증 방법과 한계는 `docs/RELEASE.md`에 있으며, 실제 앱 배포 영수증은 해당 release SHA의 GitHub Actions에서 확인합니다. 크론 동작은 배포 후 `/api/automation/health`의 완료 시각과 상태로 별도 확인합니다.
 
-`broadcast/DeployWLDFactory.s.sol/480/run-latest.json` 은 **여전히 폐기된 주소를
-가리킨다** — 현재 배포가 `forge script` 이 아니라 수동 서명 Broadcast 로 이루어졌기
-때문이다(아래 참고). 그 파일을 "최신 배포"로 읽지 말 것.
+## 설정을 변경할 때
 
-## 팩토리를 교체할 때
+`app/.env.example`에 공개 주소와 블록을 기록하고, 로컬 `app/.env`, GitHub `VITE_*` 변수, `backend/wrangler.toml`, `scripts/portal-allowlist.py`를 일치시킵니다. 기존 금고가 있는 팩토리를 단순 삭제하면 안 됩니다. 포털 설정은 쓰기 후 GraphQL로 다시 읽어 확인하고, `scripts/verify/run.sh mainnet`으로 읽기 경로를 검사합니다.
 
-네 곳을 **같이** 갱신해야 합니다. 하나만 빼먹으면 이벤트 조회 `fromBlock` 이 틀려
-금고 목록이 조용히 비어 보이거나, allowlist 스크립트가 옛 주소를 되살립니다.
+배포는 `node scripts/deploy-factory.mjs`를 사용합니다. `DRY_RUN=1`이면 사전 검사와 서명까지만 수행합니다. 공개 RPC의 CREATE gas estimate가 실제보다 크게 작았던 이력이 있어 gasLimit 300만을 사용합니다. 배포 후에는 receipt뿐 아니라 실제 코드와 생성 동작도 검사합니다. 전송 응답이 실패하면 기록된 tx hash의 receipt를 확인한 뒤 재시도 여부를 결정합니다.
 
-1. `app/.env` — `VITE_FACTORY_ADDRESS`, `VITE_FACTORY_DEPLOY_BLOCK`
-2. GitHub 저장소 변수 — 같은 두 개 (`gh variable set`)
-3. `app/.env.example` — 같은 두 개
-4. `scripts/portal-allowlist.py` — 하드코딩된 `FACTORY`
-
-그리고 포털 allowlist 를 교체하고, `scripts/verify/run.sh mainnet` 으로 읽기 경로를
-확인합니다.
-
-## 배포는 왜 `forge script` 로 하지 않나
-
-`forge script … --broadcast` 는 시뮬레이션을 먼저 하고 거기에 아카이브 상태가
-필요합니다. 공개 World Chain RPC 로는 전부 실패합니다 (HTTP 500 또는 fork 불가).
-그래서 실제 배포는 `scripts/deploy-factory.mjs` 로 합니다 — 서명 후 여러 엔드포인트로
-순차 전송하고, **온체인 런타임 코드를 아티팩트와 바이트 단위로 대조**합니다.
-리ceipt 가 왔다는 것과 옳은 코드가 올라갔다는 것은 다릅니다.
-
-```
-node scripts/deploy-factory.mjs            # 실제 배포
-DRY_RUN=1 node scripts/deploy-factory.mjs  # 서명까지만
-```
-
-## 공개 RPC 를 신뢰하지 말 것
-
-`estimateGas` 가 CREATE 에 대해 실제값의 **1/27** 을 돌려준 적이 있습니다
-(54,406 vs 실제 1,452,293). 그 값에 맞춰 gasLimit 을 잡으면 out-of-gas 로 revert
-됩니다. 배포 스크립트는 gasLimit 을 고정값(300만)으로 줍니다.
+`broadcast/DeployWLDFactory.s.sol/480/run-latest.json`은 폐기된 `0x39721e856f5efa361b6428f056D437124F70C55E`을 가리킬 수 있습니다. 이 파일을 운영의 최신 배포 증거로 사용하지 않습니다.

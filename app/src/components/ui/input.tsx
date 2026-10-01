@@ -10,7 +10,7 @@ export function Input({ className = "", ...props }: InputProps) {
   return (
     <input
       {...props}
-      className={`w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ${className}`}
+      className={`input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ${className}`}
     />
   );
 }

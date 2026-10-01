@@ -5,6 +5,10 @@ import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Brand, Icon } from "@/components/Icon";
+import { Landing } from "@/components/Landing";
+import { AutomationNotice } from "@/components/AutomationNotice";
+import { confirmTransaction } from "@/transactions";
 import type { ReactElement } from "react";
 import {
   APP_ORIGIN,
@@ -13,6 +17,8 @@ import {
   EXPLORER,
   FACTORY_ADDRESS,
   FACTORY_DEPLOY_BLOCK,
+  LEGACY_FACTORY_ADDRESS,
+  LEGACY_FACTORY_DEPLOY_BLOCK,
   NOTIFY_BACKEND_ENABLED,
   NOTIFY_BACKEND_URL,
   RELEASE_SUPPORTED,
@@ -20,7 +26,7 @@ import {
   RPC_URL,
   WLD_ADDRESS,
 } from "@/config";
-import { signInWithWorldApp, readSessionAddress, clearSession } from "@/auth";
+import { signInWithWorldApp, readSessionAddress, clearSession, notificationFetch, fetchRegisteredVaults } from "@/auth";
 import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit, sendWorldChat, pickWorldContacts } from "@/minikit";
 
 // ===== WLD-only factory/vault ABI
@@ -153,6 +159,15 @@ export default function App() {
   const periodValid = useMemo(() => Number.isFinite(periodNum) && periodNum >= 1 && periodNum <= 365, [periodNum]);
 
   const [vault, setVault] = useState<string>("");
+  const [vaultIdentity, setVaultIdentity] = useState<{
+    address: string; factory: string; owner: string; heir: string;
+  } | null>(null);
+  // Roles and transaction routing belong to one verified vault. Changing the
+  // selection invalidates all three immediately, before an asynchronous read.
+  const identityMatchesVault = Boolean(vault && vaultIdentity?.address.toLowerCase() === vault.toLowerCase());
+  const vaultFactory = identityMatchesVault ? vaultIdentity!.factory : "";
+  const vaultOwner = identityMatchesVault ? vaultIdentity!.owner : "";
+  const vaultHeir = identityMatchesVault ? vaultIdentity!.heir : "";
   /**
    * `?vault=` 링크로 넘어온 금고.
    *
@@ -219,8 +234,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [provider]);
-  const [vaultOwner, setVaultOwner] = useState<string>("");
-  const [vaultHeir, setVaultHeir] = useState<string>("");
+  const vaultDetailsEpoch = useRef(0);
   const [vaultHeartbeat, setVaultHeartbeat] = useState<number>(0);
   /**
    * 체인의 현재 시각(초, unix).
@@ -389,7 +403,23 @@ export default function App() {
   const [sweeping, setSweeping] = useState<boolean>(false);
   const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
+  const [creating, setCreating] = useState(false);
+  const [pendingAction, setPendingAction] = useState(false);
+  const actionInFlight = useRef(false);
+  const runVaultAction = async (action: () => Promise<void>) => {
+    if (actionInFlight.current) return;
+    if (action !== createVault && !identityMatchesVault) {
+      setStatus("Wait for this vault to be verified before continuing.");
+      return;
+    }
+    actionInFlight.current = true;
+    setPendingAction(true);
+    try { await action(); }
+    finally { actionInFlight.current = false; setPendingAction(false); }
+  };
   const [heirFoundVaults, setHeirFoundVaults] = useState<string[]>([]);
+  const [heirSearchNote, setHeirSearchNote] = useState("");
+  const [heirScanIncomplete, setHeirScanIncomplete] = useState(false);
   const [findingHeirVaults, setFindingHeirVaults] = useState<boolean>(false);
   /** 상속인의 월드챗 유저네임 — 월드챗으로 직접 보내려면 필요하다. */
   const [heirVaultUsername, setHeirVaultUsername] = useState<string | null>(null);
@@ -422,7 +452,12 @@ export default function App() {
    * 뿐이다. 그래서 우리가 직접 물어봤는지를 따로 기억한다.
    */
   const [notifyAsked, setNotifyAsked] = useState<boolean>(false);
-  const [notifyWatchState, setNotifyWatchState] = useState<WatchState>("unknown");
+  const notifyWatchKey = account && vault ? `${account.toLowerCase()}:${vault.toLowerCase()}` : "";
+  const notifyWatchScope = useRef(notifyWatchKey);
+  notifyWatchScope.current = notifyWatchKey;
+  const notifyWatchRequest = useRef(0);
+  const [notifyWatch, setNotifyWatch] = useState<{ key: string; state: WatchState }>({ key: "", state: "unknown" });
+  const notifyWatchState = notifyWatchKey && notifyWatch.key === notifyWatchKey ? notifyWatch.state : "unknown";
   const [notifyBusy, setNotifyBusy] = useState<boolean>(false);
   const [watchBusy, setWatchBusy] = useState<boolean>(false);
   /**
@@ -479,10 +514,10 @@ export default function App() {
           text: `World App took the request but did not deliver it (${notifyDeliveryNote}).`,
         };
       }
-      return { level: "ok" as const, text: "You and your heir are told before the countdown ends and at each claim step." };
+      return { level: "ok" as const, text: "Reminders are enabled for you. Your heir must enable their own notifications separately." };
     }
     return { level: "checking" as const, text: "Checking notification status…" };
-  }, [NOTIFY_BACKEND_ENABLED, notifyPermission, notifyWatchState, notifyDeliveryNote, notifyAsked]);
+  }, [notifyPermission, notifyWatchState, notifyDeliveryNote, notifyAsked]);
 
   /**
    * 알림이 실제로 필요할 때만 배너를 띄우기 위한 판정.
@@ -539,15 +574,17 @@ export default function App() {
    */
   const safeGetLogs = async (
     p: ethers.AbstractProvider,
-    params: { address?: string; topics?: (string | null | string[])[]; toBlock?: number | string }
+    params: { address?: string; topics?: (string | null | string[])[]; toBlock?: number | string; fromBlock?: number },
+    onIncomplete?: () => void,
   ): Promise<ethers.Log[]> => {
     const head = await p.getBlockNumber();
     const to = typeof params.toBlock === "number" ? params.toBlock : head;
-    const from = FACTORY_DEPLOY_BLOCK ?? Math.max(0, head - 20_000);
+    const from = Math.max(params.fromBlock ?? FACTORY_DEPLOY_BLOCK ?? 0, head - 1800);
     if (to < from) return [];
 
     const out: ethers.Log[] = [];
-    // 실패한 청크는 조용히 건너뛴다 — 한 청크가 막혀도 나머지는 쓸 수 있다.
+    // Older vaults are found through the authenticated watcher index or a shared link.
+    // Bound public RPC work so opening the app never scans years of chain history.
     for (let end = to; end >= from; end -= LOG_SCAN_CHUNK) {
       const start = Math.max(from, end - LOG_SCAN_CHUNK + 1);
       try {
@@ -559,7 +596,7 @@ export default function App() {
         });
         out.push(...logs);
       } catch {
-        // 다음 청크로 진행
+        onIncomplete?.();
       }
       if (start === from) break;
     }
@@ -576,42 +613,7 @@ export default function App() {
     if (!p) throw new Error("Not connected. Open the app in World App and sign in first.");
     return p;
   };
-  const waitForTxOrEvent = async (
-    prov: ethers.AbstractProvider,
-    opts: { txHash?: string; confirmations?: number; timeoutMs?: number; intervalMs?: number; check?: () => Promise<boolean> }
-  ) => {
-    const { txHash, confirmations = 1, timeoutMs = 60_000, intervalMs = 1500, check } = opts || {};
-    const deadline = Date.now() + timeoutMs;
-
-    // 1) 트랜잭션 해시가 있으면 먼저 온체인 포함(confirm)까지 대기한다.
-    let receipt: ethers.TransactionReceipt | null = null;
-    if (txHash && /^0x([A-Fa-f0-9]{64})$/.test(txHash)) {
-      receipt = await prov.waitForTransaction(txHash, confirmations);
-      if (!receipt || receipt.status !== 1) throw new Error("Transaction reverted or missing receipt");
-    }
-
-    // 2) `check` 는 상태 변화(잔액 증가 등)를 확인하는 후속 조건이다.
-    //    이전에는 해시가 있는 정상 경로에서 아예 실행되지 않아,
-    //    QA 체크리스트의 "금고 잔액이 늘어날 때까지 대기"가 사실상 동작하지 않았다.
-    if (check) {
-      while (Date.now() < deadline) {
-        try {
-          if (await check()) return true;
-        } catch {
-          // 폴링 중 일시적인 RPC 오류는 무시한다.
-          void 0;
-        }
-        await new Promise((r) => setTimeout(r, intervalMs));
-      }
-      // 트랜잭션 자체는 성공했을 수 있으므로, 이 경우를 "실패"로 뭉개지 않는다.
-      if (receipt) {
-        console.warn("State check timed out, but the transaction was confirmed on-chain.");
-        return true;
-      }
-      throw new Error("Timed out waiting for on-chain confirmation");
-    }
-    return true;
-  };
+  const waitForTxOrEvent = confirmTransaction;
   // const toUnits = (v: bigint) => Number(v) / 10 ** wldDecimals;
   const fmtUnits = (v: bigint, d = wldDecimals) => ethers.formatUnits(v, Number(d) || 0);
   const parseAmount = (s: string) => {
@@ -836,23 +838,29 @@ export default function App() {
   };
 
   const refreshNotifyWatchState = useCallback(async () => {
-    if (!NOTIFY_BACKEND_ENABLED || !vault) {
-      setNotifyWatchState("unknown");
+    const request = ++notifyWatchRequest.current;
+    const update = (state: WatchState) => {
+      if (request === notifyWatchRequest.current && notifyWatchScope.current === notifyWatchKey) {
+        setNotifyWatch({ key: notifyWatchKey, state });
+      }
+    };
+    if (!NOTIFY_BACKEND_ENABLED || !vault || !account) {
+      update("unknown");
       return;
     }
     try {
       const url = `${NOTIFY_BACKEND_URL}/api/notifications/status?vaultAddress=${encodeURIComponent(vault)}`;
-      const res = await fetch(url, { method: "GET" });
+      const res = await notificationFetch(url, { method: "GET" });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.status === "success") {
-        setNotifyWatchState(data?.watcher?.active ? "registered" : "not_registered");
+        update(data?.watcher?.active ? "registered" : "not_registered");
         return;
       }
-      setNotifyWatchState("unknown");
+      update("unknown");
     } catch {
-      setNotifyWatchState("unknown");
+      update("unknown");
     }
-  }, [vault]);
+  }, [vault, account, notifyWatchKey]);
 
   /**
    * 알림 진단 상태를 전부 다시 읽는다 (권한 + 워처).
@@ -876,7 +884,9 @@ export default function App() {
     heirAddress: string,
     silent = false,
   ) => {
-    const res = await fetch(`${NOTIFY_BACKEND_URL}/api/notifications/register`, {
+    notifyWatchRequest.current++;
+    const key = `${account.toLowerCase()}:${vaultAddress.toLowerCase()}`;
+    const res = await notificationFetch(`${NOTIFY_BACKEND_URL}/api/notifications/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -889,8 +899,15 @@ export default function App() {
     if (!res.ok || data?.status !== "success") {
       throw new Error(data?.message || "Failed to register notification watcher");
     }
-    setNotifyWatchState("registered");
-    if (!silent) pushToast("success", "Vault registered. You and your heir will be notified.");
+    if (notifyWatchScope.current === key) {
+      // Registration may finish after a status read started on the newly created
+      // vault. Its committed response supersedes those earlier reads.
+      notifyWatchRequest.current++;
+      setNotifyWatch({ key, state: data?.watcher?.active === false ? "not_registered" : "registered" });
+      if (!silent) pushToast("success", data?.watcher?.active === false
+        ? "This vault's inheritance has already completed."
+        : "Vault monitoring enabled. Each recipient also needs notifications on in World App.");
+    }
   };
 
   const registerHeirAlert = async () => {
@@ -902,8 +919,8 @@ export default function App() {
       pushToast("error", "Load vault details first.");
       return;
     }
-    if (account.toLowerCase() !== vaultOwner.toLowerCase()) {
-      pushToast("error", "Only the owner can register alerts for this vault.");
+    if (![vaultOwner, vaultHeir].some(address => address.toLowerCase() === account.toLowerCase())) {
+      pushToast("error", "Only the owner or heir can enable monitoring for this vault.");
       return;
     }
     setWatchBusy(true);
@@ -927,7 +944,7 @@ export default function App() {
     }
     setWatchBusy(true);
     try {
-      const res = await fetch(`${NOTIFY_BACKEND_URL}/api/notifications/test`, {
+      const res = await notificationFetch(`${NOTIFY_BACKEND_URL}/api/notifications/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1054,6 +1071,27 @@ export default function App() {
     refreshNotifyWatchState();
   }, [refreshNotifyWatchState]);
 
+  useEffect(() => {
+    const expired = () => {
+      setAccount("");
+      setServerVerified(false);
+      setUsername("");
+      setOwnVault("");
+      setVault("");
+      setVaultIdentity(null);
+      notifyWatchRequest.current++;
+      setNotifyWatch({ key: "", state: "unknown" });
+      setStatus("Your sign-in expired. Continue with World App to reconnect.");
+      heirScannedFor.current = null;
+    };
+    window.addEventListener("inheritance:session-expired", expired);
+    return () => window.removeEventListener("inheritance:session-expired", expired);
+  }, []);
+
+  useEffect(() => {
+    if (account && linkedVault) setVault(linkedVault);
+  }, [account, linkedVault]);
+
   // In-World App: on mount, only initialize the MiniKit bridge.
   //
   // 여기서 walletAuth 를 호출하면 안 된다. World App 리뷰 규칙상 로그인은 반드시
@@ -1138,7 +1176,11 @@ export default function App() {
   const loadVault = useCallback(async () => {
     if (!factory || !account) return;
     try {
-      const v = await factory.vaultOf(account);
+      let v = await factory.vaultOf(account);
+      if (v === ethers.ZeroAddress && LEGACY_FACTORY_ADDRESS && provider) {
+        const legacy = new ethers.Contract(LEGACY_FACTORY_ADDRESS, FACTORY_ABI, provider);
+        v = await legacy.vaultOf(account);
+      }
       if (v && v !== ethers.ZeroAddress) {
         setOwnVault(v);
         // 링크 금고가 우선이다. 상속인에게 보낸 링크를 열었는데 자기 금고로 되돌아가면
@@ -1168,7 +1210,7 @@ export default function App() {
     // (1) Create 버튼이 영구히 비활성화되고 (2) "이미 금고가 있습니다" 라고 표시된다.
     // 결과적으로 남의 상속인이 된 사용자는 자기 금고를 만들 수 없게 된다.
     // 상속인 금고는 아래 "Find vaults where I am heir" 액션으로 별도로 조회한다.
-  }, [factory, account, linkedVault]);
+  }, [factory, account, linkedVault, provider]);
 
   // Username/address resolution helpers — accept @username or 0x… in inputs
   const getUsernameFor = async (addr: string) => {
@@ -1281,15 +1323,26 @@ export default function App() {
 
   const refreshVaultDetails = useCallback(async () => {
     if (!vaultCtr) return;
+    const epoch = vaultDetailsEpoch.current;
     try {
-      const [o, h, hb, lp] = await Promise.all([
+      const [o, h, hb, lp, sourceFactory, token] = await Promise.all([
         vaultCtr.owner(),
         vaultCtr.heir(),
         vaultCtr.heartbeatInterval(),
         vaultCtr.lastPing(),
+        vaultCtr.factory(),
+        vaultCtr.WLD(),
       ]);
-      setVaultOwner(o);
-      setVaultHeir(h);
+      const trusted = [FACTORY_ADDRESS, LEGACY_FACTORY_ADDRESS].filter(Boolean).some(a => a.toLowerCase() === String(sourceFactory).toLowerCase());
+      if (!trusted || String(token).toLowerCase() !== WLD_ADDRESS.toLowerCase() || !provider) {
+        throw new Error("This vault is not part of Inheritance.");
+      }
+      const source = new ethers.Contract(sourceFactory, FACTORY_ABI, provider);
+      if (String(await source.vaultOf(o)).toLowerCase() !== vault.toLowerCase()) {
+        throw new Error("This vault's slot has been released. Its contract remains on-chain.");
+      }
+      if (epoch !== vaultDetailsEpoch.current) return;
+      setVaultIdentity({ address: vault, factory: String(sourceFactory), owner: String(o), heir: String(h) });
       setVaultHeartbeat(Number(hb));
       // 주기 입력 필드를 실제 값으로 맞춘다. 사용자가 편집 중이면 건드리지 않는다.
       //
@@ -1307,15 +1360,34 @@ export default function App() {
       // 입력할 때마다 콜백이 재생성되어 이 effect 가 keystale 마다 다시 돌고,
       // 사용자가 필드를 지우면 즉시 소유자 주소로 되돌아가 비워둘 수 없게 된다.
       setWithdrawTo((prev) => prev || o);
+      if (linkedVault) setLinkError("");
       setStale(true);
-    } catch {
+    } catch (error) {
+      if (epoch !== vaultDetailsEpoch.current) return;
       // 읽기가 실패했다. 예전에는 여기서 조용히 넘어갔고, 그래서 화면은 갱신되지 않은
       // 채로 남아 있었다. 사용자는 그 정체를 "내 돈이 사라졌다" 로 읽는다 — 실제로는
       // RPC 가 죽은 것뿐인데도 말이다. 지금 데이터가 최신이 아니라는 사실을 말해야 한다.
       setStale(false);
+      setVaultIdentity(null);
+      if (linkedVault) setLinkError(errorText(error));
     }
-  }, [vaultCtr, periodTouched]);
-  useEffect(() => { if (vaultCtr) void refreshVaultDetails(); }, [vaultCtr, refreshVaultDetails]);
+  }, [vaultCtr, periodTouched, provider, vault, linkedVault]);
+  useEffect(() => {
+    const epoch = vaultDetailsEpoch.current + 1;
+    vaultDetailsEpoch.current = epoch;
+    if (!vaultCtr) return;
+    void refreshVaultDetails();
+    // Retain fail-closed roles during an outage and restore them after a fresh,
+    // canonical read. Invalidate outstanding reads when the selected vault changes.
+    const id = setInterval(() => void refreshVaultDetails(), 15000);
+    const onVis = () => { if (document.visibilityState === "visible") void refreshVaultDetails(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      vaultDetailsEpoch.current = epoch + 1;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [vaultCtr, refreshVaultDetails]);
 
   // 금고가 생성된 블록/시각을 이벤트 로그에서 역추적한다 (표시 전용, 실패해도 무방)
   const loadVaultCreationMeta = useCallback(async () => {
@@ -1327,7 +1399,8 @@ export default function App() {
       const iface = new ethers.Interface(FACTORY_ABI);
       const tryQuery = async (topics: (string | null | string[])[]) => {
         const logs = await safeGetLogs(p, {
-          address: FACTORY_ADDRESS,
+          address: vaultFactory,
+          fromBlock: vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase() ? (LEGACY_FACTORY_DEPLOY_BLOCK ?? undefined) : (FACTORY_DEPLOY_BLOCK ?? undefined),
           topics,
           toBlock: "latest",
         });
@@ -1369,7 +1442,7 @@ export default function App() {
       // Meta query failure is non-critical
       setStatus((s) => s || ("Meta error: " + errorText(e)));
     }
-  }, [vault, signer, provider, vaultOwner, vaultHeir, account]);
+  }, [vault, signer, provider, vaultOwner, vaultHeir, account, vaultFactory]);
   useEffect(() => { if (vault) loadVaultCreationMeta(); }, [vault, loadVaultCreationMeta]);
 
   // ---- balances & timer
@@ -1505,10 +1578,11 @@ export default function App() {
 
   // ---- create vault
   const createVault = async () => {
+    if (creating) return;
     if (!factory) { setStatus("Connect first"); return; }
     if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
     // Prevent double-create: factory enforces 1-per-owner and will revert with ALREADY_HAS_VAULT
-    if (isMyVault) { setStatus("You already have a vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
+    if (isMyVault || ownVault) { setStatus("You already have a vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
     const resolved = heirResolved || await resolveHeirInput(heir);
     if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
     // 0x0 은 컨트랙트에서 InvalidAddress 로 거절된다.
@@ -1521,7 +1595,18 @@ export default function App() {
     const days = periodNum;
     if (!periodValid) { setStatus("Period must be between 1 and 365 days."); return; }
     const seconds = BigInt(days) * 24n * 60n * 60n;
+    setCreating(true);
     try {
+      // Cached lookup can still be loading or stale. Check both generations before
+      // creating so a delayed legacy lookup cannot leave two active app vaults.
+      const sources = [factory, ...(LEGACY_FACTORY_ADDRESS && provider
+        ? [new ethers.Contract(LEGACY_FACTORY_ADDRESS, FACTORY_ABI, provider)] : [])];
+      const existing = await Promise.all(sources.map(source => source.vaultOf(account)));
+      if (existing.some(address => address && address !== ethers.ZeroAddress)) {
+        setStatus("You already have a vault. Use it or release after expiry.");
+        pushToast("info", "Vault already exists");
+        return;
+      }
       const sent = await sendWorldChainTx([
         {
           address: FACTORY_ADDRESS,
@@ -1540,6 +1625,7 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const vchk = await factory.vaultOf(account);
           return vchk && vchk !== ethers.ZeroAddress;
@@ -1547,13 +1633,15 @@ export default function App() {
       });
       setStatus("Vault created");
       const v = await factory.vaultOf(account);
+      setOwnVault(v);
       setVault(v);
       if (NOTIFY_BACKEND_ENABLED && v && v !== ethers.ZeroAddress) {
         try {
           await registerWatcher(v, account, resolved.address, true);
         } catch {
-          // Notification watcher registration is optional.
-          void 0;
+          const key = `${account.toLowerCase()}:${v.toLowerCase()}`;
+          if (notifyWatchScope.current === key) setNotifyWatch({ key, state: "not_registered" });
+          pushToast("info", "Vault saved on-chain. Monitoring could not be enabled; try again in the Inherit tab.");
         }
       }
       refreshBalances(); refreshTimer();
@@ -1566,6 +1654,8 @@ export default function App() {
       else if (/insufficient funds/i.test(raw)) friendly = 'Insufficient gas on World Chain (ETH needed for fees).';
       setStatus("Create error: " + friendly);
       pushToast('error', friendly);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -1585,8 +1675,9 @@ export default function App() {
         `Open this link in World App to see it: ${heirLink}`,
         ``,
         `What it means: if the person who named you stops renewing it, the countdown ends and nothing`,
-        `moves on its own. You would file a claim, they would then have 7 days to renew and stop it,`,
-        `and only after those 7 days could you withdraw. If you have not been contacted before that`,
+        `moves before you file a claim. They then have a 7-day review window to renew and stop it.`,
+        `After that, a new vault can transfer automatically; you can also finish in World App.`,
+        `They can renew until the transfer executes. If you have not been contacted before that`,
         `point, nothing is owed to you yet.`,
         ``,
         `Vault: ${vault}`,
@@ -1658,29 +1749,55 @@ export default function App() {
     if (!factory || !account || findingHeirVaults) return;
     setFindingHeirVaults(true);
     setHeirFoundVaults([]);
+    setHeirSearchNote("");
+    setHeirScanIncomplete(false);
     try {
       const p = (signer?.provider as ethers.AbstractProvider | null) ?? provider;
-      if (!p) return;
+      if (!p) throw new Error("Not connected. Please sign in and check again.");
       const sig = ethers.id("VaultCreated(address,address,address,uint256)");
       const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
-      const logs = await safeGetLogs(p, {
-        address: FACTORY_ADDRESS,
+      const sources = [{ address: FACTORY_ADDRESS, block: FACTORY_DEPLOY_BLOCK }, ...(LEGACY_FACTORY_ADDRESS ? [{ address: LEGACY_FACTORY_ADDRESS, block: LEGACY_FACTORY_DEPLOY_BLOCK }] : [])];
+      const indexed: string[] = [];
+      let indexIncomplete = false;
+      if (NOTIFY_BACKEND_ENABLED) {
+        try {
+          const { watchers, truncated } = await fetchRegisteredVaults(NOTIFY_BACKEND_URL);
+          indexIncomplete = truncated;
+          for (const row of watchers) {
+            if (ethers.isAddress(row.vaultAddress) && typeof row.heirAddress === "string" && row.heirAddress.toLowerCase() === account.toLowerCase()) indexed.push(row.vaultAddress);
+          }
+        } catch { indexIncomplete = true; /* Recent events and shared links remain available. */ }
+      }
+      const logs = (await Promise.all(sources.map(source => safeGetLogs(p, {
+        address: source.address,
         topics: [sig, null, heirTopic],
+        fromBlock: source.block ?? undefined,
         toBlock: "latest",
-      });
+      }, () => { indexIncomplete = true; })))).flat();
       const iface = new ethers.Interface(FACTORY_ABI);
-      const vaults: string[] = [];
+      const candidates = new Set(indexed.map(v => ethers.getAddress(v)));
       for (const lg of logs) {
         try {
           const parsed = iface.parseLog({ topics: lg.topics, data: lg.data });
           const v = String(parsed?.args?.[2] || "");
-          if (v && !vaults.includes(v)) vaults.push(v);
+          if (ethers.isAddress(v)) candidates.add(ethers.getAddress(v));
         } catch {
           // Skip malformed logs.
           void 0;
         }
       }
+      const vaults = (await Promise.all([...candidates].map(async candidate => {
+        try {
+          const ctr = new ethers.Contract(candidate, VAULT_ABI, p);
+          const [currentHeir, currentFactory, owner, token] = await Promise.all([ctr.heir(), ctr.factory(), ctr.owner(), ctr.WLD()]);
+          if (currentHeir.toLowerCase() !== account.toLowerCase() || token.toLowerCase() !== WLD_ADDRESS.toLowerCase() || !sources.some(s => s.address.toLowerCase() === currentFactory.toLowerCase())) return null;
+          const canonical = await new ethers.Contract(currentFactory, FACTORY_ABI, p).vaultOf(owner);
+          return canonical.toLowerCase() === candidate.toLowerCase() ? candidate : null;
+        } catch { indexIncomplete = true; return null; }
+      }))).filter((v): v is string => v !== null);
       setHeirFoundVaults(vaults);
+      setHeirScanIncomplete(indexIncomplete);
+      setHeirSearchNote(`${indexIncomplete ? "This vault search is incomplete. Please check again. " : NOTIFY_BACKEND_ENABLED ? "Checked registered vaults. " : "Checked recent vaults. "}For an older or unregistered vault, ask its owner for the vault link.`);
       // 찾은 상속인 금고를 `vault` 에 넣으면 안 된다. `vault` 는 "내가 소유한 금고" 를
       // 뜻하고, 여기서 오염시키면 (1) Create 버튼이 영구히 비활성화되고
       // (2) "You already have a vault" 라고 표시된다. 상속인 금고는 별도 상태로만
@@ -1693,9 +1810,11 @@ export default function App() {
             : `Detected ${vaults.length} vaults where you are heir.`,
         );
       } else {
-        pushToast('info', 'No vaults found where you are heir.');
+        // The empty result remains visible in Help; automatic scans are quiet.
       }
     } catch (e: unknown) {
+      setHeirScanIncomplete(true);
+      setHeirSearchNote("This vault search is incomplete. Please check again, or open the vault link from its owner.");
       pushToast('error', 'Heir scan error: ' + errorText(e));
       console.error("findHeirVaults failed:", e);
     } finally {
@@ -1724,17 +1843,17 @@ export default function App() {
    * heir" 가 남으면 "내가 뭘 놓치고 있나" 하는 불안을 만들고, 정작 해야 할 일
    * (금고 만들기)을 화면 아래로 민다.
    *
-   * 스캔 중에는 짧은 줄로 자리 잡고, 결과를 받았는데 아무것도 없으면 완전히 감춘다.
+   * 스캔 중이거나 불완전하면 재확인할 수 있게 보인다. 완료된 빈 결과는 감춘다.
    */
-  const notifyHeirWorthShowing = findingHeirVaults || heirFoundVaults.length > 0 || !heirScanAttempted;
+  const notifyHeirWorthShowing = findingHeirVaults || heirScanIncomplete || heirFoundVaults.length > 0 || !heirScanAttempted;
 
   const heirStatusCard = gate2(
     <Card>
       <CardHeader><CardTitle>Are you named as someone&apos;s heir?</CardTitle></CardHeader>
       <CardContent className="grid gap-2">
         <div className="text-xs text-gray-600">
-          This app checks the chain for you as soon as you open it. Scanning reads the
-          factory&apos;s history, so it takes a moment.
+          We check registered vaults and recent chain events when you sign in. A shared
+          vault link opens a vault directly.
         </div>
         {findingHeirVaults ? (
           <div className="text-xs text-gray-600">Checking the chain for vaults that name you…</div>
@@ -1761,11 +1880,12 @@ export default function App() {
               </div>
             </>
           ) : (
-            <div className="text-sm font-medium">No vault names you as heir.</div>
+            <div className="text-sm font-medium">{heirScanIncomplete ? "Some vaults could not be checked. Please try again." : "No vaults found in this check."}</div>
           )
         ) : null}
+        {heirSearchNote && <div className="text-xs text-gray-600">{heirSearchNote}</div>}
         <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={findHeirVaults} disabled={findingHeirVaults}>
+          <Button onClick={findHeirVaults} disabled={pendingAction || findingHeirVaults}>
             {findingHeirVaults ? "Searching..." : "Check again"}
           </Button>
         </div>
@@ -1791,10 +1911,10 @@ export default function App() {
           address: WLD_ADDRESS,
           abi: ERC20_ABI,
           functionName: "approve",
-          args: [FACTORY_ADDRESS, amt.toString()],
+          args: [vaultFactory, amt.toString()],
         },
         {
-          address: FACTORY_ADDRESS,
+          address: vaultFactory,
           abi: FACTORY_ABI,
           functionName: "deposit",
           args: [amt.toString()],
@@ -1811,6 +1931,7 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
           const vb: bigint = await token.balanceOf(vault);
@@ -1836,7 +1957,7 @@ export default function App() {
     if (!vaultCtr) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "pingMyVault", args: []  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "pingMyVault", args: []  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -1848,6 +1969,7 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const lp: bigint = await vaultCtr.lastPing();
           return Number(lp) > (prevLp || 0);
@@ -1869,7 +1991,7 @@ export default function App() {
     const seconds = BigInt(periodNum) * 24n * 60n * 60n;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "changeMyPeriod", args: [seconds.toString()]  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "changeMyPeriod", args: [seconds.toString()]  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -1880,6 +2002,7 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const hb: bigint = await vaultCtr.heartbeatInterval();
           return Number(hb) === Number(seconds);
@@ -1900,7 +2023,7 @@ export default function App() {
     if (!vaultCtr) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "cancelMyInheritance", args: []  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "cancelMyInheritance", args: []  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -1911,6 +2034,7 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const h = await vaultCtr.heir();
           return h && h.toLowerCase() === vaultOwner.toLowerCase();
@@ -1943,7 +2067,7 @@ export default function App() {
     }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "updateMyHeir", args: [resolved.address]  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "updateMyHeir", args: [resolved.address]  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -1955,6 +2079,7 @@ export default function App() {
       const target = resolved.address;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const h = await vaultCtr.heir();
           return h && h.toLowerCase() === target.toLowerCase();
@@ -1990,13 +2115,13 @@ export default function App() {
     if (!vault || !vaultCtr) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "fileClaimFor", args: [vault]  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "fileClaimFor", args: [vault]  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
         return;
       }
-      setStatus("Request filed. The owner has 7 days to renew before you can withdraw.");
+      setStatus("Pending… awaiting claim confirmation");
       // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
       // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
       void refreshVaultDetails();
@@ -2004,8 +2129,18 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => await vaultCtr.claimPending(),
       });
+      setStatus("Claim confirmed. The seven-day review window has started.");
+      void refreshVaultDetails();
+      if (NOTIFY_BACKEND_ENABLED && vaultOwner && vaultHeir) {
+        try { await registerWatcher(vault, vaultOwner, vaultHeir, true); }
+        catch {
+          if (notifyWatchScope.current === notifyWatchKey) setNotifyWatch({ key: notifyWatchKey, state: "not_registered" });
+          pushToast("info", "Claim confirmed. Enable vault monitoring for automatic transfer and reminders.");
+        }
+      }
       pushToast('success', 'Claim filed');
       refreshTimer(); refreshBalances();
     } catch (e: unknown) {
@@ -2019,7 +2154,7 @@ export default function App() {
     if (!vaultCtr || !vault) return;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "finalizeClaimFor", args: [vault]  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "finalizeClaimFor", args: [vault]  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -2031,6 +2166,7 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
           const vb: bigint = await token.balanceOf(vault);
@@ -2063,7 +2199,7 @@ export default function App() {
     if (amt > vaultWld) { setStatus("Amount exceeds vault balance"); return; }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "withdrawFromMyVault", args: [withdrawTo, amt.toString()]  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "withdrawFromMyVault", args: [withdrawTo, amt.toString()]  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -2075,6 +2211,7 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
           const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
           const vb: bigint = await token.balanceOf(vault);
@@ -2108,7 +2245,7 @@ export default function App() {
     let ok = false;
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "releaseMyVault", args: []  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "releaseMyVault", args: []  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -2119,8 +2256,10 @@ export default function App() {
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
         txHash: txh,
+        hashType: sent.tx.hashType,
         check: async () => {
-          const v = await factory.vaultOf(account);
+          const selectedFactory = new ethers.Contract(vaultFactory, FACTORY_ABI, prov);
+          const v = await selectedFactory.vaultOf(account);
           return !v || v === ethers.ZeroAddress;
         },
       });
@@ -2138,8 +2277,7 @@ export default function App() {
            `refreshVaultDetails` 로는 정리되지 않는다: `vaultCtr` 이 null 이면 첫 줄에서
            반환하기 때문. 그래서 여기서 상태를 직접 비운다. */
       setVault("");
-      setVaultOwner("");
-      setVaultHeir("");
+      setVaultIdentity(null);
       /* `canClaim` / `challengeRunning` / `awaitingClaim` 은 저장된 값이 아니라
          `vaultPhase` 에서 파생된다(별도 state 가 없다). 단계만 되돌리면 함께 초기화된다.
          존재하지 않는 setter 를 부르면 컴파일이 안 되므로 여기서 지킨다. */
@@ -2184,7 +2322,7 @@ export default function App() {
     setSweeping(true);
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: FACTORY_ADDRESS, abi: FACTORY_ABI, functionName: "sweepSettledVaultFor", args: [account]  }]);
+      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "sweepSettledVaultFor", args: [account]  }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -2195,6 +2333,7 @@ export default function App() {
       const prov = getRwProvider();
       await waitForTxOrEvent(prov, {
         txHash: sent.tx.hash,
+        hashType: sent.tx.hashType,
         check: async () => {
           const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
           const now: bigint = await token.balanceOf(vault);
@@ -2222,8 +2361,11 @@ export default function App() {
       setStatus("Failed to copy to clipboard");
     }
   };
+  if (!account && !CONFIG_ERROR) {
+    return <Landing installed={miniInstalled} busy={ctaLoading} onConnect={continueWorldApp2} linkedVault={linkedVault} status={status} />;
+  }
   return (
-    <div className="app-shell bg-gradient-to-b from-slate-50 to-slate-100">
+    <div className="app-shell">
       {/* 환경변수가 잘못되면 흰 화면 대신 복구 방법을 안내한다.
           (config.ts 는 import 시점에 throw 할 수 없다 — 그랬다면 이 화면조차
            렌더링되기 전에 앱이 죽는다) */}
@@ -2244,32 +2386,23 @@ export default function App() {
           </Card>
         </div>
       )}
-      <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b border-slate-200">
-        <div className="container-narrow flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded bg-brand-600" />
-            <div className="text-sm font-semibold tracking-tight">WLD Inheritance</div>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-600">
-            <span className="hidden sm:inline">World Chain</span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5">{badge(`Chain: ${CHAIN_ID}`, 'gray')}</span>
-          </div>
+      <header className="app-header">
+        <div className="container-narrow header-content">
+          <Brand />
+          <span className="network-pill"><span className="live-dot" />World Chain</span>
         </div>
       </header>
       {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
           콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
-      <div className="container-narrow px-4 py-4 md:py-6 tab-pb grid gap-4">
+      <main id="main-content" className="container-narrow app-content tab-pb grid gap-4">
         {/* 헤더. 로그인 상태와 탭마다 반복되므로 카드 한 장을 쓰지 않고 한 줄로 줄인다.
             카드 4개(헤더/타이머/입금/고객센터)를 한 화면에 넣으려면 이게 전부 필요했다. */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="account-row flex items-center justify-between gap-2">
           <div className="min-w-0">
             {account ? (
               <>
                 <div className="text-sm font-semibold truncate">
                   {username ? `@${username}` : short(account)}
-                </div>
-                <div className="text-xs text-gray-500">
-                  Connected{inheritanceCancelled ? " · inheritance cancelled" : ""}
                 </div>
               </>
             ) : (
@@ -2289,13 +2422,14 @@ export default function App() {
             <Button
               variant="primary"
               onClick={continueWorldApp2}
-              disabled={ctaLoading}
+              disabled={pendingAction || ctaLoading}
               className="shrink-0"
             >
               {ctaLoading ? (<><span className="spinner mr-2"></span>Connecting...</>) : "Connect"}
             </Button>
           )}
         </div>
+        <div className="page-intro"><span className="eyebrow">{tab === "vault" ? "Your check-in" : tab === "money" ? "A little aside" : tab === "support" ? "Here to help" : "For the future"}</span><h1>{tab === "vault" ? "Peace of mind, today." : tab === "money" ? "Make room for tomorrow." : tab === "support" ? "A clearer way forward." : ownVault ? "Your person. Your plan." : "Start with someone you love."}</h1></div>
 
         {/* 연결이 끊기면 화면이 멈춘다. 예전에는 여기에 아무 표시가 없어서 사용자가
             "내 갱신이 반영되지 않았다", 혹은 더 나쁘게 "내 돈이 사라졌다" 고 읽었다.
@@ -2399,8 +2533,10 @@ export default function App() {
                       목적을 말해야 한다. 상속 취소(heir == owner)도 같은 취급. */}
                   <div>
                     <b>
-                      {!vaultHeir || vaultHeir === ethers.ZeroAddress
-                        ? "nobody — the inheritance has already completed"
+                      {!vaultHeir
+                        ? "Checking vault identity…"
+                        : vaultHeir === ethers.ZeroAddress
+                          ? "nobody — the inheritance has already completed"
                         : vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()
                           ? "nobody — inheritance was cancelled"
                           : short(vaultHeir)}
@@ -2518,8 +2654,8 @@ export default function App() {
                     <Button variant="ghost" onClick={setMax}>Max</Button>
                     <Button
                       variant="primary"
-                      onClick={deposit}
-                      disabled={!miniInstalled || !account || isExpiredOrLater}
+                      onClick={() => void runVaultAction(deposit)}
+                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater}
                     >
                       Deposit
                     </Button>
@@ -2598,7 +2734,7 @@ export default function App() {
                           고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
                           라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
                           이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
-                      <Button onClick={ownerWithdraw} disabled={isExpiredOrLater && !inheritanceCancelled}>
+                      <Button onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || isExpiredOrLater && !inheritanceCancelled}>
                         {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
                           ? "Withdraw to myself"
                           : withdrawTo
@@ -2642,16 +2778,16 @@ export default function App() {
                      읽히면 사용자는 카운트다운 끝나기 직전에 패닉하게 된다. 실제 규칙은
                      "상속인이 **실제로 인출할 때까지** 멈출 수 없다" 다. 한 문장에 담는다. */
                   <>
-                    Funds move only after your heir files a claim <b>and</b> actually takes the
-                    balance. You can renew at any time — even after the {challengeDays}-day review
-                    window — to pull it back.
+                    Your heir must file a claim and wait {challengeDays} days before a transfer
+                    is eligible. You can renew at any time until the transfer actually executes
+                    to cancel the claim. After the review window, renew promptly if you want to keep the funds.
                   </>
                 ) : iAmHeir ? (
                   <>
                     Funds move only after the countdown runs out <b>and</b> you file a claim,
                     then wait {challengeDays} more days. The owner can renew at any point to
-                    withdraw your claim — including after those {challengeDays} days — until you
-                    actually take the balance.
+                    cancel your claim — including after those {challengeDays} days — until the
+                    transfer actually executes.
                   </>
                 ) : (
                   /* 주인이도 상속인도 아닌 지갑. 이 단계들은 그 사람이 하는 일이 아니다.
@@ -2665,6 +2801,14 @@ export default function App() {
                   </>
                 )}
               </div>
+
+              {identityMatchesVault && !isSettledClaim && !inheritanceCancelled && <AutomationNotice
+                legacy={Boolean(LEGACY_FACTORY_ADDRESS && vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase())}
+                registered={notifyWatchState === "registered"}
+                canEnable={NOTIFY_BACKEND_ENABLED && (isMyVault || iAmHeir)}
+                busy={watchBusy || pendingAction}
+                onEnable={registerHeirAlert}
+              />}
 
               {/* 파이프라인을 단계로 보여준다. 어느 단계에 있는지가 한눈에 들어가야
                   "내 돈이 언제 이동하는가"를 머릿속에서 계산할 필요가 없어진다.
@@ -2744,7 +2888,7 @@ export default function App() {
                       Your heir has filed a claim. Renew before{" "}
                       <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
                       to withdraw it. You can still renew after that date — as many times as you
-                      like, right up until they actually take the balance.
+                      like, until the transfer executes. Automatic execution may happen soon after the review ends.
                     </>
                   ) : iAmHeir ? (
                     <>
@@ -2769,7 +2913,7 @@ export default function App() {
                   )}
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                     <div className="mt-2">
-                      <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account}>
+                      <Button variant="primary" onClick={() => void runVaultAction(extendTime)} disabled={pendingAction || !miniInstalled || !account}>
                         Renew and withdraw the claim
                       </Button>
                     </div>
@@ -2789,7 +2933,7 @@ export default function App() {
                         ? `The countdown has ended, so the ${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} balance is now available to you. File a claim to start the ${challengeDays}-day review window.`
                         : `The countdown has ended. This vault currently holds nothing, so a claim would move no funds — file one only if WLD arrives before the review window ends.`}
                     </div>
-                    <Button variant="primary" onClick={fileClaim} disabled={!miniInstalled}>
+                    <Button variant="primary" onClick={() => void runVaultAction(fileClaim)} disabled={pendingAction || !miniInstalled}>
                       File claim
                     </Button>
                   </div>
@@ -2803,7 +2947,7 @@ export default function App() {
                           청산을 남의 것으로 읽힌다. 소유자용 변형은 따로 있다. */}
                       The review window has passed, so you can withdraw. Renewing would still cancel your claim until you do.
                     </div>
-                    <Button variant="primary" onClick={claim} disabled={!miniInstalled || vaultWld === 0n}>
+                    <Button variant="primary" onClick={() => void runVaultAction(claim)} disabled={pendingAction || !miniInstalled || vaultWld === 0n}>
                       Withdraw {fmtUnits(vaultWld)} {wldSymbol}
                     </Button>
                   </div>
@@ -2820,8 +2964,8 @@ export default function App() {
                   <div className="field-row-controls">
                     <Button
                       variant="primary"
-                      onClick={sweepSettled}
-                      disabled={!miniInstalled || !account || sweeping}
+                      onClick={() => void runVaultAction(sweepSettled)}
+                      disabled={pendingAction || !miniInstalled || !account || sweeping}
                     >
                       {sweeping
                         ? "Sweeping…"
@@ -3055,13 +3199,13 @@ export default function App() {
                     </span>
                     {notifyHealth.level !== "ok" && notifyPermission !== "granted" && (
                       <Button size="sm" variant="ghost" onClick={requestNotifyPermission}
-                        disabled={!miniInstalled || notifyBusy}>
+                        disabled={pendingAction || !miniInstalled || notifyBusy}>
                         {notifyBusy ? "Working…" : "Turn on"}
                       </Button>
                     )}
                     {notifyHealth.level !== "ok" && isMyVault && notifyPermission === "granted" && (
                       <Button size="sm" variant="ghost" onClick={registerHeirAlert}
-                        disabled={!miniInstalled || watchBusy}>
+                        disabled={pendingAction || !miniInstalled || watchBusy}>
                         {watchBusy ? "Working…" : "Watch this vault"}
                       </Button>
                     )}
@@ -3100,7 +3244,7 @@ export default function App() {
                         전까지 갱신을 허용하는데, 여기가 옛 규칙("7일이 지나면 못 되돌린다")을
                         그대로 구현하고 있었다. 계약만 고치고 UI 를 안 고치면 화면이
                         블록체인과 모순된다. */}
-                    <Button variant="primary" onClick={extendTime} disabled={!miniInstalled || !account || isSettledClaim}>
+                    <Button variant="primary" onClick={() => void runVaultAction(extendTime)} disabled={pendingAction || !miniInstalled || !account || isSettledClaim}>
                       {challengeRunning || canClaim ? "Renew and withdraw claim" : "Reset timer"}
                     </Button>
                   </div>
@@ -3124,7 +3268,7 @@ export default function App() {
                           placeholder="30"
                           onChange={e => onPeriodChange(e.target.value)}
                         />
-                        <Button onClick={changePeriod} disabled={!miniInstalled || !account || !periodValid || isExpiredOrLater}>
+                        <Button onClick={() => void runVaultAction(changePeriod)} disabled={pendingAction || !miniInstalled || !account || !periodValid || isExpiredOrLater}>
                           Change period
                         </Button>
                       </div>
@@ -3149,7 +3293,7 @@ export default function App() {
                         <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
                       )
                     )}
-                    <Button onClick={updateHeir} disabled={!miniInstalled || !account || !newHeirResolved?.address || isExpiredOrLater}>Update heir</Button>
+                    <Button onClick={() => void runVaultAction(updateHeir)} disabled={pendingAction || !miniInstalled || !account || !newHeirResolved?.address || isExpiredOrLater}>Update heir</Button>
                     {/* cancelInheritance 는 컨트랙트에서 만기 후 Expired 로 거부한다.
                         형제 버튼인 withdraw 처럼 만료 이후에는 항상 실패하므로
                         클릭을 사용자에게 노출하지 않는다. */}
@@ -3158,8 +3302,8 @@ export default function App() {
                         상속인이 사라지고 되돌리려면 기한 전이어야 하므로 danger 로 구분한다. */}
                     <Button
                       variant="danger"
-                      onClick={cancelInheritance}
-                      disabled={!miniInstalled || !account || isExpiredOrLater}
+                      onClick={() => void runVaultAction(cancelInheritance)}
+                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater}
                     >
                       Cancel (set heir to me)
                     </Button>
@@ -3169,7 +3313,7 @@ export default function App() {
                           releaseSlot 의 finally 안에서만 초기화했으므로, Cancel 이나 Escape 로
                           닫고 다시 열면 이전 동의가 남아 Confirm 이 살아 있었다. 확인란의 문구는
                           "다시 한번 동의해야 한다" 는 뜻인데 앱이 그걸 지키지 않았다. */}
-                      <Button onClick={() => { setReleaseAcknowledge(false); setShowReleaseConfirm(true); }} disabled={!miniInstalled || !account}>Release slot</Button>
+                      <Button onClick={() => { setReleaseAcknowledge(false); setShowReleaseConfirm(true); }} disabled={pendingAction || !miniInstalled || !account}>Release slot</Button>
                         <span className="text-xs text-gray-500">* Available only after expiry and when vault balance is 0. The contract remains on-chain; only the factory mapping is cleared.</span>
                       </div>
                     )}
@@ -3306,7 +3450,7 @@ export default function App() {
                 </li>
                 <li>
                   <b>Renew before the countdown ends</b>
-                  <span>Miss it and your heir can claim the balance. They wait 7 days, and you can keep renewing to stop them right up until they actually take it.</span>
+                  <span>Miss it and your heir can file a claim. After a seven-day review, a new vault can transfer automatically. You can renew until the transfer executes to cancel the claim.</span>
                 </li>
               </ol>
 
@@ -3325,13 +3469,10 @@ export default function App() {
                   finished and empty — then the slot releases.
                 </div>
               </div>
-              {/* 이 문장은 사실 주장이라 컨트랙트에서 검증했다. 금고의 WLD 가 나가는
-                  경로는 finalizeClaim 하나뿐이고 그건 상속인이 직접 누를 때만 실행된다.
-                  갱신(ping) 은 자금을 옮기지 않는다 — 신청을 취소하고 카운트다운만
-                  되돌린다. 그래서 "자동으로 옮겨지지 않는다" 가 정확하다. */}
               <div className="text-sm text-gray-700 border-l-2 border-blue-200 pl-3">
-                The countdown ending <b>moves nothing on its own.</b> Your WLD stays in the vault
-                until your heir files a claim, waits 7 days, and withdraws it.
+                The countdown ending <b>moves nothing on its own.</b> Your heir must file a claim
+                and wait seven days. A registered new vault can then transfer automatically;
+                the heir can also complete it manually. The owner can renew until execution.
               </div>
               </CardContent>
               </>
@@ -3339,7 +3480,7 @@ export default function App() {
               </Card>
               )}
 
-              {tab === "inherit" && !isMyVault && gate2(
+              {tab === "inherit" && !ownVault && gate2(
                 <Card>
                   <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
                   <CardContent className="grid gap-3">
@@ -3361,7 +3502,7 @@ export default function App() {
                   <Button
                     size="sm"
                     onClick={pickHeirFromContacts}
-                    disabled={shareBusy}
+                    disabled={pendingAction || shareBusy}
                     title="Open your World App contacts and choose an heir"
                   >
                     {shareBusy ? "…" : "From contacts"}
@@ -3406,6 +3547,9 @@ export default function App() {
                   />
                   <span className="text-xs text-gray-500">days</span>
                 </div>
+                <div className="period-presets" aria-label="Suggested renewal periods">
+                  {[30, 90, 180].map(days => <button key={days} type="button" className={`period-preset ${periodNum === days ? "period-preset-selected" : ""}`} aria-pressed={periodNum === days} onClick={() => onPeriodChange(String(days))}>{days} days</button>)}
+                </div>
               </div>
               <div className="text-xs text-red-600">
                 {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
@@ -3440,15 +3584,15 @@ export default function App() {
                       "Nobody is told" 와 "notices start after a deposit" 가 한 흐름으로
                       읽힌다. (하네스가 리프 요소 + rounded + 경고톤 + 두 문구 모두를
                       요구하므로 그 계약은 지키되, 줄 수는 줄인다.) */}
-                  <div className="font-medium">Turn on notifications first</div>
+                  <div className="font-medium">{notifyPermission === "granted" ? "Notifications are on" : "Turn on notifications first"}</div>
                   <div className="mt-1">
                     {notifyHealth.level === "off" || notifyHealth.level === "broken"
-                      ? `If you stop renewing, nobody is told — not you, not your heir. Notices start once the vault holds WLD.`
-                      : `You and your heir will be told before the countdown ends and at each claim step. Notices start once the vault holds WLD.`}
+                      ? `Reminders are optional. You will not receive them until you enable notifications. Your heir needs their own permission. Notices start once the vault holds WLD.`
+                      : `Reminders are enabled for you. Your heir must also open this app and enable notifications. Notices start once the vault holds WLD.`}
                   </div>
                   {notifyPermission !== "granted" && (
                     <Button size="sm" className="mt-1.5" variant="outline"
-                      onClick={requestNotifyPermission} disabled={!miniInstalled || notifyBusy}>
+                      onClick={requestNotifyPermission} disabled={pendingAction || !miniInstalled || notifyBusy}>
                       {notifyBusy ? "Working…" : "Turn on notifications"}
                     </Button>
                   )}
@@ -3460,7 +3604,8 @@ export default function App() {
                   그러면 VITE_NOTIFY_BACKEND_URL 이 빠진 빌드에서 "Create vault" 가
                   화면에서 사라지고, 아무도 금고를 만들 수 없게 된다 — 부가 기능이
                   주 액션을 삼킨 구조. 알림은 없어도 금고 만들기는 가능해야 한다. */}
-              <Button variant="primary" onClick={createVault} disabled={!miniInstalled || !account || isMyVault || !periodValid || !heirResolved?.address}>Create vault</Button>
+              <p className="text-xs text-gray-600">Creating a vault means you accept the <a href="/terms.html" className="underline">Terms</a> and <a href="/privacy.html" className="underline">Privacy Policy</a>, including the seven-day claim and automatic transfer rules.</p>
+              <Button variant="primary" onClick={() => void runVaultAction(createVault)} disabled={pendingAction || creating || !miniInstalled || !account || isMyVault || !periodValid || !heirResolved?.address}>{creating ? <><span className="spinner" />Creating vault…</> : "Create vault"}</Button>
               {isMyVault && (
                 <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
               )}
@@ -3525,7 +3670,7 @@ export default function App() {
                     this app. Tapping the message opens this vault.
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Button variant="primary" onClick={tellHeirInChat} disabled={shareBusy}>
+                    <Button variant="primary" onClick={tellHeirInChat} disabled={pendingAction || shareBusy}>
                       {shareBusy ? "Sending..." : "Send in World Chat"}
                     </Button>
                   </div>
@@ -3565,11 +3710,14 @@ export default function App() {
                     : heirScanAttempted
                       ? heirFoundVaults.length > 0
                         ? `You are the heir of ${heirFoundVaults.length} vault${heirFoundVaults.length > 1 ? "s" : ""}. Open the Inherit tab to see them.`
-                        : "No vault on World Chain currently names you as heir."
+                        : heirScanIncomplete
+                          ? "Some vaults could not be checked. Please try again."
+                          : "No registered or recent vaults found in this check."
                       : "This app checks the chain for you as soon as you open it."}
                 </div>
+                {heirSearchNote && <p className="text-xs text-gray-600">{heirSearchNote}</p>}
                 <div>
-                  <Button size="sm" onClick={findHeirVaults} disabled={findingHeirVaults}>
+                  <Button size="sm" onClick={findHeirVaults} disabled={pendingAction || findingHeirVaults}>
                     {findingHeirVaults ? "Searching..." : "Check again"}
                   </Button>
                 </div>
@@ -3580,13 +3728,13 @@ export default function App() {
           <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-700">
             <div>
-              This mini app is fully non-custodial. Your keys and assets stay in your World App wallet. We never receive or control private keys.
+              Your wallet keys stay in World App. Deposited WLD is held by your on-chain vault. We cannot redirect an inheritance or withdraw an active owner’s funds.
             </div>
             <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
-              <li>Transactions are requested via World App and must be explicitly approved in World App.</li>
-              <li>Deposits move WLD from your wallet to your personal vault contract; only you or your heir (after expiry) can move funds.</li>
-              <li>Your address is provided by World App via a secure bridge; signatures and transactions happen only in World App.</li>
-              <li>We do not store any personal data about you, your heir, or your vault.</li>
+              <li>Your setup and management transactions require World App approval. After an heir’s claim and seven-day review, a new vault may transfer automatically without a second signature.</li>
+              <li>Deposits move WLD into your personal vault contract. Eligible inheritance transfers can only pay its named heir; active-owner withdrawals require your approval.</li>
+              <li>World App provides your address and asks you to approve wallet sign-in and management transactions.</li>
+              <li>We store sign-in security records and registered vault addresses, monitoring state and delivery or execution records. See Privacy for details. We never collect your wallet keys.</li>
             </ul>
           </CardContent>
         </Card>
@@ -3619,14 +3767,14 @@ export default function App() {
                   "Refresh permission" 과 "Refresh watcher" 가 **한 고유 그룹**이 중복된다 —
                   두 RPC 하나를 새로 읽는 같은 동작. 하나로 합친다. */}
               <div className="flex gap-2 flex-wrap">
-                <Button onClick={requestNotifyPermission} disabled={!miniInstalled || notifyBusy}>
+                <Button onClick={requestNotifyPermission} disabled={pendingAction || !miniInstalled || notifyBusy}>
                   {notifyBusy ? "Working..." : "Enable notifications"}
                 </Button>
                 {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && vault && vaultHeir && (
                   <Button
                     variant="primary"
                     onClick={registerHeirAlert}
-                    disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}
+                    disabled={pendingAction || !miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}
                   >
                     Register vault alerts
                   </Button>
@@ -3635,11 +3783,11 @@ export default function App() {
               <div className="section-label">Diagnostics</div>
               <div className="flex gap-2 flex-wrap">
                 {account && (
-                  <Button size="sm" onClick={sendNotifyTestToMe} disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}>
+                  <Button size="sm" onClick={sendNotifyTestToMe} disabled={pendingAction || !miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}>
                     Send a test to me
                   </Button>
                 )}
-                <Button size="sm" onClick={refreshNotifyState} disabled={!miniInstalled || notifyBusy || watchBusy}>
+                <Button size="sm" onClick={refreshNotifyState} disabled={pendingAction || !miniInstalled || notifyBusy || watchBusy}>
                   Refresh status
                 </Button>
               </div>
@@ -3691,12 +3839,12 @@ export default function App() {
             onClick={() => setTab(t.key)}
             aria-current={tab === t.key ? "page" : undefined}
           >
-            {t.label}
+            <Icon name={t.key === "money" ? "send" : t.key === "support" ? "help" : t.key} size={21} /><span>{t.label}</span>
           </button>
         ))}
       </nav>
 
-      </div>
+      </main>
       <div className="toast-container" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
@@ -3768,8 +3916,8 @@ export default function App() {
               <span>I understand the conditions and want to proceed.</span>
             </label>
             <div className="flex justify-end gap-2">
-              <Button onClick={() => setShowReleaseConfirm(false)} disabled={releasing}>Cancel</Button>
-              <Button variant="primary" onClick={releaseSlot} disabled={!miniInstalled || releasing || !releaseAcknowledge}>Confirm</Button>
+              <Button onClick={() => setShowReleaseConfirm(false)} disabled={pendingAction || releasing}>Cancel</Button>
+              <Button variant="primary" onClick={() => void runVaultAction(releaseSlot)} disabled={pendingAction || !miniInstalled || releasing || !releaseAcknowledge}>Confirm</Button>
             </div>
           </div>
         </div>

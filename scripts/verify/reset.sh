@@ -32,6 +32,7 @@ echo "  FACTORY: $FACTORY"
 
 cd app
 nohup env VITE_RPC=$R VITE_FACTORY_ADDRESS=$FACTORY VITE_WLD_ADDRESS=$W VITE_FACTORY_DEPLOY_BLOCK=1 \
+  VITE_LEGACY_FACTORY_ADDRESS= VITE_LEGACY_FACTORY_DEPLOY_BLOCK= \
   VITE_NOTIFY_BACKEND_URL=https://world-inheritance-notify.rkddkwl725.workers.dev \
   npx vite --config vite.config.e2e.ts --port 7700 --strictPort > /tmp/opencode/dev.log 2>&1 &
 sleep 8
