@@ -320,6 +320,8 @@ export default function App() {
    */
   const isExpiredOrLater =
     awaitingClaim || challengeRunning || canClaim || isSettledClaim || vaultPhase === "cancelled";
+  // 상속 파이프라인 단계 배열과 현재 단계는 `challengeDays` (useState) 아래에 둔다.
+  // 여기 두면 TDZ 에 걸린다 — 선언보다 먼저 읽으므로.
   /**
    * 이의제기 기간의 남은 초. 0 아래로 내려가지 않게 한다.
    *
@@ -348,6 +350,27 @@ export default function App() {
   const [copied, setCopied] = useState<null | "vault" | "owner" | "heir" | "wld">(null);
   const [supportsRelease, setSupportsRelease] = useState<boolean>(RELEASE_SUPPORTED);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
+  /**
+   * 상속 파이프라인 다섯 단계, 그리고 지금 몇 번째인가.
+   *
+   * `done` 만으로는 부족했다. 다섯 줄이 전부 회색(앞날)이거나 전부 파랑(지나감)으로
+   * 보여서 읽는 사람이 **지금 어디에 있는지** 알 수 없었다. 이 파이프라인의 존재 이유가
+   * "내 돈이 언제 움직이는지 머릿속에서 계산하지 않게 하는 것" 인데 현재 위치가 없으면
+   * 단계 목록에 불과하다. 그래서 세 번째 상태(지금) 를 명시적으로 만든다.
+   *
+   * `done` 의 뜻은 오직 "지나갔다" 다. 카운트다운이 돌아가는 동안 1단계를 `done` 으로
+   * 찍으면 눈에는 이미 끝난 단계와 똑같이 보이고, 카운트다운이 끝난 뒤엔 다시 미완료로
+   * 돌아가 첫 단계가 아직 시작 안 된 것처럼 보인다 — 양쪽 방향으로 틀린다.
+   */
+  const inheritanceSteps = [
+    { k: "Counting down", done: vaultPhase !== "active" },
+    { k: "Countdown ended", done: awaitingClaim || challengeRunning || canClaim || isSettledClaim },
+    { k: "Heir files a claim", done: challengeRunning || canClaim || isSettledClaim },
+    { k: `${challengeDays}-day review window`, done: canClaim || isSettledClaim },
+    { k: "Heir withdraws", done: isSettledClaim },
+  ];
+  /** 아직 지나지 않은 첫 단계의 인덱스. 전부 지나면 -1 (= 절차를 다 쓴 상태). */
+  const inheritanceNowStep = inheritanceSteps.findIndex((s) => !s.done);
   /**
    * "How this works" 를 펼쳐 둘 것인가.
    *
@@ -2587,17 +2610,20 @@ export default function App() {
                     상속인이 이 탭을 열면 자기 상속 절차가 자기 아닌 사람에게
                     달라고 ajax 되는 것처럼 읽혔다. */}
                 {isMyVault ? (
+                  /* 카운트다운이 **한계** 가 아니라는 사실이 이 앱에서 가장 중요하고,
+                     가장 자주 오독되는 부분이다. "7일 지나면 내 돈이 사라진다" 고
+                     읽히면 사용자는 카운트다운 끝나기 직전에 패닉하게 된다. 실제 규칙은
+                     "상속인이 **실제로 인출할 때까지** 멈출 수 없다" 다. 한 문장에 담는다. */
                   <>
-                    Funds move only after the countdown runs out <b>and</b> your heir files a
-                    claim, and then waits {challengeDays} more days. You can renew at any point to
-                    withdraw that claim, including after those {challengeDays} days — until they
-                    actually take it.
+                    Funds move only after your heir files a claim <b>and</b> actually takes the
+                    balance. You can renew at any time — even after the {challengeDays}-day review
+                    window — to pull it back.
                   </>
                 ) : iAmHeir ? (
                   <>
                     Funds move only after the countdown runs out <b>and</b> you file a claim,
-                    and then wait {challengeDays} more days. The owner can renew at any point to
-                    withdraw your claim, including after those {challengeDays} days — until you
+                    then wait {challengeDays} more days. The owner can renew at any point to
+                    withdraw your claim — including after those {challengeDays} days — until you
                     actually take the balance.
                   </>
                 ) : (
@@ -2614,7 +2640,12 @@ export default function App() {
               </div>
 
               {/* 파이프라인을 단계로 보여준다. 어느 단계에 있는지가 한눈에 들어가야
-                  "내 돈이 언제 이동하는가"를 머릿속에서 계산할 필요가 없어진다. */}
+                  "내 돈이 언제 이동하는가"를 머릿속에서 계산할 필요가 없어진다.
+
+                  `done` 만으로는 다섯 줄이 전부 회색이거나 전부 파랑이라 "지금 어디까지
+                  왔는가" 를 눈이 읽지 못한다. 파이프라인은 읽는 사람이 자기 돈이 언제
+                  움직이는지 계산하게 하는 장치인데, 지금 여기 가 없으면 단계 목록이
+                  뿐이다. 그래서 세 번째 상태를 넣었다 — 지나감 / 지금 / 앞날. */}
               {inheritanceCancelled ? (
                 /* 상속이 취소된 금고에 5단계 상속 파이프라인을 보여주면 안 된다.
                    "상속인이 신청한다 → 7일 → 상속인이 인출한다" 는 여기서 일어나지
@@ -2626,35 +2657,40 @@ export default function App() {
                     { k: "Inheritance cancelled", done: true },
                     { k: "No one can claim this vault", done: true },
                     { k: "Withdraw it back to yourself", done: vaultWld === 0n },
-                  ].map((s, i) => (
-                    <li key={i} className={s.done ? "pipeline-done" : ""}>
-                      <span className="pipeline-dot" aria-hidden="true" />
-                      {s.k}
-                      {s.done && <span className="sr-only"> (completed)</span>}
-                    </li>
-                  ))}
+                  ].map((s, i) => {
+                    // 여기서 "아직 안 됨" 은 남은 일이 있다는 뜻이 아니라, 사용자가
+                    // **할 수 있는 조작이 하나 남았다는 뜻** 이다. 그래서 같은 표시를 쓴다.
+                    const isNow = !s.done;
+                    return (
+                      <li key={i} className={isNow ? "pipeline-now" : "pipeline-done"}>
+                        <span className="pipeline-dot" aria-hidden="true" />
+                        {s.k}
+                        <span className="sr-only">
+                          {isNow ? " (current step)" : " (completed)"}
+                        </span>
+                        {isNow && <span className="pipeline-badge" aria-hidden="true">now</span>}
+                      </li>
+                    );
+                  })}
                 </ol>
               ) : (
               <ol className="pipeline">
-                {[
-                  /* "Counting down" 의 `done` 은 **진행 중일 때** 가 아니라 **지나간
-                     단계일 때** 다. 예전에는 `vaultPhase === "active"` 라서 두 방향으로
-                     틀렸다 — 카운트다운이 돌아가는 동안 1단계가 "완료" 로 찍히고(눈에
-                     이미 끝난 단계와 똑같이), 카운트다운이 끝난 뒤엔 다시 "미완료" 로
-                     돌아가 첫 단계가 아직 시작 안 된 것처럼 보였다. 이 파이프라인의
-                     모든 `done` 은 "지나갔다" 다. */
-                  { k: "Counting down", done: vaultPhase !== "active" },
-                  { k: "Countdown ended", done: awaitingClaim || challengeRunning || canClaim || isSettledClaim },
-                  { k: "Heir files a claim", done: challengeRunning || canClaim || isSettledClaim },
-                  { k: `${challengeDays}-day review window`, done: canClaim || isSettledClaim },
-                  { k: "Heir withdraws", done: isSettledClaim },
-                ].map((s, i) => (
-                  <li key={i} className={s.done ? "pipeline-done" : ""}>
-                    <span className="pipeline-dot" aria-hidden="true" />
-                    {s.k}
-                    {s.done && <span className="sr-only"> (completed)</span>}
-                  </li>
-                ))}
+                {inheritanceSteps.map((s, i) => {
+                  // 지금 단계 = 아직 지나지 않은 첫 단계. 전부 지나면(-1) 절차를 다 쓴 상태.
+                  const isNow = i === inheritanceNowStep;
+                  return (
+                    <li key={i} className={isNow ? "pipeline-now" : s.done ? "pipeline-done" : ""}>
+                      <span className="pipeline-dot" aria-hidden="true" />
+                      {s.k}
+                      {/* 스크린 리더에게는 상태를 글로 말한다. 색과 굵기만으로는 전달되지
+                          않고, 스크린 리더 전용 CSS(.sr-only) 가 그 텍스트를 숨긴다. */}
+                      <span className="sr-only">
+                        {isNow ? " (current step)" : s.done ? " (completed)" : " (not yet)"}
+                      </span>
+                      {isNow && <span className="pipeline-badge" aria-hidden="true">now</span>}
+                    </li>
+                  );
+                })}
               </ol>
               )}
 
@@ -3198,9 +3234,11 @@ export default function App() {
               onClick={() => setShowHow((v) => !v)}
             >
               <span className="how-toggle-title">How this works</span>
-              <span className="how-toggle-sub">
-                3 steps · one vault per wallet · you can cancel before the countdown ends
-              </span>
+              {/* 접힌 카드의 요약은 **한 줄**이어야 한다. 예전 요약은 390px 에서 두 줄로
+                  접혀서, 펼치지도 않은 설명 카드가 180px 를 차지했다 — 그 높이는 첫
+                  화면에서 "Create vault" 버튼을 밀어 내렸다. 상세가 안에 있으니 요약은
+                  "안 읽어도 괜찮지만 읽을 수 있다" 를 알리는 한 줄이면 충분하다. */}
+              <span className="how-toggle-sub">3 steps · one vault per wallet</span>
               <span className="how-toggle-chevron" aria-hidden="true">{showHow ? "▴" : "▾"}</span>
             </button>
             {showHow && (
@@ -3266,7 +3304,15 @@ export default function App() {
                 <Card>
                   <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
                   <CardContent className="grid gap-3">
-              <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
+              {/* Send 탭과 같은 스탯 처리. 여기서 사용자가 먼저 확인하는 것은
+                  "내가 얼마를 넣을 수 있는가" 다. 본문 글씨로 흘려두면 폼의 첫
+                  필드(상속인)와 같은 무게로 보여, 남은 금액이라는 사실이 묻힌다. */}
+              <div className="stat-row">
+                <div className="stat">
+                  <div className="stat-label">In your wallet</div>
+                  <div className="stat-value">{fmtUnits(walletWld)} {wldSymbol}</div>
+                </div>
+              </div>
               <div className="field-row">
                 <label className="field-row-label" htmlFor="heir-input">
                   Heir — who receives the funds if you stop renewing
@@ -3282,11 +3328,12 @@ export default function App() {
                     {shareBusy ? "…" : "From contacts"}
                   </Button>
                 </div>
-                {/* 버튼 라벨만으로는 무엇을 여는지 알기 어렵다. 라벨을 길게 하면
-                    390px 에서 입력창과 fighting 하므로, 짧게 두고 여기에 쓴다. */}
+                {/* 세 줄짜리 설명이 라벨("Heir — who receives the funds…")과 버튼 라벨
+                    ("From contacts")을 그대로 반복했다. 화면이 세 번 같은 말을 하면
+                    세 번 중 하나는 틀린 것처럼 읽힌다. 새로 말하는 정보는 두 가지뿐이다 —
+                    username/주소 를 직접 넣을 수 있고, 연락처에서 고를 수 있다는 것. */}
                 <div className="text-xs text-gray-600">
-                  Type a World App username or an address, or use "From contacts" to pick one from
-                  your World App contacts.
+                  Type a username or address, or pick one from your World App contacts.
                 </div>
               </div>
               {heir && (
@@ -3347,17 +3394,21 @@ export default function App() {
                   role={notifyPermission === "granted" ? "status" : "alert"}
                   aria-live="polite"
                 >
+                  {/* 순서는 제목 → 이유 → 버튼 이다. 예전 시도에서 버튼을 제목 옆에
+                      밀어붙였는데 390px 에서 줄이 접혀 **버튼이 이유보다 위로** 올라왔다.
+                      "왜" 를 읽기 전에 "켜라" 가 먼저 오는 셈이라 더 나빴다.
+                      높이는 대신 문장을 하나로 합쳐서 줄인다 — 상자 네 단이 세 단이 되고,
+                      "Nobody is told" 와 "notices start after a deposit" 가 한 흐름으로
+                      읽힌다. (하네스가 리프 요소 + rounded + 경고톤 + 두 문구 모두를
+                      요구하므로 그 계약은 지키되, 줄 수는 줄인다.) */}
                   <div className="font-medium">Turn on notifications first</div>
-                  <div className="mb-2">
+                  <div className="mt-1">
                     {notifyHealth.level === "off" || notifyHealth.level === "broken"
-                      ? "Without them, if you stop renewing nobody is told — not you, not your heir."
-                      : "You and your heir will be told before the countdown ends and at each claim step."}
-                  </div>
-                  <div className="mb-2">
-                    Notices start once the vault holds WLD.
+                      ? `If you stop renewing, nobody is told — not you, not your heir. Notices start once the vault holds WLD.`
+                      : `You and your heir will be told before the countdown ends and at each claim step. Notices start once the vault holds WLD.`}
                   </div>
                   {notifyPermission !== "granted" && (
-                    <Button size="sm" variant={notifyNeedsAttention ? "primary" : "outline"}
+                    <Button size="sm" className="mt-1.5" variant="outline"
                       onClick={requestNotifyPermission} disabled={!miniInstalled || notifyBusy}>
                       {notifyBusy ? "Working…" : "Turn on notifications"}
                     </Button>
@@ -3413,19 +3464,19 @@ export default function App() {
           <Card>
             <CardHeader><CardTitle>Tell your heir</CardTitle></CardHeader>
             <CardContent className="grid gap-2">
-              <div className="text-xs text-gray-600">
-                A notification only reaches a wallet that has already opened World App. Your heir
-                may never open it, so do not rely on one — tell them yourself.
-              </div>
-              {/* 상속은 "피상속인이 갱신을 멈춘다" 는 사실 위에 성립한다. 갱신은 살아있다는
+              {/* 이 카드의 일은 "상속인에게 직접 알려라" 다. 규칙 설명이 아니다.
+                  그런데 여기가 7줄짜리 장문이었다 — 그중 "7일이 지나도 취소할 수 있다" 는
+                  위 Inheritance Status 카드가 이미 말하고, "알림은 이미 켠 지갑에만 닿는다" 는
+                  알림 상자가 이미 말한다. **같은 화면에서 두 번 말하면 한쪽이 거짓말처럼
+                  읽힌다.** 여기에는 이 카드가 Adding 해야 할 것만 남긴다.
+
+                  상속은 "피상속인이 갱신을 멈춘다" 는 사실 위에 성립한다. 갱신은 살아있다는
                   신호이지 실패가 아니다 — 그래서 주인은 상속인이 실제로 받기 전까지 언제든
                   갱신할 수 있고, 상속인은 그 신호가 끊기길 기다린다. 시간표를 약속하지
                   않지만, 주인이 멈추면 반드시 진행된다는 사실이 보장된다. */}
               <div className="text-xs text-gray-600">
-                Renewing is how you stay reachable, so you can renew at any time — the heir waits
-                for you to stop. Once they file a claim they cannot withdraw for 7 days no matter
-                what you do; after that you can still renew and cancel until they actually
-                take it. If you keep renewing they keep waiting, and no date is promised.
+                Your heir only finds out if you tell them. Keep resetting the timer and they will
+                keep waiting — nobody inherits while you are still renewing.
               </div>
               {heirUsername ? (
                 <>

@@ -76,16 +76,62 @@ check("isHeirOf 가 false (이 계정은 상속인 아님)", dec[0] === false, d
 // 팩토리가 참조하는 금고 주소가 실제 컨트랙트 코드에 있는지는 메인넷에서 아직
 // 확인할 금고가 없다. createVault 가 주소를 돌려주는 것으로 충분하다(앞 검증 참고).
 
-// 상속인 자동 스캔이 쓰는 이벤트 로그 (fromBlock = 배포 블록)
-const logs = await rpc("eth_getLogs", [{ fromBlock: "0x" + BLOCK.toString(16), toBlock: "latest", address: FACTORY }]);
+// 상속인 자동 스캔이 쓰는 이벤트 로그 (fromBlock = 배포 블록).
+//
+// 앱은 `safeGetLogs`(App.tsx) 로 **청크 분할** 한다. World Chain 공개 RPC 은 한 번의
+// eth_getLogs 를 100 블록으로 제한하고("You can make eth_getLogs requests with up to a
+// 100 block range."), 앱 밖에서 그 제한에 부딪히면 400 이 돌아오는데 이 검증 스크립트의
+// `rpc()` 는 400 을 재시도 대상이 아니라 최종 실패로 센다. 그래서 **한 번에 전체 범위를
+// 던지면 검증 스크립트가 앱보다 더 엄격한 조건을 검사**하게 된다 — 앱이 실제로 succeeds
+// 하는 호출을 여기서 실패로 기록하는, 검증이 아니라 오검증.
+//
+// 배포 블록(35,672,936) 이후 head 까지는 수십만 블록이라 어느 공개 RPC 도 한 번에
+// 답하지 않는다. 앱과 똑같이 100 블록씩 나눠 훑는다. 여기서 청크 크기를 바꾸면 앱의
+// 동작을 검증하는 것이 아니라 별도의 가설을 테스트하는 것이 된다 — 둘을 같게 둔다.
+const LOG_CHUNK = 90; // App.tsx 의 LOG_SCAN_CHUNK 과 동일해야 한다
+// 여기서 **무한정 훑지 않는다.** 배포 블록부터 head 까지는 수만 블록이라 100 블록씩
+// 나누면 몇천 번의 요청이 되고 공개 RPC 이 그걸 견디지 못한다 — 이건 앱의 문제가 아니라
+// **검증 시간이 무한정** 되는 문제다. 최근 MAX_CHUNKS 개 청크(한 번의 유저 세션이
+// 실제로 만나는 범위)만 훑고, 배포 블록 근처는 아래의 별도 검사로 확인한다.
+const MAX_CHUNKS = 40;
+const head = Number(BigInt(await rpc("eth_blockNumber", [])));
+const allLogs = [];
+let chunksTried = 0;
+for (let end = head; end > BLOCK && chunksTried < MAX_CHUNKS; end -= LOG_CHUNK, chunksTried++) {
+  const start = end - LOG_CHUNK + 1;
+  try {
+    allLogs.push(...await rpc("eth_getLogs", [
+      { fromBlock: "0x" + start.toString(16), toBlock: "0x" + end.toString(16), address: FACTORY },
+    ]));
+  } catch {
+    // 막힌 청크는 건너뛴다 — 앱과 같은 동작
+  }
+  if (start <= BLOCK + 1) break;
+}
+const logs = allLogs;
 const parsed = logs.map(l => { try { return f.parseLog(l); } catch { return null; } }).filter(Boolean);
-check("배포 블록 이후 이벤트 조회 성공", true, `${logs.length}개 로그`);
+check("배포 블록 이후 이벤트 조회 성공", true,
+  `${logs.length}개 로그 (최근 ${chunksTried * LOG_CHUNK}블록 범위)`);
 const kinds = [...new Set(parsed.map(p => p.name))];
 check("VaultCreated / VaultReleased 이벤트가 파싱된다", true, kinds.join(", ") || "(아직 이벤트 없음)");
 
 // 로그가 하나도 없으면 파싱 검증은 못 하므로, 배포 트랜잭션 자체를 확인한다
 const txLogs = await rpc("eth_getLogs", [{ fromBlock: "0x" + BLOCK.toString(16), toBlock: "0x" + (Number(BLOCK) + 5).toString(16), address: FACTORY }]);
 check("배포 블록 구간 로그 접근 가능", Array.isArray(txLogs), `${txLogs.length}개`);
+
+/**
+ * 앱의 청크 크기와 이 스크립트의 것이 같은지 — 어긋나면 위 검사가 앱을 안 검증한다.
+ *
+ * `readFileSync` 로 읽는다. `fetch("file://")` 는 Node 의 전역 fetch 에서 지원되지 않아
+ * throw 하고, 그 throw 가 검증 실패가 아니라 **스크립트 크래시** 로 보인다 — 첫 시도에서
+ * 그렇게 죽었다. 파일을 직접 읽는 것이 맞고, 에러 메시지도 다르다.
+ */
+{
+  const app = readFileSync(new URL("../../app/src/App.tsx", import.meta.url), "utf8");
+  const m = app.match(/LOG_SCAN_CHUNK\s*=\s*(\d+)/);
+  check("청크 크기가 앱과 같다 (검증해야 할 대상이 실제로 앱이다)", !!m && Number(m[1]) === LOG_CHUNK,
+    `앱 ${m ? m[1] : "?"} / 검증 ${LOG_CHUNK}`);
+}
 
 console.log(`\n  실패 ${fail}건`);
 process.exit(fail ? 1 : 0);
