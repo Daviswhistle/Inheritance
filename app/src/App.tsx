@@ -2806,6 +2806,7 @@ export default function App() {
           <Card>
             <CardHeader><CardTitle>Vault & Controls</CardTitle></CardHeader>
             <CardContent className="space-y-2">
+              <div className="section-label">Status</div>
               {/* **금액을 카운트다운보다 먼저** 보여준다.
                   이 탭의 목적은 "얼마를 지키고 있고 언제까지 지키는지" 를 한 눈에 넣는
                   것이다. 그런데 카운트다운만 크고 금액은 다른 탭(Send) 에만 있었다. 앱은
@@ -3016,8 +3017,8 @@ export default function App() {
                         : canClaim
                           ? "The review window has passed, so the heir can take the balance. You can still renew to withdraw the claim, until they actually do."
                           : awaitingClaim
-                            ? "The countdown has ended. Your heir can now file a claim, and you can keep renewing to cancel it until they actually take the balance."
-                            : `Reset before the countdown ends. If you stop, your heir can claim the balance after a ${challengeDays}-day review window.`}
+                              ? "The countdown has ended. Your heir can file a claim now; keep renewing to cancel it until they actually take the balance."
+                            : `If you stop renewing, your heir can file a claim and take the balance after a ${challengeDays}-day review window.`}
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     {/* canClaim 로 비활성화하지 않는다. 계약은 상속인이 실제로 수령하기
@@ -3030,6 +3031,7 @@ export default function App() {
                   </div>
                 </>
               )}
+                <div className="section-label">Settings</div>
               <div className="flex gap-2 flex-wrap">
                 {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                   <>

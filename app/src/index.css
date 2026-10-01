@@ -169,8 +169,11 @@ body {
 }
 
 /* 숫자가 크면 소수 부분(초)은 같은 크기가 아니라 한 단계 작게 — 읽는 단위는 일/시다. */
+/* 화면 폭에 맞춰 준다. 고정 2.25rem 은 390px 에서 "2d 23h 59m 59s" 가 두 줄로 접혔다 —
+   가장 중요한 숫자가 두 줄로 나뉘면 눈이 먼저 "59s" 만 읽는다. clamp 로 좁은 화면에선
+   자동으로 작아진다. */
 .timer-value {
-  font-size: 2.25rem;
+  font-size: clamp(1.75rem, 7.6vw, 2.25rem);
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.02em;
@@ -1302,4 +1305,46 @@ input::placeholder {
 /* 주 액션은 가변 폭으로 늘어나되, 보조 버튼(새로고침)보다 확실히 크다. */
 .grow {
   flex: 1 1 auto;
+}
+
+/* ===== Vault 탭: 상태 / 조작 / 설정 세 묶음 =====
+
+   카드가 평평한 한 줄 세로 목록이라 눈이 "무엇이 상태이고 무엇이 조작이며 무엇이
+   설정인지" 를 구분하지 못했다. 버튼 다섯 개가 같은 세로 리듬으로 늘어져 있어서
+   중요한 것과 중요하지 않은 것이 같은 무게로 보였다.
+
+   여기서는 **리듬**으로 나눈다 — 라벨(eyebrow) + 여백 + 구분선. 카드가 세 묶음임을
+   구조적으로 말하고, 각 묶음 안에서 주 액션 하나만 primary 로 남긴다. 라벨은
+   `.timer-label` 과 같은 규약(대문자·트래킹·작게)을 재사용한다. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.section + .section {
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid #eef2f7;
+}
+
+.section-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+/* 설정 항목(기간 변경 · 상속인 변경 · 취소)은 본보다 조용하게 — 자주 하지 않는,
+   되돌리기 어려운 조작이 주 조작과 같은 크기·무게로 있으면 안 된다. */
+.settings-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.settings-block .field-row-label {
+  font-size: 0.75rem;
+  color: #64748b;
 }
