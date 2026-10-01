@@ -58,6 +58,12 @@ show_stage() {
     # 마지막 줄이 두 번 찍힌다(FAIL 줄이 마지막이라 grep 과 tail 에서 겹친다).
     grep -E '^  FAIL' "$tmp" || true
     tail -1 "$tmp"
+  elif [[ "$rc" -ne 0 ]]; then
+    # **크래시** — 검사 실패가 아니라 예외로 죽은 경우다. 이때는 `tail -1` 이
+    # Node 의 스택 한 줄만 남겨서 "어디서 죽었는지"조차 안 보인다(그래서 아래 여유분을
+    # 둔다). 크래시는 언제나 원인이 로그 어딘가에 있다.
+    echo "  단계가 예외로 끝났다 (exit $rc) — 원인은 아래"
+    tail -14 "$tmp"
   else
     tail -"$n" "$tmp"
   fi

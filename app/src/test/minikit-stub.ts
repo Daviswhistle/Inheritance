@@ -91,7 +91,22 @@ export const MiniKit = {
     return state.installed;
   },
   async getUserByAddress(addr: string) {
-    return { username: `e2e_${addr.slice(2, 8).toLowerCase()}` };
+    // 스토어 스크린샷에서 `@e2e_3c44cd` 같은 테스트 계정이 보이면 리뷰어가 "테스트 빌드를
+    // 찍었네" 하고 읽는다. 하네스는 `/@e2e_/` 로 로그인 성공을 판정하므로 접두사를 지우면
+    // 그 검사가 깨진다. 그래서 기본값은 그대로 두고, **스크린샷 전용**으로 호출 측이 이름을
+    // 심으면 그걸 쓴다 (drv.mjs 의 preload 경로).
+    //
+    // `__E2E_USERNAMES__` 은 **주소별 맵**이다. 한 이름만 받으면 모든 지갑이 같은 이름으로
+    // 보여 주인과 상속인이 한 사람처럼 찍힌다(실제로 그렇게 찍혔다 — "Tell your heir" 가
+    // "Reaches @davis" 라고 해서 자기 자신에게 보내라는 안내가 되었다). 상속 절차 앱에서
+    // **서로 다른 두 사람** 이라는 게 핵심이라 맵으로 받아야 한다.
+    const w = typeof window !== "undefined" ? (window as unknown as {
+      __E2E_USERNAME__?: string;
+      __E2E_USERNAMES__?: Record<string, string>;
+    }) : {};
+    const byAddr = w.__E2E_USERNAMES__?.[addr.toLowerCase()];
+    if (byAddr) return { username: byAddr };
+    return { username: w.__E2E_USERNAME__ || `e2e_${addr.slice(2, 8).toLowerCase()}` };
   },
   async getUserByUsername(handle: string) {
     const { ethers } = await import("ethers");

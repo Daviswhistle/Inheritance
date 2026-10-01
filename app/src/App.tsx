@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ReactElement } from "react";
 import {
+  APP_ORIGIN,
   CHAIN_ID,
   CONFIG_ERROR,
   EXPLORER,
@@ -1573,7 +1574,10 @@ export default function App() {
   // 월드앱 알림은 이 미니앱을 설치하지 않은 지갑에 도달하지 못한다. 그래서
   // 상속인이 알게 되는 유일한 확실한 경로는 주인이 직접 보내는 링크다.
   // 앱이 설치되어 있든 없든 이 링크는 통한다.
-  const heirLink = vault ? `${window.location.origin}/?vault=${vault}` : "";
+  // `APP_ORIGIN` = 배포 시 명시한 공개 주소. World App 안에서 `window.location.origin` 은
+  // 래퍼일 수 있고, 그 링크를 받은 상속인은 앱으로 못 갈 수 있다. 상속 절차의 유일한
+  // 전달 수단이 이 링크이므로 배포 설정을 우선한다(config.ts 의 APP_ORIGIN 참고).
+  const heirLink = vault ? `${APP_ORIGIN}/?vault=${vault}` : "";
   const heirMessage = vault && vaultHeir
     ? [
         `You are named as the heir of a WLD vault.`,
