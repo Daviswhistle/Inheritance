@@ -65,6 +65,7 @@ jobs:
           VITE_WORLD_ACTION_ID: ${{ vars.VITE_WORLD_ACTION_ID }}
           VITE_WORLD_APP_ID: ${{ vars.VITE_WORLD_APP_ID }}
           VITE_NOTIFY_BACKEND_URL: ${{ vars.VITE_NOTIFY_BACKEND_URL }}
+          VITE_APP_ORIGIN: ${{ vars.VITE_APP_ORIGIN }}
         run: pnpm build
 
       - name: Verify the build actually got a factory address
@@ -81,6 +82,29 @@ jobs:
             echo "::error::번들에서 VITE_FACTORY_ADDRESS 를 찾지 못했습니다. 빌드 설정을 확인하세요."; exit 1
           fi
           echo "빌드 확인 OK: $FACTORY"
+
+      # 상속인에게 보내는 링크의 기준 주소.
+      #
+      # 이게 없으면 앱은 `window.location.origin` 으로 물러간다. World App 안에서 그 값은
+      # **미니앱 래퍼** 일 수 있고, 그러면 "Copy link" 로 받은 상속인이 앱으로 못 간다.
+      # 상속 절차에서 상속인에게 닿는 **유일한 확실한 채널** 이 이 링크이므로(알림은 상속인이
+      # 이 앱을 깔았어야만 닿는다) 조용히 물러나는 것은 배포 후에도 원인을 알 수 없는
+      # 고장으로 이어진다 — 그때는 "링크를 눌렀는데 앱이 안 떠요" 만 남는다.
+      #
+      # 그래서 미설정이면 **배포를 막는다.** 사이트는 정상적으로 올라가지만 링크만 고쳐야
+      # 하므로, 증상은 Store 스크린샷과 실제 동작이 달라지는 것으로 나타난다.
+      - name: Verify VITE_APP_ORIGIN reached the bundle
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ORIGIN="${{ vars.VITE_APP_ORIGIN }}"
+          if [ -z "$ORIGIN" ]; then
+            echo "::error::Repository variable VITE_APP_ORIGIN 가 설정되지 않았습니다. 상속인 링크가 World App 래퍼를 가리킬 수 있습니다."; exit 1
+          fi
+          if ! grep -qF "$ORIGIN" dist/assets/*.js; then
+            echo "::error::번들에서 VITE_APP_ORIGIN ($ORIGIN) 을 찾지 못했습니다. 빌드 설정을 확인하세요."; exit 1
+          fi
+          echo "상속인 링크 기준 주소 확인 OK: $ORIGIN"
 
       # workingDirectory 가 반드시 app 이어야 한다. Pages Functions(app/functions/)는
       # **작업 디렉터리** 기준으로 찾는다. 루트에서 `pages deploy app/dist` 를 쓰면
