@@ -846,6 +846,22 @@ export default function App() {
     }
   }, [vault]);
 
+  /**
+   * 알림 진단 상태를 전부 다시 읽는다 (권한 + 워처).
+   *
+   * 예전에는 "Refresh permission"(권한만) 과 "Refresh watcher"(워처만) 두 버튼이
+   * 붙어 있었다. 둘은 **같은 고유 그룹의 두 절반** — "알림이 왜 안 오지" 하고 눌렀을 때
+   * 어느 쪽을 고친 건지 알 수 없고, 하나만 고쳐도 화면이 여전히 어긋난 상태로 보인다.
+   * 한 버튼으로 합친다.
+   *
+   * `refreshNotifyWatchState` 아래에 둔다 — 그 함수를 참조하므로 순서가 중요하다
+   * (`useCallback` 은 정의 시점에 클로저를 만든다). TDZ 에 걸린다.
+   */
+  const refreshNotifyState = useCallback(async () => {
+    await refreshNotifyPermission();
+    await refreshNotifyWatchState();
+  }, [refreshNotifyPermission, refreshNotifyWatchState]);
+
   const registerWatcher = async (
     vaultAddress: string,
     ownerAddress: string,
@@ -3572,18 +3588,17 @@ export default function App() {
                     " — turn it on in World App → Settings → Notifications."}
                 </div>
               )}
+              {/* 다섯 버튼이 전부 같은 크기였고, 그중 하나만 실제 조작이고 나머지는
+                  진단용이었다. "Register vault alerts" (primary) 가 눈에 띄어야 하는데,
+                  "Refresh permission" 이 바로 위에 같은 크기로 있어서 어느 쪽이
+                  할 일인지 애매했다. 주 조작 하나만 md·primary, 진단은 sm 으로 내린다.
+
+                  "Refresh permission" 과 "Refresh watcher" 가 **한 고유 그룹**이 중복된다 —
+                  두 RPC 하나를 새로 읽는 같은 동작. 하나로 합친다. */}
               <div className="flex gap-2 flex-wrap">
                 <Button onClick={requestNotifyPermission} disabled={!miniInstalled || notifyBusy}>
                   {notifyBusy ? "Working..." : "Enable notifications"}
                 </Button>
-                <Button onClick={refreshNotifyPermission} disabled={!miniInstalled || notifyBusy}>
-                  Refresh permission
-                </Button>
-                {account && (
-                  <Button onClick={sendNotifyTestToMe} disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}>
-                    Send test to me
-                  </Button>
-                )}
                 {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && vault && vaultHeir && (
                   <Button
                     variant="primary"
@@ -3593,11 +3608,17 @@ export default function App() {
                     Register vault alerts
                   </Button>
                 )}
-                {vault && (
-                  <Button onClick={refreshNotifyWatchState} disabled={!NOTIFY_BACKEND_ENABLED || watchBusy}>
-                    Refresh watcher
+              </div>
+              <div className="section-label">Diagnostics</div>
+              <div className="flex gap-2 flex-wrap">
+                {account && (
+                  <Button size="sm" onClick={sendNotifyTestToMe} disabled={!miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}>
+                    Send a test to me
                   </Button>
                 )}
+                <Button size="sm" onClick={refreshNotifyState} disabled={!miniInstalled || notifyBusy || watchBusy}>
+                  Refresh status
+                </Button>
               </div>
               <div className="text-xs text-gray-500">
                 Important: the heir wallet must also open this mini app at least once and enable notifications.

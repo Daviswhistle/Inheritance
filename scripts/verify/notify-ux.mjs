@@ -140,9 +140,13 @@ log("\n[6] 새 사용자도 금고를 만들 수 있는가");
   const c3 = await launch({ pk: A.a11.pk, url: APP });
   await sleep(2800);
   await c3.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Connect");if(e)e.click();return 1;})()`);
-  await sleep(5000);
+  // `sleep(5000)` 은 추측이고 여기서는 관측이 필요하다. 지갑 연결이 끝나기 전에
+  // 폼이 mounts 되지 않으면 그 다음 줄 `s.call(null, …)` 이 예외를 던져, 이 단계가
+  // "실패" 가 아니라 스크립트 크래시로 죽는다 — 어느 검사가 왜 죽었는지 로그에 안 남는다.
+  check("금고 생성 폼이 나타난다", await c3.waitFor("#period-input"), `#period-input 대기 ${12000}ms`);
   const period = await c3.ev(`return (document.getElementById("period-input")||{}).value;`);
   check("금고가 없어도 주기 필드가 채워져 있다", !!period && period.length > 0, `값="${period}"`);
+  check("상속인 입력창이 나타난다", await c3.waitFor("#heir-input"), "#heir-input");
   await c3.ev(`return (()=>{
     const i=document.getElementById("heir-input");
     const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;

@@ -116,6 +116,30 @@ export async function launch({ pk, url, profile, preload = "" } = {}) {
   await sleep(2500);
 
   const page = {
+    /**
+     * 요소를 **나타날 때까지** 기다린다 (기본 12초).
+     *
+     * 왜 필요했나: 하네스들이 `sleep(5000)` 후 곧바로 DOM 을 만졌다. 그 5초가 모자라면
+     * 다음 줄의 `s.call(el, …)` 이 `null` 에 호출되어 예외로 튀어나오고, 그 예외는
+     * **검사 실패가 아니라 스크립트 크래시** 로 보인다 — 어느 검사가 왜 죽었는지
+     * 로그에 안 남는다. 실제로 notify-ux.mjs 가 [6] 에서 이 형태로 죽었다.
+     * 단독 실행은 여유가 있어 통과하고 8단계 전체 실행에서만 재현됐다.
+     *
+     * `sleep(ms)` 는 "이만큼 기다리면 되겠지" 라는 **추측**이고, 이 함수는
+     * "나타날 때까지 기다린다" 는 **관측**이다. 하네스에는 후자가 필요하다.
+     */
+    waitFor: async (sel, ms = 12000) => {
+      const t0 = Date.now();
+      for (;;) {
+        const ok = await send("Runtime.evaluate", {
+          expression: `!!document.querySelector(${JSON.stringify(sel)})`,
+          returnByValue: true,
+        }).then((r) => r.result?.value === true).catch(() => false);
+        if (ok) return true;
+        if (Date.now() - t0 > ms) return false;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    },
     send, ev, shot, logs, chrome, ws, profile: PROFILE,
     close: async () => { try { ws.close(); } catch {} chrome.kill(); },
   };
