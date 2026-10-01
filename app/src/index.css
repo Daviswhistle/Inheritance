@@ -146,17 +146,43 @@ body {
 
 /* Timer block — the whole app exists so the user keeps this from running out,
    so it gets the strongest visual treatment on the page. */
+/* 카운트다운은 이 앱의 **주역**이다. 존재 이유가 "타이머가 다 되지 않았는가" 다.
+   1.25rem 회색 상자에 파란 primary 버튼을 놓으면 **조작이 상태를 지배한다** — 사용자가
+   첫눈에 보는 것은 "Reset timer" 버튼이고 시간은 그 아래 밀려난다. 숫자를 지배 요소로
+   올리고, 상태 블록에 여백과 무게를 준다. 여백은 여기서 쓰는 것이 맞다: 이 블록은
+   화면에서 한 번만 보이는 요소고 나머지는 전부 아래로 흐른다. */
 .timer-block {
   border: 1px solid #cbd5e1;
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  background: #f8fafc;
+  border-radius: 0.75rem;
+  padding: 1.15rem 1.15rem 1.05rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.timer-value {
-  font-size: 1.25rem;
+.timer-block .timer-label {
+  font-size: 0.6875rem;
   font-weight: 600;
-  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+}
+
+/* 숫자가 크면 소수 부분(초)은 같은 크기가 아니라 한 단계 작게 — 읽는 단위는 일/시다. */
+.timer-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.timer-sub {
+  margin-top: 0.4rem;
+  font-size: 0.8125rem;
+  color: #64748b;
+  line-height: 1.4;
 }
 
 /* Urgency: the window is closing. */
@@ -169,12 +195,20 @@ body {
   color: #b45309;
 }
 
+.timer-urgent .timer-label {
+  color: #b45309;
+}
+
 .timer-critical {
   border-color: #ef4444;
   background: #fef2f2;
 }
 
 .timer-critical .timer-value {
+  color: #b91c1c;
+}
+
+.timer-critical .timer-label {
   color: #b91c1c;
 }
 
@@ -803,7 +837,7 @@ button {
 
 /* .btn(주 버튼)과 .tab-item(탭 바 탐색)은 자기 레이아웃을 갖고 있으므로 손대지
    않는다 — 인라인 텍스트 동작(주소 복사, 상세 펼치기)에만 적용한다. */
-button:not(.btn):not(.tab-item) {
+button:not(.btn):not(.tab-item):not(.how-toggle):not(.copy-chip) {
   display: inline-flex;
   align-items: center;
   min-height: 2rem;
@@ -817,7 +851,7 @@ button:not(.btn):not(.tab-item) {
   border-radius: 0.25rem;
 }
 
-button:not(.btn):not(.tab-item):hover {
+button:not(.btn):not(.tab-item):not(.how-toggle):not(.copy-chip):hover {
   background-color: #eff6ff;
 }
 
@@ -928,10 +962,34 @@ input::placeholder {
   right: 0;
   bottom: 0;
   display: flex;
-  background: #ffffff;
-  border-top: 1px solid #e2e8f0;
+  /* 반투명 + 블러. **불투명 흰 막대였다** 그래서 스크롤 중 콘텐츠가 하드 엣지로 잘려
+     보였고 — 스크린샷에서 "From contacts" 버튼이 반쯤 잘린 것처럼 reads — 레이아웃
+     깨짐으로 읽혔다. 실제로는 fixed 탭 바가 항상 콘텐츠 위에 있다는 게 당연하지만,
+     그 "항상" 이 물결보이게 처리하면 사용자는 버그로 여긴다. 뒤에 뭔가 있다는 신호가
+     있어야 "겹친 것" 이 아니라 "위에 얹힌 것" 으로 읽힌다. */
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 -1px 0 rgba(15, 23, 42, 0.04), 0 -8px 24px rgba(15, 23, 42, 0.06);
   padding-bottom: env(safe-area-inset-bottom);
   z-index: 30;
+}
+
+/* 탭이 2개뿐일 때(금고가 없으면 Vault/Send 가 숨겨진다) 각 탭이 50% 씩 늘어나면
+   빈 넓이 두 덩어리처럼 보여 배치가 깨진 것처럼 보인다. 몇 개이든 같은 폭과 가운데
+   정렬을 유지한다. */
+.tab-bar > .tab-item {
+  flex: 0 1 auto;
+  min-width: 84px;
+  max-width: 160px;
+}
+
+.tab-bar::before,
+.tab-bar::after {
+  content: "";
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .tab-item {
@@ -1107,4 +1165,72 @@ input::placeholder {
   margin-top: 1px;
   flex: 0 0 auto;
   accent-color: #0284c7;
+}
+
+/* ===== "How this works" 접기 =====
+
+   첫 진입 화면이 설명 문서였던 것을 고친 것. 카드가 닫힌 상태에서도 규칙의 윤곽(3단계 ·
+   금고 1개 · 기한 전 취소 가능)은 계속 보이게 하고, 펼치면 전문이 나온다.
+   헤더가 카드 헤더 자리이므로 `.card-header` 와 같은 패딩/타이포를 물려받되, 클릭
+   affordance 를 위해 최소 44px 높이를 확보한다. */
+.how-toggle {
+  display: block;
+  position: relative;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.85rem 2.25rem 0.85rem 1.25rem;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: #0f172a;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+/* 요약 줄은 세로로 쌓는다. 가로로 두면 390px 에서 제목과 요약이 서로를 밀어
+   제목이 접히고 요약만 4줄로 접힌다 — 실제로 그랬다. */
+.how-toggle-title {
+  display: block;
+  font-weight: 600;
+  font-size: 1.0625rem;
+  line-height: 1.25;
+}
+
+.how-toggle-sub {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.how-toggle-chevron {
+  position: absolute;
+  right: 1.1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/* 파괴적 조작. 채우지 않은 형태 + 붉은 글자/테두리 — 같은 카드 안의 "변경" 버튼과
+   형태는 같고 **색만** 다르다. 채운 형태로 두면 그 옆의 무해한 버튼보다 면적까지 커져
+   파괴적 조작이 오히려 눈에 더 띄게 된다. */
+.btn-danger {
+  color: #b91c1c;
+  background: #ffffff;
+  border: 1px solid #fca5a5;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+.btn-danger:disabled {
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  background: #ffffff;
 }

@@ -348,6 +348,17 @@ export default function App() {
   const [copied, setCopied] = useState<null | "vault" | "owner" | "heir" | "wld">(null);
   const [supportsRelease, setSupportsRelease] = useState<boolean>(RELEASE_SUPPORTED);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState<boolean>(false);
+  /**
+   * "How this works" 를 펼쳐 둘 것인가.
+   *
+   * 닫힌 채로 둔다. **펼쳐 둔 채로는 첫 진입 화면이 설명 문서였다** — 3단계 목록과
+   * 제약 세 문단이 카운트다운도 금액도 없는 채 화면 전체를 차지했고, Create 버튼은
+   * 두 화면 반을 스크롤한 뒤에야 나왔다. "오해한 채 만드는 것보다 위가 낫다" 고
+   * 판단해서 올렸지만, 실제로는 **읽히는 사람이 아무도 없었다.** 상단 한 줄 요약은
+   * 계속 보이므로 정보는 사라지지 않고(3단계 · 금고 1개 · 기한 전 취소 가능), 규칙을
+   * 아는 사람은 펼치면 된다.
+   */
+  const [showHow, setShowHow] = useState(false);
   /** 모달 안의 포커스 대상을 순환시키기 위한 ref (Tab 가두기). */
   const releaseDialogRef = useRef<HTMLDivElement | null>(null);
   const [releasing, setReleasing] = useState<boolean>(false);
@@ -2837,9 +2848,9 @@ export default function App() {
                      여기서 말해야 할 것은 하나다: 상속은 끝났고, 돈은 내 것이며,
                      자리를 되돌려받으려면 잔액을 비우고 해제하면 된다. */
                   <>
-                    <div className="text-xs font-semibold uppercase">Inheritance cancelled</div>
+                    <div className="timer-label">Inheritance cancelled</div>
                     <div className="timer-value">Nobody will inherit this vault</div>
-                    <div className="text-xs text-gray-700">
+                    <div className="timer-sub">
                       {vaultWld > 0n
                         ? `The ${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} is yours — withdraw it, or release your slot to keep it.`
                         : "The balance is yours. Release your slot below to make a different vault — this one is over."}
@@ -2847,7 +2858,7 @@ export default function App() {
                   </>
                 ) : canClaim || isSettledClaim ? (
                   <>
-                    <div className="text-xs font-semibold uppercase">
+                    <div className="timer-label">
                       {isSettledClaim ? "Inheritance completed" : "Review window passed"}
                     </div>
                     <div className="timer-value">
@@ -2879,7 +2890,7 @@ export default function App() {
                      (3인칭으로 상속인을 부르던 버그의 거울상.) 타인에게는 아무것도
                      할 수 없으므로 그 사실을 말해야지 거부권이 있다는 듯이 말하면 안 된다. */
                   <>
-                    <div className="text-xs font-semibold uppercase text-gray-600">
+                    <div className="timer-label text-gray-600">
                       {isMyVault
                         ? "Claim filed — you can still stop it"
                         : iAmHeir
@@ -2887,7 +2898,7 @@ export default function App() {
                           : "Claim filed — review window running"}
                     </div>
                     <div className="timer-value">{fmt(challengeRemaining)}</div>
-                    <div className="text-xs text-gray-600">
+                    <div className="timer-sub">
                       {isMyVault
                         ? "left in the review window. Renewing withdraws the claim."
                         : iAmHeir
@@ -2897,11 +2908,11 @@ export default function App() {
                   </>
                 ) : awaitingClaim ? (
                   <>
-                    <div className="text-xs font-semibold uppercase text-gray-600">
+                    <div className="timer-label text-gray-600">
                       Countdown ended
                     </div>
                     <div className="timer-value">Waiting for a claim</div>
-                    <div className="text-xs text-gray-600">
+                    <div className="timer-sub">
                       {/* 여기서도 주어가 갈린다. "Your heir can now file a claim" 을
                           상속인에게 보여주면 남이 대신 신청해야 한다는 뜻으로 읽힌다.
                           그리고 세 번째 사람이 있다 — `?vault=` 링크는 공개 주소라 아무나
@@ -2917,13 +2928,13 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <div className="text-xs font-semibold uppercase text-gray-600">
+                    <div className="timer-label text-gray-600">
                       {timerUrgency === "timer-urgent" || timerUrgency === "timer-critical"
                         ? "Renew soon"
                         : "Time left to renew"}
                     </div>
                     <div className="timer-value">{fmt(timeRemaining)}</div>
-                    <div className="text-xs text-gray-600">
+                    <div className="timer-sub">
                       Expires {expiryLocal} <span className="text-gray-500">({deviceTimeZone})</span>
                     </div>
                   </>
@@ -3054,8 +3065,11 @@ export default function App() {
                     {/* cancelInheritance 는 컨트랙트에서 만기 후 Expired 로 거부한다.
                         형제 버튼인 withdraw 처럼 만료 이후에는 항상 실패하므로
                         클릭을 사용자에게 노출하지 않는다. */}
+                    {/* 상속 취소. ghost(무채색) 였는데 그 옆의 "Change period" 와 같은
+                        무게로 보여 파괴적 조작인지 설정 변경인지 알 수 없었다. 취소하면
+                        상속인이 사라지고 되돌리려면 기한 전이어야 하므로 danger 로 구분한다. */}
                     <Button
-                      variant="ghost"
+                      variant="danger"
                       onClick={cancelInheritance}
                       disabled={!miniInstalled || !account || isExpiredOrLater}
                     >
@@ -3162,7 +3176,22 @@ export default function App() {
             변경이 만든 부작용이다. */}
         {tab === "inherit" && !ownVault && gate2(
           <Card>
-            <CardHeader><CardTitle>How this works</CardTitle></CardHeader>
+            {/* 헤더를 토글 버튼으로. 카드가 접힌 상태에서도 규칙의 윤곽은 보여야 하고,
+                펼쳐야만 전부가 보이도록 한다. */}
+            <button
+              type="button"
+              className="how-toggle"
+              aria-expanded={showHow}
+              onClick={() => setShowHow((v) => !v)}
+            >
+              <span className="how-toggle-title">How this works</span>
+              <span className="how-toggle-sub">
+                3 steps · one vault per wallet · you can cancel before the countdown ends
+              </span>
+              <span className="how-toggle-chevron" aria-hidden="true">{showHow ? "▴" : "▾"}</span>
+            </button>
+            {showHow && (
+              <>
             <CardContent className="space-y-4">
               {/*
                 순서와 제약을 먼저 말한다.
@@ -3215,6 +3244,8 @@ export default function App() {
                 until your heir files a claim, waits 7 days, and withdraws it.
               </div>
               </CardContent>
+              </>
+            )}
               </Card>
               )}
 
