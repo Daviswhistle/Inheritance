@@ -2307,6 +2307,19 @@ export default function App() {
               </div>
             </CardHeader>
             <CardContent className="grid gap-3">
+                {/* 이 탭의 질문은 "내 지갑에 얼마가 있고, 금고에 얼마가 들어갔는가" 다.
+                    메타데이터(누가/언제/어느 체인)가 그 앞에 오는 동안 화면은 이 질문에
+                    답하지 않았다. 두 숫자를 카드로 올려 화면이 답하게 한다. */}
+                <div className="stat-row">
+                  <div className="stat">
+                    <div className="stat-label">In your wallet</div>
+                    <div className="stat-value">{fmtUnits(walletWld)} {wldSymbol}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-label">In the vault</div>
+                    <div className="stat-value">{fmtUnits(vaultWld)} {wldSymbol}</div>
+                  </div>
+                </div>
               <div className="text-sm grid gap-1">
                 <div className="flex items-center gap-2">
                   <div>Owner:</div>
@@ -2438,8 +2451,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <div className="text-sm">Wallet: {fmtUnits(walletWld)} {wldSymbol}</div>
-              <div className="text-sm">Vault: {fmtUnits(vaultWld)} {wldSymbol}</div>
               {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && (
                 <>
                   <div className="field-row">

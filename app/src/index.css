@@ -1234,3 +1234,72 @@ input::placeholder {
   border-color: #e2e8f0;
   background: #ffffff;
 }
+
+/* ===== Send 탭: 숫자(스탯)와 조작(액션) 분리 =====
+
+   이 탭의 질문은 "내 지갑에 얼마가 있고, 금고에 얼마가 들어갔는가" 다. 그런데 메타데이터
+   여덟 줄이 먼저 나오고 두 숫자는 본문 글씨로 흘렀다. 숫자를 두 개의 스탯으로 올려
+   화면이 답하게 하고, 조작은 그 아래 별도 묶음으로 분리한다. */
+.stat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.stat {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0.6rem 0.7rem;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-value {
+  margin-top: 0.15rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* 퀵 퍼센트 한 줄. 예전에는 25/50/75/Max/Deposit/Refresh 가 한 flex 안이라 390px 에서
+   2/3/1 로 깨졌고, 주 액션인 Deposit 이 홀로 떨어진 줄의 끝에 갔다. */
+.quick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.15rem;
+}
+
+.quick-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* `margin-left: auto` 를 주면 줄이 접혔을 때 버튼 줄만 오른쪽으로 붙어 라벨이 홀로
+   남는다 — 의도한 배치가 아니라 버그처럼 보인다. 접혀도 왼쪽 정렬을 유지한다. */
+.quick-btns {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+/* 주 액션은 가변 폭으로 늘어나되, 보조 버튼(새로고침)보다 확실히 크다. */
+.grow {
+  flex: 1 1 auto;
+}
