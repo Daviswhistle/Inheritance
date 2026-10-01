@@ -448,27 +448,34 @@ export default function App() {
       return { level: "checking" as const, text: "" };
     }
     // 카피는 짧게 유지한다. 카운트다운 바로 아래에 붙는 자리라 길어지면 실제 조작
-    // 버튼을 화면 아래로 밀어낸다. "무엇이 되고 있지 않은가" + "그래서 무엇을 놓치는가"
-    // 만 남기고 나머진 Help 탭으로 보낸다.
-    const NOBODY = "nobody will be told";
+    // 버튼을 화면 아래로 밀어낸다. "무엇이 되고 있지 않은가" 만 남기고 **결과는
+    // 아래 문장이 말한다** — 이 자리의 `text` 는 "무엇을 고쳐야 하는가" 만 한다.
+    //
+    // 예전엔 여기서 "…nobody will be told if you stop renewing" 까지 말했는데, 바로 아래
+    // "If you stop renewing, your heir can file a claim and take the balance…" 가 같은
+    // 사실을 다시 말했다. 같은 화면에서 같은 말을 두 번 하면 하나가 거짓말처럼
+    // 읽힌다. **결과는 그 문장 한 곳에만 남긴다.**
+    //
+    // "Notifications are off" 라는 문구는 유지한다 — 하네스가 이 상태를 문자열로
+    // 판정한다(notify-ux.mjs). 문구를 바꾸면 검사가 아니라 문자열 검색이 된다.
     if (notifyPermission === "denied" && notifyAsked) {
       // 우리가 물어봤는데 여전히 false 다. 누군가 actively 거절한 상태이므로 "꺼짐"
-      // 보다 강한 말��� 이 자리가 필요하다.
-      return { level: "broken" as const, text: `World App is blocking notifications — ${NOBODY} if you stop renewing.` };
+      // 보다 강한 말이 이 자리에 필요하다.
+      return { level: "broken" as const, text: "World App is blocking notifications — turn them on in World App → Settings." };
     }
     if (notifyPermission !== "granted") {
       // 아직 켜지 않았거나 알 수 없는 경우. "누가 막았다" 고 말할 근거가 없으므로
       // 그렇게 말하지 않는다.
-      return { level: "off" as const, text: `Notifications are off — ${NOBODY} if you stop renewing.` };
+      return { level: "off" as const, text: "Notifications are off." };
     }
     if (notifyWatchState === "not_registered") {
-      return { level: "broken" as const, text: `This vault is not being watched — ${NOBODY} about it.` };
+      return { level: "broken" as const, text: "This vault is not being watched." };
     }
     if (notifyWatchState === "registered") {
       if (notifyDeliveryNote) {
         return {
           level: "broken" as const,
-          text: `World App took the request but did not deliver it (${notifyDeliveryNote}) — ${NOBODY}.`,
+          text: `World App took the request but did not deliver it (${notifyDeliveryNote}).`,
         };
       }
       return { level: "ok" as const, text: "You and your heir are told before the countdown ends and at each claim step." };
@@ -3028,8 +3035,20 @@ export default function App() {
                   role={notifyEscalate ? "alert" : "status"}
                   aria-live="polite"
                 >
+                  {/* 이 한 줄의 **결과 절("nobody will be told…")** 이 바로 아래
+                      "If you stop renewing, your heir can file a claim and take the
+                      balance…" 와 같은 사실을 두 번 말한다. 두 번 말하는 줄은 하나가
+                      거짓말처럼 읽힌다. 그래서 `notifyHealth.text` 를 **무엇이 되고
+                      있지 않은가** 만 말하게 줄였고(453행), **결과는 아래 문장 한 곳에
+                      만** 남겼다.
+
+                      "Notifications are off" 라는 문구는 그대로 둔다 — 하네스가 이
+                      상태를 문자열로 판정한다. 문구를 바꾸면 검사는 그대로 통과하지만
+                      사용자에게 "무엇을 고쳐야 하는지" 를 말하지 않게 된다. */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span>{notifyEscalate ? "⚠ " : ""}{notifyHealth.text}</span>
+                    <span>
+                      {notifyEscalate ? "⚠ " : ""}{notifyHealth.text}
+                    </span>
                     {notifyHealth.level !== "ok" && notifyPermission !== "granted" && (
                       <Button size="sm" variant="ghost" onClick={requestNotifyPermission}
                         disabled={!miniInstalled || notifyBusy}>

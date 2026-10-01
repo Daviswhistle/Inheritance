@@ -13,6 +13,21 @@ const FACTORY = process.env.FACTORY;
 if (!FACTORY) { console.error("FACTORY 필요 — run.sh 가 설정한다"); process.exit(2); }
 const WLD = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const cast = (a) => (spawnSync("cast", a, { encoding: "utf8" }).stdout || "").trim();
+
+/**
+ * `cast send` 를 실행하고 성공했는지 알려준다. **stderr 도 함께 본다.**
+ *
+ * `cast` 은 revert 면 에러를 **stderr** 에 쓰고 stdout 은 비운다(성공이면 `0x`).
+ * stdout 만 잡는 함수는 실패를 "빈 문자열" 로 돌려주고, 실패인지 성공인지 구분할
+ * 방법이 없다. 예전 `cast` 그대로 쓴 정리 코드가 **조용히 실패**해서 슬롯이 남아
+ * 있었고, 뒤따르는 검사가 "금고가 없는데 문장이 없다" 는 전혀 다른 증상으로 보였다.
+ * 원인과 증상이 다른 곳 — 디버깅 시간이 그 대가다.
+ */
+const castSend = (a) => {
+  const r = spawnSync("cast", a, { encoding: "utf8" });
+  const both = `${r.stdout || ""} ${r.stderr || ""}`;
+  return { out: (r.stdout || "").trim(), err: (r.stderr || "").trim(), ok: !/revert|error|panic|Error/i.test(both) };
+};
 const A = ACCOUNTS;
 
 let pass = 0, fail = 0;
@@ -20,9 +35,65 @@ const check = (n, ok, d) => { ok ? pass++ : fail++; console.log(`  ${ok ? "PASS"
 const log = (s) => console.log(s);
 
 // Fund a vault so the notice is warranted (balance 0 suppresses it by design).
-if (cast(["call", FACTORY, `vaultOf(address)(address)`, A.a4.a, "--rpc-url", "http://127.0.0.1:8546"]).replace(/^0x/, "").replace(/0+$/, "") === "") {
-  cast(["send", FACTORY, "createVault(address,uint256)", A.a9.a, "604800", "--from", A.a4.a, "--private-key", A.a4.pk, "--rpc-url", "http://127.0.0.1:8546"]);
+//
+// **앞 단계가 남긴 금고를 그대로 쓰면 안 된다.** run.sh 는 체인을 한 번만 만들고
+// 8단계를 순서대로 돌린다. 그 중 UX 감사(ux2.mjs) 단계는 anvil 시간을 **앞으로
+// 보낸다**(만료·이의제기·정산 상태를 만들기 위해). 그래서 이 단계가 시작될 때 a4 의
+// 금고는 이미 만료되어 있을 수 있다 — 알림 줄은 잔액만 있으면 렌더되지만
+// "If you stop renewing, your heir can file a claim…" 문장은 **진행 중인 소유자에게만**
+// 나온다. 그래서 "결과를 말한다" 검사가 여기서만 실패했다. 단독 실행은 새 체인이라
+// 통과하고 8단계 전체 실행에서만 재현됐다.
+//
+// 다른 단계들이 이미 쓰고 있는 방법(잔액 회수 → 슬롯 해제)으로 정리한 뒤 새로 만든다.
+const RPC = "http://127.0.0.1:8546";
+const ZERO = "0x0000000000000000000000000000000000000000";
+const castUint = (a) => {
+  const s = cast(a);
+  const m = s.match(/^\s*(\d+)/);
+  return m ? BigInt(m[1]) : 0n;
+};
+const sendOk = (a) => castSend(a);
+
+function emptySlot(addr) {
+  // `cast call` 은 32바이트 반환값이라 "0x" + 64 hex(=66자) 다. 40자 정규식에 그대로
+  // 넣으면 **항상 실패**하고, "금고 없음" 이라 여기고 정리 없이 넘어간다. 첫 구현이
+  // 그랬고, 그래서 앞 단계가 남긴 정산 금고가 그대로였다.
+  const raw = cast(["call", FACTORY, `vaultOf(address)(address)`, addr, "--rpc-url", RPC]);
+  const hex = raw.replace(/^0x/, "").padStart(64, "0");
+  const a = /^0x[0-9a-fA-F]{40}$/.test(raw) ? `0x${raw.slice(-40)}`
+    : /^0x[0-9a-fA-F]{64}$/.test(raw) ? `0x${hex.slice(24)}`
+    : ZERO;
+  console.log(`  정리 대상: vaultOf=${a}`);
+  if (a === ZERO) return;
+  const bal = castUint(["call", WLD, "balanceOf(address)(uint256)", a, "--rpc-url", RPC]);
+  if (bal > 0n) {
+    // **정산된 금고의 WLD 는 `rescueFromMyVault` 가 아니라 `sweepSettledVaultFor` 다.**
+    // `ownerRescueUnknownERC20` 은 이름 그대로 **모르는 토큰** 회수용이고 WLD 를 받지
+    // 않는다. 앞 단계(ux2)가 정산 후 잔액 2 WLD 를 남겨 두고, 여기서 엉뚱한 함수를
+    // 불러 revert → 슬롯이 안 빠짐 → "금고가 없는데 문장이 없다" 라는 전혀 다른
+    // 증상으로 나타났다. 앱의 "Sweep … to me" 버튼이 부르는 것이 이 함수다.
+    const isSettled = cast(["call", a, "isSettled()(bool)", "--rpc-url", RPC]) === "true";
+    const r = isSettled
+      ? castSend(["send", FACTORY, "sweepSettledVaultFor(address)", addr,
+          "--from", addr, "--private-key", A.a4.pk, "--rpc-url", RPC])
+      : castSend(["send", FACTORY, "rescueFromMyVault(address,uint256,address)", WLD, bal.toString(), addr,
+          "--from", addr, "--private-key", A.a4.pk, "--rpc-url", RPC]);
+    if (!r.ok) console.log(`  (WLD 회수 실패: ${r.err.slice(0, 110)})`);
+    else console.log(`  정산 후 잔액 회수: ${isSettled ? "sweepSettledVaultFor" : "rescueFromMyVault"} (${bal} WLD wei)`);
+  }
+  const eth = castUint(["call", a, "balance()(uint256)", "--rpc-url", RPC]);
+  if (eth > 0n) {
+    const r = castSend(["send", a, "sweepEth(address)", addr, "--from", addr, "--private-key", A.a4.pk, "--rpc-url", RPC]);
+    if (!r.ok) console.log(`  (ETH 회수 실패: ${r.err.slice(0, 110)})`);
+  }
+  const rel = castSend(["send", FACTORY, "releaseMyVault()", "--from", addr, "--private-key", A.a4.pk, "--rpc-url", RPC]);
+  if (!rel.ok) console.log(`  (슬롯 해제 실패: ${rel.err.slice(0, 110)})`);
+  const after = cast(["call", FACTORY, `vaultOf(address)(address)`, addr, "--rpc-url", RPC]);
+  console.log(`  정리 후 vaultOf = ${after || "(빈 응답)"}`);
 }
+
+emptySlot(A.a4.a);
+cast(["send", FACTORY, "createVault(address,uint256)", A.a9.a, "604800", "--from", A.a4.a, "--private-key", A.a4.pk, "--rpc-url", RPC]);
 const vault = cast(["call", FACTORY, `vaultOf(address)(address)`, A.a4.a, "--rpc-url", "http://127.0.0.1:8546"]);
 cast(["send", WLD, "approve(address,uint256)", FACTORY, "5000000000000000000", "--from", A.a4.a, "--private-key", A.a4.pk, "--rpc-url", "http://127.0.0.1:8546"]);
 cast(["send", FACTORY, "deposit(uint256)", "5000000000000000000", "--from", A.a4.a, "--private-key", A.a4.pk, "--rpc-url", "http://127.0.0.1:8546"]);
@@ -77,9 +148,15 @@ check("상태값이 사람 말로 바뀌었다", leaked.length === 0, leaked.len
 log("\n[3] 무엇이 되고 있지 않은지 + 대처가 함께 오는가");
 // 상태값이 아니라 **결과**를 말해야 한다: "알림이 꺼져 있다" 가 아니라
 // "갱신을 멈추면 아무도 통보받지 못한다".
-const consequence = /nobody will be told|will not be told|will not be warned|not be sent about it/i.test(t);
+//
+// **화면 어디에 있든** 결과가 보이면 된다. 예전에는 이 문장이 알림 블록 **안** 에 있었고
+// 그 위치까지 검사했다. 그런데 같은 화면의 바로 아래 문장이 그 결과를 이미 말하고 있어서
+// ("If you stop renewing, your heir can file a claim and take the balance…") 알림 블록이
+// 다시 말하는 순간 화면이 두 번 같은 말을 하게 된다. 요구는 "사용자가 결과를 안다" 이지
+// "알림 상자 안에서 말하라" 가 아니다 — 요구를 있는 그대로 검사한다.
+const consequence = /nobody will be told|will not be told|will not be warned|not be sent about it|heir can file a claim and take the balance/i.test(t);
 check("결과를 말한다 (누가 무엇을 놓치는지)", consequence,
-  (t.match(/[^\n]*(nobody will be told|will not be told|will not be warned)[^\n]*/i) || ["(결과 문장 없음)"])[0].slice(0, 120));
+  (t.match(/[^\n]*(nobody will be told|will not be told|will not be warned|heir can file a claim and take the balance)[^\n]*/i) || ["(결과 문장 없음)"])[0].slice(0, 120));
 // 헤딩이 없는 것이 의도다. "Notifications need attention" 같은 큰 제목은 카운트다운보다
 // 눈에 띄어서 알림이 주인공이 되어 버렸다. 문장으로만 말한다.
 check("큰 헤딩 없이 문장으로 말한다", !/^\s*Notifications (on|need attention)\s*$/im.test(t),
@@ -87,9 +164,13 @@ check("큰 헤딩 없이 문장으로 말한다", !/^\s*Notifications (on|need a
 
 // 블록 크기는 실제 DOM 요소로 잰다. 정규식으로 뒤쪽 400자를 잡으면 탭의 나머지
 // 내용까지 같이 세어 14줄 같은 헛값이 나온다 — 실제로 그랬다.
+// 블록을 **알림 상태 문구**로 찾는다. 예전에는 "nobody will be told" 로 찾았는데 그
+// 문장을 알림 블록에서 뺐으므로(중복 제거) 이제는 블록을 못 찾고 "요소를 못 찾음" 이
+// 났다 — 검사 대상이 아니라 문구 변화에 묶여 있었다. 이 검사는 블록의 **크기**를 재는
+// 것이므로, 블록을 식별하는 조건도 그 블록 고유의 것(무엇이 되고 있지 않은가)으로 둔다.
 const metrics = await b.ev(`return (() => {
   const el = [...document.querySelectorAll("[role=alert],[role=status]")]
-    .find((n) => /nobody will be told|and your heir get told|is blocking|not being watched/i.test(n.innerText || ""));
+    .find((n) => /Notifications are off|and your heir get told|is blocking|not being watched|took the request/i.test(n.innerText || ""));
   if (!el) return null;
   const r = el.getBoundingClientRect();
   const timer = document.querySelector(".timer-block");
