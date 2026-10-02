@@ -110,6 +110,17 @@ try {
   assert.equal(await page.ev("return Boolean(document.querySelector('input[value=plain]'))"), false);
   assert.match(await page.ev("return document.body.innerText"), /USDC losses|USDC loss recovery/);
   pass("USDC selection uses its own six-decimal balance, Morpho default and independently sourced rates");
+  await page.ev("document.getElementById('yield-consent').click(); return true;");
+  await click("WLD");
+  assert.equal(await page.ev("return document.querySelector('input[value=yield]').checked"), true);
+  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  await page.ev("document.querySelector('input[value=plain]').click(); return true;");
+  assert.equal(await page.ev("return document.querySelector('input[value=plain]').checked"), true);
+  pass("Switching to WLD defaults to yield, resets consent and keeps basic custody available");
+  await click("USDC");
+  assert.equal(await page.ev("return document.querySelector('input[value=yield]').checked"), true);
+  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  await until(() => page.ev("return /200.123456 USDC/.test(document.body.innerText)"));
   await page.shot("usdc-create");
   await page.ev(`return __q.setInput('heir-input', '${ACCOUNTS.a1.a}')`);
   await page.ev("return __q.setInput('period-input', '30')");

@@ -131,7 +131,9 @@ try {
   await captureStore("countdown");
   await page.ev("return __q.tab('Inherit')");
   await until(() => page.ev("return document.querySelector('input[value=yield]') && !document.querySelector('input[value=yield]').disabled"));
-  await page.ev("document.querySelector('input[value=yield]').click(); return true");
+  assert.equal(await page.ev("return document.querySelector('input[value=yield]').checked"), true);
+  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  pass("New WLD creation defaults to Morpho while fee and risk consent remains unchecked");
   await until(() => page.ev("return /General WLD rewards APR/.test(document.body.innerText) && /1.70%/.test(document.body.innerText)"));
   assert.match(await page.ev("return document.body.innerText"), /<0.01%/);
   assert.match(await page.ev("return document.body.innerText"), /verified-human boost is excluded/);

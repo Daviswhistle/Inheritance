@@ -3,6 +3,10 @@
 USDC support is a separate immutable yield factory. Existing basic WLD and Re7 WLD
 factories and balances stay in place. The interface manages the separate vaults
 on one screen; each vault retains its own heir, countdown and review window.
+New vault creation selects the configured Morpho route for either asset by default.
+Fee and risk consent is always unchecked, including after switching assets. WLD
+can still use basic custody; an environment without a WLD yield route defaults
+to basic custody instead. The default never moves existing vault funds.
 
 ## Fixed deployment configuration
 

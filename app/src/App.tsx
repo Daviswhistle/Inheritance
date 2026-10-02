@@ -189,7 +189,7 @@ export default function App() {
   const selectedVaultAbi = selectedYieldRoute?.vaultAbi ?? VAULT_ABI;
   const [creationAsset, setCreationAsset] = useState<AssetSymbol>("WLD");
   const creationYieldRoute = YIELD_ROUTES.find(route => route.symbol === creationAsset);
-  const [creationKind, setCreationKind] = useState<"plain" | "yield">("plain");
+  const [creationKind, setCreationKind] = useState<"plain" | "yield">(creationYieldRoute ? "yield" : "plain");
   const [yieldConsent, setYieldConsent] = useState(false);
   const [yieldTermsByFactory, setYieldTermsByFactory] = useState<Record<string, YieldTerms | null>>({});
   const yieldTerms = selectedYieldRoute ? yieldTermsByFactory[selectedYieldRoute.factory] ?? null : null;
@@ -3960,7 +3960,7 @@ export default function App() {
               {USDC_ENABLED && <fieldset className="yield-choice" disabled={pendingAction}><legend>Asset to inherit</legend>
                 <div className="flex gap-2">
                   {(["WLD", "USDC"] as const).map(symbol => <Button key={symbol} id={`asset-${symbol.toLowerCase()}`} variant={creationAsset === symbol ? "primary" : "outline"}
-                    aria-pressed={creationAsset === symbol} onClick={() => { setCreationAsset(symbol); setCreationKind(symbol === "USDC" ? "yield" : "plain"); setYieldConsent(false); }}>{symbol}</Button>)}
+                    aria-pressed={creationAsset === symbol} onClick={() => { setCreationAsset(symbol); setCreationKind(YIELD_ROUTES.some(route => route.symbol === symbol) ? "yield" : "plain"); setYieldConsent(false); }}>{symbol}</Button>)}
                 </div>
                 <p className="text-xs text-gray-600">Each asset has its own personal vault. USDC deposits earn with Morpho; nothing is converted between currencies.</p>
               </fieldset>}
