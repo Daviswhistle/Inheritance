@@ -57,13 +57,13 @@ if yield_factory or morpho_vault:
     REQUIRED[yield_factory.lower()] = "수익 금고 팩토리 (선택형)"
     REQUIRED[morpho_vault.lower()] = "Re7 WLD 지분 토큰 (approve 대상)"
 
-READ_QUERY = "{ app { app_metadata { id contracts permit2_tokens associated_domains } } }"
+READ_QUERY = "{ app { app_metadata { id contracts permit2_tokens associated_domains verification_status } } }"
 SET_MUTATION = """
 mutation SetAllowlist($id: String!, $contracts: [String!], $permit: [String!]) {
   update_app_metadata_by_pk(
     _set: {contracts: $contracts, permit2_tokens: $permit}
-    _where: {id: {_eq: $id}}
-  ) { app_metadata { contracts permit2_tokens } }
+    pk_columns: {id: $id}
+  ) { contracts permit2_tokens }
 }
 """
 
@@ -130,6 +130,10 @@ def main() -> int:
     if missing:
         if "--check-only" in sys.argv:
             print(f"  누락 {len(missing)}건; 읽기 전용 검사이므로 변경하지 않습니다")
+            return 1
+        if meta.get("verification_status") != "unverified":
+            print("  포털에서 Remove from review로 심사를 취소한 뒤 다시 실행하세요.")
+            print("  현재 상태에서는 API가 설정 변경을 허용하지 않습니다:", meta.get("verification_status"))
             return 1
         print()
         print(f"  누락 {len(missing)}건 등록 시도: {missing}")
