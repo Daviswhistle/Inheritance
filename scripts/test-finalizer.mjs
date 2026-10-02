@@ -45,8 +45,18 @@ async function unusedPort() {
 }
 const port = await unusedPort();
 const upstream = "http://127.0.0.1:" + port;
+// Continue producing blocks when a signer SDK subscribes after receipt indexing.
+// Transaction-only mining can otherwise leave that waiter without a new block.
+// Keep the local gas price fixed so budget boundaries do not move with empty blocks.
 const anvil = spawn("anvil", ["--port", String(port), "--chain-id", "31337",
-  "--accounts", "20", "--mnemonic", mnemonic, "--silent"], { stdio: "ignore" });
+  "--accounts", "20", "--mnemonic", mnemonic, "--silent", "--block-time", "1", "--mixed-mining",
+  "--base-fee", "0", "--gas-price", "1000000000"], { stdio: "ignore" });
+const deadlineTimer = setTimeout(() => {
+  console.error("Local finalizer integration exceeded its 120-second deadline.");
+  anvil.kill("SIGTERM");
+  process.exit(1);
+}, 120_000);
+deadlineTimer.unref();
 let proxy;
 let provider;
 let deploymentGas;
@@ -132,6 +142,7 @@ try {
   await new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve));
   const rpcUrl = "http://127.0.0.1:" + proxy.address().port;
   provider = new JsonRpcProvider(upstream, undefined, { cacheTimeout: -1, batchMaxCount: 1 });
+  provider.pollingInterval = 100;
   const owner = await provider.getSigner(0);
   const heir = await provider.getSigner(1);
   const keeperAddress = keeper.address;
@@ -1610,4 +1621,5 @@ try {
   provider?.destroy();
   if (proxy) await new Promise((resolve) => proxy.close(resolve));
   anvil.kill("SIGTERM");
+  clearTimeout(deadlineTimer);
 }
