@@ -3,10 +3,10 @@ import { NOTIFY_BACKEND_URL } from "@/config";
 import { Icon } from "./Icon";
 import { Button } from "./ui/button";
 
-type Health = { enabled?: boolean; supported?: boolean; funded?: boolean; halted?: boolean; reason?: string };
+type Health = { enabled?: boolean; supported?: boolean; funded?: boolean; halted?: boolean; reason?: string; factoryAddresses?: string[] };
 
-export function AutomationNotice({ legacy, registered, canEnable, busy, onEnable }: {
-  legacy: boolean; registered: boolean; canEnable: boolean; busy: boolean; onEnable: () => void;
+export function AutomationNotice({ legacy, registered, canEnable, busy, onEnable, factoryAddress }: {
+  legacy: boolean; registered: boolean; canEnable: boolean; busy: boolean; onEnable: () => void; factoryAddress?: string;
 }) {
   const [health, setHealth] = useState<Health | null>(null);
   useEffect(() => {
@@ -24,7 +24,8 @@ export function AutomationNotice({ legacy, registered, canEnable, busy, onEnable
     const timer = setInterval(() => void check(), 60_000);
     return () => { active = false; controller.abort(); clearInterval(timer); };
   }, [legacy]);
-  const ready = health?.enabled && health.supported && health.funded && !health.halted && ["ready", "pending"].includes(health.reason || "");
+  const ready = health?.enabled && health.supported && health.funded && !health.halted && ["ready", "pending"].includes(health.reason || "") &&
+    (!factoryAddress || health.factoryAddresses?.some(address => address.toLowerCase() === factoryAddress.toLowerCase()));
   return <div className={`automation-note ${ready && registered ? "automation-ready" : ""}`} role="status">
     <Icon name={legacy ? "help" : "check"} size={18} />
     <div><strong>{legacy ? "This earlier vault needs manual completion" : "After the seven-day review"}</strong>

@@ -73,3 +73,22 @@ main push는 GitHub Actions로 Pages와 Worker를 배포합니다. 공유 D1 마
 [백엔드 설정](backend/README.md), [보안 경계](SECURITY.md),
 [심사 안내](docs/REVIEW_NOTES.md), [출시 검증](docs/QA_CHECKLIST.md),
 [개인정보 처리](https://inheritance.pages.dev/privacy.html), [약관](https://inheritance.pages.dev/terms.html).
+
+## 선택형 Morpho 수익 금고
+
+별도 `InheritanceVaultMorphoFactory`는 WLD를 고정 ERC-4626 금고에 예치하고
+개인 상속 금고가 예치 지분을 보유합니다. 출금 시 남은 납입 원금보다 증가한 부분에만
+고정 성과 수수료 10%(계약 상한 10%)를 부과합니다. 관리 수수료는 없으며 기존 WLD 금고는
+자동으로 변환하지 않습니다. 상속 때 현금 인출이 실패하면 예치 지분과 대기 WLD를
+상속인에게 전달합니다. 지분 수수료와 이자·인센티브의 차이는 [설계와 활성화 조건](docs/MORPHO_YIELD.md)에 설명합니다.
+
+프론트의 `VITE_YIELD_FACTORY_ADDRESS` / `VITE_MORPHO_VAULT_ADDRESS`를 함께
+설정하기 전에는 기능이 비활성입니다. 로컬 구현·검증과 메인넷 계약 배포·서비스 활성화는
+별도 단계입니다. 현재 기본 배포 주소를 새 팩토리로 덮어쓰지 않습니다.
+
+```sh
+forge build
+node scripts/test-yield-abi.mjs
+node scripts/verify/morpho-yield.mjs
+MORPHO_FORK_RPC=https://worldchain-mainnet.g.alchemy.com/public forge test --match-contract MorphoWorldChainForkTest -vv
+```

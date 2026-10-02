@@ -12,6 +12,9 @@ import { preflight, type Env } from "./functions/_lib/siwe";
 // from app/.env; a dual-factory test must configure its own local address explicitly.
 process.env.VITE_LEGACY_FACTORY_ADDRESS ??= "";
 process.env.VITE_LEGACY_FACTORY_DEPLOY_BLOCK ??= "";
+process.env.VITE_YIELD_FACTORY_ADDRESS ??= "";
+process.env.VITE_MORPHO_VAULT_ADDRESS ??= "";
+process.env.VITE_YIELD_FACTORY_DEPLOY_BLOCK ??= "";
 
 /**
  * E2E 용 Pages Functions 대체.

@@ -110,6 +110,41 @@ export const FACTORY_ERROR_ABI = [
   },
 ];
 
+/** Additional opt-in yield contract errors. */
+export const YIELD_VAULT_ERROR_ABI = [
+  {
+    type: "error",
+    name: "InvalidAmount",
+  },
+  {
+    type: "error",
+    name: "InvalidFee",
+  },
+  {
+    type: "error",
+    name: "InvalidRewards",
+  },
+  {
+    type: "error",
+    name: "InvalidStrategy",
+  },
+  {
+    type: "error",
+    name: "MulDivOverflow",
+  },
+  {
+    type: "error",
+    name: "ProtectedToken",
+  },
+  {
+    type: "error",
+    name: "SlippageExceeded",
+  },
+];
+export const YIELD_FACTORY_ERROR_ABI = [
+
+];
+
 /**
  * 커스텀 에러 이름 → 어느 계약의 것인지.
  *
@@ -141,4 +176,11 @@ export const ERROR_SOURCE_BY_NAME: Record<string, "vault" | "factory"> = {
   "NotExpired": "factory",
   "NotOurVault": "factory",
   "VaultNotEmpty": "factory",
+  "InvalidAmount": "vault",
+  "InvalidFee": "vault",
+  "InvalidRewards": "vault",
+  "InvalidStrategy": "vault",
+  "MulDivOverflow": "vault",
+  "ProtectedToken": "vault",
+  "SlippageExceeded": "vault",
 };

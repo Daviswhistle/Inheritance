@@ -1,5 +1,6 @@
 import { Brand, Icon } from "./Icon";
 import { Button } from "./ui/button";
+import { YIELD_ENABLED } from "@/config";
 
 export function Landing({ installed, busy, onConnect, linkedVault, status }: { installed: boolean; busy: boolean; onConnect: () => void; linkedVault: string; status: string }) {
   const appId = document.querySelector('meta[name="minikit:app-id"]')?.getAttribute("content") || "";
@@ -22,7 +23,7 @@ export function Landing({ installed, busy, onConnect, linkedVault, status }: { i
         <p>Wallet sign-in. No World ID verification required.</p>
       </div>
       {status && !/Open in World App.*bridge unavailable/i.test(status) && <p className="landing-feedback" role="status" aria-live="polite">{status}</p>}
-      <div className="landing-trust"><span><Icon name="check" size={15} />Your own vault</span><span><Icon name="check" size={15} />No platform fee</span><span><Icon name="check" size={15} />You hold your keys</span></div>
+      <div className="landing-trust"><span><Icon name="check" size={15} />Your own vault</span><span><Icon name="check" size={15} />{YIELD_ENABLED ? "Basic vault: no fee" : "No platform fee"}</span><span><Icon name="check" size={15} />You hold your keys</span></div>
       <section className="landing-how" aria-labelledby="landing-how-title"><div className="landing-section-heading"><span className="eyebrow">A simple plan</span><h2 id="landing-how-title">Three steps. One less worry.</h2></div><ol className="landing-steps">
         <li><span>01</span><div><h3>Choose your person</h3><p>Name an heir and set your check-in period. Creating a vault moves no WLD.</p></div></li>
         <li><span>02</span><div><h3>Put a little aside</h3><p>Deposit WLD into your vault. Tell your heir and turn on reminders.</p></div></li>

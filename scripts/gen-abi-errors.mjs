@@ -27,6 +27,8 @@ const SOURCES = [
     file: "out/InheritanceVaultWLDFactoryOnePerOwner.sol/InheritanceVaultWLDFactoryOnePerOwner.json",
     which: "factory",
   },
+  { file: "out/InheritanceVaultMorpho.sol/InheritanceVaultMorpho.json", which: "yieldVault" },
+  { file: "out/InheritanceVaultMorphoFactory.sol/InheritanceVaultMorphoFactory.json", which: "yieldFactory" },
 ];
 
 const missing = SOURCES.filter((s) => !existsSync(path.join(REPO, s.file)));
@@ -41,6 +43,8 @@ const sigOf = (e) => `${e.name}(${(e.inputs || []).map((i) => i.type).join(",")}
 
 const vault = [];
 const factoryOnly = [];
+const yieldVault = [];
+const yieldFactory = [];
 const sources = [];
 const seen = new Set();
 
@@ -55,8 +59,8 @@ for (const { file, which } of SOURCES) {
     const sig = sigOf(e);
     if (seen.has(sig)) continue; // 두 계약에 같은 시그니처면 한 번만
     seen.add(sig);
-    (which === "vault" ? vault : factoryOnly).push(e);
-    sources.push(`  ${JSON.stringify(e.name)}: ${JSON.stringify(which)},`);
+    ({ vault, factory: factoryOnly, yieldVault, yieldFactory }[which]).push(e);
+    sources.push(`  ${JSON.stringify(e.name)}: ${JSON.stringify(which.startsWith("yield") ? (which === "yieldVault" ? "vault" : "factory") : which)},`);
   }
 }
 
@@ -91,6 +95,14 @@ export const FACTORY_ERROR_ABI = [
 ${render(factoryOnly)}
 ];
 
+/** Additional opt-in yield contract errors. */
+export const YIELD_VAULT_ERROR_ABI = [
+${render(yieldVault)}
+];
+export const YIELD_FACTORY_ERROR_ABI = [
+${render(yieldFactory)}
+];
+
 /**
  * 커스텀 에러 이름 → 어느 계약의 것인지.
  *
@@ -112,10 +124,10 @@ if (process.argv.includes("--check")) {
     );
     process.exit(1);
   }
-  console.log(`  OK  커스텀 에러 ABI ${vault.length + factoryOnly.length}종이 계약과 일치합니다.`);
+  console.log(`  OK  커스텀 에러 ABI ${vault.length + factoryOnly.length + yieldVault.length + yieldFactory.length}종이 계약과 일치합니다.`);
 } else {
   writeFileSync(OUT, src);
   console.log(
-    `  생성: app/src/abi-errors.ts (vault ${vault.length}종 + factory 전용 ${factoryOnly.length}종)`,
+    `  생성: app/src/abi-errors.ts (basic ${vault.length + factoryOnly.length}종 + yield ${yieldVault.length + yieldFactory.length}종)`,
   );
 }

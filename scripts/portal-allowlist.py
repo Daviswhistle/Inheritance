@@ -17,11 +17,13 @@
 curl 로 폴백한다.
 """
 import json
+import os
 import pathlib
 import re
 import shutil
 import subprocess
 import tempfile
+import sys
 
 CONFIG = pathlib.Path.home() / ".config/opencode/opencode.jsonc"
 ENDPOINTS = (
@@ -45,6 +47,15 @@ REQUIRED = {
     FACTORY.lower(): "팩토리 (입금/갱신/신청/수령)",
     LEGACY_FACTORY.lower(): "기존 금고 팩토리 (수동 수령 포함)",
 }
+yield_factory = os.environ.get("YIELD_FACTORY_ADDRESS", "").strip()
+morpho_vault = os.environ.get("MORPHO_VAULT_ADDRESS", "").strip()
+if yield_factory or morpho_vault:
+    if not all(re.fullmatch(r"0x[0-9a-fA-F]{40}", a) and int(a[2:], 16) for a in (yield_factory, morpho_vault)):
+        raise SystemExit("수익 팩토리와 Morpho 금고 주소를 함께 설정해야 합니다")
+    if yield_factory.lower() in REQUIRED or morpho_vault.lower() in REQUIRED or yield_factory.lower() == morpho_vault.lower():
+        raise SystemExit("수익 팩토리와 전략은 기본 계약과 구분되어야 합니다")
+    REQUIRED[yield_factory.lower()] = "수익 금고 팩토리 (선택형)"
+    REQUIRED[morpho_vault.lower()] = "Re7 WLD 지분 토큰 (approve 대상)"
 
 READ_QUERY = "{ app { app_metadata { id contracts permit2_tokens associated_domains } } }"
 SET_MUTATION = """
@@ -117,11 +128,14 @@ def main() -> int:
 
     missing = [k for k in REQUIRED if k not in stored]
     if missing:
+        if "--check-only" in sys.argv:
+            print(f"  누락 {len(missing)}건; 읽기 전용 검사이므로 변경하지 않습니다")
+            return 1
         print()
         print(f"  누락 {len(missing)}건 등록 시도: {missing}")
         out = gql(
             SET_MUTATION,
-            {"id": META_ID, "contracts": list(dict.fromkeys([*(meta.get("contracts") or []), WLD, FACTORY, LEGACY_FACTORY])), "permit": list(dict.fromkeys([*(meta.get("permit2_tokens") or []), WLD]))},
+            {"id": META_ID, "contracts": list(dict.fromkeys([*(meta.get("contracts") or []), *REQUIRED])), "permit": list(dict.fromkeys([*(meta.get("permit2_tokens") or []), WLD]))},
         )
         if "errors" in out:
             print("  실패:", json.dumps(out["errors"])[:300])

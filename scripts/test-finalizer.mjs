@@ -11,11 +11,12 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  ContractFactory, HDNodeWallet, Interface, JsonRpcProvider, Transaction, formatEther, parseEther,
+  AbiCoder, Contract, ContractFactory, HDNodeWallet, Interface, JsonRpcProvider, Transaction, formatEther, parseEther, parseUnits, keccak256,
 } from "ethers";
 import { readFinalizerHealth, runFinalizerCycle } from "../backend/src/finalizer.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const yieldDeploymentGas = readFileSync(root + "/.github/workflows/deploy.yml", "utf8").match(/FINALIZER_MAX_GAS:(\d+)/)[1];
 const artifact = (file, name = file) =>
   JSON.parse(readFileSync(root + "/out/" + file + ".sol/" + name + ".json", "utf8"));
 const tokenArtifact = artifact("MockERC20");
@@ -44,7 +45,7 @@ let provider;
 let deploymentGas;
 const behavior = { sends: [], requests: 0, hiddenReceipts: false, droppedResponse: false,
   chainId: null, oracleQuote: null, receiptExtra: null, renewedBeforeSimulation: null,
-  rpcErrorMethod: null, finalizedBlock: null };
+  rpcErrorMethod: null, finalizedBlock: null, requestLimit: null };
 try {
   for (let i = 0; ; i++) {
     try {
@@ -63,7 +64,7 @@ try {
       for await (const part of request) raw += part;
       const call = JSON.parse(raw);
       behavior.requests++;
-      if (call.method === behavior.rpcErrorMethod) {
+      if (call.method === behavior.rpcErrorMethod || behavior.requestLimit != null && behavior.requests > behavior.requestLimit) {
         response.end(JSON.stringify({ jsonrpc: "2.0", id: call.id,
           error: { code: -32000, message: "Local fixture RPC unavailable" } }));
         return;
@@ -218,6 +219,34 @@ try {
     assert.ok(job?.tx_raw);
     assert.equal(Transaction.from(job.tx_raw).hash, job.tx_hash);
     return job;
+  }
+
+  async function yieldFixture({ cash = true, ready = true, mixed = false } = {}) {
+    const f = await fixture(mixed ? 1 : 0, false);
+    await provider.send("anvil_setCode", ["0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae", artifact("MockMerklDistributor").deployedBytecode.object]);
+    const morpho = await deploy(artifact("MockERC4626"), owner, [f.env.WLD_ADDRESS]);
+    const yieldFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, await morpho.getAddress(), await owner.getAddress(), 1000]);
+    const signer = await provider.getSigner(3);
+    const signerAddress = await signer.getAddress();
+    await (await yieldFactory.connect(signer).createVault(heirAddress, 86400)).wait();
+    const vault = await yieldFactory.vaultOf(signerAddress);
+    await (await f.token.mint(signerAddress, parseEther("100"))).wait();
+    await (await f.token.connect(signer).approve(await yieldFactory.getAddress(), parseEther("100"))).wait();
+    await (await yieldFactory.connect(signer).depositWithMinShares(parseEther("100"), parseEther("100"))).wait();
+    await (await morpho.setRate(parseEther("1.1"))).wait();
+    await (await f.token.mint(await morpho.getAddress(), parseEther("10"))).wait();
+    if (!cash) await (await morpho.setLiquidity(0)).wait();
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(vault);
+    if (ready) {
+      await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+      for (const base of f.vaults) await (await f.factory.connect(heir).fileClaimFor(base)).wait();
+      await (await yieldFactory.connect(heir).fileClaimFor(vault)).wait();
+      await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    }
+    Object.assign(f.env, { YIELD_FACTORY_ADDRESS: await yieldFactory.getAddress(),
+      MORPHO_VAULT_ADDRESS: await morpho.getAddress(), FINALIZER_MAX_GAS: yieldDeploymentGas, FINALIZER_BATCH_SIZE: "1" });
+    return { ...f, morpho, yieldFactory, yieldVault: vault, vaults: mixed ? [...f.vaults, vault] : [vault] };
   }
 
   check("default configuration cannot send", () => {
@@ -1000,6 +1029,240 @@ try {
     });
     assert.equal((await readFinalizerHealth(f.env)).reason, "halted");
     behavior.receiptExtra = null;
+  }
+  for (const cash of [true, false]) {
+    const f = await yieldFixture({ cash });
+    const result = await runFinalizerCycle(f.env);
+    check(cash ? "yield cash payout routes to the separate factory and pays only the fixed heir and gain fee"
+      : "illiquid share-only inheritance is eligible and its nonzero receipt event proves the payout", () => {
+      assert.equal(result.reason, "finalized", JSON.stringify(result));
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+      assert.equal(Transaction.from(behavior.sends.at(-1).raw).to.toLowerCase(), f.env.YIELD_FACTORY_ADDRESS.toLowerCase());
+    });
+    assert.equal(await f.token.balanceOf(keeperAddress), 0n);
+    if (cash) assert.equal(await f.token.balanceOf(heirAddress), parseEther("109"));
+    else assert.ok(await f.morpho.balanceOf(heirAddress) > parseEther("98"));
+    const health = await readFinalizerHealth(f.env);
+    check("yield health exposes the supported factory and bounds richer scans", () => {
+      assert.equal(health.supported, true);
+      assert.equal(health.halted, false);
+      assert.equal(health.scanLimit, 2);
+      assert.ok(health.factoryAddresses.includes(f.env.YIELD_FACTORY_ADDRESS));
+    });
+  }
+  {
+    const f = await yieldFixture({ cash: false });
+    const job = await stageWithoutBroadcast(f);
+    const restored = await runFinalizerCycle(f.env);
+    check("crash recovery accepts and rebroadcasts the exact signed yield-factory request", () => {
+      assert.equal(restored.reason, "finalized", JSON.stringify(restored));
+      assert.equal(behavior.sends.at(-1).raw, job.tx_raw);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+    });
+  }
+  for (const [limit, value] of [
+    ["FINALIZER_MAX_GAS", "1"],
+    ["FINALIZER_MAX_FEE_GWEI", "0.000000001"],
+    ["FINALIZER_DAILY_GAS_CAP_ETH", "0.000000000001"],
+  ]) {
+    const f = await yieldFixture({ cash: false });
+    behavior.hiddenReceipts = true;
+    const pending = await runFinalizerCycle(f.env);
+    behavior.hiddenReceipts = false;
+    assert.equal(pending.reason, "pending", JSON.stringify(pending));
+    const sends = behavior.sends.length;
+    f.env[limit] = value;
+    const settled = await runFinalizerCycle(f.env);
+    check("mined share inheritance remains provable after lowering " + limit, () => {
+      assert.equal(settled.reason, "finalized", JSON.stringify(settled));
+      assert.equal(f.store.native.prepare("SELECT state,last_error FROM finalizer_jobs").get().state, "confirmed");
+      assert.equal(f.store.native.prepare("SELECT halted FROM finalizer_locks").get().halted, 0);
+      assert.equal(behavior.sends.length, sends);
+    });
+  }
+  {
+    const f = await yieldFixture();
+    await (await f.morpho.setRate(0)).wait();
+    const result = await runFinalizerCycle(f.env);
+    check("a complete yield loss settles at zero without halting other inheritances", () => {
+      assert.equal(result.reason, "finalized", JSON.stringify(result));
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+      assert.equal(f.store.native.prepare("SELECT halted FROM finalizer_locks").get().halted, 0);
+    });
+    assert.equal(await f.morpho.balanceOf(f.yieldVault), 0n);
+    assert.equal(await f.token.balanceOf(heirAddress), 0n);
+    assert.equal((await runFinalizerCycle(f.env)).reason, "idle");
+  }
+  {
+    const f = await yieldFixture({ mixed: true });
+    const at = behavior.requests;
+    const first = await runFinalizerCycle(f.env);
+    check("mixed plain/yield signing cycle remains inside the 50-RPC request bound", () => {
+      assert.equal(first.reason, "finalized", JSON.stringify(first));
+      assert.ok(behavior.requests - at <= 50, String(behavior.requests - at));
+    });
+    const second = await runFinalizerCycle(f.env);
+    check("the shared signer and budget continue across both supported factories", () => {
+      assert.equal(second.reason, "finalized", JSON.stringify(second));
+      assert.equal(f.store.native.prepare("SELECT COUNT(*) AS n FROM finalizer_jobs WHERE state='confirmed'").get().n, 2);
+    });
+  }
+  {
+    const f = await yieldFixture({ ready: false });
+    await runFinalizerCycle(f.env);
+    const { __test: workerTest } = await import("../backend/src/worker.mjs");
+    const snapshot = await workerTest.getVaultSnapshot(f.env, f.yieldVault);
+    check("notification monitoring sees receipt-only assets and verifies the configured strategy", () => {
+      assert.equal(snapshot.hasVaultAssets, true);
+      assert.equal(snapshot.vaultBalance, parseEther("110"));
+    });
+    await assert.rejects(() => workerTest.getVaultSnapshot({ ...f.env, MORPHO_VAULT_ADDRESS: f.env.WLD_ADDRESS }, f.yieldVault), /configured Morpho strategy/);
+    await (await f.morpho.setBrokenQuote(true)).wait();
+    const broken = await workerTest.getVaultSnapshot(f.env, f.yieldVault);
+    check("a missing WLD valuation does not hide protected shares from monitoring", () => {
+      assert.equal(broken.vaultBalance, 0n); assert.equal(broken.hasVaultAssets, true);
+    });
+  }
+  {
+    const f = await yieldFixture({ ready: false });
+    const signer = await provider.getSigner(3);
+    const signerAddress = await signer.getAddress();
+    await (await f.yieldFactory.connect(signer).withdrawAllFromMyVault(signerAddress, parseEther("108"))).wait();
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await f.yieldFactory.connect(signer).releaseMyVault()).wait();
+    await (await f.yieldFactory.connect(signer).createVault(heirAddress, 86400)).wait();
+    const next = await f.yieldFactory.vaultOf(signerAddress);
+    const vault = new Contract(f.yieldVault, artifact("InheritanceVaultMorpho").abi, provider);
+    const distributionAddress = await vault.MERKL_DISTRIBUTOR();
+    const merkl = artifact("MockMerklDistributor");
+    await provider.send("anvil_setCode", [distributionAddress, merkl.deployedBytecode.object]);
+    const distribution = new Contract(distributionAddress, merkl.abi, owner);
+    await (await f.token.mint(distributionAddress, parseEther("10"))).wait();
+    const coder = AbiCoder.defaultAbiCoder();
+    const sibling = keccak256(new TextEncoder().encode("late archived reward fixture"));
+    const leaf = keccak256(coder.encode(["address", "address", "uint256"], [f.yieldVault, f.env.WLD_ADDRESS, parseEther("10")]));
+    await (await distribution.setRoot(keccak256(coder.encode(["bytes32", "bytes32"], [leaf, sibling].sort())))).wait();
+    await (await f.yieldFactory.claimRewardsFor(f.yieldVault, parseEther("10"), [sibling], 0)).wait();
+    const { __test: workerTest } = await import("../backend/src/worker.mjs");
+    const snapshot = await workerTest.getVaultSnapshot(f.env, f.yieldVault);
+    check("monitoring authenticates released yield vaults through their immutable factory registry", () => {
+      assert.equal(snapshot.hasVaultAssets, true);
+    });
+    await (await f.yieldFactory.connect(heir).fileClaimFor(f.yieldVault)).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    const result = await runFinalizerCycle(f.env);
+    check("the keeper finalizes delayed reward inheritance without touching the owner's replacement vault", () => {
+      assert.equal(result.reason, "finalized", JSON.stringify(result));
+    });
+    assert.ok(await f.token.balanceOf(heirAddress) >= parseEther("9") - 2n);
+    assert.equal(await f.token.balanceOf(next), 0n);
+    assert.equal(await f.morpho.balanceOf(next), 0n);
+    assert.equal(await vault.inheritanceRecipient(), heirAddress);
+  }
+  {
+    const f = await yieldFixture({ ready: false });
+    const otherOwner = await provider.getSigner(4);
+    const otherAddress = await otherOwner.getAddress();
+    await (await f.yieldFactory.connect(otherOwner).createVault(heirAddress, 86400)).wait();
+    const otherVault = await f.yieldFactory.vaultOf(otherAddress);
+    await (await f.token.mint(otherAddress, parseEther("100"))).wait();
+    await (await f.token.connect(otherOwner).approve(f.env.YIELD_FACTORY_ADDRESS, parseEther("100"))).wait();
+    await (await f.yieldFactory.connect(otherOwner).depositWithMinShares(parseEther("100"), 1)).wait();
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(otherVault);
+    const ordered = [f.yieldVault, otherVault].sort();
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await f.yieldFactory.connect(heir).fileClaimFor(ordered[1])).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    // Local Anvil changes chain identity only for this final case. Its OP fee
+    // oracle/receipt metadata are fixtures, so this verifies RPC request count,
+    // not real World Chain fee levels or protocol bytecode.
+    await provider.send("anvil_setChainId", [480]);
+    behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
+    f.env.FINALIZER_CHAIN_ID = "480";
+    f.env.FINALIZER_EXTRA_FEE_RESERVE_ETH = "0.000001";
+    const before = behavior.requests;
+    const result = await runFinalizerCycle(f.env);
+    check("two yield snapshots plus chain480 signing and OP fee calls fit the 50-RPC limit", () => {
+      assert.equal(result.checked, 2, JSON.stringify(result));
+      assert.equal(result.reason, "finalized", JSON.stringify(result));
+      assert.ok(behavior.requests - before <= 50, String(behavior.requests - before));
+    });
+    await provider.send("anvil_setChainId", [31337]);
+    behavior.oracleQuote = null; behavior.receiptExtra = null;
+  }
+  {
+    const f = await yieldFixture();
+    const other = await provider.getSigner(4), otherAddress = await other.getAddress();
+    await (await f.yieldFactory.connect(other).createVault(heirAddress, 86400)).wait();
+    const otherVault = await f.yieldFactory.vaultOf(otherAddress);
+    await (await f.token.mint(otherAddress, parseEther("100"))).wait();
+    await (await f.token.connect(other).approve(f.env.YIELD_FACTORY_ADDRESS, parseEther("100"))).wait();
+    await (await f.yieldFactory.connect(other).depositWithMinShares(parseEther("100"), 1)).wait();
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(otherVault);
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await f.yieldFactory.connect(heir).fileClaimFor(otherVault)).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    await provider.send("anvil_setChainId", [480]);
+    behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
+    Object.assign(f.env, { FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001", FINALIZER_BATCH_SIZE: "5" });
+    for (let cycle = 0; cycle < 2; cycle++) {
+      const start = behavior.requests;
+      behavior.requestLimit = start + 50;
+      const result = await runFinalizerCycle(f.env);
+      behavior.requestLimit = null;
+      check("eligible yield queue cycle " + (cycle + 1) + " respects 50 requests even with requested batch5", () => {
+        assert.equal(result.reason, "finalized", JSON.stringify(result));
+        assert.equal(result.finalized, 1);
+        assert.equal(result.submitted, 1);
+        assert.ok(behavior.requests - start <= 50, String(behavior.requests - start));
+        assert.equal(f.store.native.prepare("SELECT count(*) AS n FROM finalizer_jobs WHERE state='pending'").get().n, 0);
+      });
+    }
+    assert.equal(f.store.native.prepare("SELECT count(*) AS n FROM finalizer_jobs WHERE state='confirmed'").get().n, 2);
+    assert.equal((await readFinalizerHealth(f.env)).batchSize, 1);
+    await provider.send("anvil_setChainId", [31337]);
+    behavior.oracleQuote = null; behavior.receiptExtra = null;
+  }
+  {
+    const f = await yieldFixture({ ready: false });
+    const signer = await provider.getSigner(3);
+    const signerAddress = await signer.getAddress();
+    await (await f.morpho.setRate(parseEther("0.8"))).wait();
+    await (await f.yieldFactory.connect(signer).withdrawAllFromMyVault(signerAddress, parseEther("80"))).wait();
+    await (await f.token.mint(signerAddress, parseEther("100"))).wait();
+    await (await f.token.connect(signer).approve(f.env.YIELD_FACTORY_ADDRESS, parseEther("100"))).wait();
+    await (await f.yieldFactory.connect(signer).depositWithMinShares(parseEther("100"), 1)).wait();
+    const distributorAddress = "0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae";
+    const distributor = new Contract(distributorAddress, artifact("MockMerklDistributor").abi, owner);
+    await (await f.token.mint(distributorAddress, parseEther("30"))).wait();
+    await (await distributor.setOperator(await owner.getAddress(), true)).wait();
+    const coder = AbiCoder.defaultAbiCoder();
+    const sibling = keccak256(new TextEncoder().encode("external reward gas ceiling fixture"));
+    const leaf = keccak256(coder.encode(["address", "address", "uint256"], [f.yieldVault, f.env.WLD_ADDRESS, parseEther("30")]));
+    await (await distributor.setRoot(keccak256(coder.encode(["bytes32", "bytes32"], [leaf, sibling].sort())))).wait();
+    await (await distributor.claim([f.yieldVault], [f.env.WLD_ADDRESS], [parseEther("30")], [[sibling]])).wait();
+    await (await f.token.mint(f.yieldVault, parseEther("5"))).wait();
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await f.yieldFactory.connect(heir).fileClaimFor(f.yieldVault)).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    await (await f.morpho.setGasFailure(true, true)).wait();
+    const result = await runFinalizerCycle(f.env);
+    check("the deployed gas limit settles exhausted redeem and valuation calls with its 20 percent padding", () => {
+      assert.equal(result.reason, "finalized", JSON.stringify(result));
+      const job = f.store.native.prepare("SELECT * FROM finalizer_jobs WHERE state='confirmed'").get();
+      const signed = Transaction.from(job.tx_raw);
+      assert.ok(signed.gasLimit > 750000n && signed.gasLimit <= BigInt(yieldDeploymentGas));
+      const production = readFileSync(root + "/backend/wrangler.toml", "utf8");
+      const value = name => production.match(new RegExp('^' + name + ' = "([^"\\n]+)"', 'm'))[1];
+      const worstReserve = BigInt(yieldDeploymentGas) * parseUnits(value("FINALIZER_MAX_FEE_GWEI"), "gwei")
+        + parseEther(value("FINALIZER_EXTRA_FEE_RESERVE_ETH"));
+      assert.ok(worstReserve <= parseEther(value("FINALIZER_DAILY_GAS_CAP_ETH")));
+    });
+    assert.equal(await f.morpho.balanceOf(heirAddress), parseEther("125"));
+    assert.equal(await f.token.balanceOf(heirAddress), parseEther("34"));
+    assert.equal(await f.token.balanceOf(await owner.getAddress()), parseEther("1"));
+    assert.equal(await f.morpho.balanceOf(f.yieldVault), 0n);
+    assert.equal(await f.morpho.balanceOf(keeperAddress), 0n);
   }
   console.log("\n" + assertions + " focused finalizer checks passed; all transactions used local Anvil.");
   console.log("Factory deployment gas (local estimate): " + deploymentGas.toString());

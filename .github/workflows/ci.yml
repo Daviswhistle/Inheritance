@@ -116,6 +116,10 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -124,6 +128,10 @@ jobs:
         working-directory: .
         run: npm ci --no-audit --no-fund
 
+      - name: Install app dependencies for ABI verification
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: v1.3.2
@@ -131,6 +139,12 @@ jobs:
       - name: Validate contract-enforced automated transfers on Anvil
         working-directory: .
         run: forge build && node scripts/test-finalizer.mjs
+
+      - name: Verify opt-in yield ABI and minimum-output contract
+        working-directory: .
+        run: |
+          node scripts/test-yield-abi.mjs
+          node scripts/test-rewards.mjs
 
       - name: Syntax check worker
         run: node --check src/worker.mjs

@@ -14,17 +14,19 @@ const image = name => 'data:image/png;base64,' + readFileSync(path.join(raw, nam
 const icon = readFileSync(path.join(root, 'app/public/icon.svg'), 'utf8');
 const esc = value => value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const shots = {
-  countdown: image('store-2-countdown'),
-  create: image('store-1-create'),
-  welcome: image('store-0-welcome'),
+  countdown: image(process.env.YIELD_STORE_IMAGES === '1' ? 'yield-store-countdown' : 'store-2-countdown'),
+  create: image(process.env.YIELD_STORE_IMAGES === '1' ? 'yield-store-create' : 'store-1-create'),
+  welcome: image(process.env.YIELD_STORE_IMAGES === '1' ? 'yield-store-welcome' : 'store-0-welcome'),
+  ...(process.env.YIELD_STORE_IMAGES === '1' ? { yield: image('yield-store-position') } : {}),
 };
 const layouts = [
   { name:'content_card', width:1035, height:720, title:'A little care.\nA lasting gift.', text:'A WLD plan for someone you choose.', shot:'countdown', detail:'Choose an heir. Set a check-in timer.', screenHeight:590, screenRight:42, top:150, titleSize:61 },
   { name:'hero', width:1035, height:720, title:'For someone\nyou love.', text:'Your WLD. Your choice.', shot:'welcome', detail:'A personal inheritance vault.', screenHeight:590, screenRight:42, top:155, titleSize:64 },
-  { name:'showcase_1', width:1080, height:1080, title:'Check in.\nCarry on.', text:'Reset your timer to stay in control.', shot:'countdown', detail:'No platform fee. You hold your keys.', screenHeight:866, screenRight:42, top:325, titleSize:78 },
+  { name:'showcase_1', width:1080, height:1080, title:'Check in.\nCarry on.', text:'Reset your timer to stay in control.', shot:'countdown', detail:'Basic vault: no platform fee. You hold your keys.', screenHeight:866, screenRight:42, top:325, titleSize:78 },
   { name:'showcase_2', width:1080, height:1080, title:'Choose\nyour person.', text:'A contact, a username or a wallet address.', shot:'create', detail:'Set a renewal period of 1–365 days.', screenHeight:866, screenRight:42, top:325, titleSize:75 },
   { name:'meta_tag', width:1200, height:600, title:'A little care.\nA lasting gift.', text:'A WLD vault for someone you love.', shot:'countdown', detail:'Your own vault. Your choice.', screenHeight:514, screenRight:83, top:155, titleSize:68 },
 ];
+if (process.env.YIELD_STORE_IMAGES === '1') layouts.push({ name:'showcase_3', width:1080, height:1080, title:'An option\nfor yield.', text:'Choose Morpho lending for your WLD.', shot:'yield', detail:'10% of positive net gains on exit. Principal can lose value. Cash depends on liquidity.', screenHeight:866, screenRight:42, top:295, titleSize:75 });
 for (const layout of layouts) {
   const page = await launch({url:'about:blank'});
   try {

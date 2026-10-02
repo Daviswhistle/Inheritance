@@ -14,7 +14,7 @@ import type { InterfaceAbi } from "ethers";
 
 import { VAULT_ERROR_ABI, FACTORY_ERROR_ABI } from "./abi-errors";
 
-export const FACTORY_ABI: InterfaceAbi = [
+export const FACTORY_ABI = [
   "event VaultCreated(address indexed owner, address indexed heir, address vault, uint256 heartbeatInterval)",
   "event VaultReleased(address indexed owner, address indexed vault)",
   "function createVault(address heir, uint256 heartbeatInterval) external returns (address)",
@@ -33,7 +33,7 @@ export const FACTORY_ABI: InterfaceAbi = [
   "function finalizeClaimFor(address vault) external",
   "function isHeirOf(address owner, address vault) external view returns (bool)",
   ...FACTORY_ERROR_ABI,
-];
+] satisfies InterfaceAbi;
 
 export const VAULT_ABI: InterfaceAbi = [
   "function WLD() view returns (address)",

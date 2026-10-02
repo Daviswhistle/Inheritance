@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { FACTORY_ABI, VAULT_ABI } from "./abis";
+import { YIELD_FACTORY_ERROR_ABI, YIELD_VAULT_ERROR_ABI } from "./abi-errors";
 
 /*
  * revert 를 사람이 읽을 문장으로 바꾸는 로직.
@@ -45,7 +46,7 @@ const REVERT_HINTS: Record<string, string> = {
   AlreadyHasVault: "This wallet already has a vault. Release the slot first to make a new one.",
   NoVault: "This wallet has no vault yet.",
   NotAContract: "That address is not a vault contract.",
-  VaultNotEmpty: "The vault still holds WLD. Withdraw or sweep it before releasing the slot.",
+  VaultNotEmpty: "The vault still holds assets. Withdraw or sweep them before releasing the slot.",
   NotSettled: "The inheritance has not finished yet.",
   AlreadyFiled: "A claim is already in the review window.",
   AlreadyClaimed: "The balance has already been withdrawn.",
@@ -57,6 +58,16 @@ const REVERT_HINTS: Record<string, string> = {
   TokenCallFailed: "The WLD contract call failed.",
   EthNotAccepted: "This vault does not accept ETH.",
   EthTransferFailed: "The ETH transfer failed.",
+  InvalidStrategy: "The yield vault configuration or asset transfer could not be verified.",
+  InvalidFee: "The yield vault’s fee is outside the allowed range.",
+  InvalidAmount: "Enter a positive amount within the available balance.",
+  InvalidRewards: "The rewards proof is unavailable or changed. Refresh rewards and try again.",
+  InvalidProof: "The rewards proof changed. Refresh rewards and try again; nothing was moved.",
+  NotWhitelisted: "Reward claiming is not currently authorized by the distributor. Your vault funds are unaffected.",
+  InvalidUninitializedRoot: "Reward publication is not ready. Refresh rewards later.",
+  SlippageExceeded: "The quote changed. Nothing was moved; refresh and try again.",
+  ProtectedToken: "WLD and Morpho receipt shares must use the vault’s withdrawal controls.",
+  MulDivOverflow: "That amount is outside the supported accounting range.",
 };
 
 /**
@@ -120,7 +131,9 @@ const humanizeRevert = (raw: string): string => {
  * 팩토리 ABI 와 금고 ABI 를 합쳐 쓴다. World App 은 허용된 주소만 부를 수 있어서 모든
  * 조작이 팩토리를 거치지만, revert 는 실제로 실패한 컨트랙트(금고)에서 올라온다.
  */
-const REVERT_IFACE = new ethers.Interface([...FACTORY_ABI, ...VAULT_ABI]);
+// Canonical Merkl errors can bubble through the fixed claim gateway.
+const REVERT_IFACE = new ethers.Interface([...FACTORY_ABI, ...VAULT_ABI, ...YIELD_FACTORY_ERROR_ABI, ...YIELD_VAULT_ERROR_ABI,
+  "error InvalidProof()", "error NotWhitelisted()", "error InvalidUninitializedRoot()"]);
 
 const decodeRevertName = (error: unknown): string | undefined => {
   let node: Record<string, unknown> | null = null;

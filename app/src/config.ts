@@ -25,6 +25,16 @@ for (const key of REQUIRED_ADDRESSES) {
 if (raw.VITE_LEGACY_FACTORY_ADDRESS && !ADDRESS_RE.test(raw.VITE_LEGACY_FACTORY_ADDRESS.trim())) {
   problems.push("The earlier vault configuration is invalid.");
 }
+const yieldFactory = (raw.VITE_YIELD_FACTORY_ADDRESS ?? "").trim();
+const morphoVault = (raw.VITE_MORPHO_VAULT_ADDRESS ?? "").trim();
+if (yieldFactory || morphoVault) {
+  if (!ADDRESS_RE.test(yieldFactory) || !ADDRESS_RE.test(morphoVault)) {
+    problems.push("Both yield factory and Morpho vault addresses must be configured together.");
+  }
+  if ([raw.VITE_FACTORY_ADDRESS, raw.VITE_LEGACY_FACTORY_ADDRESS].some(a => a && a.toLowerCase() === yieldFactory.toLowerCase())) {
+    problems.push("The yield factory must be separate from the existing factories.");
+  }
+}
 
 /** 환경변수 문제로 앱을 시작할 수 없을 때 채워지는 안내 문자열. null 이면 정상. */
 export const CONFIG_ERROR: string | null =
@@ -57,6 +67,10 @@ export const FACTORY_ADDRESS = (raw.VITE_FACTORY_ADDRESS ?? "").trim();
 export const LEGACY_FACTORY_ADDRESS = (raw.VITE_LEGACY_FACTORY_ADDRESS ?? "").trim();
 export const LEGACY_FACTORY_DEPLOY_BLOCK = Number(raw.VITE_LEGACY_FACTORY_DEPLOY_BLOCK) || null;
 export const WLD_ADDRESS = (raw.VITE_WLD_ADDRESS ?? "").trim();
+export const YIELD_FACTORY_ADDRESS = yieldFactory;
+export const MORPHO_VAULT_ADDRESS = morphoVault;
+export const YIELD_ENABLED = ADDRESS_RE.test(yieldFactory) && ADDRESS_RE.test(morphoVault);
+export const YIELD_FACTORY_DEPLOY_BLOCK = Number(raw.VITE_YIELD_FACTORY_DEPLOY_BLOCK) || null;
 export const RPC_URL =
   (raw.VITE_RPC ?? "").trim() || "https://worldchain-mainnet.g.alchemy.com/public";
 

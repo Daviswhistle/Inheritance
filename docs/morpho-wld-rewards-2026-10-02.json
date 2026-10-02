@@ -1,0 +1,65 @@
+{
+  "fetchedAt": "2026-10-02T04:21:44.501Z",
+  "chainId": 480,
+  "strategy": "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f",
+  "opportunities": [
+    {
+      "id": "13294148486514685761",
+      "source": "https://api.merkl.xyz/v4/opportunities/13294148486514685761",
+      "name": "Supply to the Re7 WLD vault on Morpho on World Chain",
+      "type": "MORPHOVAULT",
+      "identifier": "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f",
+      "nativeAprPercent": 0.0013036575413810736,
+      "totalAprPercent": 1.7008181886883245,
+      "rewardAprPercent": 1.6995145311469433,
+      "rateRecordTimestamp": "1790899200",
+      "activeCampaigns": [
+        {
+          "id": "16943384849129919792",
+          "startTimestamp": 1790830740,
+          "endTimestamp": 1793509140,
+          "hooks": [],
+          "forwarders": [],
+          "computeScoreParameters": {
+            "computeMethod": "genericTimeWeighted"
+          },
+          "targetToken": "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f"
+        }
+      ]
+    },
+    {
+      "id": "14317765169856595203",
+      "source": "https://api.merkl.xyz/v4/opportunities/14317765169856595203",
+      "name": "Deposit in Re7 WLD - Metamorpho - Verified users only",
+      "type": "ERC20LOGPROCESSOR",
+      "identifier": "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9fWORLDCHAINID",
+      "totalAprPercent": 7.539411642508689,
+      "rewardAprPercent": 7.539411642508689,
+      "rateRecordTimestamp": "1790899200",
+      "activeCampaigns": [
+        {
+          "id": "9669175194548720403",
+          "startTimestamp": 1790830740,
+          "endTimestamp": 1793509140,
+          "hooks": [
+            {
+              "hookType": 10,
+              "AddressBookChainId": 480,
+              "WorldIDAddressBook": "0x57b930D551e677CC36e2fA036Ae2fe8FdaE0330D"
+            }
+          ],
+          "forwarders": [],
+          "computeScoreParameters": {
+            "computeMethod": "maxDeposit",
+            "computeSettings": {
+              "maxDeposit": "1000000000000000000000"
+            }
+          },
+          "targetToken": "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f"
+        }
+      ]
+    }
+  ],
+  "combinedIndicativePercent": 9.240229831197013,
+  "interpretation": "Base lending and campaigns are separate. Human boost requires the receipt-holding address to meet World ID campaign eligibility, capped at first 1000 WLD per user. Wallet verification does not automatically verify an inheritance contract. The opt-in implementation claims proven WLD rewards through the canonical distributor, reinvests them without adding principal, and charges 10% on positive net gains at exit or late inherited reward payout after loss recovery. Actual earning eligibility for a newly deployed inheritance vault has not yet been observed. Snapshot only, not promised future yield or existing service revenue."
+}

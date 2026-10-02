@@ -1,0 +1,40 @@
+{
+  "block": 35788754,
+  "chainTimestamp": "2026-10-02T03:52:27.000Z",
+  "vault": "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f",
+  "underlyingFee": 0.1,
+  "totalWLD": "25746513.875938475332076757",
+  "markets": [
+    {
+      "id": "0x655106914fc7605be5142315b123c51e6001086571bc6589c4687c3739403e4d",
+      "irm": "0x0000000000000000000000000000000000000000",
+      "assetsWLD": 25733848.524287704,
+      "utilization": 0,
+      "supplyAPY": 0,
+      "rateWeiPerSecond": "0",
+      "rateWindowSeconds": 0
+    },
+    {
+      "id": "0x14f297e80b8d7410ad506f80f2d747ff9eb0d9d44ab8c298a444219fcaf3c2f2",
+      "irm": "0x34E99D604751a72cF8d0CFDf87069292d82De472",
+      "assetsWLD": 11915.833742397377,
+      "utilization": 0.9000354098085647,
+      "supplyAPY": 0.03058005942764579,
+      "rateWeiPerSecond": "1059489325",
+      "rateWindowSeconds": 2608
+    },
+    {
+      "id": "0x296a8139fbd0e764a517d26956bb868a6c07b30c8627df5ad9a720963622bf37",
+      "irm": "0x34E99D604751a72cF8d0CFDf87069292d82De472",
+      "assetsWLD": 745.65075412913,
+      "utilization": 0.9005501611964811,
+      "supplyAPY": 0.020666970433048857,
+      "rateWeiPerSecond": "719491948",
+      "rateWindowSeconds": 2624
+    }
+  ],
+  "approxGrossLendingAPY": 0.000014751404710226316,
+  "approxAfterUnderlyingFeeAPY": 0.000013276264239203685,
+  "annualServiceFeeWLDPer1000000TVL": 1.3276264239203686,
+  "method": "IRM borrowRateView -> borrow APY, times utilization and market fee; current stored allocation weighting and vault fee; incentive rewards excluded; indicative annualization, not future earnings"
+}

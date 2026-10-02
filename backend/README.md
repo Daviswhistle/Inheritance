@@ -166,3 +166,26 @@ public address with a small bounded ETH amount and verify its balance/health.
 Never use a user's wallet or an owner key as this signer. Do not blindly clear
 pending jobs or halt flags: first check the stored transaction on-chain and
 account for its real fees. Monitor gas funding before it falls below the reserve.
+
+### Optional Morpho yield factory
+
+Configure `YIELD_FACTORY_ADDRESS` and `MORPHO_VAULT_ADDRESS` together after the
+separate yield contract release. Keep the existing `FACTORY_ADDRESS` and
+`LEGACY_FACTORY_ADDRESS`; the same signer, lease, durable jobs and daily budget
+cover both supported automatic-execution factories. Raw transaction recovery
+validates the allowed destination and the vault's matching factory and strategy.
+Receipt-only inheritance is eligible even when WLD cash is zero; the fixed
+recipient's nonzero receipt-share event is payout evidence.
+
+The richer yield-enabled scan is capped at two vaults and one submission per cycle to leave room
+under the Workers Free 50 external-request limit. Use `FINALIZER_MAX_GAS=850000`
+when enabling yield: a pinned World Chain fork showed cash inheritance using
+352626 gas inside the gateway at block 35787339. Gas-exhaustion fallback is independently
+bounded and the execution limit also covers the finalizer's 20% estimation margin.
+This changes the maximum per-transaction reserve, not the daily ETH cap.
+Keep the existing daily cap and OP fee reserve, verify live signer balance and
+readiness, and do not silently top up or raise the daily budget.
+
+Health returns `factoryAddresses` so the UI can verify that its selected yield
+factory is supported. A healthy basic-only Worker must not advertise yield
+automation as enabled. See [the yield release procedure](../docs/MORPHO_YIELD.md).

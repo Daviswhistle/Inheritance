@@ -4,7 +4,7 @@ import { runFinalizerCycle, readFinalizerHealth } from "./finalizer.mjs";
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
 // 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
 // (한동안 옛 코드가 도는 것 같아 이 필드로 판별했다).
-const CODE_VERSION = "inheritance-release-2";
+const CODE_VERSION = "inheritance-yield-1";
 const SEND_NOTIFICATION_URL = "https://developer.world.org/api/v2/minikit/send-notification";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -26,6 +26,7 @@ const SELECTORS = {
   WLD: "0xde061d66",                // WLD()
   FACTORY: "0xc45a0155",            // factory()
   VAULT_OF: "0x0709df45",           // vaultOf(address)
+  KNOWN_VAULTS: "0x6e53033d",       // knownVaults(address), includes released yield vaults
   BALANCE_OF: "0x70a08231",         // balanceOf(address)
   IS_EXPIRED: "0x2f13b60c",         // isExpired()          카운트다운 종료, 상속인 미신청
   CLAIM_PENDING: "0x03a9f06e",      // claimPending()       상속인 신청함
@@ -35,6 +36,9 @@ const SELECTORS = {
   HEARTBEAT_INTERVAL: "0x561a4fac", // heartbeatInterval()
   CANCELLED: "0x12cd6595",          // inheritanceCancelled()
   CLAIMED_AT: "0xd2217fac",          // claimedAt()          최종 수령 완료 시각
+  STRATEGY: "0xa8c62e76",            // strategy()
+  TOTAL_ASSETS: "0x01e1d114",        // totalAssets()
+  HAS_ASSETS: "0x5be9b2d3",          // hasAssets()
 };
 
 const CREATE_TABLE_SQL = `
@@ -249,6 +253,8 @@ const getVaultIdentity = async (env, vaultAddress) => {
   if (!vault) throw new Error("Invalid vault address");
   const factory = normalizeAddress(env.FACTORY_ADDRESS);
   const legacyFactory = normalizeAddress(env.LEGACY_FACTORY_ADDRESS);
+  const yieldFactory = normalizeAddress(env.YIELD_FACTORY_ADDRESS);
+  const strategy = normalizeAddress(env.MORPHO_VAULT_ADDRESS);
   const wld = normalizeAddress(env.WLD_ADDRESS);
   if (!factory || factory === ZERO_ADDRESS || !wld || wld === ZERO_ADDRESS) {
     throw new HttpError(503, "Canonical vault configuration is missing");
@@ -262,11 +268,18 @@ const getVaultIdentity = async (env, vaultAddress) => {
     ethCall(env, vault, SELECTORS.CLAIMED_AT).then(decodeUint),
   ]);
   if (ownerAddress === ZERO_ADDRESS
-    || (factoryAddress !== factory && (!legacyFactory || factoryAddress !== legacyFactory)) || tokenAddress !== wld) {
+    || ![factory, legacyFactory, ...(strategy ? [yieldFactory] : [])].filter(Boolean).includes(factoryAddress) || tokenAddress !== wld) {
     throw new HttpError(400, "Vault is not from the configured WLD factory");
   }
-  const registeredVault = decodeAddress(await ethCall(env, factoryAddress, SELECTORS.VAULT_OF + padAddress(ownerAddress)));
-  if (registeredVault !== vault) {
+  if (yieldFactory && factoryAddress === yieldFactory &&
+      decodeAddress(await ethCall(env, vault, SELECTORS.STRATEGY)) !== strategy) {
+    throw new HttpError(400, "Vault does not use the configured Morpho strategy");
+  }
+  const yieldVault = Boolean(yieldFactory && factoryAddress === yieldFactory);
+  const registered = yieldVault
+    ? decodeUint(await ethCall(env, factoryAddress, SELECTORS.KNOWN_VAULTS + padAddress(vault))) === 1n
+    : decodeAddress(await ethCall(env, factoryAddress, SELECTORS.VAULT_OF + padAddress(ownerAddress))) === vault;
+  if (!registered) {
     throw Object.assign(new HttpError(400, "Vault is not the owner's current factory vault", {}, "vault_not_current"), {
       identity: { vaultAddress: vault, ownerAddress, factoryAddress },
     });
@@ -274,7 +287,8 @@ const getVaultIdentity = async (env, vaultAddress) => {
   if (heirAddress === ZERO_ADDRESS && claimedAt === 0n) {
     throw new HttpError(400, "A vault without an heir must have a completed claim");
   }
-  return { vaultAddress: vault, ownerAddress, heirAddress, factoryAddress, tokenAddress, claimedAt };
+  return { vaultAddress: vault, ownerAddress, heirAddress, factoryAddress, tokenAddress, claimedAt,
+    yieldVault };
 };
 
 const requireVaultAccess = async (env, vaultAddress, walletAddress, ownerOnly = false) => {
@@ -303,9 +317,16 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
   ]);
 
   let vaultBalance = 0n;
+  let hasVaultAssets;
+  if (checked.yieldVault) {
+    // The existence of protected receipts is independent of cash liquidity and
+    // valuation. A failed quote must not suppress claims or their notifications.
+    hasVaultAssets = decodeBool(await ethCall(env, vault, SELECTORS.HAS_ASSETS));
+  }
   if (tokenAddress && tokenAddress !== ZERO_ADDRESS) {
     try {
-      vaultBalance = decodeUint(await ethCall(env, tokenAddress, encodeBalanceOf(vault)));
+      vaultBalance = decodeUint(await ethCall(env, checked.yieldVault ? vault : tokenAddress,
+        checked.yieldVault ? SELECTORS.TOTAL_ASSETS : encodeBalanceOf(vault)));
     } catch {
       vaultBalance = 0n;
     }
@@ -317,6 +338,7 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
     heirAddress,
     tokenAddress,
     vaultBalance,
+    hasVaultAssets,
     isExpired,
     claimPending,
     claimableNow,
@@ -650,7 +672,7 @@ const EXPIRING_DIVISOR = 100n;
 
 const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
   const alerts = [];
-  const balance = snapshot.vaultBalance > 0n;
+  const balance = snapshot.hasVaultAssets ?? snapshot.vaultBalance > 0n;
   const heirIsReal = snapshot.heirAddress && snapshot.heirAddress !== ZERO_ADDRESS;
   const ownerIsReal = snapshot.ownerAddress && snapshot.ownerAddress !== ZERO_ADDRESS;
   // 상속 취소(heir = owner)면 상속인이 따로 없으므로 상속인 알림을 보내지 않는다.

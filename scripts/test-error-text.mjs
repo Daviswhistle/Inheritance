@@ -133,7 +133,7 @@ const sentences = {
   HeartbeatOutOfRange: "The renewal period must be between 1 and 365 days.",
   InvalidAddress: "That address is not valid.",
   AlreadyHasVault: "This wallet already has a vault. Release the slot first to make a new one.",
-  VaultNotEmpty: "The vault still holds WLD. Withdraw or sweep it before releasing the slot.",
+  VaultNotEmpty: "The vault still holds assets. Withdraw or sweep them before releasing the slot.",
   NotExpiredYet: "The countdown is still running, so there is nothing to claim yet.",
 };
 for (const [name, sentence] of Object.entries(sentences)) {
@@ -254,6 +254,19 @@ for (const [name, sentence] of Object.entries(sentences)) {
   check("문자열 오류는 그대로", got, "insufficient funds for gas * price + value");
 }
 
+for (const [name, sentence] of [
+  ["SlippageExceeded", "The quote changed. Nothing was moved; refresh and try again."],
+  ["ProtectedToken", "WLD and Morpho receipt shares must use the vault’s withdrawal controls."],
+  ["InvalidAmount", "Enter a positive amount within the available balance."],
+  ["InvalidStrategy", "The yield vault configuration or asset transfer could not be verified."],
+  ["InvalidFee", "The yield vault’s fee is outside the allowed range."],
+  ["InvalidRewards", "The rewards proof is unavailable or changed. Refresh rewards and try again."],
+  ["InvalidProof", "The rewards proof changed. Refresh rewards and try again; nothing was moved."],
+  ["NotWhitelisted", "Reward claiming is not currently authorized by the distributor. Your vault funds are unaffected."],
+  ["InvalidUninitializedRoot", "Reward publication is not ready. Refresh rewards later."],
+]) {
+  check(name + " yield revert", errorText(ethersShaped(REVERT_IFACE.encodeErrorResult(name, []))), sentence);
+}
 await vite.close();
 
 if (fails.length) {
