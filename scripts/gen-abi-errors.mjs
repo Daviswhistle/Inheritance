@@ -29,6 +29,8 @@ const SOURCES = [
   },
   { file: "out/InheritanceVaultMorpho.sol/InheritanceVaultMorpho.json", which: "yieldVault" },
   { file: "out/InheritanceVaultMorphoFactory.sol/InheritanceVaultMorphoFactory.json", which: "yieldFactory" },
+  { file: "out/InheritanceVaultUSDC.sol/InheritanceVaultUSDC.json", which: "yieldVault" },
+  { file: "out/InheritanceVaultUSDCFactory.sol/InheritanceVaultUSDCFactory.json", which: "yieldFactory" },
 ];
 
 const missing = SOURCES.filter((s) => !existsSync(path.join(REPO, s.file)));

@@ -6,6 +6,8 @@ import {
 // This signer has no custody rights. It only calls executeInheritance(vault) with value=0.
 const FACTORY_ABI = [
   "function WLD() view returns (address)",
+  "function asset() view returns (address)",
+  "function rewardToken() view returns (address)",
   "function vaultOf(address) view returns (address)",
   "function knownVaults(address) view returns (bool)",
   "function executeInheritance(address)",
@@ -15,6 +17,8 @@ const FACTORY_ABI = [
 const VAULT_ABI = [
   "function factory() view returns (address)",
   "function WLD() view returns (address)",
+  "function asset() view returns (address)",
+  "function rewardToken() view returns (address)",
   "function owner() view returns (address)",
   "function heir() view returns (address)",
   "function claimedAt() view returns (uint256)",
@@ -76,13 +80,31 @@ function settings(env) {
     const wldAddress = getAddress(env.WLD_ADDRESS);
     const yieldFactoryAddress = env.YIELD_FACTORY_ADDRESS ? getAddress(env.YIELD_FACTORY_ADDRESS) : null;
     const morphoVaultAddress = env.MORPHO_VAULT_ADDRESS ? getAddress(env.MORPHO_VAULT_ADDRESS) : null;
+    const usdcKeys = ["USDC_YIELD_FACTORY_ADDRESS", "USDC_MORPHO_VAULT_ADDRESS", "USDC_ADDRESS"];
+    const usdcValues = usdcKeys.map((key) => env[key]);
+    const usdcConfigured = usdcValues.map((value) => value != null && String(value).trim() !== "");
+    if (usdcConfigured.some(Boolean) && !usdcConfigured.every(Boolean)) {
+      return { enabled: false, reason: "invalid_configuration" };
+    }
+    const usdcYieldFactoryAddress = usdcConfigured.every(Boolean) ? getAddress(usdcValues[0]) : null;
+    const usdcMorphoVaultAddress = usdcConfigured.every(Boolean) ? getAddress(usdcValues[1]) : null;
+    const usdcAddress = usdcConfigured.every(Boolean) ? getAddress(usdcValues[2]) : null;
     if (Boolean(yieldFactoryAddress) !== Boolean(morphoVaultAddress) ||
         yieldFactoryAddress && (yieldFactoryAddress === ZeroAddress || addrEq(yieldFactoryAddress, factoryAddress)) ||
-        morphoVaultAddress === ZeroAddress) return { enabled: false, reason: "invalid_configuration" };
-    // Bound both snapshots and submissions: two yield settlements would exceed
-    // Workers Free's 50 external requests. Remaining vaults resume next cycle.
-    const effectiveScanLimit = yieldFactoryAddress ? Math.min(scanLimit, 2) : scanLimit;
-    const effectiveBatchSize = yieldFactoryAddress ? 1 : batchSize;
+        morphoVaultAddress === ZeroAddress ||
+        usdcYieldFactoryAddress && (usdcYieldFactoryAddress === ZeroAddress ||
+          [factoryAddress, yieldFactoryAddress].filter(Boolean).some((address) => addrEq(usdcYieldFactoryAddress, address)) ||
+          addrEq(usdcYieldFactoryAddress, usdcMorphoVaultAddress) || addrEq(usdcYieldFactoryAddress, usdcAddress)) ||
+        usdcMorphoVaultAddress === ZeroAddress || usdcAddress === ZeroAddress ||
+        usdcAddress && (addrEq(usdcAddress, wldAddress) || addrEq(usdcAddress, usdcMorphoVaultAddress))) {
+      return { enabled: false, reason: "invalid_configuration" };
+    }
+    // Bound rich USDC snapshots and submissions to one vault per cycle. WLD
+    // yield retains its existing two-candidate scan and one-submission bound.
+    const hasYieldFactory = Boolean(yieldFactoryAddress || usdcYieldFactoryAddress);
+    const effectiveScanLimit = usdcYieldFactoryAddress ? Math.min(scanLimit, 1)
+      : yieldFactoryAddress ? Math.min(scanLimit, 2) : scanLimit;
+    const effectiveBatchSize = hasYieldFactory ? 1 : batchSize;
     const request = new FetchRequest(rpc.href);
     request.timeout = 8_000;
     // Validate eth_chainId explicitly each cycle. staticNetwork avoids a second RPC
@@ -90,7 +112,8 @@ function settings(env) {
     const provider = new JsonRpcProvider(request, chainId, { staticNetwork: true, batchMaxCount: 1, cacheTimeout: -1 });
     const scope = chainId + ":" + wallet.address.toLowerCase();
     return { enabled: true, chainId, maxGas, maxFee, dailyCap, extraReserve, batchSize: effectiveBatchSize, scanLimit: effectiveScanLimit,
-      provider, wallet, factoryAddress, wldAddress, yieldFactoryAddress, morphoVaultAddress, scope };
+      provider, wallet, factoryAddress, wldAddress, yieldFactoryAddress, morphoVaultAddress,
+      usdcYieldFactoryAddress, usdcMorphoVaultAddress, usdcAddress, scope };
   } catch {
     // Do not expose provider errors, key material or credential-bearing RPC URLs.
     return { enabled: false, reason: "invalid_configuration" };
@@ -107,7 +130,18 @@ async function validateNetwork(cfg) {
     if (!addrEq(asset, cfg.wldAddress) || !addrEq(strategy, cfg.morphoVaultAddress) ||
         !addrEq(await new Contract(strategy, ["function asset() view returns (address)"], cfg.provider).asset(), cfg.wldAddress)) fail("wrong_token");
   }
-  for (const candidate of [factory, cfg.yieldFactory].filter(Boolean)) {
+  if (cfg.usdcYieldFactoryAddress) {
+    cfg.usdcYieldFactory = new Contract(cfg.usdcYieldFactoryAddress, FACTORY_ABI, cfg.provider);
+    const [asset, rewardToken, strategy] = await Promise.all([
+      cfg.usdcYieldFactory.asset(), cfg.usdcYieldFactory.rewardToken(), cfg.usdcYieldFactory.strategy(),
+    ]);
+    if (!addrEq(asset, cfg.usdcAddress) || !addrEq(rewardToken, cfg.wldAddress) ||
+        !addrEq(strategy, cfg.usdcMorphoVaultAddress) ||
+        !addrEq(await new Contract(strategy, ["function asset() view returns (address)"], cfg.provider).asset(), cfg.usdcAddress)) {
+      fail("wrong_token");
+    }
+  }
+  for (const candidate of [factory, cfg.yieldFactory, cfg.usdcYieldFactory].filter(Boolean)) {
     try {
       await candidate.executeInheritance.staticCall(ZeroAddress);
       fail("unsupported_factory");
@@ -178,15 +212,30 @@ async function failJob(db, cfg, token, snapshot, reason) {
 
 async function snapshotVault(cfg, factory, address) {
   const vault = new Contract(address, VAULT_ABI, cfg.provider);
-  const [originFactory, token, owner, heir, claimedAt, filedAt, claimable] = await Promise.all([
-    vault.factory(), vault.WLD(), vault.owner(), vault.heir(),
+  const [originFactory, owner, heir, claimedAt, filedAt, claimable] = await Promise.all([
+    vault.factory(), vault.owner(), vault.heir(),
     vault.claimedAt(), vault.claimFiledAt(), vault.claimableNow(),
   ]);
-  const yieldVault = Boolean(cfg.yieldFactoryAddress && addrEq(originFactory, cfg.yieldFactoryAddress));
-  const source = yieldVault ? cfg.yieldFactory : factory;
-  if ((!yieldVault && !addrEq(originFactory, cfg.factoryAddress)) || !addrEq(token, cfg.wldAddress) ||
-      !(yieldVault ? await source.knownVaults(address) : addrEq(await source.vaultOf(owner), address))) fail("foreign_vault");
-  if (yieldVault && !addrEq(await vault.strategy(), cfg.morphoVaultAddress)) fail("foreign_vault");
+  const wldYieldVault = Boolean(cfg.yieldFactoryAddress && addrEq(originFactory, cfg.yieldFactoryAddress));
+  const usdcYieldVault = Boolean(cfg.usdcYieldFactoryAddress && addrEq(originFactory, cfg.usdcYieldFactoryAddress));
+  const basicVault = addrEq(originFactory, cfg.factoryAddress);
+  if (!basicVault && !wldYieldVault && !usdcYieldVault) fail("foreign_vault");
+
+  if (usdcYieldVault) {
+    const [asset, rewardToken] = await Promise.all([vault.asset(), vault.rewardToken()]);
+    if (!addrEq(asset, cfg.usdcAddress) || !addrEq(rewardToken, cfg.wldAddress)) fail("foreign_vault");
+  } else if (!addrEq(await vault.WLD(), cfg.wldAddress)) fail("foreign_vault");
+
+  const yieldVault = wldYieldVault || usdcYieldVault;
+  const source = usdcYieldVault ? cfg.usdcYieldFactory : wldYieldVault ? cfg.yieldFactory : factory;
+  const registered = yieldVault
+    ? await source.knownVaults(address)
+    : addrEq(await source.vaultOf(owner), address);
+  if (!registered) fail("foreign_vault");
+  if (yieldVault) {
+    const expectedStrategy = usdcYieldVault ? cfg.usdcMorphoVaultAddress : cfg.morphoVaultAddress;
+    if (!addrEq(await vault.strategy(), expectedStrategy)) fail("foreign_vault");
+  }
   if (claimedAt !== 0n || filedAt === 0n || !claimable || heir === ZeroAddress) return null;
   const wld = new Contract(cfg.wldAddress, ["function balanceOf(address) view returns (uint256)"], cfg.provider);
   if (yieldVault ? !await vault.hasAssets() : await wld.balanceOf(address) === 0n) return null;
@@ -225,7 +274,8 @@ function storedTransactionIdentity(cfg, job) {
     tx = Transaction.from(job.tx_raw);
     if (!tx.isSigned() || tx.chainId !== BigInt(cfg.chainId) || Number(job.chain_id) !== cfg.chainId ||
         job.scope !== cfg.scope || !addrEq(tx.from, cfg.wallet.address) ||
-        (!addrEq(tx.to, cfg.factoryAddress) && !(cfg.yieldFactoryAddress && addrEq(tx.to, cfg.yieldFactoryAddress))) || tx.value !== 0n || tx.type !== 0 ||
+        ![cfg.factoryAddress, cfg.yieldFactoryAddress, cfg.usdcYieldFactoryAddress]
+          .filter(Boolean).some((address) => addrEq(tx.to, address)) || tx.value !== 0n || tx.type !== 0 ||
         tx.data !== FACTORY_INTERFACE.encodeFunctionData("executeInheritance", [job.vault_address]) ||
         keccak256(job.tx_raw) !== job.tx_hash || tx.hash !== job.tx_hash ||
         tx.gasLimit <= 0n || tx.gasPrice <= 0n ||
@@ -320,11 +370,47 @@ async function reconcile(db, cfg, job, factory, token, recover = false) {
   const succeeded = BigInt(receipt.status) === 1n;
   let proof = false;
   if (succeeded) {
+    let requestTarget = null;
+    if (job.tx_raw) {
+      try { requestTarget = storedTransactionIdentity(cfg, job).to; } catch { /* legacy receipt may lack usable raw data */ }
+    }
+    const usdcSettlementRequest = Boolean(cfg.usdcYieldFactoryAddress && requestTarget &&
+      addrEq(requestTarget, cfg.usdcYieldFactoryAddress));
+    let usdcVaultSource = false;
+    if (cfg.usdcYieldFactoryAddress) {
+      try {
+        const originFactory = await new Contract(job.vault_address, VAULT_ABI, cfg.provider)
+          .factory({ blockTag: receipt.blockNumber });
+        usdcVaultSource = addrEq(originFactory, cfg.usdcYieldFactoryAddress);
+      } catch {
+        // A historical RPC read can be unavailable even after a successful
+        // payout. Keep the pending job and its reservation until proof can be
+        // read; unavailable evidence is not a contradictory receipt.
+        return { reason: "rpc_error", submitted: 0 };
+      }
+    }
+    const usdcSettlement = usdcVaultSource || usdcSettlementRequest;
+    let usdcClaimedAt = null;
+    if (usdcVaultSource && usdcSettlementRequest) {
+      try {
+        usdcClaimedAt = await new Contract(job.vault_address, VAULT_ABI, cfg.provider)
+          .claimedAt({ blockTag: receipt.blockNumber });
+      } catch { return { reason: "rpc_error", submitted: 0 }; }
+    }
     proof = receipt.logs.some((log) => {
       if (!addrEq(log.address, job.vault_address)) return false;
       try {
         const event = VAULT_INTERFACE.parseLog(log);
         if (!event || !addrEq(event.args.recipient, job.recipient_address)) return false;
+        if (usdcSettlement) {
+          // USDC amounts use 6 decimals and may be zero when receipts or WLD
+          // rewards settle independently. Bind every such proof to both the
+          // signed source-factory request and the child's settled timestamp.
+          return usdcVaultSource && usdcSettlementRequest &&
+            event.args.claimedAt > 0n && event.args.claimedAt === usdcClaimedAt &&
+            (event.name === "InheritanceFinalized" ||
+              event.name === "InheritanceSharesFinalized" && event.args.shares > 0n);
+        }
         if (event.name === "InheritanceFinalized" && event.args.wldAmount > 0n) return true;
         // A finalized receipt is historical evidence, not a new broadcast. Its
         // signature, destination and original reservation still must match, but
@@ -363,8 +449,10 @@ async function recoverConfirmed(db, cfg, factory, token, job, snapshot) {
       await halt(db, cfg.scope, "receipt_mismatch");
       return { reason: "receipt_mismatch", submitted: 0 };
     }
-    storedTransaction(cfg, job);
-    if (!addrEq(snapshot.heir, job.recipient_address)) fail("recovery_ineligible");
+    const tx = storedTransaction(cfg, job);
+    if (!addrEq(snapshot.heir, job.recipient_address) || !addrEq(snapshot.factoryAddress, tx.to)) {
+      fail("recovery_ineligible");
+    }
     await renewLock(db, cfg, token);
     const day = dayNow(), reserved = BigInt(job.reserved_wei);
     await db.prepare("INSERT INTO finalizer_budget (scope,day,spent_wei) VALUES (?,?,0) ON CONFLICT(scope,day) DO NOTHING")
@@ -534,7 +622,8 @@ export async function readFinalizerHealth(env) {
   const cfg = settings(env);
   if (!cfg.enabled) return cfg;
   const result = { enabled: true, chainId: cfg.chainId, factoryAddress: cfg.factoryAddress,
-    factoryAddresses: [cfg.factoryAddress, cfg.yieldFactoryAddress].filter(Boolean),
+    factoryAddresses: [cfg.factoryAddress, cfg.yieldFactoryAddress, cfg.usdcYieldFactoryAddress].filter(Boolean),
+    supportsUSDC: Boolean(cfg.usdcYieldFactoryAddress),
     signerAddress: cfg.wallet.address, maxGas: cfg.maxGas.toString(),
     maxFeeWei: cfg.maxFee.toString(), dailyCapWei: cfg.dailyCap.toString(),
     extraFeeReserveWei: cfg.extraReserve.toString(), batchSize: cfg.batchSize, scanLimit: cfg.scanLimit };

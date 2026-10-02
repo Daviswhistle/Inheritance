@@ -10,7 +10,7 @@ const originalFetch = globalThis.fetch;
 let checks = 0;
 const check = (name, work) => { work(); checks++; console.log("PASS " + name); };
 try {
-  const { parseWldRewards, fetchWldRewards } = await vite.ssrLoadModule("/src/rewards.ts");
+  const { parseWldRewards, fetchWldRewards, remainingWldRewards } = await vite.ssrLoadModule("/src/rewards.ts");
   const { WLD_ADDRESS } = await vite.ssrLoadModule("/src/config.ts");
   const proof = "0x" + "12".repeat(32);
   const entry = overrides => [{ chain: { id: 480 }, rewards: [{ token: { address: WLD_ADDRESS, decimals: 18 },
@@ -19,6 +19,15 @@ try {
     assert.deepEqual(parseWldRewards(entry()), { cumulative: 100n, claimed: 40n, claimable: 60n, pending: 7n, proof: [proof] });
   });
   check("No published proof means nothing can be submitted", () => assert.equal(parseWldRewards(entry({ proofs: [] })).claimable, 0n));
+  check("Stale publication cannot reoffer an onchain claimed reward", () => {
+    const published = parseWldRewards(entry());
+    assert.equal(remainingWldRewards(published, 100n).claimable, 0n);
+    assert.equal(remainingWldRewards(published, 120n).claimable, 0n);
+    assert.equal(remainingWldRewards(published, 80n).claimable, 20n);
+    assert.equal(remainingWldRewards(published, 20n).claimable, 60n);
+    assert.equal(remainingWldRewards(parseWldRewards(entry({ proofs: [] })), 80n).claimable, 0n);
+    assert.equal(published.claimable, 60n);
+  });
   check("A replayed reward has no remaining claim", () => assert.equal(parseWldRewards(entry({ claimed: "100" })).claimable, 0n));
   check("Other chains and other reward tokens are excluded", () => {
     assert.equal(parseWldRewards([{ ...entry()[0], chain: { id: 1 } }]).claimable, 0n);

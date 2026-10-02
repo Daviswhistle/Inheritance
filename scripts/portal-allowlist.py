@@ -56,6 +56,15 @@ if yield_factory or morpho_vault:
         raise SystemExit("수익 팩토리와 전략은 기본 계약과 구분되어야 합니다")
     REQUIRED[yield_factory.lower()] = "수익 금고 팩토리 (선택형)"
     REQUIRED[morpho_vault.lower()] = "Re7 WLD 지분 토큰 (approve 대상)"
+usdc_addresses = tuple(os.environ.get(key, "").strip() for key in
+    ("USDC_ADDRESS", "USDC_YIELD_FACTORY_ADDRESS", "USDC_MORPHO_VAULT_ADDRESS"))
+if any(usdc_addresses):
+    if not all(re.fullmatch(r"0x[0-9a-fA-F]{40}", a) and int(a[2:], 16) for a in usdc_addresses):
+        raise SystemExit("USDC 토큰, 수익 팩토리와 Morpho 금고 주소를 함께 설정해야 합니다")
+    if len(set(a.lower() for a in usdc_addresses)) != 3 or any(a.lower() in REQUIRED for a in usdc_addresses):
+        raise SystemExit("USDC 주소는 서로 및 기존 계약과 구분되어야 합니다")
+    for address, label in zip(usdc_addresses, ("USDC 토큰 (approve 대상)", "USDC 수익 금고 팩토리", "Re7 USDC 지분 토큰 (approve 대상)")):
+        REQUIRED[address.lower()] = label
 
 READ_QUERY = "{ app { app_metadata { id contracts permit2_tokens associated_domains verification_status } } }"
 SET_MUTATION = """
@@ -127,9 +136,13 @@ def main() -> int:
     print("  associated_domains:", meta.get("associated_domains"))
 
     missing = [k for k in REQUIRED if k not in stored]
-    if missing:
+    required_permit = [WLD, *([morpho_vault] if morpho_vault else []),
+                       *([usdc_addresses[0], usdc_addresses[2]] if any(usdc_addresses) else [])]
+    stored_permit = {a.lower() for a in (meta.get("permit2_tokens") or [])}
+    missing_permit = [a for a in required_permit if a.lower() not in stored_permit]
+    if missing or missing_permit:
         if "--check-only" in sys.argv:
-            print(f"  누락 {len(missing)}건; 읽기 전용 검사이므로 변경하지 않습니다")
+            print(f"  계약 누락 {len(missing)}건, Permit2 누락 {len(missing_permit)}건; 읽기 전용 검사이므로 변경하지 않습니다")
             return 1
         if meta.get("verification_status") != "unverified":
             print("  포털에서 Remove from review로 심사를 취소한 뒤 다시 실행하세요.")
@@ -139,7 +152,7 @@ def main() -> int:
         print(f"  누락 {len(missing)}건 등록 시도: {missing}")
         out = gql(
             SET_MUTATION,
-            {"id": META_ID, "contracts": list(dict.fromkeys([*(meta.get("contracts") or []), *REQUIRED])), "permit": list(dict.fromkeys([*(meta.get("permit2_tokens") or []), WLD]))},
+            {"id": META_ID, "contracts": list(dict.fromkeys([*(meta.get("contracts") or []), *REQUIRED])), "permit": list(dict.fromkeys([*(meta.get("permit2_tokens") or []), *required_permit]))},
         )
         if "errors" in out:
             print("  실패:", json.dumps(out["errors"])[:300])
@@ -155,6 +168,9 @@ def main() -> int:
         hit = addr in final
         ok &= hit
         print(f"  {label:28} {'등록됨' if hit else '누락'}")
+    final_permit = {a.lower() for a in (after.get("permit2_tokens") or [])}
+    ok &= all(a.lower() in final_permit for a in required_permit)
+    print("  필수 Permit2 토큰:", "등록됨" if all(a.lower() in final_permit for a in required_permit) else "누락")
     print()
     print("  판정:", "필수 주소 등록 확인" if ok else "누락 있음")
     return 0 if ok else 1

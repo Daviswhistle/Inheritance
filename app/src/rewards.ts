@@ -42,6 +42,13 @@ export function parseWldRewards(data: unknown): WldRewards {
   return result ?? empty();
 }
 
+/** Publication can lag actual distributor claims. Never offer the same reward
+ * again or quote reinvestment using a stale API claimed amount. */
+export function remainingWldRewards(data: WldRewards, onchainClaimed: bigint): WldRewards {
+  const claimed = onchainClaimed > data.claimed ? onchainClaimed : data.claimed;
+  return { ...data, claimed, claimable: data.proof.length && data.cumulative > claimed ? data.cumulative - claimed : 0n };
+}
+
 export async function fetchWldRewards(vault: string, signal: AbortSignal): Promise<WldRewards> {
   if (!isAddress(vault)) throw new Error("Invalid rewards vault.");
   const response = await fetch(`https://api.merkl.xyz/v4/users/${vault.toLowerCase()}/rewards?chainId=${CHAIN_ID}`, {

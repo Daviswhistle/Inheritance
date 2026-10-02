@@ -16,6 +16,10 @@ const SECRET = "test-only-session-secret-not-a-real-credential";
 const FACTORY = "0xf7beeddeb8be1dbc4bd8768fc3f1e513dd6c1d88";
 const LEGACY = "0x" + "aa".repeat(20);
 const WLD = "0x2cfc85d8e48f8eab294be644d9e25c3030863003";
+const USDC_FACTORY = "0x" + "bb".repeat(20);
+const USDC = "0x79a02482a880bce3f13e09da970dc34db4cd24d1";
+const USDC_STRATEGY = "0xb1e80387ebe53ff75a89736097d34dc8d9e9045b";
+const USDC_VAULT = "0x" + "66".repeat(20);
 const VAULT = "0x" + "99".repeat(20);
 const OTHER_VAULT = "0x" + "88".repeat(20);
 const FAKE_VAULT = "0x" + "77".repeat(20);
@@ -55,6 +59,7 @@ function fixture() {
   };
   const env = { DB, SIWE_SECRET: SECRET, FRONTEND_ORIGIN: ORIGIN, FACTORY_ADDRESS: FACTORY, WLD_ADDRESS: WLD,
     WORLD_APP_ID: "app_auth_test", WORLD_NOTIFY_API_KEY: "test-only-notification-key" };
+  const factoryStates = new Map();
   const vaults = new Map([
     [VAULT, { owner: OWNER, heir: HEIR, factory: FACTORY, wld: WLD, registered: true, pending: false, expired: false,
       finalizable: false, cancelled: false, claimedAt: 0, challengeEndsAt: 0, remaining: 86400, interval: 86400, balance: 10n ** 18n }],
@@ -83,14 +88,24 @@ function fixture() {
       const owner = "0x" + data.slice(-40);
       const registered = [...stateVaults].find(([, value]) => value.owner === owner && value.factory === to.toLowerCase() && value.registered);
       result = addressWord(registered?.[0] || "0x" + "00".repeat(20));
+    } else if (selector === "0x6e53033d") {
+      const value = stateVaults.get("0x" + data.slice(-40));
+      result = word(value?.factory === to.toLowerCase() && (value.known ?? value.registered));
     } else if (to.toLowerCase() === WLD && selector === "0x70a08231") {
       result = word(stateVaults.get("0x" + data.slice(-40))?.balance ?? 0);
     } else {
+      const factory = factoryStates.get(to.toLowerCase());
       const value = stateVaults.get(to.toLowerCase());
-      if (value) {
+      if (factory) {
+        const getters = { "0x38d52e0f": factory.asset, "0xf7c618c1": factory.rewardToken, "0xa8c62e76": factory.strategy };
+        if (getters[selector]) result = addressWord(getters[selector]);
+      } else if (value) {
         const selectors = {
           "0x8da5cb5b": addressWord(value.owner), "0x91f2ebb8": addressWord(value.heir),
-          "0xc45a0155": addressWord(value.factory), "0xde061d66": addressWord(value.wld),
+          "0xc45a0155": addressWord(value.factory), "0xde061d66": addressWord(value.wld || ZERO),
+          "0x38d52e0f": addressWord(value.asset || ZERO), "0xf7c618c1": addressWord(value.rewardToken || ZERO),
+          "0xa8c62e76": addressWord(value.strategy || ZERO), "0x01e1d114": word(value.totalAssets ?? value.balance ?? 0),
+          "0x5be9b2d3": word(value.hasAssets ?? BigInt(value.balance ?? 0) > 0n),
           "0x2f13b60c": word(value.expired), "0x03a9f06e": word(value.pending),
           "0xc4671608": word(value.finalizable), "0x12cd6595": word(value.cancelled),
           "0xd2217fac": word(value.claimedAt), "0x765be13f": word(value.challengeEndsAt),
@@ -101,7 +116,20 @@ function fixture() {
     }
     return Response.json({ jsonrpc: "2.0", id: body.id, result });
   };
-  return { db, DB, env, vaults, finalizedVaults, deliveries, mockFetch, setSendHook(fn) { sendHook = fn; }, close() { db.close(); } };
+  return { db, DB, env, vaults, factoryStates, finalizedVaults, deliveries, mockFetch,
+    setSendHook(fn) { sendHook = fn; }, close() { db.close(); } };
+}
+
+function configureUSDC(context, overrides = {}) {
+  Object.assign(context.env, { USDC_YIELD_FACTORY_ADDRESS: USDC_FACTORY,
+    USDC_MORPHO_VAULT_ADDRESS: USDC_STRATEGY, USDC_ADDRESS: USDC });
+  context.factoryStates.set(USDC_FACTORY, { asset: USDC, strategy: USDC_STRATEGY, rewardToken: WLD });
+  const value = { owner: OWNER, heir: HEIR, factory: USDC_FACTORY, asset: USDC, rewardToken: WLD,
+    strategy: USDC_STRATEGY, known: true, registered: false, pending: false, expired: false,
+    finalizable: false, cancelled: false, claimedAt: 0, challengeEndsAt: 0, remaining: 86400,
+    interval: 86400, balance: 0n, totalAssets: 0n, hasAssets: true, ...overrides };
+  context.vaults.set(USDC_VAULT, value);
+  return value;
 }
 
 async function test(name, run) {
@@ -348,6 +376,49 @@ try {
     context.vaults.get(VAULT).registered = false;
     assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 400);
   });
+  await test("USDC yield identity selects asset and reward getters and accepts known released vaults", async (context) => {
+    const state = configureUSDC(context, { expired: true });
+    await register(context, USDC_VAULT);
+    const snapshot = await __test.getVaultSnapshot(context.env, USDC_VAULT);
+    assert.equal(snapshot.tokenAddress, USDC);
+    assert.equal(snapshot.vaultBalance, 0n);
+    assert.equal(snapshot.hasVaultAssets, true);
+    const response = await call(context, "/check-now", OWNER, { vaultAddress: USDC_VAULT });
+    assert.equal(response.status, 200, await response.text());
+    assert.deepEqual(context.deliveries[0].wallet_addresses, [HEIR]);
+    assert.equal(state.registered, false, "yield registry membership is independent of the owner's current slot");
+
+    state.heir = ZERO;
+    state.claimedAt = 1;
+    assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, HEIR)).status, 403);
+    assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, OWNER)).status, 200);
+  });
+  for (const [label, change] of [
+    ["asset", (state) => { state.asset = WLD; }],
+    ["reward token", (state) => { state.rewardToken = LEGACY; }],
+    ["strategy", (state) => { state.strategy = LEGACY; }],
+    ["factory source", (state) => { state.factory = LEGACY; }],
+    ["source registry", (state) => { state.known = false; }],
+  ]) {
+    await test(`USDC yield identity rejects a wrong ${label}`, async (context) => {
+      const state = configureUSDC(context);
+      change(state);
+      assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`)).status, 400);
+    });
+  }
+  await test("partial, zero, conflicting and WLD-alias USDC settings fail closed", async (context) => {
+    context.env.USDC_YIELD_FACTORY_ADDRESS = USDC_FACTORY;
+    assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 503);
+    Object.assign(context.env, { USDC_MORPHO_VAULT_ADDRESS: USDC_STRATEGY, USDC_ADDRESS: USDC });
+    context.env.USDC_ADDRESS = ZERO;
+    assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 503);
+    context.env.USDC_ADDRESS = USDC;
+    context.env.USDC_YIELD_FACTORY_ADDRESS = FACTORY;
+    assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 503);
+    context.env.USDC_YIELD_FACTORY_ADDRESS = USDC_FACTORY;
+    context.env.USDC_ADDRESS = WLD;
+    assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 503);
+  });
   await test("caller-supplied owner/heir cannot replace onchain recipient identities", async (context) => {
     assert.equal((await call(context, "/register", OWNER, { vaultAddress: VAULT, heirAddress: STRANGER })).status, 400);
     assert.equal((await call(context, "/register", OWNER, { vaultAddress: VAULT, ownerAddress: STRANGER })).status, 400);
@@ -486,6 +557,36 @@ try {
     assert.equal(data.nextCursor, addresses[7]);
     response = await call(context, `?cursor=${addresses.at(-1)}`, HEIR);
     assert.deepEqual(await response.json(), { status: "success", watchers: [], nextCursor: null });
+  });
+  await test("USDC discovery pages and two-watcher notification cycles remain below 50 external requests", async (context) => {
+    const state = configureUSDC(context, { expired: true, remaining: 0 });
+    const addresses = await addRelatedWatchers(context);
+    for (const address of addresses) context.vaults.set(address, { ...state, owner: context.vaults.get(address).owner });
+    let externalCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      if (++externalCalls > 50) throw new Error("Too many external subrequests");
+      return context.mockFetch(input, init);
+    };
+    const found = [], counts = [];
+    let cursor = null;
+    do {
+      externalCalls = 0;
+      const response = await call(context, cursor ? `?cursor=${cursor}` : "", HEIR);
+      assert.equal(response.status, 200, await response.clone().text());
+      const data = await response.json();
+      found.push(...data.watchers.map(watcher => watcher.vaultAddress));
+      counts.push(externalCalls);
+      cursor = data.nextCursor;
+    } while (cursor);
+    assert.deepEqual(found, addresses);
+    assert.deepEqual(counts, [44, 44, 33]);
+    externalCalls = 0;
+    const cycle = await __test.runCheckCycle(context.env);
+    assert.equal(cycle.checked, 2);
+    assert.equal(cycle.notified, 2);
+    assert.equal(context.deliveries.length, 2);
+    assert.equal(externalCalls, 42);
+    console.log("  USDC pages: 44/44/33 requests; notification cycle: 42 requests");
   });
   await test("RPC failures during watcher verification fail the page instead of reporting partial success", async (context) => {
     const addresses = await addRelatedWatchers(context, 9);

@@ -94,6 +94,10 @@ jobs:
           VITE_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_YIELD_FACTORY_ADDRESS }}
           VITE_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_YIELD_FACTORY_DEPLOY_BLOCK }}
           VITE_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_MORPHO_VAULT_ADDRESS }}
+          VITE_USDC_ADDRESS: ${{ vars.VITE_USDC_ADDRESS }}
+          VITE_USDC_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_USDC_YIELD_FACTORY_ADDRESS }}
+          VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK }}
+          VITE_USDC_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_USDC_MORPHO_VAULT_ADDRESS }}
           VITE_FACTORY_RELEASE_SUPPORTED: ${{ vars.VITE_FACTORY_RELEASE_SUPPORTED }}
           VITE_REQUIRE_VERIFY: ${{ vars.VITE_REQUIRE_VERIFY }}
           VITE_WORLD_ACTION_ID: ${{ vars.VITE_WORLD_ACTION_ID }}
@@ -116,6 +120,24 @@ jobs:
             echo "::error::번들에서 VITE_FACTORY_ADDRESS 를 찾지 못했습니다. 빌드 설정을 확인하세요."; exit 1
           fi
           echo "빌드 확인 OK: $FACTORY"
+
+      - name: Verify USDC configuration reached the bundle
+        working-directory: app
+        env:
+          USDC_ADDRESS: ${{ vars.VITE_USDC_ADDRESS }}
+          USDC_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_USDC_YIELD_FACTORY_ADDRESS }}
+          USDC_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_USDC_MORPHO_VAULT_ADDRESS }}
+        run: |
+          set -euo pipefail
+          VALUES=("$USDC_ADDRESS" "$USDC_YIELD_FACTORY_ADDRESS" "$USDC_MORPHO_VAULT_ADDRESS")
+          if [ -n "$USDC_ADDRESS$USDC_YIELD_FACTORY_ADDRESS$USDC_MORPHO_VAULT_ADDRESS" ]; then
+            for ADDRESS in "${VALUES[@]}"; do
+              if [[ ! "$ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ "$ADDRESS" =~ ^0x0{40}$ ]]; then
+                echo "::error::All three nonzero USDC addresses are required."; exit 1
+              fi
+              grep -qiF "$ADDRESS" dist/assets/*.js || { echo "::error::A configured USDC address is missing from the bundle."; exit 1; }
+            done
+          fi
 
       # 상속인에게 보내는 링크의 기준 주소.
       #
@@ -209,15 +231,30 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           YIELD_FACTORY_ADDRESS: ${{ vars.VITE_YIELD_FACTORY_ADDRESS }}
           MORPHO_VAULT_ADDRESS: ${{ vars.VITE_MORPHO_VAULT_ADDRESS }}
+          USDC_ADDRESS: ${{ vars.VITE_USDC_ADDRESS }}
+          USDC_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_USDC_YIELD_FACTORY_ADDRESS }}
+          USDC_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_USDC_MORPHO_VAULT_ADDRESS }}
         run: |
           set -uo pipefail
           DEPLOY_ARGS=()
+          YIELD_EXECUTION_GAS=850000
+          USDC_EXECUTION_GAS=900000
+          FINALIZER_GAS_LIMIT=""
           if [ -n "$YIELD_FACTORY_ADDRESS" ] || [ -n "$MORPHO_VAULT_ADDRESS" ]; then
             if [[ ! "$YIELD_FACTORY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ ! "$MORPHO_VAULT_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
               echo "::error::The yield factory and Morpho strategy must be configured together."; exit 1
             fi
-            DEPLOY_ARGS+=(--var "YIELD_FACTORY_ADDRESS:$YIELD_FACTORY_ADDRESS" --var "MORPHO_VAULT_ADDRESS:$MORPHO_VAULT_ADDRESS" --var "FINALIZER_MAX_GAS:850000")
+            DEPLOY_ARGS+=(--var "YIELD_FACTORY_ADDRESS:$YIELD_FACTORY_ADDRESS" --var "MORPHO_VAULT_ADDRESS:$MORPHO_VAULT_ADDRESS")
+            FINALIZER_GAS_LIMIT="$YIELD_EXECUTION_GAS"
           fi
+          if [ -n "$USDC_ADDRESS" ] || [ -n "$USDC_YIELD_FACTORY_ADDRESS" ] || [ -n "$USDC_MORPHO_VAULT_ADDRESS" ]; then
+            if [[ ! "$USDC_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ ! "$USDC_YIELD_FACTORY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ ! "$USDC_MORPHO_VAULT_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::USDC token, yield factory and Morpho strategy must be configured together."; exit 1
+            fi
+            DEPLOY_ARGS+=(--var "USDC_ADDRESS:$USDC_ADDRESS" --var "USDC_YIELD_FACTORY_ADDRESS:$USDC_YIELD_FACTORY_ADDRESS" --var "USDC_MORPHO_VAULT_ADDRESS:$USDC_MORPHO_VAULT_ADDRESS")
+            FINALIZER_GAS_LIMIT="$USDC_EXECUTION_GAS"
+          fi
+          if [ -n "$FINALIZER_GAS_LIMIT" ]; then DEPLOY_ARGS+=(--var "FINALIZER_MAX_GAS:$FINALIZER_GAS_LIMIT"); fi
           LOG=$(mktemp)
           if npx wrangler deploy "${DEPLOY_ARGS[@]}" 2>&1 | tee "$LOG"; then
             echo "Worker 배포 완료"

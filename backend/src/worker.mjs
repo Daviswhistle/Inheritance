@@ -4,7 +4,7 @@ import { runFinalizerCycle, readFinalizerHealth } from "./finalizer.mjs";
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
 // 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
 // (한동안 옛 코드가 도는 것 같아 이 필드로 판별했다).
-const CODE_VERSION = "inheritance-yield-1";
+const CODE_VERSION = "inheritance-usdc-1";
 const SEND_NOTIFICATION_URL = "https://developer.world.org/api/v2/minikit/send-notification";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -24,6 +24,8 @@ const SELECTORS = {
   OWNER: "0x8da5cb5b",              // owner()
   HEIR: "0x91f2ebb8",               // heir()
   WLD: "0xde061d66",                // WLD()
+  ASSET: "0x38d52e0f",              // asset()
+  REWARD_TOKEN: "0xf7c618c1",        // rewardToken()
   FACTORY: "0xc45a0155",            // factory()
   VAULT_OF: "0x0709df45",           // vaultOf(address)
   KNOWN_VAULTS: "0x6e53033d",       // knownVaults(address), includes released yield vaults
@@ -124,6 +126,26 @@ const decodeBool = (hex) => {
 const decodeUint = (hex) => {
   if (typeof hex !== "string" || !hex.startsWith("0x")) throw new Error("Invalid encoded uint");
   return BigInt(hex);
+};
+
+const usdcFactoryConfig = (env, { factory, legacyFactory, yieldFactory, wld }) => {
+  const keys = ["USDC_YIELD_FACTORY_ADDRESS", "USDC_MORPHO_VAULT_ADDRESS", "USDC_ADDRESS"];
+  const values = keys.map((key) => env[key]);
+  const configured = values.map((value) => value != null && String(value).trim() !== "");
+  if (!configured.some(Boolean)) return null;
+  if (!configured.every(Boolean)) {
+    throw new HttpError(503, "Canonical USDC vault configuration is incomplete");
+  }
+
+  const [usdcYieldFactory, usdcStrategy, usdc] = values.map(normalizeAddress);
+  const existingFactories = [factory, legacyFactory, yieldFactory].filter(Boolean);
+  if (!usdcYieldFactory || !usdcStrategy || !usdc ||
+      [usdcYieldFactory, usdcStrategy, usdc].includes(ZERO_ADDRESS) ||
+      existingFactories.includes(usdcYieldFactory) || usdcYieldFactory === usdcStrategy ||
+      usdcYieldFactory === usdc || usdc === wld || usdc === usdcStrategy) {
+    throw new HttpError(503, "Canonical USDC vault configuration is invalid");
+  }
+  return { factoryAddress: usdcYieldFactory, strategyAddress: usdcStrategy, assetAddress: usdc };
 };
 
 const resolveCors = (request, env) => {
@@ -259,28 +281,60 @@ const getVaultIdentity = async (env, vaultAddress) => {
   if (!factory || factory === ZERO_ADDRESS || !wld || wld === ZERO_ADDRESS) {
     throw new HttpError(503, "Canonical vault configuration is missing");
   }
-  const [ownerAddress, heirAddress, factoryAddress, tokenAddress, claimedAt] = await Promise.all([
+  const usdcConfig = usdcFactoryConfig(env, { factory, legacyFactory, yieldFactory, wld });
+  const [ownerAddress, heirAddress, factoryAddress, claimedAt] = await Promise.all([
     ethCall(env, vault, SELECTORS.OWNER).then(decodeAddress),
     ethCall(env, vault, SELECTORS.HEIR).then(decodeAddress),
     ethCall(env, vault, SELECTORS.FACTORY).then(decodeAddress),
-    ethCall(env, vault, SELECTORS.WLD).then(decodeAddress),
     // Settlement clears heir. Its timestamp must be known before granting heir access.
     ethCall(env, vault, SELECTORS.CLAIMED_AT).then(decodeUint),
   ]);
-  if (ownerAddress === ZERO_ADDRESS
-    || ![factory, legacyFactory, ...(strategy ? [yieldFactory] : [])].filter(Boolean).includes(factoryAddress) || tokenAddress !== wld) {
-    throw new HttpError(400, "Vault is not from the configured WLD factory");
+
+  const wldYieldVault = Boolean(yieldFactory && factoryAddress === yieldFactory);
+  const usdcYieldVault = Boolean(usdcConfig && factoryAddress === usdcConfig.factoryAddress);
+  const knownFactory = [factory, legacyFactory].filter(Boolean).includes(factoryAddress) ||
+    wldYieldVault || usdcYieldVault;
+  if (ownerAddress === ZERO_ADDRESS || !knownFactory) {
+    throw new HttpError(400, "Vault is not from a configured inheritance factory");
   }
-  if (yieldFactory && factoryAddress === yieldFactory &&
-      decodeAddress(await ethCall(env, vault, SELECTORS.STRATEGY)) !== strategy) {
+
+  let tokenAddress;
+  if (usdcYieldVault) {
+    const [factoryAsset, factoryRewardToken, factoryStrategy] = await Promise.all([
+      ethCall(env, factoryAddress, SELECTORS.ASSET).then(decodeAddress),
+      ethCall(env, factoryAddress, SELECTORS.REWARD_TOKEN).then(decodeAddress),
+      ethCall(env, factoryAddress, SELECTORS.STRATEGY).then(decodeAddress),
+    ]);
+    if (factoryAsset !== usdcConfig.assetAddress || factoryRewardToken !== wld ||
+        factoryStrategy !== usdcConfig.strategyAddress) {
+      throw new HttpError(400, "Source factory does not match the configured USDC asset, strategy and WLD reward token");
+    }
+    const [assetAddress, rewardTokenAddress] = await Promise.all([
+      ethCall(env, vault, SELECTORS.ASSET).then(decodeAddress),
+      ethCall(env, vault, SELECTORS.REWARD_TOKEN).then(decodeAddress),
+    ]);
+    if (assetAddress !== usdcConfig.assetAddress || rewardTokenAddress !== wld) {
+      throw new HttpError(400, "Vault does not use the configured USDC asset and WLD reward token");
+    }
+    tokenAddress = assetAddress;
+  } else {
+    tokenAddress = decodeAddress(await ethCall(env, vault, SELECTORS.WLD));
+    if (tokenAddress !== wld) throw new HttpError(400, "Vault does not use the configured WLD token");
+  }
+
+  const expectedStrategy = usdcYieldVault ? usdcConfig.strategyAddress : strategy;
+  if ((wldYieldVault || usdcYieldVault) &&
+      (!expectedStrategy || decodeAddress(await ethCall(env, vault, SELECTORS.STRATEGY)) !== expectedStrategy)) {
     throw new HttpError(400, "Vault does not use the configured Morpho strategy");
   }
-  const yieldVault = Boolean(yieldFactory && factoryAddress === yieldFactory);
+  const yieldVault = wldYieldVault || usdcYieldVault;
   const registered = yieldVault
-    ? decodeUint(await ethCall(env, factoryAddress, SELECTORS.KNOWN_VAULTS + padAddress(vault))) === 1n
+    ? decodeBool(await ethCall(env, factoryAddress, SELECTORS.KNOWN_VAULTS + padAddress(vault)))
     : decodeAddress(await ethCall(env, factoryAddress, SELECTORS.VAULT_OF + padAddress(ownerAddress))) === vault;
   if (!registered) {
-    throw Object.assign(new HttpError(400, "Vault is not the owner's current factory vault", {}, "vault_not_current"), {
+    throw Object.assign(new HttpError(400, yieldVault
+      ? "Vault is not registered in its configured source factory"
+      : "Vault is not the owner's current factory vault", {}, "vault_not_current"), {
       identity: { vaultAddress: vault, ownerAddress, factoryAddress },
     });
   }

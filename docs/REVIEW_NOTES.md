@@ -8,17 +8,27 @@ Language: English. Platform: World App iOS and Android.
 
 Tap **Continue with World App** to sign in; opening the app initializes the bridge without requesting a signature. World ID verification is not required. Pages verifies the MiniKit SIWE signature, origin, statement, chain and address, consumes a one-use random nonce in D1, and issues a one-hour session. The notification Worker independently verifies this session and current vault permissions. Expired sessions return to the sign-in screen.
 
-User keys never reach our servers. Deposited WLD lives in a user's vault contract. User transactions go through the allowlisted WLD token and current or legacy factory, with World App approval. A dedicated infrastructure signer pays gas for eligible automated transfers; it cannot choose the recipient, file an heir's claim or withdraw an active owner's funds.
+User keys never reach our servers. Basic WLD stays in the user's vault; yield WLD or USDC goes into its fixed Re7 strategy and the user's vault holds receipt shares. WLD and USDC use separate factories and vaults, managed together in the app. User transactions go through the allowlisted tokens, receipt contracts and factories with World App approval. A dedicated infrastructure signer pays gas for eligible automated transfers; it cannot choose the recipient, file an heir's claim or withdraw an active owner's funds.
 
 ## The inheritance flow
 
-1. Choose an heir from contacts, a username or an address and set a 1–365-day timer. Creating the vault deposits no WLD.
+1. Choose WLD or USDC, an heir and a 1–365-day timer. WLD has basic and opt-in yield vaults; USDC uses Morpho by default with explicit risk consent. Creating a vault moves no funds.
 2. Use **Send** to deposit. Use **Vault** to renew, manage the heir or withdraw. **Tell your heir** offers World Chat and a shareable vault link. Notification permission is separate and is required on each recipient's World App.
-3. After expiry the named heir files a claim. WLD stays in the vault for the fixed seven-day review window.
+3. After expiry the named heir files a claim. Funds remain in the vault or its strategy for the fixed seven-day review window.
 4. For registered new vaults, the service can execute the eligible transfer after the review window. Only the named heir receives the funds. Manual completion remains available. Legacy vaults require manual completion.
 5. The owner can renew to cancel the claim until the actual transfer executes, including after the seven days. Transaction ordering determines which action wins.
 
 Automation depends on registration, network/service availability, gas funding and spending caps. The interface shows service availability and keeps manual completion available. It does not promise execution at an exact time. A timer is not death verification, a legal will or an investment product.
+
+Yield exits charge 10% of realized positive net gains after loss recovery, without
+charging deposited principal. USDC losses recover against later USDC gains only;
+its actually claimed canonical WLD rewards pay a separate 10% when distributed.
+WLD is held without conversion in a USDC vault. Gifts are excluded. Inheritance
+first tries cash, then fixed-heir receipt shares plus idle cash and held WLD.
+Late canonical rewards still belong to the original fixed heir after release or
+replacement. Receipt redemption in the wallet pays no second service fee. Rates
+vary, cash liquidity can fail, principal can lose value, USDC can depeg or be frozen,
+and World App's verified-human boost is excluded. See Yield Terms.
 
 ## Interface and verification
 

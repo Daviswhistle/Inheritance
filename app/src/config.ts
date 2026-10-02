@@ -27,6 +27,19 @@ if (raw.VITE_LEGACY_FACTORY_ADDRESS && !ADDRESS_RE.test(raw.VITE_LEGACY_FACTORY_
 }
 const yieldFactory = (raw.VITE_YIELD_FACTORY_ADDRESS ?? "").trim();
 const morphoVault = (raw.VITE_MORPHO_VAULT_ADDRESS ?? "").trim();
+const usdcFactory = (raw.VITE_USDC_YIELD_FACTORY_ADDRESS ?? "").trim();
+const usdcStrategy = (raw.VITE_USDC_MORPHO_VAULT_ADDRESS ?? "").trim();
+const usdc = (raw.VITE_USDC_ADDRESS ?? "").trim();
+if (usdcFactory || usdcStrategy || usdc) {
+  if (![usdcFactory, usdcStrategy, usdc].every(value => ADDRESS_RE.test(value) && !/^0x0{40}$/i.test(value))) {
+    problems.push("USDC token, yield factory and Morpho strategy must be configured together.");
+  }
+  if ([raw.VITE_FACTORY_ADDRESS, raw.VITE_LEGACY_FACTORY_ADDRESS, yieldFactory].some(a => a && a.toLowerCase() === usdcFactory.toLowerCase())
+    || usdc.toLowerCase() === (raw.VITE_WLD_ADDRESS ?? "").toLowerCase()
+    || new Set([usdc, usdcFactory, usdcStrategy].map(a => a.toLowerCase())).size !== 3) {
+    problems.push("USDC must use its own token and yield factory.");
+  }
+}
 if (yieldFactory || morphoVault) {
   if (!ADDRESS_RE.test(yieldFactory) || !ADDRESS_RE.test(morphoVault)) {
     problems.push("Both yield factory and Morpho vault addresses must be configured together.");
@@ -71,6 +84,11 @@ export const YIELD_FACTORY_ADDRESS = yieldFactory;
 export const MORPHO_VAULT_ADDRESS = morphoVault;
 export const YIELD_ENABLED = ADDRESS_RE.test(yieldFactory) && ADDRESS_RE.test(morphoVault);
 export const YIELD_FACTORY_DEPLOY_BLOCK = Number(raw.VITE_YIELD_FACTORY_DEPLOY_BLOCK) || null;
+export const USDC_ADDRESS = usdc;
+export const USDC_YIELD_FACTORY_ADDRESS = usdcFactory;
+export const USDC_MORPHO_VAULT_ADDRESS = usdcStrategy;
+export const USDC_YIELD_FACTORY_DEPLOY_BLOCK = Number(raw.VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK) || null;
+export const USDC_ENABLED = [usdc, usdcFactory, usdcStrategy].every(value => ADDRESS_RE.test(value) && !/^0x0{40}$/i.test(value));
 export const RPC_URL =
   (raw.VITE_RPC ?? "").trim() || "https://worldchain-mainnet.g.alchemy.com/public";
 

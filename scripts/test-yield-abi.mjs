@@ -11,13 +11,13 @@ let checks = 0;
 try {
   // Coverage instruments unoptimized code. Check deployment sizes on the pinned
   // optimized artifacts instead of asserting them on coverage test contracts.
-  for (const name of ["InheritanceVaultMorphoFactory", "InheritanceVaultMorphoDeployer", "InheritanceVaultMorpho"]) {
+  for (const name of ["InheritanceVaultMorphoFactory", "InheritanceVaultMorphoDeployer", "InheritanceVaultMorpho", "InheritanceVaultUSDCFactory", "InheritanceVaultUSDCDeployer", "InheritanceVaultUSDC"]) {
     const compiled = JSON.parse(readFileSync(`out/${name}.sol/${name}.json`, "utf8"));
     assert.ok((compiled.deployedBytecode.object.length - 2) / 2 <= 24_576, `${name} exceeds EIP-170`);
     assert.ok((compiled.bytecode.object.length - 2) / 2 <= 49_152, `${name} exceeds EIP-3860`);
   }
   const abi = await vite.ssrLoadModule("/src/yield.ts");
-  for (const [name, exported] of [["InheritanceVaultMorphoFactory", "YIELD_FACTORY_ABI"], ["InheritanceVaultMorpho", "YIELD_VAULT_ABI"], ["MockERC4626", "MORPHO_ABI"]]) {
+  for (const [name, exported] of [["InheritanceVaultMorphoFactory", "YIELD_FACTORY_ABI"], ["InheritanceVaultMorpho", "YIELD_VAULT_ABI"], ["InheritanceVaultUSDCFactory", "USDC_YIELD_FACTORY_ABI"], ["InheritanceVaultUSDC", "USDC_YIELD_VAULT_ABI"], ["MockERC4626", "MORPHO_ABI"]]) {
     const artifact = JSON.parse(readFileSync(`out/${name}.sol/${name}.json`, "utf8"));
     const deployed = new Interface(artifact.abi);
     new Interface(abi[exported]).forEachFunction(fragment => {
@@ -34,5 +34,7 @@ try {
   assert.equal(abi.formatYieldAmount(108n * 10n ** 18n), "108.0");
   assert.equal(abi.formatYieldAmount(1234567890123456789n), "1.234567");
   assert.equal(abi.formatYieldAmount(1n), "<0.000001");
+  assert.equal(abi.formatYieldAmount(100123456n, 6), "100.123456");
+  assert.equal(abi.formatYieldAmount(1n, 6), "0.000001");
   console.log(`${checks} yield ABI functions match compiled contracts; minimum-output bounds passed.`);
 } finally { await vite.close(); }

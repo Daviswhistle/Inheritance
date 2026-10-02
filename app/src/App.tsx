@@ -9,12 +9,14 @@ import { Brand, Icon } from "@/components/Icon";
 import { Landing } from "@/components/Landing";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { YieldChoice, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
-import { MORPHO_ABI, YIELD_FACTORY_ABI, YIELD_VAULT_ABI, MERKL_DISTRIBUTOR, minimumOutput, formatYieldAmount } from "@/yield";
+import { MORPHO_ABI, MERKL_DISTRIBUTOR, minimumOutput, formatYieldAmount } from "@/yield";
 import type { YieldPosition, YieldTerms } from "@/yield";
-import { fetchWldRewards } from "@/rewards";
+import { fetchWldRewards, remainingWldRewards } from "@/rewards";
 import type { WldRewards } from "@/rewards";
 import { fetchYieldRates } from "@/yield-rates";
 import type { YieldRates } from "@/yield-rates";
+import { HAS_YIELD_ROUTES, YIELD_ROUTES, TRUSTED_FACTORIES, yieldRouteFor, vaultLabel } from "@/assets";
+import type { AssetSymbol, YieldRoute } from "@/assets";
 import { confirmTransaction } from "@/transactions";
 import type { ReactElement } from "react";
 import {
@@ -32,10 +34,9 @@ import {
   REQUIRE_VERIFY,
   RPC_URL,
   WLD_ADDRESS,
-  YIELD_ENABLED,
-  YIELD_FACTORY_ADDRESS,
-  YIELD_FACTORY_DEPLOY_BLOCK,
   MORPHO_VAULT_ADDRESS,
+  USDC_ENABLED,
+  USDC_ADDRESS,
 } from "@/config";
 import { signInWithWorldApp, readSessionAddress, clearSession, notificationFetch, fetchRegisteredVaults } from "@/auth";
 import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit, sendWorldChat, pickWorldContacts } from "@/minikit";
@@ -179,15 +180,28 @@ export default function App() {
   const vaultFactory = identityMatchesVault ? vaultIdentity!.factory : "";
   const vaultOwner = identityMatchesVault ? vaultIdentity!.owner : "";
   const vaultHeir = identityMatchesVault ? vaultIdentity!.heir : "";
-  const isYieldVault = Boolean(YIELD_ENABLED && vaultFactory && vaultFactory.toLowerCase() === YIELD_FACTORY_ADDRESS.toLowerCase());
+  const selectedYieldRoute = yieldRouteFor(vaultFactory);
+  const isYieldVault = Boolean(selectedYieldRoute);
+  const isUsdcVault = selectedYieldRoute?.symbol === "USDC";
+  const selectedAssetAddress = selectedYieldRoute?.asset ?? WLD_ADDRESS;
+  const selectedStrategyAddress = selectedYieldRoute?.strategy ?? MORPHO_VAULT_ADDRESS;
+  const selectedFactoryAbi = selectedYieldRoute?.factoryAbi ?? FACTORY_ABI;
+  const selectedVaultAbi = selectedYieldRoute?.vaultAbi ?? VAULT_ABI;
+  const [creationAsset, setCreationAsset] = useState<AssetSymbol>("WLD");
+  const creationYieldRoute = YIELD_ROUTES.find(route => route.symbol === creationAsset);
   const [creationKind, setCreationKind] = useState<"plain" | "yield">("plain");
   const [yieldConsent, setYieldConsent] = useState(false);
-  const [yieldTerms, setYieldTerms] = useState<YieldTerms | null>(null);
-  const [yieldRates, setYieldRates] = useState<YieldRates | null>(null);
+  const [yieldTermsByFactory, setYieldTermsByFactory] = useState<Record<string, YieldTerms | null>>({});
+  const yieldTerms = selectedYieldRoute ? yieldTermsByFactory[selectedYieldRoute.factory] ?? null : null;
+  const creationYieldTerms = creationYieldRoute ? yieldTermsByFactory[creationYieldRoute.factory] ?? null : null;
+  const [yieldRatesByFactory, setYieldRatesByFactory] = useState<Record<string, YieldRates | null>>({});
+  const yieldRates = selectedYieldRoute ? yieldRatesByFactory[selectedYieldRoute.factory] ?? null : null;
+  const creationYieldRates = creationYieldRoute ? yieldRatesByFactory[creationYieldRoute.factory] ?? null : null;
   const [yieldRatesLoading, setYieldRatesLoading] = useState(false);
   const [yieldPosition, setYieldPosition] = useState<YieldPosition | null>(null);
   const [yieldHoldings, setYieldHoldings] = useState<{ scope: string; idle: bigint; shares: bigint } | null>(null);
   const [receivedRewards, setReceivedRewards] = useState<{ scope: string; amount: bigint } | null>(null);
+  const [heldRewardCash, setHeldRewardCash] = useState<{ scope: string; amount: bigint } | null>(null);
   const [yieldReadError, setYieldReadError] = useState<{ scope: string; failed: boolean } | null>(null);
   const [rewardState, setRewardState] = useState<{ scope: string; data: WldRewards | null; loading: boolean; error: string } | null>(null);
   const rewardRequest = useRef(0);
@@ -196,8 +210,10 @@ export default function App() {
   const receivedYieldInheritance = isYieldVault && yieldRecipient?.vault.toLowerCase() === vault.toLowerCase()
     && yieldRecipient.address.toLowerCase() === account.toLowerCase();
   const selectedYieldPosition = isYieldVault && yieldPosition?.vault.toLowerCase() === vault.toLowerCase() ? yieldPosition : null;
-  const [walletShares, setWalletShares] = useState<{ account: string; amount: bigint }>({ account: "", amount: 0n });
-  const walletYieldShares = walletShares.account.toLowerCase() === account.toLowerCase() ? walletShares.amount : 0n;
+  const [walletShares, setWalletShares] = useState<{ account: string; amounts: Record<string, bigint> }>({ account: "", amounts: {} });
+  const walletYieldShares = (route: YieldRoute) => walletShares.account.toLowerCase() === account.toLowerCase() ? walletShares.amounts[route.factory] ?? 0n : 0n;
+  const [walletBalances, setWalletBalances] = useState<{ account: string; amounts: Partial<Record<AssetSymbol, bigint>> }>({ account: "", amounts: {} });
+  const creationWalletBalance = walletBalances.account.toLowerCase() === account.toLowerCase() ? walletBalances.amounts[creationAsset] ?? null : null;
   type OwnedVault = { address: string; factory: string };
   const [ownedVaultRead, setOwnedVaultRead] = useState<{ account: string; items: OwnedVault[]; incomplete: boolean }>({ account: "", items: [], incomplete: false });
   const ownedVaults = ownedVaultRead.account === account.toLowerCase() ? ownedVaultRead.items : [];
@@ -206,10 +222,10 @@ export default function App() {
   const vaultLookupRequest = useRef(0);
   const vaultLookupAccount = useRef(account.toLowerCase());
   vaultLookupAccount.current = account.toLowerCase();
-  const creationFactoryAddress = creationKind === "yield" ? YIELD_FACTORY_ADDRESS : FACTORY_ADDRESS;
+  const creationFactoryAddress = creationKind === "yield" ? creationYieldRoute?.factory ?? "" : FACTORY_ADDRESS;
   const creationHasVault = ownedVaults.some(v => creationKind === "yield"
-    ? v.factory.toLowerCase() === YIELD_FACTORY_ADDRESS.toLowerCase()
-    : v.factory.toLowerCase() !== YIELD_FACTORY_ADDRESS.toLowerCase());
+    ? v.factory.toLowerCase() === creationFactoryAddress.toLowerCase()
+    : !yieldRouteFor(v.factory));
   /**
    * `?vault=` 링크로 넘어온 금고.
    *
@@ -391,18 +407,21 @@ export default function App() {
   /** 이의제기 기간(일). 컨트랙트 상수를 읽되 실패하면 기본값으로 버틴다. */
   const [challengeDays, setChallengeDays] = useState(7);
 
-  const [wldSymbol, setWldSymbol] = useState("WLD");
-  const [wldDecimals, setWldDecimals] = useState(18);
-  const [walletWld, setWalletWld] = useState<bigint>(0n);
-  const [vaultWld, setVaultWld] = useState<bigint>(0n);
+  const wldSymbol = selectedYieldRoute?.symbol ?? "WLD";
+  const wldDecimals = selectedYieldRoute?.decimals ?? 18;
+  const [walletBalanceRead, setWalletBalanceRead] = useState<{ scope: string; amount: bigint }>({ scope: "", amount: 0n });
+  const [vaultBalanceRead, setVaultBalanceRead] = useState<{ scope: string; amount: bigint }>({ scope: "", amount: 0n });
   const balanceScope = `${account.toLowerCase()}:${vault.toLowerCase()}:${vaultFactory.toLowerCase()}`;
+  const walletWld = walletBalanceRead.scope === balanceScope ? walletBalanceRead.amount : 0n;
+  const vaultWld = vaultBalanceRead.scope === balanceScope ? vaultBalanceRead.amount : 0n;
   const balanceScopeRef = useRef(balanceScope);
   balanceScopeRef.current = balanceScope;
   const selectedYieldHoldings = isYieldVault
     ? yieldHoldings?.scope === balanceScope ? yieldHoldings : selectedYieldPosition
     : null;
   const vaultHasAssets = isYieldVault
-    ? Boolean(selectedYieldHoldings && (selectedYieldHoldings.shares > 0n || selectedYieldHoldings.idle > 0n))
+    ? Boolean(selectedYieldHoldings && (selectedYieldHoldings.shares > 0n || selectedYieldHoldings.idle > 0n)
+      || isUsdcVault && heldRewardCash?.scope === balanceScope && heldRewardCash.amount > 0n)
     : vaultWld > 0n;
   // Verified idle cash is recoverable even if a cached valuation is lower.
   const vaultWldForWithdrawal = isYieldVault && selectedYieldHoldings && selectedYieldHoldings.idle > vaultWld
@@ -412,6 +431,11 @@ export default function App() {
   const [amountStr, setAmountStr] = useState("");
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
+  useEffect(() => {
+    setAmountStr("");
+    setWithdrawAmountStr("");
+    setWithdrawTo("");
+  }, [account, vault]);
   const [newHeir, setNewHeir] = useState<string>("");
   const [newHeirResolved, setNewHeirResolved] = useState<{ username?: string; address?: string } | null>(null);
   const [resolvingNewHeir, setResolvingNewHeir] = useState<boolean>(false);
@@ -688,7 +712,7 @@ export default function App() {
     const dd = (d + "0".repeat(dec)).slice(0, dec);
     return BigInt(i || "0") * (10n ** BigInt(dec)) + BigInt(dd || "0");
   };
-  const validDecimalInput = (s: string) => /^\d*(?:\.\d*)?$/.test(s);
+  const validDecimalInput = (s: string) => /^\d*(?:\.\d*)?$/.test(s) && (s.split(".")[1]?.length ?? 0) <= wldDecimals;
   const gate2 = (node: ReactElement) => {
     if (miniInstalled) return node;
     return (
@@ -1229,7 +1253,7 @@ export default function App() {
   }, [account]);
 
   // ---- contracts
-  const showYieldRates = YIELD_ENABLED && (creationKind === "yield" || isYieldVault);
+  const showYieldRates = HAS_YIELD_ROUTES && (creationKind === "yield" || isYieldVault);
   useEffect(() => {
     if (!showYieldRates) return;
     let active = true;
@@ -1241,10 +1265,11 @@ export default function App() {
       setYieldRatesLoading(true);
       const timeout = setTimeout(() => request.abort(), 8_000);
       try {
-        const rates = await fetchYieldRates(request.signal);
-        if (active && controller === request) setYieldRates(rates);
-      } catch {
-        if (active && controller === request) setYieldRates(null);
+        const results = await Promise.allSettled(YIELD_ROUTES.map(async route => ({
+          factory: route.factory, rates: await fetchYieldRates(request.signal, route.strategy),
+        })));
+        if (active && controller === request) setYieldRatesByFactory(Object.fromEntries(results.map((result, i) =>
+          [YIELD_ROUTES[i].factory, result.status === "fulfilled" ? result.value.rates : null])));
       } finally {
         clearTimeout(timeout);
         if (active && controller === request) setYieldRatesLoading(false);
@@ -1261,24 +1286,31 @@ export default function App() {
   }, [provider]);
   const vaultCtr = useMemo(() => {
     const rw = provider; // read-only provider
-    return rw && vault ? new ethers.Contract(vault, VAULT_ABI, rw) : null;
+    return rw && vault ? new ethers.Contract(vault, [...VAULT_ABI, "function asset() view returns (address)", "function rewardToken() view returns (address)"], rw) : null;
   }, [provider, vault]);
 
   useEffect(() => {
-    if (!YIELD_ENABLED || !provider) return;
+    if (!HAS_YIELD_ROUTES || !provider) return;
     let active = true;
     const check = async () => {
-      try {
-        const contract = new ethers.Contract(YIELD_FACTORY_ADDRESS, YIELD_FACTORY_ABI, provider);
-        const [token, strategy, recipient, fee] = await Promise.all([
-          contract.WLD(), contract.strategy(), contract.feeRecipient(), contract.performanceFeeBps(),
-        ]);
-        const underlying = new ethers.Contract(MORPHO_VAULT_ADDRESS, MORPHO_ABI, provider);
-        const [asset, underlyingFee] = await Promise.all([underlying.asset(), underlying.fee()]);
-        if (String(token).toLowerCase() !== WLD_ADDRESS.toLowerCase() || String(asset).toLowerCase() !== WLD_ADDRESS.toLowerCase()
-          || String(strategy).toLowerCase() !== MORPHO_VAULT_ADDRESS.toLowerCase() || recipient === ethers.ZeroAddress || fee > 1000n) throw new Error("Invalid yield configuration");
-        if (active) setYieldTerms({ feeBps: Number(fee), recipient: String(recipient), underlyingFeePercent: Number(underlyingFee) / 1e16 });
-      } catch { if (active) setYieldTerms(null); }
+      await Promise.all(YIELD_ROUTES.map(async route => {
+        try {
+          const contract = new ethers.Contract(route.factory, route.factoryAbi, provider);
+          const [token, strategy, recipient, fee, reward] = await Promise.all([
+            contract[route.tokenGetter](), contract.strategy(), contract.feeRecipient(), contract.performanceFeeBps(),
+            route.symbol === "USDC" ? contract.rewardToken() : Promise.resolve(WLD_ADDRESS),
+          ]);
+          const underlying = new ethers.Contract(route.strategy, MORPHO_ABI, provider);
+          const [asset, underlyingFee, decimals] = await Promise.all([underlying.asset(), underlying.fee(),
+            new ethers.Contract(route.asset, ERC20_ABI, provider).decimals()]);
+          if (String(token).toLowerCase() !== route.asset.toLowerCase() || String(asset).toLowerCase() !== route.asset.toLowerCase()
+            || String(strategy).toLowerCase() !== route.strategy.toLowerCase() || String(reward).toLowerCase() !== WLD_ADDRESS.toLowerCase()
+            || Number(decimals) !== route.decimals || recipient === ethers.ZeroAddress || fee !== 1000n) throw new Error("Invalid yield configuration");
+          if (active) setYieldTermsByFactory(current => ({ ...current, [route.factory]: {
+            feeBps: Number(fee), recipient: String(recipient), underlyingFeePercent: Number(underlyingFee) / 1e16,
+          } }));
+        } catch { if (active) setYieldTermsByFactory(current => ({ ...current, [route.factory]: null })); }
+      }));
     };
     void check();
     const timer = setInterval(() => void check(), 30_000);
@@ -1289,7 +1321,7 @@ export default function App() {
     if (!factory || !account) return;
     const key = account.toLowerCase(), request = ++vaultLookupRequest.current;
     try {
-      const sources = [FACTORY_ADDRESS, LEGACY_FACTORY_ADDRESS, ...(YIELD_ENABLED ? [YIELD_FACTORY_ADDRESS] : [])].filter(Boolean);
+      const sources = TRUSTED_FACTORIES;
       const results = await Promise.allSettled(sources.map(async address => ({
         factory: address,
         address: String(await new ethers.Contract(address, FACTORY_ABI, provider).vaultOf(account)),
@@ -1417,7 +1449,7 @@ export default function App() {
   useEffect(() => {
     if (!factory || !account) return;
     void loadVault();
-    if (!YIELD_ENABLED) return;
+    if (!HAS_YIELD_ROUTES) return;
     const refresh = () => { if (document.visibilityState === "visible" && !actionInFlight.current) void loadVault(); };
     const timer = setInterval(refresh, 30_000);
     document.addEventListener("visibilitychange", refresh);
@@ -1459,31 +1491,29 @@ export default function App() {
     if (!vaultCtr) return;
     const epoch = vaultDetailsEpoch.current;
     try {
-      const [o, h, hb, lp, sourceFactory, token] = await Promise.all([
-        vaultCtr.owner(),
-        vaultCtr.heir(),
-        vaultCtr.heartbeatInterval(),
-        vaultCtr.lastPing(),
-        vaultCtr.factory(),
-        vaultCtr.WLD(),
+      const [o, h, hb, lp, sourceFactory] = await Promise.all([
+        vaultCtr.owner(), vaultCtr.heir(), vaultCtr.heartbeatInterval(), vaultCtr.lastPing(), vaultCtr.factory(),
       ]);
-      const trusted = [FACTORY_ADDRESS, LEGACY_FACTORY_ADDRESS, ...(YIELD_ENABLED ? [YIELD_FACTORY_ADDRESS] : [])].filter(Boolean).some(a => a.toLowerCase() === String(sourceFactory).toLowerCase());
-      if (!trusted || String(token).toLowerCase() !== WLD_ADDRESS.toLowerCase() || !provider) {
-        throw new Error("This vault is not part of Inheritance.");
-      }
-      const yieldSelected = YIELD_ENABLED && String(sourceFactory).toLowerCase() === YIELD_FACTORY_ADDRESS.toLowerCase();
-      const source = new ethers.Contract(sourceFactory, yieldSelected ? YIELD_FACTORY_ABI : FACTORY_ABI, provider);
+      const route = yieldRouteFor(String(sourceFactory));
+      const trusted = TRUSTED_FACTORIES.some(a => a.toLowerCase() === String(sourceFactory).toLowerCase());
+      if (!trusted || !provider) throw new Error("This vault is not part of Inheritance.");
+      const token = await vaultCtr[route?.tokenGetter ?? "WLD"]();
+      if (String(token).toLowerCase() !== (route?.asset ?? WLD_ADDRESS).toLowerCase()) throw new Error("This vault uses an unsupported asset.");
+      const yieldSelected = Boolean(route);
+      const source = new ethers.Contract(sourceFactory, route?.factoryAbi ?? FACTORY_ABI, provider);
       const mapped = String(await source.vaultOf(o)).toLowerCase() === vault.toLowerCase();
       let released = false;
       if (yieldSelected) {
-        const yieldVault = new ethers.Contract(vault, YIELD_VAULT_ABI, provider);
+        const yieldVault = new ethers.Contract(vault, route!.vaultAbi, provider);
         const [strategy, recipient, settledAt, distributor] = await Promise.all([
           yieldVault.strategy(), yieldVault.inheritanceRecipient(), yieldVault.claimedAt(), yieldVault.MERKL_DISTRIBUTOR(),
         ]);
-        if (String(strategy).toLowerCase() !== MORPHO_VAULT_ADDRESS.toLowerCase()
+        if (String(strategy).toLowerCase() !== route!.strategy.toLowerCase()
           || String(distributor).toLowerCase() !== MERKL_DISTRIBUTOR.toLowerCase()) {
           throw new Error("This vault uses an unsupported yield strategy.");
         }
+        if (route!.symbol === "USDC" && String(await yieldVault.rewardToken()).toLowerCase() !== WLD_ADDRESS.toLowerCase()) throw new Error("This vault uses an unsupported reward token.");
+        if (!await source.knownVaults(vault)) throw new Error("This vault is not registered by its factory.");
         if (!mapped) {
           if (!await source.knownVaults(vault) || settledAt > 0n && recipient === ethers.ZeroAddress) {
             throw new Error("This vault's slot has been released. Its contract remains on-chain.");
@@ -1554,7 +1584,7 @@ export default function App() {
       const tryQuery = async (topics: (string | null | string[])[]) => {
         const logs = await safeGetLogs(p, {
           address: vaultFactory,
-          fromBlock: vaultFactory.toLowerCase() === YIELD_FACTORY_ADDRESS.toLowerCase() ? (YIELD_FACTORY_DEPLOY_BLOCK ?? undefined) : vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase() ? (LEGACY_FACTORY_DEPLOY_BLOCK ?? undefined) : (FACTORY_DEPLOY_BLOCK ?? undefined),
+          fromBlock: yieldRouteFor(vaultFactory) ? (yieldRouteFor(vaultFactory)!.block ?? undefined) : vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase() ? (LEGACY_FACTORY_DEPLOY_BLOCK ?? undefined) : (FACTORY_DEPLOY_BLOCK ?? undefined),
           topics,
           toBlock: "latest",
         });
@@ -1602,77 +1632,83 @@ export default function App() {
   // ---- balances & timer
   const refreshBalances = useCallback(async () => {
     if (!provider || !account) return;
-    const scope = balanceScopeRef.current;
+    const scope = balanceScope;
+    if (scope !== balanceScopeRef.current) return;
     try {
-      const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
-      const [sym, dec, userBal, vaultBal] = await Promise.all([
-        token.symbol(), token.decimals(),
-        token.balanceOf(account), vault ? token.balanceOf(vault) : Promise.resolve(0n)
+      const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
+      const [dec, userBal, vaultBal] = await Promise.all([
+        token.decimals(), token.balanceOf(account), vault ? token.balanceOf(vault) : Promise.resolve(0n),
       ]);
       if (scope !== balanceScopeRef.current) return;
-      setWldSymbol(sym);
-      // ethers v6 는 uint8 반환값을 bigint 로 준다. 상태는 number 로 선언돼 있으므로
-      // 그대로 넣으면 아래 parseAmount 의 `"0".repeat(wldDecimals)` 가
-      // "Cannot convert a BigInt value to a number" 로 터져 입금이 전부 실패한다.
-      setWldDecimals(Number(dec));
-      setWalletWld(userBal);
-      // Idle WLD is not the total value of a yield vault. Commit its gross
-      // balance and position together only after a successful position read.
-      if (!isYieldVault) setVaultWld(vaultBal);
-      if (YIELD_ENABLED) {
-        const morpho = new ethers.Contract(MORPHO_VAULT_ADDRESS, MORPHO_ABI, provider);
-        // Custody must remain readable without a valuation/liquidity quote.
+      if (Number(dec) !== wldDecimals) throw new Error("Token precision does not match the configured asset.");
+      setWalletBalanceRead({ scope, amount: userBal });
+      if (!isYieldVault) setVaultBalanceRead({ scope, amount: vaultBal });
+      const assets = [{ symbol: "WLD" as const, address: WLD_ADDRESS }, ...(USDC_ENABLED ? [{ symbol: "USDC" as const, address: USDC_ADDRESS }] : [])];
+      const walletResults = await Promise.allSettled(assets.map(async asset =>
+        new ethers.Contract(asset.address, ERC20_ABI, provider).balanceOf(account) as Promise<bigint>));
+      if (scope === balanceScopeRef.current) setWalletBalances({ account, amounts: Object.fromEntries(walletResults.flatMap((result, i) =>
+        result.status === "fulfilled" ? [[assets[i].symbol, result.value]] : [])) });
+      if (HAS_YIELD_ROUTES) {
         const results = await Promise.allSettled([
+          ...YIELD_ROUTES.map(async route => {
+            const amount: bigint = await new ethers.Contract(route.strategy, MORPHO_ABI, provider).balanceOf(account);
+            if (scope === balanceScopeRef.current) setWalletShares(current => ({ account, amounts: {
+              ...(current.account.toLowerCase() === account.toLowerCase() ? current.amounts : {}), [route.factory]: amount,
+            } }));
+          }),
           (async () => {
-            const amount: bigint = await morpho.balanceOf(account);
-            if (scope === balanceScopeRef.current) setWalletShares({ account, amount });
-          })(),
-          (async () => {
-            if (!isYieldVault) return;
-            const shares: bigint = await morpho.balanceOf(vault);
+            if (!selectedYieldRoute) return;
+            const shares: bigint = await new ethers.Contract(selectedYieldRoute.strategy, MORPHO_ABI, provider).balanceOf(vault);
             if (scope === balanceScopeRef.current) setYieldHoldings({ scope, idle: vaultBal, shares });
           })(),
           (async () => {
-            if (!isYieldVault) return;
-            const ctr = new ethers.Contract(vault, YIELD_VAULT_ABI, provider);
+            if (!selectedYieldRoute) return;
+            const ctr = new ethers.Contract(vault, selectedYieldRoute.vaultAbi, provider);
             const amount: bigint = await ctr.unprocessedRewards();
             if (scope === balanceScopeRef.current) setReceivedRewards({ scope, amount });
           })(),
           (async () => {
-            if (!isYieldVault) return;
-            const ctr = new ethers.Contract(vault, YIELD_VAULT_ABI, provider);
+            if (!selectedYieldRoute) return;
+            const ctr = new ethers.Contract(vault, selectedYieldRoute.vaultAbi, provider);
             const pos = await ctr.position();
             if (scope !== balanceScopeRef.current) return;
             setYieldPosition({ vault, idle: pos.idle, shares: pos.shares, gross: pos.gross,
               net: pos.net, fee: pos.fee, liquid: pos.liquid, valued: pos.valued });
-            setVaultWld(pos.gross);
+            setVaultBalanceRead({ scope, amount: pos.gross });
+          })(),
+          (async () => {
+            if (!isUsdcVault) return;
+            const amount: bigint = await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(vault);
+            if (scope === balanceScopeRef.current) setHeldRewardCash({ scope, amount });
           })(),
         ]);
         if (scope === balanceScopeRef.current) setYieldReadError({ scope, failed: results.some(result => result.status === "rejected") });
         for (const result of results) if (result.status === "rejected") console.warn("Yield balance read failed:", errorText(result.reason));
       }
     } catch (e: unknown) {
-      // 주기적으로 호출되므로 조용히 실패시킨다. 단, unhandled rejection 으로
-      // 개발자 콘솔을 오염시키거나 모바일 웹뷰에서 경고를 남기지는 않는다.
       console.warn("refreshBalances failed:", errorText(e));
     }
-  }, [provider, account, vault, isYieldVault]);
+  }, [provider, account, vault, isYieldVault, selectedAssetAddress, selectedYieldRoute, wldDecimals, isUsdcVault, balanceScope]);
   useEffect(() => { void refreshBalances(); }, [refreshBalances]);
 
   const refreshRewards = useCallback(async () => {
-    if (!isYieldVault || !vault) return;
-    const scope = balanceScopeRef.current, request = ++rewardRequest.current;
+    if (!isYieldVault || !vault || !provider) return;
+    const scope = balanceScope;
+    if (scope !== balanceScopeRef.current) return;
+    const request = ++rewardRequest.current;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     setRewardState({ scope, data: null, loading: true, error: "" });
     try {
-      const data = await fetchWldRewards(vault, controller.signal);
+      const contract = new ethers.Contract(vault, selectedVaultAbi, provider);
+      const [published, claimed] = await Promise.all([fetchWldRewards(vault, controller.signal), contract.totalRewardsClaimed()]);
+      const data = remainingWldRewards(published, claimed);
       if (scope === balanceScopeRef.current && request === rewardRequest.current) setRewardState({ scope, data, loading: false, error: "" });
     } catch (error) {
       if (scope === balanceScopeRef.current && request === rewardRequest.current) setRewardState({ scope, data: null, loading: false,
         error: controller.signal.aborted ? "Rewards lookup timed out. Refresh to try again." : errorText(error) });
     } finally { clearTimeout(timeout); }
-  }, [isYieldVault, vault]);
+  }, [isYieldVault, vault, selectedVaultAbi, provider, balanceScope]);
   useEffect(() => {
     if (!isYieldVault) return;
     void refreshRewards();
@@ -1707,6 +1743,8 @@ export default function App() {
 
   const refreshTimer = useCallback(async () => {
     if (!vaultCtr) return;
+    const scope = balanceScope;
+    if (scope !== balanceScopeRef.current) return;
     try {
       const rem: bigint = await vaultCtr.timeRemaining();
       // 상속 상태를 한 번에 읽어 단계로 정리한다. 이 RPC 묶음은 UI 의 모든
@@ -1730,6 +1768,7 @@ export default function App() {
         vaultCtr.inheritanceCancelled(),
         vaultCtr.challengeEndsAt(),
       ]);
+      if (scope !== balanceScopeRef.current) return;
       /* 취소를 가장 먼저 보면 "아직 카운트다운이 도는 취소 금고"를 표현할 수 없다
          (위 cancelledFlag 주석 참고). 만료를 먼저 판정하고, 취소는 만료 뒤에만
          "cancelled" 단계로 둔다. */
@@ -1751,10 +1790,11 @@ export default function App() {
       setChallengeEndsAt(Number(challengeEnd));
       try {
         const cp: bigint = await vaultCtr.CHALLENGE_PERIOD();
-        setChallengeDays(Math.round(Number(cp) / 86400));
+        if (scope === balanceScopeRef.current) setChallengeDays(Math.round(Number(cp) / 86400));
       } catch {
-        setChallengeDays(7);
+        if (scope === balanceScopeRef.current) setChallengeDays(7);
       }
+      if (scope !== balanceScopeRef.current) return;
       setTimeRemaining(Number(rem));
       setStale(true);
       // 체인 시계를 갱신한다 — 상대 시간("이의제기 N 시간 남음") 의 기준.
@@ -1775,10 +1815,11 @@ export default function App() {
       // 그러면 화면은 갱신되지 않은 숫자를 정답처럼 보여주고, 사용자는 그걸 "내 갱신이
       // 반영되지 않았다" 또는 "내 돈이 사라졌다" 고 읽는다. 연결이 끊겼다는 사실을
       // 말하는 유일한 기회인데, 말할 수 있는 곳이 아니었다.
+      if (scope !== balanceScopeRef.current) return;
       setStale(false);
       console.warn("refreshTimer failed:", errorText(e));
     }
-  }, [vaultCtr, provider]);
+  }, [vaultCtr, provider, balanceScope]);
   useEffect(() => { if (vaultCtr) void refreshTimer(); }, [vaultCtr, refreshTimer]);
   useEffect(() => {
     if (!vaultCtr) return;
@@ -1794,8 +1835,8 @@ export default function App() {
     if (!factory) { setStatus("Connect first"); return; }
     if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
     // Prevent double-create: factory enforces 1-per-owner and will revert with ALREADY_HAS_VAULT
-    if (creationHasVault || (!YIELD_ENABLED && ownVault)) { setStatus("You already have this type of vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
-    if (creationKind === "yield" && (!YIELD_ENABLED || !yieldTerms || !yieldConsent)) {
+    if (creationHasVault || (!HAS_YIELD_ROUTES && ownVault)) { setStatus("You already have this type of vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
+    if (creationKind === "yield" && (!creationYieldRoute || !creationYieldTerms || !yieldConsent)) {
       setStatus("Read and accept the yield vault terms before creating it."); return;
     }
     const resolved = heirResolved || await resolveHeirInput(heir);
@@ -1814,7 +1855,7 @@ export default function App() {
     try {
       // Cached lookup can still be loading or stale. Check both generations before
       // creating so a delayed legacy lookup cannot leave two active app vaults.
-      const targetFactory = new ethers.Contract(creationFactoryAddress, creationKind === "yield" ? YIELD_FACTORY_ABI : FACTORY_ABI, provider);
+      const targetFactory = new ethers.Contract(creationFactoryAddress, creationKind === "yield" ? creationYieldRoute!.factoryAbi : FACTORY_ABI, provider);
       const sources = creationKind === "yield" ? [targetFactory] : [factory, ...(LEGACY_FACTORY_ADDRESS && provider
         ? [new ethers.Contract(LEGACY_FACTORY_ADDRESS, FACTORY_ABI, provider)] : [])];
       const existing = await Promise.all(sources.map(source => source.vaultOf(account)));
@@ -1887,7 +1928,7 @@ export default function App() {
   const heirLink = vault ? `${APP_ORIGIN}/?vault=${vault}` : "";
   const heirMessage = vault && vaultHeir
     ? [
-        `You are named as the heir of a WLD vault.`,
+        `You are named as the heir of a ${wldSymbol} vault.`,
         ``,
         `Open this link in World App to see it: ${heirLink}`,
         ``,
@@ -1948,7 +1989,7 @@ export default function App() {
     setShareBusy(true);
     try {
       const picked = await pickWorldContacts(
-        "Join me on a WLD inheritance vault in World App.",
+        "Join me on an inheritance vault in World App.",
       );
       const first = picked?.[0];
       if (!first?.walletAddress) {
@@ -1973,7 +2014,7 @@ export default function App() {
       if (!p) throw new Error("Not connected. Please sign in and check again.");
       const sig = ethers.id("VaultCreated(address,address,address,uint256)");
       const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
-      const sources = [{ address: FACTORY_ADDRESS, block: FACTORY_DEPLOY_BLOCK }, ...(LEGACY_FACTORY_ADDRESS ? [{ address: LEGACY_FACTORY_ADDRESS, block: LEGACY_FACTORY_DEPLOY_BLOCK }] : []), ...(YIELD_ENABLED ? [{ address: YIELD_FACTORY_ADDRESS, block: YIELD_FACTORY_DEPLOY_BLOCK }] : [])];
+      const sources = [{ address: FACTORY_ADDRESS, block: FACTORY_DEPLOY_BLOCK }, ...(LEGACY_FACTORY_ADDRESS ? [{ address: LEGACY_FACTORY_ADDRESS, block: LEGACY_FACTORY_DEPLOY_BLOCK }] : []), ...YIELD_ROUTES.map(route => ({ address: route.factory, block: route.block }))];
       const indexed: string[] = [];
       let indexIncomplete = false;
       if (NOTIFY_BACKEND_ENABLED) {
@@ -2005,11 +2046,16 @@ export default function App() {
       }
       const vaults = (await Promise.all([...candidates].map(async candidate => {
         try {
-          const ctr = new ethers.Contract(candidate, VAULT_ABI, p);
-          const [currentHeir, currentFactory, owner, token] = await Promise.all([ctr.heir(), ctr.factory(), ctr.owner(), ctr.WLD()]);
-          if (currentHeir.toLowerCase() !== account.toLowerCase() || token.toLowerCase() !== WLD_ADDRESS.toLowerCase() || !sources.some(s => s.address.toLowerCase() === currentFactory.toLowerCase())) return null;
-          if (YIELD_ENABLED && currentFactory.toLowerCase() === YIELD_FACTORY_ADDRESS.toLowerCase()) {
-            return await new ethers.Contract(currentFactory, YIELD_FACTORY_ABI, p).knownVaults(candidate) ? candidate : null;
+          const ctr = new ethers.Contract(candidate, [...VAULT_ABI, "function asset() view returns (address)", "function rewardToken() view returns (address)", "function strategy() view returns (address)"], p);
+          const [currentHeir, currentFactory, owner] = await Promise.all([ctr.heir(), ctr.factory(), ctr.owner()]);
+          const route = yieldRouteFor(currentFactory);
+          if (currentHeir.toLowerCase() !== account.toLowerCase() || !sources.some(s => s.address.toLowerCase() === currentFactory.toLowerCase())) return null;
+          const token = await ctr[route?.tokenGetter ?? "WLD"]();
+          if (token.toLowerCase() !== (route?.asset ?? WLD_ADDRESS).toLowerCase()) return null;
+          if (route) {
+            if (String(await ctr.strategy()).toLowerCase() !== route.strategy.toLowerCase()
+              || route.symbol === "USDC" && String(await ctr.rewardToken()).toLowerCase() !== WLD_ADDRESS.toLowerCase()) return null;
+            return await new ethers.Contract(currentFactory, route.factoryAbi, p).knownVaults(candidate) ? candidate : null;
           }
           const canonical = await new ethers.Contract(currentFactory, FACTORY_ABI, p).vaultOf(owner);
           return canonical.toLowerCase() === candidate.toLowerCase() ? candidate : null;
@@ -2123,8 +2169,8 @@ export default function App() {
     if (amt > walletWld) { setStatus("Amount exceeds wallet balance"); return; }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const receipt = isYieldVault ? new ethers.Contract(MORPHO_VAULT_ADDRESS, MORPHO_ABI, provider) : null;
-      const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+      const receipt = isYieldVault ? new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider) : null;
+      const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
       const [minShares, before] = await Promise.all([
         receipt ? receipt.previewDeposit(amt).then((shares: bigint) => minimumOutput(shares)) : Promise.resolve(0n),
         (receipt ?? token).balanceOf(vault),
@@ -2134,14 +2180,14 @@ export default function App() {
       // allowance 가 없다는 오류가 나면 이 두 건의 순서를 확인한다.
       const sent = await sendWorldChainTx([
         {
-          address: WLD_ADDRESS,
+          address: selectedAssetAddress,
           abi: ERC20_ABI,
           functionName: "approve",
           args: [vaultFactory, amt.toString()],
         },
         {
           address: vaultFactory,
-          abi: isYieldVault ? YIELD_FACTORY_ABI : FACTORY_ABI,
+          abi: selectedFactoryAbi,
           functionName: isYieldVault ? "depositWithMinShares" : "deposit",
           args: isYieldVault ? [amt.toString(), minShares.toString()] : [amt.toString()],
         },
@@ -2395,7 +2441,7 @@ export default function App() {
         hashType: sent.tx.hashType,
         check: async () => {
           if (isYieldVault) return (await vaultCtr.claimedAt()) > 0n;
-          const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+          const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
           const vb: bigint = await token.balanceOf(vault);
           // claim 은 금고를 0 으로 만든다. 잔액이 아직 로드되지 않은 경우
           // (prev === 0) `vb < prev` 는 절대 참이 될 수 없어 60초 폴링 후
@@ -2429,12 +2475,12 @@ export default function App() {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const fullExit = isYieldVault && selectedYieldPosition?.valued && amt === selectedYieldPosition.gross;
       const minNet = fullExit ? minimumOutput(selectedYieldPosition!.net) : 0n;
-      const asset = new ethers.Contract(isYieldVault ? MORPHO_VAULT_ADDRESS : WLD_ADDRESS, ERC20_ABI, provider);
-      const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+      const asset = new ethers.Contract(isYieldVault ? selectedStrategyAddress : selectedAssetAddress, ERC20_ABI, provider);
+      const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
       const [before, beforeIdle]: [bigint, bigint] = await Promise.all([
         asset.balanceOf(vault), isYieldVault ? token.balanceOf(vault) : Promise.resolve(0n),
       ]);
-      const sent = await sendWorldChainTx([{ address: vaultFactory, abi: isYieldVault ? YIELD_FACTORY_ABI : FACTORY_ABI,
+      const sent = await sendWorldChainTx([{ address: vaultFactory, abi: selectedFactoryAbi,
         functionName: fullExit ? "withdrawAllFromMyVault" : "withdrawFromMyVault",
         args: [withdrawTo, (fullExit ? minNet : amt).toString()] }]);
       if (!sent.ok) {
@@ -2473,9 +2519,9 @@ export default function App() {
     const scope = balanceScopeRef.current;
     const selectedVault = vault, selectedFactory = vaultFactory;
     try {
-      const child = new ethers.Contract(selectedVault, YIELD_VAULT_ABI, provider);
+      const child = new ethers.Contract(selectedVault, selectedVaultAbi, provider);
       if ((await child.owner()).toLowerCase() !== account.toLowerCase() || scope !== balanceScopeRef.current) return;
-      const sent = await sendWorldChainTx([{ address: selectedFactory, abi: YIELD_FACTORY_ABI,
+      const sent = await sendWorldChainTx([{ address: selectedFactory, abi: selectedFactoryAbi,
         functionName: "recoverArchivedVault", args: [selectedVault] }]);
       if (!sent.ok) {
         setStatus(sent.error);
@@ -2508,21 +2554,22 @@ export default function App() {
     try {
       // Refetch before signing. API totals may change, but no API may choose a
       // token, distributor, recipient or arbitrary transaction for the wallet.
-      const data = await fetchWldRewards(selectedVault, controller.signal);
+      const published = await fetchWldRewards(selectedVault, controller.signal);
       if (scope !== balanceScopeRef.current) return;
-      if (data.claimable === 0n) throw new Error("No WLD rewards are ready to claim. Refresh after reward publication.");
-      const contract = new ethers.Contract(selectedVault, YIELD_VAULT_ABI, provider);
-      const receipt = new ethers.Contract(MORPHO_VAULT_ADDRESS, MORPHO_ABI, provider);
+      const contract = new ethers.Contract(selectedVault, selectedVaultAbi, provider);
+      const receipt = new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider);
       const [before, settledAt] = await Promise.all([contract.totalRewardsClaimed(), contract.claimedAt()]);
-      const minShares = settledAt === 0n ? minimumOutput(await receipt.previewDeposit(data.claimable)) : 0n;
+      const data = remainingWldRewards(published, before);
+      if (data.claimable === 0n) throw new Error("No WLD rewards are ready to claim. Refresh after reward publication.");
+      const minShares = settledAt === 0n && !isUsdcVault ? minimumOutput(await receipt.previewDeposit(data.claimable)) : 0n;
       if (scope !== balanceScopeRef.current) return;
-      const sent = await sendWorldChainTx([{ address: selectedFactory, abi: YIELD_FACTORY_ABI,
+      const sent = await sendWorldChainTx([{ address: selectedFactory, abi: selectedFactoryAbi,
         functionName: "claimRewardsFor", args: [selectedVault, data.cumulative.toString(), data.proof, minShares.toString()] }]);
       if (!sent.ok) { setStatus(sent.error); return; }
       await waitForTxOrEvent(getRwProvider(), { txHash: sent.tx.hash, hashType: sent.tx.hashType,
         check: async () => await contract.totalRewardsClaimed() > before });
       if (scope !== balanceScopeRef.current) return;
-      setStatus(settledAt === 0n ? "WLD rewards claimed and reinvested. Your principal and timer are unchanged."
+      setStatus(settledAt === 0n ? isUsdcVault ? "WLD rewards claimed and held in your USDC vault. Your USDC principal and timer are unchanged." : "WLD rewards claimed and reinvested. Your principal and timer are unchanged."
         : "Remaining rewards paid to the fixed inheritance recipient after the net-gain fee.");
       await Promise.all([refreshBalances(), refreshRewards()]);
     } catch (error) {
@@ -2535,13 +2582,13 @@ export default function App() {
     const scope = balanceScopeRef.current;
     const selectedVault = vault, selectedFactory = vaultFactory;
     try {
-      const contract = new ethers.Contract(selectedVault, YIELD_VAULT_ABI, provider);
+      const contract = new ethers.Contract(selectedVault, selectedVaultAbi, provider);
       const [amount, settledAt] = await Promise.all([contract.unprocessedRewards(), contract.claimedAt()]);
       if (amount === 0n) throw new Error("No received WLD rewards remain to process. Refresh the balances.");
-      const receipt = new ethers.Contract(MORPHO_VAULT_ADDRESS, MORPHO_ABI, provider);
-      const minShares = settledAt === 0n ? minimumOutput(await receipt.previewDeposit(amount)) : 0n;
+      const receipt = new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider);
+      const minShares = settledAt === 0n && !isUsdcVault ? minimumOutput(await receipt.previewDeposit(amount)) : 0n;
       if (scope !== balanceScopeRef.current) return;
-      const sent = await sendWorldChainTx([{ address: selectedFactory, abi: YIELD_FACTORY_ABI,
+      const sent = await sendWorldChainTx([{ address: selectedFactory, abi: selectedFactoryAbi,
         functionName: "processRewardsFor", args: [selectedVault, minShares.toString()] }]);
       if (!sent.ok) { setStatus(sent.error); return; }
       await waitForTxOrEvent(getRwProvider(), { txHash: sent.tx.hash, hashType: sent.tx.hashType,
@@ -2558,22 +2605,39 @@ export default function App() {
   const exitYieldShares = async () => {
     if (!isYieldVault || !provider || !isMyVault) return;
     try {
-      const receipt = new ethers.Contract(MORPHO_VAULT_ADDRESS, MORPHO_ABI, provider);
+      const receipt = new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider);
       const shares: bigint = await receipt.balanceOf(vault);
       if (shares === 0n) throw new Error("This vault holds no receipt shares.");
-      const sent = await sendWorldChainTx([{ address: vaultFactory, abi: YIELD_FACTORY_ABI,
+      const sent = await sendWorldChainTx([{ address: vaultFactory, abi: selectedFactoryAbi,
         functionName: "withdrawSharesFromMyVault", args: [account, shares.toString()] }]);
       if (!sent.ok) { setStatus(sent.error); return; }
       await waitForTxOrEvent(getRwProvider(), { txHash: sent.tx.hash, hashType: sent.tx.hashType,
         check: async () => await receipt.balanceOf(vault) < shares });
-      setStatus("Receipt shares moved to your wallet. Any idle WLD stays in the vault.");
+      setStatus(`Receipt shares moved to your wallet. Any idle ${wldSymbol}${isUsdcVault ? " and WLD rewards" : ""} stay in the vault.`);
       await refreshBalances();
     } catch (error) { setStatus(errorText(error)); pushToast("error", errorText(error)); }
   };
-  const redeemYieldShares = async () => {
-    if (!provider || !YIELD_ENABLED || !account || !miniInstalled) return;
+  const withdrawUsdcRewards = async () => {
+    if (!isUsdcVault || !provider || !isMyVault || !miniInstalled) return;
+    const scope = balanceScopeRef.current;
     try {
-      const receipt = new ethers.Contract(MORPHO_VAULT_ADDRESS, MORPHO_ABI, provider);
+      const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+      const before: bigint = await token.balanceOf(vault);
+      if (before === 0n) throw new Error("No held WLD remains in this vault.");
+      const sent = await sendWorldChainTx([{ address: vaultFactory, abi: selectedFactoryAbi,
+        functionName: "withdrawRewardsFromMyVault", args: [account] }]);
+      if (!sent.ok) { setStatus(sent.error); return; }
+      await waitForTxOrEvent(getRwProvider(), { txHash: sent.tx.hash, hashType: sent.tx.hashType,
+        check: async () => await token.balanceOf(vault) < before });
+      if (scope !== balanceScopeRef.current) return;
+      setStatus("Held WLD paid to your wallet after the WLD reward fee. USDC principal and timer are unchanged.");
+      await Promise.all([refreshBalances(), refreshRewards()]);
+    } catch (error) { if (scope === balanceScopeRef.current) { setStatus(errorText(error)); pushToast("error", errorText(error)); } }
+  };
+  const redeemYieldShares = async (route: YieldRoute) => {
+    if (!provider || !HAS_YIELD_ROUTES || !account || !miniInstalled) return;
+    try {
+      const receipt = new ethers.Contract(route.strategy, MORPHO_ABI, provider);
       const [held, available, cash] = await Promise.all([receipt.balanceOf(account), receipt.maxRedeem(account), receipt.maxWithdraw(account)]);
       const fullQuote: bigint = await receipt.previewRedeem(held);
       // maxRedeem can round down one share even when all quoted cash is liquid.
@@ -2582,13 +2646,13 @@ export default function App() {
       if (shares === 0n) throw new Error("Cash liquidity is currently unavailable. Your receipt shares remain in your wallet.");
       const minAssets = minimumOutput(await receipt.previewRedeem(shares));
       const sent = await sendWorldChainTx([
-        { address: MORPHO_VAULT_ADDRESS, abi: MORPHO_ABI, functionName: "approve", args: [YIELD_FACTORY_ADDRESS, shares.toString()] },
-        { address: YIELD_FACTORY_ADDRESS, abi: YIELD_FACTORY_ABI, functionName: "redeemWalletShares", args: [shares.toString(), minAssets.toString()] },
+        { address: route.strategy, abi: MORPHO_ABI, functionName: "approve", args: [route.factory, shares.toString()] },
+        { address: route.factory, abi: route.factoryAbi, functionName: "redeemWalletShares", args: [shares.toString(), minAssets.toString()] },
       ]);
       if (!sent.ok) { setStatus(sent.error); return; }
       await waitForTxOrEvent(getRwProvider(), { txHash: sent.tx.hash, hashType: sent.tx.hashType,
         check: async () => await receipt.balanceOf(account) < held });
-      setStatus("Available receipt shares redeemed to WLD. Remaining shares, if any, stay in your wallet.");
+      setStatus(`Available receipt shares redeemed to ${route.symbol}. Remaining shares, if any, stay in your wallet.`);
       await refreshBalances();
     } catch (error) { setStatus(errorText(error)); pushToast("error", errorText(error)); }
   };
@@ -2639,7 +2703,7 @@ export default function App() {
       setCancelledFlag(false);
       setTimeRemaining(0);
       setChallengeEndsAt(0);
-      setVaultWld(0n);
+      setVaultBalanceRead({ scope: "", amount: 0n });
       setStale(false);
       await loadVault();
       ok = true;
@@ -2689,8 +2753,8 @@ export default function App() {
         txHash: sent.tx.hash,
         hashType: sent.tx.hashType,
         check: async () => {
-          if (isYieldVault) return !await new ethers.Contract(vault, YIELD_VAULT_ABI, provider).hasAssets();
-          const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
+          if (isYieldVault) return !await new ethers.Contract(vault, selectedVaultAbi, provider).hasAssets();
+          const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
           const now: bigint = await token.balanceOf(vault);
           return now < prev;
         },
@@ -2785,17 +2849,17 @@ export default function App() {
           )}
         </div>
         <div className="page-intro"><span className="eyebrow">{tab === "vault" ? "Your check-in" : tab === "money" ? "A little aside" : tab === "support" ? "Here to help" : "For the future"}</span><h1>{tab === "vault" ? "Peace of mind, today." : tab === "money" ? "Make room for tomorrow." : tab === "support" ? "A clearer way forward." : ownVault ? "Your person. Your plan." : "Start with someone you love."}</h1></div>
-        {YIELD_ENABLED && account && vaultLookupIncomplete && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
+        {HAS_YIELD_ROUTES && account && vaultLookupIncomplete && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
           Some vault registries could not be refreshed. Previously found vaults stay visible; their availability may be out of date. We will retry automatically.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>Retry vault lookup</Button>
         </div>}
-        {YIELD_ENABLED && account && ownedVaults.length > 1 && <Card>
+        {HAS_YIELD_ROUTES && account && ownedVaults.length > 1 && <Card>
           <CardHeader><CardTitle>Your vaults</CardTitle></CardHeader><CardContent className="grid gap-2">
             {ownedVaults.map(item => <Button key={item.address} disabled={pendingAction}
               variant={vault.toLowerCase() === item.address.toLowerCase() ? "primary" : "outline"}
               aria-pressed={vault.toLowerCase() === item.address.toLowerCase()}
               onClick={() => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }}>
-              {item.factory.toLowerCase() === YIELD_FACTORY_ADDRESS.toLowerCase() ? "Morpho yield vault" : "WLD vault"} · {short(item.address)}
+              {vaultLabel(item.factory)} · {short(item.address)}
             </Button>)}
           </CardContent></Card>}
         {isYieldVault && vaultIdentity?.released && <p role="status" className="text-xs text-gray-600">
@@ -2803,33 +2867,35 @@ export default function App() {
         </p>}
         {isYieldVault && vaultIdentity?.released && isVaultOwner && vaultHasAssets && ["vault", "money", "inherit"].includes(tab) && <Card>
           <CardHeader><CardTitle>Recover archived assets</CardTitle></CardHeader><CardContent className="grid gap-2">
-            <p>Return this archived vault’s idle WLD and receipt shares to your wallet. Your current vault stays separate. Any positive net gain pays the same 10% service fee.</p>
+            <p>Return this archived vault’s idle {wldSymbol}, receipt shares{isUsdcVault ? " and other WLD" : ""} to your wallet. Your current vault stays separate. Any positive net gain pays the same 10% service fee.</p>
             <p className="text-xs text-gray-600">{isSettledClaim
               ? "Inheritance has completed. Only other assets received here can be recovered; late campaign rewards still go to the fixed inheritance recipient."
               : "This renews the archived timer and cancels any pending inheritance claim. It works without Morpho cash liquidity; you can redeem wallet-held shares as liquidity permits."}</p>
             <Button variant="primary" disabled={pendingAction || !miniInstalled || !identityMatchesVault} onClick={() => void runVaultAction(recoverArchivedYieldAssets)}>Recover archived assets to me</Button>
           </CardContent></Card>}
-        {YIELD_ENABLED && yieldReadError?.scope === balanceScope && yieldReadError.failed && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
+        {HAS_YIELD_ROUTES && yieldReadError?.scope === balanceScope && yieldReadError.failed && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
           Some Morpho balances could not be refreshed. The last available values may be out of date.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh yield balances</Button>
         </div>}
         {isYieldVault && (!isSettledClaim || vaultHasAssets) && ["vault", "money", "inherit"].includes(tab) && <YieldPositionCard
-          rates={yieldRates} ratesLoading={yieldRatesLoading}
+          route={selectedYieldRoute} rates={yieldRates} ratesLoading={yieldRatesLoading}
           position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
           busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
         {isYieldVault && ["vault", "money", "inherit"].includes(tab) && <YieldRewardsCard
+          usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
+          canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
           received={selectedReceivedRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
           settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
           busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
           onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
-        {YIELD_ENABLED && walletYieldShares > 0n && ["money", "inherit", "support"].includes(tab) && <Card>
-          <CardHeader><CardTitle>Receipt shares in your wallet</CardTitle></CardHeader><CardContent className="grid gap-2">
-            <p>{formatYieldAmount(walletYieldShares)} Re7 WLD shares</p>
+        {YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n).map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
+          <CardHeader><CardTitle>Receipt shares in your wallet · {route.symbol}</CardTitle></CardHeader><CardContent className="grid gap-2">
+            <p>{formatYieldAmount(walletYieldShares(route))} Re7 {route.symbol} shares</p>
             <p className="text-xs text-gray-600">These shares belong to your wallet. Redeem as much as current Morpho cash liquidity allows. Inheritance and vault exits have already paid their service fee; this redemption charges no additional service fee.</p>
-            <Button disabled={pendingAction || !miniInstalled} onClick={() => void runWalletAction(redeemYieldShares)}>Redeem available shares to WLD</Button>
+            <Button disabled={pendingAction || !miniInstalled} onClick={() => void runWalletAction(() => redeemYieldShares(route))}>Redeem available shares to {route.symbol}</Button>
             <Button disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh receipt shares</Button>
-          </CardContent></Card>}
+          </CardContent></Card>)}
 
         {/* 연결이 끊기면 화면이 멈춘다. 예전에는 여기에 아무 표시가 없어서 사용자가
             "내 갱신이 반영되지 않았다", 혹은 더 나쁘게 "내 돈이 사라졌다" 고 읽었다.
@@ -2897,11 +2963,11 @@ export default function App() {
                 <div className="stat-row">
                   <div className="stat">
                     <div className="stat-label">In your wallet</div>
-                    <div className="stat-value">{YIELD_ENABLED ? formatYieldAmount(walletWld) : fmtUnits(walletWld)} {wldSymbol}</div>
+                    <div className="stat-value">{HAS_YIELD_ROUTES ? formatYieldAmount(walletWld, wldDecimals) : fmtUnits(walletWld)} {wldSymbol}</div>
                   </div>
                   <div className="stat">
                     <div className="stat-label">{isYieldVault ? "Estimated value" : "In the vault"}</div>
-                    <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
+                    <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld, wldDecimals)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
                   </div>
                 </div>
               <div className="text-sm grid gap-1">
@@ -3001,14 +3067,14 @@ export default function App() {
                 </div>
                 <div>Last ping: <b>{vaultLastPing ? new Date(vaultLastPing * 1000).toLocaleString() : "-"}</b></div>
                 <div>
-                  Token (WLD):
-                  {WLD_ADDRESS ? (
+                  Token ({wldSymbol}):
+                  {selectedAssetAddress ? (
                     <>
-                      <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(WLD_ADDRESS, "wld")}>{short(WLD_ADDRESS)}</button>
+                      <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(selectedAssetAddress, "wld")}>{short(selectedAssetAddress)}</button>
                       {copied === "wld" && <span className="ml-2 text-green-700">Copied</span>}
                     </>
                   ) : <b className="break-all">-</b>}
-                  {WLD_ADDRESS && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${WLD_ADDRESS}`} target="_blank" rel="noreferrer">View</a>}
+                  {selectedAssetAddress && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${selectedAssetAddress}`} target="_blank" rel="noreferrer">View</a>}
                 </div>
                 {/* 블록 번호는 탐색기에 "View" 링크로만 제공. 숫자를 그대로 노출하면
                     사용자에게 의미가 없고 테스트 체인에서 "4" 같은 값이 오히려
@@ -3071,7 +3137,7 @@ export default function App() {
                 <div className="text-xs text-gray-600">
                   {vaultIdentity?.released
                     ? "This archived vault is closed. Claimable campaign rewards still go to its fixed inheritance recipient. Use a current vault for new deposits."
-                    : "This vault is closed, so deposits are turned off here — create a new vault first. If you already sent WLD to this vault address, the owner can sweep it from the Inherit tab."}
+                    : "This vault is closed, so deposits are turned off here — create a new vault first. If you already sent funds to this vault address, the owner can sweep them from the Inherit tab."}
                 </div>
               )}
               {/* 마감 이후에도 입금을 막는다. 상속인이 이미 수령할 수 있는 상태에서
@@ -3095,7 +3161,7 @@ export default function App() {
                 </div>
               )}
               <div className="text-xs text-gray-500">
-                * This vault accepts only WLD on World Chain (480). Do not send ETH or other tokens. Gas fees are generally covered by World App; ETH is usually not required.
+                Deposit {wldSymbol} on World Chain (480) using this app. {isUsdcVault ? "WLD campaign rewards are handled separately. " : ""}Do not send ETH or unrelated tokens. Review any transaction fees shown by World App.
               </div>
 
               {isMyVault && (
@@ -3115,7 +3181,7 @@ export default function App() {
                       : "Emergency withdraw (before the countdown ends)"}
                   </div>
                   <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn WLD to</label>
+                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn {wldSymbol} to</label>
                     <div className="field-row-controls">
                       <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
                       <Button onClick={setWithdrawToMe}>My address</Button>
@@ -3143,7 +3209,7 @@ export default function App() {
                       </Button>
                     </div>
                   </div>
-                  {isYieldVault && <p className="text-xs text-gray-600">The entered amount is before the service fee. Your recipient gets this amount minus the fee on any redeemed positive gain. Cash withdrawals can fail if Morpho liquidity is unavailable; receipt shares can be moved instead.</p>}
+                  {isYieldVault && <p className="text-xs text-gray-600">The entered amount is before the service fee. Your recipient gets this amount minus the fee on any redeemed positive gain. Cash withdrawals can fail if Morpho liquidity is unavailable; receipt shares can be moved instead.{isUsdcVault && " A full exit also sends held WLD to this recipient after the separate WLD reward fee."}</p>}
                   </div>
                 </>
               )}
@@ -3335,7 +3401,7 @@ export default function App() {
                           상속인 입장에서 절차는 동일하므로 막을 이유가 없다. 다만
                           "the balance is now available to you" 라고 말하면 없는 돈을
                           약속하는 셈이라 실제 잔액에 따라 문장을 바꾼다. */}
-                      {isYieldVault ? `The countdown has ended. File a claim to start the ${challengeDays}-day review window. Inheritance can pay WLD or receipt shares, depending on liquidity.` : vaultWld > 0n
+                      {isYieldVault ? `The countdown has ended. File a claim to start the ${challengeDays}-day review window. Inheritance can pay ${wldSymbol} or receipt shares, depending on liquidity.${isUsdcVault ? " Held WLD rewards go to the same heir." : ""}` : vaultWld > 0n
                         ? `The countdown has ended, so the ${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} balance is now available to you. File a claim to start the ${challengeDays}-day review window.`
                         : `The countdown has ended. This vault currently holds nothing, so a claim would move no funds — file one only if WLD arrives before the review window ends.`}
                     </div>
@@ -3431,7 +3497,7 @@ export default function App() {
               <div className="text-sm">
                 At stake in this vault:{" "}
                 <b className={vaultHasAssets ? "text-base" : ""}>
-                  {isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(selectedYieldPosition.net)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol}`}
+                  {isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(selectedYieldPosition.net, wldDecimals)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol}`}
                 </b>{" "}
                 <span className="text-xs text-gray-600">
                   {/* 이 줄은 **역할마다 다른 문장**이어야 한다. 예전에는 소유자 문장
@@ -3460,7 +3526,7 @@ export default function App() {
                            안내를 받는다. */
                         ? "— nothing left in this vault, and deposits are turned off at this stage."
                         : isMyVault
-                          ? "— nothing yet. Deposit WLD to start protecting it."
+                          ? `— nothing yet. Deposit ${wldSymbol} to start protecting it.`
                           : "— nothing here yet."}
                 </span>
               </div>
@@ -3829,7 +3895,7 @@ export default function App() {
                   접혀서, 펼치지도 않은 설명 카드가 180px 를 차지했다 — 그 높이는 첫
                   화면에서 "Create vault" 버튼을 밀어 내렸다. 상세가 안에 있으니 요약은
                   "안 읽어도 괜찮지만 읽을 수 있다" 를 알리는 한 줄이면 충분하다. */}
-              <span className="how-toggle-sub">{YIELD_ENABLED ? "3 steps · choose how to hold WLD" : "3 steps · one vault per wallet"}</span>
+              <span className="how-toggle-sub">{HAS_YIELD_ROUTES ? "3 steps · choose your asset and vault" : "3 steps · one vault per wallet"}</span>
               <span className="how-toggle-chevron" aria-hidden="true">{showHow ? "▴" : "▾"}</span>
             </button>
             {showHow && (
@@ -3850,11 +3916,11 @@ export default function App() {
               <ol className="steps">
                 <li>
                   <b>Create a vault</b>
-                  <span>Name your heir and how often you want to renew. No WLD moves at this step.</span>
+                  <span>Choose an asset, name your heir and how often you want to renew. No funds move at this step.</span>
                 </li>
                 <li>
-                  <b>Send WLD to it</b>
-                  <span>After you create it, the Send tab appears and you deposit WLD there.</span>
+                  <b>Put funds aside</b>
+                  <span>After you create it, the Send tab appears and you deposit the chosen asset there.</span>
                 </li>
                 <li>
                   <b>Renew before the countdown ends</b>
@@ -3864,11 +3930,11 @@ export default function App() {
 
               <div className="text-xs text-gray-600 space-y-1">
                 <div>
-                  {YIELD_ENABLED ? "You can hold one basic vault and one yield vault. Each has its own balance, heir and countdown." : "One vault per wallet. The contract refuses a second one, so there is nothing to keep track of."}
+                  {USDC_ENABLED ? "Manage WLD and USDC in one place. Each asset has its own yield vault, heir and countdown; WLD also has a free basic vault." : HAS_YIELD_ROUTES ? "You can have one WLD basic vault and one WLD Morpho yield vault. Each has its own heir and countdown." : "One vault per wallet. The contract refuses a second one, so there is nothing to keep track of."}
                 </div>
                 <div>
                   Changed your mind? Before the countdown ends you can switch to a different
-                  heir, or cancel entirely — then the WLD is yours to withdraw whenever you
+                  heir, or cancel entirely — then the funds are yours to withdraw whenever you
                   like.
                 </div>
                 <div className="text-gray-500">
@@ -3887,12 +3953,19 @@ export default function App() {
               </Card>
               )}
 
-              {tab === "inherit" && (!ownVault || YIELD_ENABLED) && gate2(
+              {tab === "inherit" && (!ownVault || HAS_YIELD_ROUTES) && gate2(
                 <Card>
                   <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
                   <CardContent className="grid gap-3">
-              {YIELD_ENABLED && <YieldChoice kind={creationKind} terms={yieldTerms} consent={yieldConsent} busy={pendingAction}
-                rates={yieldRates} ratesLoading={yieldRatesLoading}
+              {USDC_ENABLED && <fieldset className="yield-choice" disabled={pendingAction}><legend>Asset to inherit</legend>
+                <div className="flex gap-2">
+                  {(["WLD", "USDC"] as const).map(symbol => <Button key={symbol} id={`asset-${symbol.toLowerCase()}`} variant={creationAsset === symbol ? "primary" : "outline"}
+                    aria-pressed={creationAsset === symbol} onClick={() => { setCreationAsset(symbol); setCreationKind(symbol === "USDC" ? "yield" : "plain"); setYieldConsent(false); }}>{symbol}</Button>)}
+                </div>
+                <p className="text-xs text-gray-600">Each asset has its own personal vault. USDC deposits earn with Morpho; nothing is converted between currencies.</p>
+              </fieldset>}
+              {HAS_YIELD_ROUTES && <YieldChoice kind={creationKind} terms={creationYieldTerms} consent={yieldConsent} busy={pendingAction}
+                route={creationYieldRoute} rates={creationYieldRates} ratesLoading={yieldRatesLoading}
                 onKind={kind => { setCreationKind(kind); setYieldConsent(false); }} onConsent={setYieldConsent} />}
               {/* Send 탭과 같은 스탯 처리. 여기서 사용자가 먼저 확인하는 것은
                   "내가 얼마를 넣을 수 있는가" 다. 본문 글씨로 흘려두면 폼의 첫
@@ -3900,7 +3973,7 @@ export default function App() {
               <div className="stat-row">
                 <div className="stat">
                   <div className="stat-label">In your wallet</div>
-                  <div className="stat-value">{YIELD_ENABLED ? formatYieldAmount(walletWld) : fmtUnits(walletWld)} {wldSymbol}</div>
+                  <div className="stat-value">{creationWalletBalance === null ? "Checking balance…" : `${formatYieldAmount(creationWalletBalance, creationAsset === "USDC" ? 6 : 18)} ${creationAsset}`}</div>
                 </div>
               </div>
               <div className="field-row">
@@ -3997,8 +4070,8 @@ export default function App() {
                   <div className="font-medium">{notifyPermission === "granted" ? "Notifications are on" : "Turn on notifications first"}</div>
                   <div className="mt-1">
                     {notifyHealth.level === "off" || notifyHealth.level === "broken"
-                      ? `Reminders are optional. You will not receive them until you enable notifications. Your heir needs their own permission. Notices start once the vault holds WLD.`
-                      : `Reminders are enabled for you. Your heir must also open this app and enable notifications. Notices start once the vault holds WLD.`}
+                      ? `Reminders are optional. You will not receive them until you enable notifications. Your heir needs their own permission. Notices start once the vault holds funds.`
+                      : `Reminders are enabled for you. Your heir must also open this app and enable notifications. Notices start once the vault holds funds.`}
                   </div>
                   {notifyPermission !== "granted" && (
                     <Button size="sm" className="mt-1.5" variant="outline"
@@ -4016,11 +4089,11 @@ export default function App() {
                   주 액션을 삼킨 구조. 알림은 없어도 금고 만들기는 가능해야 한다. */}
               <p className="text-xs text-gray-600">Creating a vault means you accept the <a href="/terms.html" className="underline">Terms</a> and <a href="/privacy.html" className="underline">Privacy Policy</a>, including the seven-day claim and automatic transfer rules.</p>
               {creationHasVault && <p className="text-xs text-gray-600">You already have this type of vault. Select another type above or manage the existing one.</p>}
-              <Button variant="primary" onClick={() => void runVaultAction(createVault)} disabled={pendingAction || creating || !miniInstalled || !account || creationHasVault || (!YIELD_ENABLED && isMyVault) || (creationKind === "yield" && (!yieldTerms || !yieldConsent)) || !periodValid || !heirResolved?.address}>{creating ? <><span className="spinner" />Creating vault…</> : "Create vault"}</Button>
-              {!YIELD_ENABLED && isMyVault && (
+              <Button variant="primary" onClick={() => void runVaultAction(createVault)} disabled={pendingAction || creating || !miniInstalled || !account || creationHasVault || (!HAS_YIELD_ROUTES && isMyVault) || (creationKind === "yield" && (!creationYieldTerms || !yieldConsent)) || !periodValid || !heirResolved?.address}>{creating ? <><span className="spinner" />Creating vault…</> : "Create vault"}</Button>
+              {!HAS_YIELD_ROUTES && isMyVault && (
                 <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
               )}
-              {vault && (!YIELD_ENABLED || !isVaultOwner || (isYieldVault ? creationKind === "yield" : creationKind === "plain")) && (
+              {vault && (!HAS_YIELD_ROUTES || !isVaultOwner || (isYieldVault ? creationFactoryAddress.toLowerCase() === vaultFactory.toLowerCase() : creationKind === "plain")) && (
                 <div className="text-xs text-gray-600 break-all">
                   {/* "Your vault" 는 **내 소유** 일 때만 사실이다. 상속인이 `?vault=` 링크로
                       남의 금고를 보고 있으면 이 라벨은 소유권을 주장하는 셈이 되고, 같은
@@ -4139,11 +4212,11 @@ export default function App() {
           <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-700">
             <div>
-              Your wallet keys stay in World App. Deposited WLD is held by your on-chain vault. We cannot redirect an inheritance or withdraw an active owner’s funds.
+              Your wallet keys stay in World App. Deposited funds are held by your on-chain vault. We cannot redirect an inheritance or withdraw an active owner’s funds.
             </div>
             <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
               <li>Your setup and management transactions require World App approval. After an heir’s claim and seven-day review, a new vault may transfer automatically without a second signature.</li>
-              <li>Deposits move WLD into your personal vault contract. Eligible inheritance transfers can only pay its named heir; active-owner withdrawals require your approval.</li>
+              <li>Deposits move the selected asset into your personal vault contract. Yield deposits supply it to the disclosed Morpho vault. Eligible inheritance transfers can only pay its named heir; active-owner withdrawals require your approval.</li>
               <li>World App provides your address and asks you to approve wallet sign-in and management transactions.</li>
               <li>We store sign-in security records and registered vault addresses, monitoring state and delivery or execution records. See Privacy for details. We never collect your wallet keys.</li>
             </ul>
@@ -4157,7 +4230,7 @@ export default function App() {
               <div className="text-xs text-gray-600">
                 Register this vault and World App notifies you and your heir at each point where a decision is
                 actually open: the countdown is close to ending, your heir has filed a claim, or the 7-day review
-                window has passed. Nothing is sent while the vault holds no WLD.
+                window has passed. Nothing is sent while the vault holds no funds.
               </div>
               {/* 상태값("unknown" / "not registered") 을 그대로 보여주지 않는다.
                   사용자는 그것으로 무엇을 해야 하는지 알 수 없다. 대신 무엇이 되고 있지
@@ -4313,7 +4386,7 @@ export default function App() {
           >
             <div id="release-modal-title" className="text-lg font-semibold mb-2">Release vault slot?</div>
             <div id="release-modal-desc" className="text-sm text-gray-700 mb-3">
-              You can release only after expiry and when the vault WLD balance is 0. Releasing keeps the vault contract on-chain and clears only the factory's one-per-owner mapping. It cannot be undone.
+              You can release only after expiry or settlement and when the vault holds no cash, receipt shares or WLD rewards. Releasing keeps the vault contract on-chain and clears only this factory's one-per-owner mapping. It cannot be undone.
             </div>
             <label className="flex items-start gap-2 text-sm text-gray-700 mb-3">
               {/* 기본 체크박스는 13x13 이라 손가락으로 누르기엔 작다(권장 44px 면적).

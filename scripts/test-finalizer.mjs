@@ -12,17 +12,24 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   AbiCoder, Contract, ContractFactory, HDNodeWallet, Interface, JsonRpcProvider, Transaction, formatEther, parseEther, parseUnits, keccak256,
+  ZeroAddress,
 } from "ethers";
 import { readFinalizerHealth, runFinalizerCycle } from "../backend/src/finalizer.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const yieldDeploymentGas = readFileSync(root + "/.github/workflows/deploy.yml", "utf8").match(/FINALIZER_MAX_GAS:(\d+)/)[1];
+const deploymentWorkflow = readFileSync(root + "/.github/workflows/deploy.yml", "utf8");
+const yieldDeploymentGas = deploymentWorkflow.match(/YIELD_EXECUTION_GAS=(\d+)/)[1];
+const usdcDeploymentGas = deploymentWorkflow.match(/USDC_EXECUTION_GAS=(\d+)/)[1];
 const artifact = (file, name = file) =>
   JSON.parse(readFileSync(root + "/out/" + file + ".sol/" + name + ".json", "utf8"));
 const tokenArtifact = artifact("MockERC20");
 const factoryArtifact = artifact("InheritanceVaultWLDFactoryOnePerOwner");
+const usdcArtifact = artifact("MockUSDCYield", "MockUSDC");
+const usdcFactoryArtifact = artifact("MockUSDCYield", "MockUSDCYieldFactory");
+const usdcVaultArtifact = artifact("MockUSDCYield", "MockUSDCYieldVault");
 const legacyArtifact = artifact("InheritanceAutomation.t", "LegacyAutomationFactory");
 const factoryInterface = new Interface(factoryArtifact.abi);
+const usdcVaultInterface = new Interface(usdcVaultArtifact.abi);
 const selector = factoryInterface.getFunction("executeInheritance").selector;
 const mnemonic = "test test test test test test test test test test test junk"; // Anvil's public fixture.
 const keeper = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/2");
@@ -45,7 +52,7 @@ let provider;
 let deploymentGas;
 const behavior = { sends: [], requests: 0, hiddenReceipts: false, droppedResponse: false,
   chainId: null, oracleQuote: null, receiptExtra: null, renewedBeforeSimulation: null,
-  rpcErrorMethod: null, finalizedBlock: null, requestLimit: null };
+  rpcErrorMethod: null, historicalReadErrorSelector: null, finalizedBlock: null, requestLimit: null };
 try {
   for (let i = 0; ; i++) {
     try {
@@ -64,7 +71,9 @@ try {
       for await (const part of request) raw += part;
       const call = JSON.parse(raw);
       behavior.requests++;
-      if (call.method === behavior.rpcErrorMethod || behavior.requestLimit != null && behavior.requests > behavior.requestLimit) {
+      const historicalReadError = behavior.historicalReadErrorSelector && call.method === "eth_call" &&
+        call.params[1] !== "latest" && call.params[0].data?.startsWith(behavior.historicalReadErrorSelector);
+      if (historicalReadError || call.method === behavior.rpcErrorMethod || behavior.requestLimit != null && behavior.requests > behavior.requestLimit) {
         response.end(JSON.stringify({ jsonrpc: "2.0", id: call.id,
           error: { code: -32000, message: "Local fixture RPC unavailable" } }));
         return;
@@ -247,6 +256,90 @@ try {
     Object.assign(f.env, { YIELD_FACTORY_ADDRESS: await yieldFactory.getAddress(),
       MORPHO_VAULT_ADDRESS: await morpho.getAddress(), FINALIZER_MAX_GAS: yieldDeploymentGas, FINALIZER_BATCH_SIZE: "1" });
     return { ...f, morpho, yieldFactory, yieldVault: vault, vaults: mixed ? [...f.vaults, vault] : [vault] };
+  }
+
+  async function usdcFixture({ settlement = 0, ready = true, known = true,
+    factoryAsset = null, factoryReward = null, factoryStrategy = null } = {}) {
+    const f = await fixture(0, false);
+    const wldMorpho = await deploy(artifact("MockERC4626"), owner, [f.env.WLD_ADDRESS]);
+    const wldYieldFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, await wldMorpho.getAddress(), await owner.getAddress(), 1000]);
+    const usdc = await deploy(usdcArtifact, owner, []);
+    const morpho = await deploy(artifact("MockERC4626"), owner, [await usdc.getAddress()]);
+    const strategy = factoryStrategy || await morpho.getAddress();
+    const usdcYieldFactory = await deploy(usdcFactoryArtifact, owner, [
+      factoryAsset || await usdc.getAddress(), strategy, factoryReward || f.env.WLD_ADDRESS,
+      await owner.getAddress(), 1000,
+    ]);
+    const signer = await provider.getSigner(3);
+    await (await usdcYieldFactory.connect(signer).createVault(heirAddress)).wait();
+    const vaultAddress = await usdcYieldFactory.vaultOf(await signer.getAddress());
+    const vault = new Contract(vaultAddress, usdcVaultArtifact.abi, owner);
+    const cashAmount = 100_000_000n;
+    if (settlement === 0) await (await usdc.mint(vaultAddress, cashAmount)).wait();
+    if (settlement === 1) await (await morpho.mint(vaultAddress, parseEther("100"))).wait();
+    if (settlement === 2) await (await f.token.mint(vaultAddress, parseEther("10"))).wait();
+    await (await vault.setTestState(ready, true, settlement)).wait();
+    if (!known) await (await usdcYieldFactory.setKnownVault(vaultAddress, false)).wait();
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(vaultAddress);
+    Object.assign(f.env, {
+      YIELD_FACTORY_ADDRESS: await wldYieldFactory.getAddress(),
+      MORPHO_VAULT_ADDRESS: await wldMorpho.getAddress(),
+      USDC_YIELD_FACTORY_ADDRESS: await usdcYieldFactory.getAddress(),
+      USDC_MORPHO_VAULT_ADDRESS: await morpho.getAddress(),
+      USDC_ADDRESS: await usdc.getAddress(), FINALIZER_MAX_GAS: usdcDeploymentGas,
+      FINALIZER_BATCH_SIZE: "5", FINALIZER_SCAN_LIMIT: "20",
+    });
+    return { ...f, usdc, morpho, wldMorpho, wldYieldFactory, usdcYieldFactory, usdcVault: vaultAddress, vault,
+      cashAmount, settlement, vaults: [vaultAddress] };
+  }
+
+  async function productionUSDCFixture(mode) {
+    const f = await fixture(0, false);
+    const distributorAddress = "0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae";
+    const distributorArtifact = artifact("MockMerklDistributor");
+    await provider.send("anvil_setCode", [distributorAddress, distributorArtifact.deployedBytecode.object]);
+    const wldMorpho = await deploy(artifact("MockERC4626"), owner, [f.env.WLD_ADDRESS]);
+    const wldYieldFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, await wldMorpho.getAddress(), await owner.getAddress(), 1000]);
+    const usdc = await deploy(artifact("MockRe7USDC", "MockUSDC"), owner, []);
+    const morpho = await deploy(artifact("MockRe7USDC"), owner, [await usdc.getAddress()]);
+    const feeRecipient = await owner.getAddress();
+    const usdcYieldFactory = await deploy(artifact("InheritanceVaultUSDCFactory"), owner,
+      [await usdc.getAddress(), await morpho.getAddress(), f.env.WLD_ADDRESS, feeRecipient, 1000]);
+    const signer = await provider.getSigner(3), signerAddress = await signer.getAddress();
+    await (await usdcYieldFactory.connect(signer).createVault(heirAddress, 86400)).wait();
+    const vaultAddress = await usdcYieldFactory.vaultOf(signerAddress);
+    const vault = new Contract(vaultAddress, artifact("InheritanceVaultUSDC").abi, owner);
+    if (mode !== "reward-only") {
+      await (await usdc.mint(signerAddress, 100_000000n)).wait();
+      await (await usdc.connect(signer).approve(await usdcYieldFactory.getAddress(), 100_000000n)).wait();
+      await (await usdcYieldFactory.connect(signer).depositWithMinShares(100_000000n, parseEther("100"))).wait();
+      await (await morpho.setRate(mode === "total-loss" ? 0n : 1_100000n)).wait();
+      await (await usdc.mint(await morpho.getAddress(), 10_000000n)).wait();
+    }
+    if (mode !== "total-loss") {
+      const distributor = new Contract(distributorAddress, distributorArtifact.abi, owner);
+      const reward = parseEther("10");
+      const leaf = keccak256(AbiCoder.defaultAbiCoder().encode(["address", "address", "uint256"],
+        [vaultAddress, f.env.WLD_ADDRESS, reward]));
+      const sibling = keccak256(new TextEncoder().encode("production USDC keeper reward fixture"));
+      const root = keccak256(AbiCoder.defaultAbiCoder().encode(["bytes32", "bytes32"], [leaf, sibling].sort()));
+      await (await distributor.setRoot(root)).wait();
+      await (await f.token.mint(distributorAddress, reward)).wait();
+      await (await usdcYieldFactory.claimRewardsFor(vaultAddress, reward, [sibling], 0)).wait();
+    }
+    if (mode === "shares") await (await morpho.setLiquidity(0)).wait();
+    if (mode === "exhausted-strategy") await (await morpho.setGasFailure(true, true)).wait();
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await usdcYieldFactory.connect(heir).fileClaimFor(vaultAddress)).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(vaultAddress);
+    Object.assign(f.env, { YIELD_FACTORY_ADDRESS: await wldYieldFactory.getAddress(), MORPHO_VAULT_ADDRESS: await wldMorpho.getAddress(),
+      USDC_YIELD_FACTORY_ADDRESS: await usdcYieldFactory.getAddress(), USDC_MORPHO_VAULT_ADDRESS: await morpho.getAddress(),
+      USDC_ADDRESS: await usdc.getAddress(), FINALIZER_MAX_GAS: usdcDeploymentGas,
+      FINALIZER_SCAN_LIMIT: "20", FINALIZER_BATCH_SIZE: "5" });
+    return { ...f, usdc, morpho, vault, vaultAddress, feeRecipient };
   }
 
   check("default configuration cannot send", () => {
@@ -766,6 +859,193 @@ try {
   }
 
   {
+    const f = await usdcFixture({ ready: false });
+    const sendStart = behavior.sends.length;
+    const partial = { ...f.env, USDC_MORPHO_VAULT_ADDRESS: undefined };
+    const result = await runFinalizerCycle(partial);
+    check("partial USDC factory configuration fails closed before RPC or signing", () => {
+      assert.equal(result.reason, "invalid_configuration");
+      assert.equal(behavior.sends.length, sendStart);
+    });
+    for (const [label, overrides] of [
+      ["zero asset", { USDC_ADDRESS: ZeroAddress }],
+      ["WLD alias", { USDC_ADDRESS: f.env.WLD_ADDRESS }],
+      ["conflicting source", { USDC_YIELD_FACTORY_ADDRESS: f.env.YIELD_FACTORY_ADDRESS }],
+    ]) {
+      const invalid = await runFinalizerCycle({ ...f.env, ...overrides });
+      check(`${label} USDC configuration fails closed`, () => {
+        assert.equal(invalid.reason, "invalid_configuration", JSON.stringify(invalid));
+        assert.equal(behavior.sends.length, sendStart);
+      });
+    }
+  }
+
+  for (const [label, factoryChange] of [
+    ["asset", { factoryAsset: keeperAddress }],
+    ["reward token", { factoryReward: keeperAddress }],
+    ["strategy", { factoryStrategy: keeperAddress }],
+  ]) {
+    const f = await usdcFixture({ ready: false, ...factoryChange });
+    const start = behavior.sends.length;
+    const result = await runFinalizerCycle(f.env);
+    check(`USDC network validation rejects the wrong factory ${label}`, () => {
+      assert.equal(result.reason, "wrong_token", JSON.stringify(result));
+      assert.equal(behavior.sends.length, start);
+    });
+  }
+  {
+    const f = await usdcFixture({ ready: true, known: false });
+    const sendStart = behavior.sends.length;
+    const result = await runFinalizerCycle(f.env);
+    check("USDC child self-report cannot bypass source-factory membership", () => {
+      assert.equal(result.reason, "idle", JSON.stringify(result));
+      assert.equal(result.checked, 1);
+      assert.equal(result.skipped, 1);
+      assert.equal(behavior.sends.length, sendStart);
+    });
+  }
+
+  for (const [label, settlement] of [["cash", 0], ["receipt shares", 1], ["WLD reward only", 2], ["total loss", 3]]) {
+    const f = await usdcFixture({ settlement });
+    const requestStart = behavior.requests;
+    const sendStart = behavior.sends.length;
+    behavior.requestLimit = requestStart + 50;
+    let result;
+    try { result = await runFinalizerCycle(f.env); }
+    finally { behavior.requestLimit = null; }
+    const cycleRequests = behavior.requests - requestStart;
+    const sent = behavior.sends.at(-1);
+    const receipt = await provider.getTransactionReceipt(sent.hash);
+    const event = receipt.logs.filter((log) => log.address.toLowerCase() === f.usdcVault.toLowerCase())
+      .map((log) => { try { return usdcVaultInterface.parseLog(log); } catch { return null; } })
+      .find(Boolean);
+    const childClaimedAt = await f.vault.claimedAt();
+    const decimals = await f.usdc.decimals();
+    const health = await readFinalizerHealth(f.env);
+    check(`USDC ${label} settlement uses authenticated factory, fixed heir and matching claimedAt within 50 RPCs`, () => {
+      assert.equal(result.reason, "finalized", JSON.stringify(result));
+      assert.equal(result.finalized, 1);
+      assert.equal(result.submitted, 1);
+      assert.equal(behavior.sends.length - sendStart, 1);
+      assert.ok(cycleRequests <= 50, String(cycleRequests));
+      assert.equal(sent.to.toLowerCase(), f.env.USDC_YIELD_FACTORY_ADDRESS.toLowerCase());
+      assert.equal(sent.value, 0n);
+      assert.equal(factoryInterface.decodeFunctionData("executeInheritance", sent.data)[0], f.usdcVault);
+      assert.equal(decimals, 6n);
+      assert.ok(event);
+      assert.equal(event.args.recipient.toLowerCase(), heirAddress.toLowerCase());
+      assert.ok(event.args.claimedAt > 0n);
+      assert.equal(event.args.claimedAt, childClaimedAt);
+      if (settlement === 1) {
+        assert.equal(event.name, "InheritanceSharesFinalized");
+        assert.ok(event.args.shares > 0n);
+      } else {
+        assert.equal(event.name, "InheritanceFinalized");
+        assert.equal(event.args.assetAmount, settlement === 0 ? f.cashAmount : 0n);
+      }
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+      assert.equal(health.supported, true);
+      assert.equal(health.supportsUSDC, true);
+      assert.equal(health.factoryAddresses.length, 3);
+      assert.ok(health.factoryAddresses.includes(f.env.USDC_YIELD_FACTORY_ADDRESS));
+      assert.equal(health.scanLimit, 1);
+      assert.equal(health.batchSize, 1);
+      console.log("  USDC " + label + " RPC requests: " + cycleRequests);
+    });
+    if (settlement === 0) assert.equal(await f.usdc.balanceOf(heirAddress), f.cashAmount);
+    if (settlement === 1) assert.equal(await f.morpho.balanceOf(heirAddress), parseEther("100"));
+    if (settlement === 2) assert.equal(await f.token.balanceOf(heirAddress), parseEther("10"));
+  }
+
+  for (const getter of ["factory", "claimedAt"]) {
+    const f = await usdcFixture({ settlement: 2 });
+    const sendStart = behavior.sends.length;
+    behavior.historicalReadErrorSelector = usdcVaultInterface.getFunction(getter).selector;
+    let first, retry;
+    try {
+      first = await runFinalizerCycle(f.env);
+      retry = await runFinalizerCycle(f.env);
+    } finally { behavior.historicalReadErrorSelector = null; }
+    const staged = f.store.native.prepare("SELECT * FROM finalizer_jobs").get();
+    const reserved = f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei;
+    check(`unavailable historical USDC ${getter} proof keeps the paid job pending without halting or rebroadcast`, () => {
+      assert.equal(first.reason, "rpc_error", JSON.stringify(first));
+      assert.equal(retry.reason, "rpc_error", JSON.stringify(retry));
+      assert.equal(staged.state, "pending");
+      assert.equal(staged.last_error, null);
+      assert.equal(BigInt(reserved), BigInt(staged.reserved_wei));
+      assert.equal(f.store.native.prepare("SELECT halted FROM finalizer_locks").get().halted, 0);
+      assert.equal(behavior.sends.length - sendStart, 1);
+      assert.equal(f.store.faults.reservations, 1);
+    });
+    assert.equal(await f.token.balanceOf(heirAddress), parseEther("10"));
+    const recovered = await runFinalizerCycle(f.env);
+    const confirmed = f.store.native.prepare("SELECT * FROM finalizer_jobs").get();
+    check(`recovered historical USDC ${getter} proof confirms the same payout and settles its reservation once`, () => {
+      assert.equal(recovered.reason, "finalized", JSON.stringify(recovered));
+      assert.equal(recovered.finalized, 1);
+      assert.equal(confirmed.state, "confirmed");
+      assert.equal(confirmed.last_error, null);
+      assert.equal(confirmed.tx_hash, staged.tx_hash);
+      assert.equal(f.store.native.prepare("SELECT halted FROM finalizer_locks").get().halted, 0);
+      assert.equal(behavior.sends.length - sendStart, 1);
+      assert.equal(f.store.faults.reservations, 1);
+      assert.ok(BigInt(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei) < BigInt(reserved));
+    });
+    assert.equal(await f.token.balanceOf(heirAddress), parseEther("10"));
+  }
+
+  for (const mode of ["cash", "shares", "reward-only", "total-loss", "exhausted-strategy"]) {
+    const f = await productionUSDCFixture(mode);
+    // The cash and gas-exhaustion cases also exercise World Chain signing and
+    // OP fee RPCs. Oracle prices and receipt metadata remain local fixtures.
+    const worldChainIdentity = mode === "cash" || mode === "exhausted-strategy";
+    if (worldChainIdentity) {
+      await provider.send("anvil_setChainId", [480]);
+      behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
+      Object.assign(f.env, { FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001" });
+    }
+    const start = behavior.requests, sends = behavior.sends.length;
+    behavior.requestLimit = start + 50;
+    let result;
+    try { result = await runFinalizerCycle(f.env); } finally {
+      behavior.requestLimit = null;
+      if (worldChainIdentity) {
+        await provider.send("anvil_setChainId", [31337]);
+        behavior.oracleQuote = null; behavior.receiptExtra = null;
+      }
+    }
+    const cycleRequests = behavior.requests - start;
+    check(`production USDC ${mode} inheritance confirms within 50 RPCs and the deployed gas cap`, () => {
+      assert.equal(result.reason, "finalized", JSON.stringify(result));
+      assert.equal(result.finalized, 1);
+      assert.equal(behavior.sends.length - sends, 1);
+      assert.ok(cycleRequests <= 50, String(cycleRequests));
+      assert.equal(behavior.sends.at(-1).to.toLowerCase(), f.env.USDC_YIELD_FACTORY_ADDRESS.toLowerCase());
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+    });
+    assert.ok(await f.vault.claimedAt() > 0n);
+    assert.equal(await f.vault.inheritanceRecipient(), heirAddress);
+    assert.equal(await f.vault.hasAssets(), false);
+    assert.equal(await f.token.balanceOf(heirAddress), mode === "total-loss" ? 0n : parseEther("9"));
+    assert.equal(await f.token.balanceOf(f.feeRecipient), mode === "total-loss" ? 0n : parseEther("1"));
+    if (mode === "cash") {
+      assert.equal(await f.usdc.balanceOf(heirAddress), 109_000000n);
+      assert.equal(await f.usdc.balanceOf(f.feeRecipient), 1_000000n);
+    } else if (mode === "shares") {
+      assert.ok(await f.morpho.balanceOf(heirAddress) > parseEther("99"));
+      assert.ok(await f.morpho.balanceOf(f.feeRecipient) > 0n);
+      assert.equal(await f.usdc.balanceOf(heirAddress), 0n);
+    } else if (mode === "exhausted-strategy") {
+      assert.equal(await f.morpho.balanceOf(heirAddress), parseEther("100"));
+      assert.equal(await f.morpho.balanceOf(f.feeRecipient), 0n);
+    }
+    const receipt = await provider.getTransactionReceipt(behavior.sends.at(-1).hash);
+    assert.ok(receipt.gasUsed <= BigInt(usdcDeploymentGas));
+    console.log(`  production USDC ${mode}: ${cycleRequests} RPCs, ${receipt.gasUsed} gas${worldChainIdentity ? " (chain480, OP fee fixtures)" : ""}`);
+  }
+
+  {
     const f = await fixture();
     await stageWithoutBroadcast(f);
     await (await f.factory.connect(f.owners[0]).pingMyVault()).wait();
@@ -1264,6 +1544,13 @@ try {
     assert.equal(await f.morpho.balanceOf(f.yieldVault), 0n);
     assert.equal(await f.morpho.balanceOf(keeperAddress), 0n);
   }
+  check("USDC execution headroom preserves the production daily ETH spending cap", () => {
+    const production = readFileSync(root + "/backend/wrangler.toml", "utf8");
+    const value = name => production.match(new RegExp('^' + name + ' = "([^"\\n]+)"', 'm'))[1];
+    const worstReserve = BigInt(usdcDeploymentGas) * parseUnits(value("FINALIZER_MAX_FEE_GWEI"), "gwei")
+      + parseEther(value("FINALIZER_EXTRA_FEE_RESERVE_ETH"));
+    assert.ok(worstReserve <= parseEther(value("FINALIZER_DAILY_GAS_CAP_ETH")));
+  });
   console.log("\n" + assertions + " focused finalizer checks passed; all transactions used local Anvil.");
   console.log("Factory deployment gas (local estimate): " + deploymentGas.toString());
 } finally {

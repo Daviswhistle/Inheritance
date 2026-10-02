@@ -92,3 +92,13 @@ node scripts/test-yield-abi.mjs
 node scripts/verify/morpho-yield.mjs
 MORPHO_FORK_RPC=https://worldchain-mainnet.g.alchemy.com/public forge test --match-contract MorphoWorldChainForkTest -vv
 ```
+
+USDC는 별도 `InheritanceVaultUSDCFactory`로 Re7 USDC에 예치한다. 앱에서 WLD와
+USDC 금고를 함께 관리하되 각 금고의 잔액·상속인·타이머는 독립적이다. USDC는
+6자리, 예치 지분은 18자리이며 USDC 실현 순이익과 실제 수령한 WLD 보상을 각각
+10%로 정산한다. WLD 보상은 자동 환전하지 않는다. [USDC 설계와 활성화](docs/USDC_YIELD.md)를 따른다.
+
+```sh
+node scripts/verify/usdc-yield.mjs
+USDC_FORK_RPC=https://worldchain-mainnet.g.alchemy.com/public forge test --match-contract USDCWorldChainForkTest -vv
+```

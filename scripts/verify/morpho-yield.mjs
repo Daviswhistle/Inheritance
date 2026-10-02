@@ -110,7 +110,8 @@ try {
     VITE_WLD_ADDRESS: await token.getAddress(), VITE_RPC: rpc, VITE_LEGACY_FACTORY_ADDRESS: "",
     VITE_NOTIFY_BACKEND_URL: "", VITE_REQUIRE_VERIFY: "false", VITE_FACTORY_RELEASE_SUPPORTED: "true",
     VITE_YIELD_FACTORY_ADDRESS: await yieldFactory.getAddress(), VITE_YIELD_FACTORY_DEPLOY_BLOCK: "1",
-    VITE_MORPHO_VAULT_ADDRESS: await morpho.getAddress() });
+    VITE_MORPHO_VAULT_ADDRESS: await morpho.getAddress(), VITE_USDC_ADDRESS: "", VITE_USDC_YIELD_FACTORY_ADDRESS: "",
+    VITE_USDC_MORPHO_VAULT_ADDRESS: "", VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK: "" });
   vite = await createVite({ root: process.cwd() + "/app", configFile: process.cwd() + "/app/vite.config.e2e.ts", logLevel: "error", server: { host: "127.0.0.1", port: await freePort() } });
   await vite.listen();
   const url = vite.resolvedUrls.local[0];
@@ -202,10 +203,10 @@ try {
   assert.equal(await token.balanceOf(plainVault), parseEther("50"));
   pass("Deposit uses the selected yield factory with a minimum-share quote and real receipt custody");
   pass("An unavailable rewards API does not block principal deposits or vault valuation");
-  const choices = () => page.ev("return [...document.querySelectorAll('button')].filter(b => /^(WLD vault|Morpho yield vault) ·/.test(b.textContent.trim())).map(b => b.textContent.trim())");
+  const choices = () => page.ev("return [...document.querySelectorAll('button')].filter(b => /^WLD · (Basic vault|Morpho yield) ·/.test(b.textContent.trim())).map(b => b.textContent.trim())");
   assert.equal((await choices()).length, 2);
   await fault(yieldFactory, yieldFactory.interface.getFunction("vaultOf").selector);
-  await page.ev("[...document.querySelectorAll('button')].find(b => /^WLD vault ·/.test(b.textContent.trim())).click(); return true;");
+  await page.ev("[...document.querySelectorAll('button')].find(b => /^WLD · Basic vault ·/.test(b.textContent.trim())).click(); return true;");
   await until(() => page.ev("return /Some vault registries could not be refreshed/.test(document.body.innerText)"));
   assert.equal((await choices()).length, 2);
   assert.equal(await morpho.balanceOf(vault), parseEther("100"));
@@ -213,7 +214,7 @@ try {
   await clearFaults();
   await until(() => page.ev("return !/Some vault registries could not be refreshed/.test(document.body.innerText)"), "automatic registry recovery");
   assert.equal((await choices()).length, 2);
-  await page.ev("[...document.querySelectorAll('button')].find(b => /^Morpho yield vault ·/.test(b.textContent.trim())).click(); return true;");
+  await page.ev("[...document.querySelectorAll('button')].find(b => /^WLD · Morpho yield ·/.test(b.textContent.trim())).click(); return true;");
   await until(() => page.ev("return /Morpho yield position/.test(document.body.innerText) && !!document.getElementById('deposit-amount')"));
   pass("Registry polling restores verified access after RPC recovery without signing in again");
   await page.ev("window.__E2E_REWARDS_DOWN__ = false; return true;");

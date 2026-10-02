@@ -1,7 +1,7 @@
 {
   "name": "world-inheritance",
   "private": true,
-  "description": "World App mini app for WLD inheritance vaults (Foundry contracts + MiniKit frontend)",
+  "description": "World App mini app for WLD and USDC inheritance vaults (Foundry contracts + MiniKit frontend)",
   "scripts": {
     "dev": "pnpm --dir app dev",
     "build": "pnpm --dir app build",

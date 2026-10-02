@@ -42,6 +42,15 @@ try {
   check("Tiny lending returns stay visible without rounding up", () => {
     assert.equal(formatRate(0.0013), "<0.01%"); assert.equal(formatRate(0), "0.00%"); assert.equal(formatRate(1.7), "1.70%");
   });
+  const usdcStrategy = "0xb1E80387EbE53Ff75a89736097D34dC8D9E9045B";
+  const usdcEntry = entry({ identifier: usdcStrategy, nativeAprRecord: { timestamp: String(now - 100), value: 1.79 },
+    aprRecord: { timestamp: String(now - 200), cumulated: 5.68 } });
+  check("USDC lending and WLD campaign rewards retain separate rates and the selected strategy", () => {
+    assert.equal(parseYieldRates([usdcEntry], now, usdcStrategy).lendingApr, 1.79);
+    assert.equal(parseYieldRates([usdcEntry], now, usdcStrategy).rewardApr, 5.68);
+    assert.throws(() => parseYieldRates([usdcEntry], now, strategy));
+    assert.throws(() => parseYieldRates([entry()], now, usdcStrategy));
+  });
   globalThis.fetch = async (url, options) => {
     assert.equal(url, `https://api.merkl.xyz/v4/opportunities?chainId=480&identifier=${strategy}`);
     assert.equal(options.credentials, "omit"); assert.equal(options.referrerPolicy, "no-referrer");

@@ -21,5 +21,5 @@ export function Icon({ name, size = 22, className = "", style }: { name: IconNam
 }
 
 export function Brand() {
-  return <div className="brand"><span className="brand-mark"><Icon name="vault" size={23} /></span><span className="brand-name">Inheritance<span className="brand-caption">A WLD vault for someone you love</span></span></div>;
+  return <div className="brand"><span className="brand-mark"><Icon name="vault" size={23} /></span><span className="brand-name">Inheritance<span className="brand-caption">A vault for someone you love</span></span></div>;
 }

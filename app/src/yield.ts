@@ -36,6 +36,18 @@ export const YIELD_VAULT_ABI = [
   "function position() view returns (uint256 idle,uint256 shares,uint256 gross,uint256 net,uint256 fee,uint256 liquid,bool valued)",
   ...YIELD_VAULT_ERROR_ABI,
 ];
+export const USDC_YIELD_FACTORY_ABI = [
+  ...YIELD_FACTORY_ABI.filter(fragment => typeof fragment !== "string" || !/^function WLD\(/.test(fragment)),
+  "function asset() view returns (address)",
+  "function rewardToken() view returns (address)",
+  "function withdrawRewardsFromMyVault(address to)",
+];
+export const USDC_YIELD_VAULT_ABI = [
+  ...YIELD_VAULT_ABI.filter(fragment => typeof fragment !== "string" || !/^function WLD\(/.test(fragment)),
+  "function asset() view returns (address)",
+  "function rewardToken() view returns (address)",
+  "function rewardPosition() view returns (uint256 held,uint256 feeBearing,uint256 net,uint256 fee)",
+];
 export const MORPHO_ABI = [
   "function asset() view returns (address)",
   "function fee() view returns (uint256)",
@@ -54,8 +66,8 @@ export type YieldTerms = { feeBps: number; recipient: string; underlyingFeePerce
 export const MERKL_DISTRIBUTOR = "0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae";
 
 /** Display only: transaction amounts and minimum-output quotes retain all wei. */
-export function formatYieldAmount(amount: bigint): string {
-  const raw = formatUnits(amount, 18);
+export function formatYieldAmount(amount: bigint, decimals = 18): string {
+  const raw = formatUnits(amount, decimals);
   const [integer, fraction = ""] = raw.split(".");
   if (fraction.length <= 6) return raw;
   const digits = fraction.slice(0, 6).replace(/0+$/, "");

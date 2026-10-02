@@ -13,20 +13,22 @@ mkdirSync(destination, { recursive: true });
 const image = name => 'data:image/png;base64,' + readFileSync(path.join(raw, name + '.png')).toString('base64');
 const icon = readFileSync(path.join(root, 'app/public/icon.svg'), 'utf8');
 const esc = value => value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
-const shots = {
+const usdcStore = process.env.USDC_STORE_IMAGES === '1';
+const shots = usdcStore ? { yield: image('usdc-store-position') } : {
   countdown: image(process.env.YIELD_STORE_IMAGES === '1' ? 'yield-store-countdown' : 'store-2-countdown'),
   create: image(process.env.YIELD_STORE_IMAGES === '1' ? 'yield-store-create' : 'store-1-create'),
   welcome: image(process.env.YIELD_STORE_IMAGES === '1' ? 'yield-store-welcome' : 'store-0-welcome'),
   ...(process.env.YIELD_STORE_IMAGES === '1' ? { yield: image('yield-store-position') } : {}),
 };
-const layouts = [
+const layouts = usdcStore ? [] : [
   { name:'content_card', width:1035, height:720, title:'A little care.\nA lasting gift.', text:'A WLD plan for someone you choose.', shot:'countdown', detail:'Choose an heir. Set a check-in timer.', screenHeight:590, screenRight:42, top:150, titleSize:61 },
   { name:'hero', width:1035, height:720, title:'For someone\nyou love.', text:'Your WLD. Your choice.', shot:'welcome', detail:'A personal inheritance vault.', screenHeight:590, screenRight:42, top:155, titleSize:64 },
   { name:'showcase_1', width:1080, height:1080, title:'Check in.\nCarry on.', text:'Reset your timer to stay in control.', shot:'countdown', detail:'Basic vault: no platform fee. You hold your keys.', screenHeight:866, screenRight:42, top:325, titleSize:78 },
   { name:'showcase_2', width:1080, height:1080, title:'Choose\nyour person.', text:'A contact, a username or a wallet address.', shot:'create', detail:'Set a renewal period of 1–365 days.', screenHeight:866, screenRight:42, top:325, titleSize:75 },
   { name:'meta_tag', width:1200, height:600, title:'A little care.\nA lasting gift.', text:'A WLD vault for someone you love.', shot:'countdown', detail:'Your own vault. Your choice.', screenHeight:514, screenRight:83, top:155, titleSize:68 },
 ];
-if (process.env.YIELD_STORE_IMAGES === '1') layouts.push({ name:'showcase_3', width:1080, height:1080, title:'An option\nfor yield.', text:'Choose Morpho lending for your WLD.', shot:'yield', detail:'10% of positive net gains on exit. Principal can lose value. Cash depends on liquidity.', screenHeight:866, screenRight:42, top:295, titleSize:75 });
+if (usdcStore) layouts.push({ name:'showcase_3', width:1080, height:1080, title:'Choose WLD.\nOr USDC.', text:'Separate vaults. One simple plan.', shot:'yield', detail:'USDC earns with Morpho. 10% gain fee. Principal can lose value. Cash depends on liquidity.', screenHeight:866, screenRight:42, top:275, titleSize:75 });
+else if (process.env.YIELD_STORE_IMAGES === '1') layouts.push({ name:'showcase_3', width:1080, height:1080, title:'An option\nfor yield.', text:'Choose Morpho lending for your WLD.', shot:'yield', detail:'10% of positive net gains on exit. Principal can lose value. Cash depends on liquidity.', screenHeight:866, screenRight:42, top:295, titleSize:75 });
 for (const layout of layouts) {
   const page = await launch({url:'about:blank'});
   try {
@@ -46,7 +48,7 @@ for (const layout of layouts) {
       .screen{position:absolute;right:${screenRight}px;top:${Math.round((height-screenHeight)/2)}px;width:${phoneWidth}px;height:${screenHeight}px;overflow:hidden;border:5px solid #fff;border-radius:31px;box-shadow:0 18px 50px #1e493122;background:#f7f8f2}
       .screen img{width:100%;height:100%;object-fit:cover;display:block}
       .footer{position:absolute;left:60px;bottom:39px;font-size:16px;color:#768275;line-height:1.55;max-width:${width-phoneWidth-screenRight-120}px}
-    </style></head><body><div class="orb"></div><div class="brand">${icon}<span>Inheritance</span></div><div class="copy"><div class="eyebrow">A simple plan</div><h1>${esc(title)}</h1><p class="text">${esc(text)}</p><div class="detail">${esc(detail)}</div></div><div class="screen"><img alt="Actual example vault screen" src="${shots[shot]}"></div><div class="footer">inheritance.pages.dev<br>Example screens. Balances are illustrative.</div></body></html>`;
+    </style></head><body><div class="orb"></div><div class="brand">${icon}<span>Inheritance</span></div><div class="copy"><div class="eyebrow">A simple plan</div><h1>${esc(title)}</h1><p class="text">${esc(text)}</p><div class="detail">${esc(detail)}</div></div><div class="screen"><img alt="Actual example vault screen" src="${shots[shot]}"></div><div class="footer">inheritance.pages.dev<br>Example screens. ${usdcStore ? 'Balances and rates are illustrative.' : 'Balances are illustrative.'}</div></body></html>`;
     const {frameTree}=await page.send('Page.getFrameTree');
     await page.send('Page.setDocumentContent',{frameId:frameTree.frame.id,html});
     await page.ev('await Promise.all([...document.images].map(image=>image.decode())); return true;');

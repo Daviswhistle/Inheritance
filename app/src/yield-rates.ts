@@ -44,10 +44,10 @@ export function formatRate(value: number): string {
   return `${value.toFixed(2)}%`;
 }
 
-export async function fetchYieldRates(signal: AbortSignal): Promise<YieldRates> {
-  const response = await fetch(`https://api.merkl.xyz/v4/opportunities?chainId=${CHAIN_ID}&identifier=${MORPHO_VAULT_ADDRESS}`, {
+export async function fetchYieldRates(signal: AbortSignal, strategy = MORPHO_VAULT_ADDRESS): Promise<YieldRates> {
+  const response = await fetch(`https://api.merkl.xyz/v4/opportunities?chainId=${CHAIN_ID}&identifier=${strategy}`, {
     signal, credentials: "omit", referrerPolicy: "no-referrer",
   });
   if (!response.ok) throw new Error("Rates are unavailable.");
-  return parseYieldRates(await response.json(), Math.floor(Date.now() / 1000));
+  return parseYieldRates(await response.json(), Math.floor(Date.now() / 1000), strategy);
 }

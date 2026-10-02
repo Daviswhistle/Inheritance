@@ -18,15 +18,17 @@ Pages의 `app/wrangler.toml`과 Worker의 `backend/wrangler.toml`은 기존 D1
 - `SIWE_SECRET`: Pages와 Worker가 공유하는 비공개 세션 서명 키.
 - `WORLD_APP_ID`, `WORLD_NOTIFY_API_KEY`: 알림 발송 설정.
 
-금고의 `factory()`와 `WLD()` 및 해당 팩토리의 `vaultOf(owner)`가 모두 일치해야
-알림을 등록·조회·발송할 수 있습니다. 슬롯에서 해제된 이전 금고는 감시 대상이
-아닙니다. 임의 컨트랙트의 owner/heir 응답만으로 수신자를 신뢰하지 않습니다.
+기본 금고는 `factory()`·`WLD()`·`vaultOf(owner)`가 일치해야 합니다. 수익 금고는
+신뢰된 팩토리의 `knownVaults`·고정 전략·자산을 확인하며, USDC는 `asset()`와
+canonical WLD `rewardToken()`을 따로 확인합니다. 수익 금고의 슬롯 해제 후에도
+원래 팩토리 등록은 검증할 수 있습니다. 임의 owner/heir 응답만으로 수신자를 신뢰하지 않습니다.
 
 정산 완료는 필수 조회한 `claimedAt > 0`으로 확인합니다. 완료 시 `heir`가 0으로
 바뀐 금고도 canonical 검증을 통과하면 owner에게만 조회·관리 권한을 허용하며,
 이전 heir의 캐시는 권한 근거가 아닙니다. 완료된 감시는 비활성화하고 재등록해도
-다시 알리지 않습니다. 팩토리 슬롯 해제는 API 접근을 계속 거절하고 기존 감시만
-종료합니다. RPC 실패나 정산 상태 미확인은 완료나 슬롯 해제로 간주하지 않습니다.
+다시 알리지 않습니다. 기본 팩토리 슬롯 해제는 API 접근을 거절하고 기존 감시만
+종료합니다. 수익 금고는 영구 등록을 확인해 보관된 링크와 늦은 보상 처리를 지원합니다.
+RPC 실패나 정산 상태 미확인은 완료나 슬롯 해제로 간주하지 않습니다.
 
 ## Setup and deployment
 
@@ -168,6 +170,15 @@ pending jobs or halt flags: first check the stored transaction on-chain and
 account for its real fees. Monitor gas funding before it falls below the reserve.
 
 ### Optional Morpho yield factory
+
+USDC support requires `USDC_YIELD_FACTORY_ADDRESS`, `USDC_MORPHO_VAULT_ADDRESS`
+and `USDC_ADDRESS` together. Its asset and WLD reward getters, strategy underlying,
+factory membership and receipt-block settlement are verified separately. With
+USDC configured, the keeper scans one candidate and submits at most one transfer
+per cycle under the existing signer, lease and budget, with a 900,000 gas bound
+for the combined USDC-enabled deployment (850,000 when only WLD yield is enabled). Cash,
+receipt, reward-only and total-loss outcomes need the fixed heir and matching
+onchain settlement timestamp. The health response exposes all supported factories.
 
 Configure `YIELD_FACTORY_ADDRESS` and `MORPHO_VAULT_ADDRESS` together after the
 separate yield contract release. Keep the existing `FACTORY_ADDRESS` and
