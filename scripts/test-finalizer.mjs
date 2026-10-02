@@ -230,6 +230,20 @@ try {
     return job;
   }
 
+  async function mineCanonicalReplay(hash) {
+    await provider.send("evm_mine", []);
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const receipt = await provider.send("eth_getTransactionReceipt", [hash]);
+      if (receipt) {
+        const block = await provider.send("eth_getBlockByNumber", [receipt.blockNumber, false]);
+        if (block?.hash === receipt.blockHash) return receipt;
+      }
+      await delay(25);
+    }
+    throw new Error("Local replay did not produce a canonical receipt");
+  }
+
   async function yieldFixture({ cash = true, ready = true, mixed = false } = {}) {
     const f = await fixture(mixed ? 1 : 0, false);
     await provider.send("anvil_setCode", ["0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae", artifact("MockMerklDistributor").deployedBytecode.object]);
@@ -1080,12 +1094,20 @@ try {
     assert.equal(await provider.send("evm_revert", [rollback]), true);
     assert.equal(await provider.send("eth_getTransactionReceipt", [staged.tx_hash]), null);
     assert.equal(await f.token.balanceOf(f.vaults[0]), parseEther("100"));
-    const recovered = await runFinalizerCycle(f.env);
+    behavior.hiddenReceipts = true;
+    let recovered;
+    try { recovered = await runFinalizerCycle(f.env); }
+    finally { behavior.hiddenReceipts = false; }
+    await mineCanonicalReplay(staged.tx_hash);
+    const awaiting = await runFinalizerCycle(f.env);
     behavior.finalizedBlock = null;
     const finalized = await runFinalizerCycle(f.env);
     check("real Anvil rollback before finality replays the same hash without a second reservation", () => {
-      assert.equal(recovered.reason, "awaiting_finality", JSON.stringify(recovered));
+      assert.equal(recovered.reason, "pending", JSON.stringify(recovered));
       assert.equal(recovered.submitted, 1);
+      assert.equal(awaiting.reason, "awaiting_finality", JSON.stringify(awaiting));
+      assert.equal(awaiting.submitted, 0);
+      assert.equal(awaiting.finalized, 0);
       assert.equal(finalized.finalized, 1, JSON.stringify(finalized));
       const sends = behavior.sends.slice(start);
       assert.equal(sends.length, 2);
@@ -1146,7 +1168,7 @@ try {
       assert.ok(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei >= 2 * spent);
       assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "pending");
     });
-    await provider.send("evm_mine", []);
+    await mineCanonicalReplay(job.tx_hash);
     const pollStart = behavior.requests;
     const finalized = await runFinalizerCycle(f.env);
     check("the next bounded cycle confirms a replay once its canonical receipt is visible", () => {
