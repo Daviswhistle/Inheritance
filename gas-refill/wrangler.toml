@@ -1,0 +1,14 @@
+name = "world-inheritance-gas-refill"
+main = "src/worker.mjs"
+compatibility_date = "2026-02-26"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "world-inheritance-notify"
+database_id = "3f42cdf7-9a53-409a-8f59-b27ef8ee631a"
+
+[vars]
+GAS_REFILL_ENABLED = "false"
