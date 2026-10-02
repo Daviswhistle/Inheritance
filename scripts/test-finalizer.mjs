@@ -1125,10 +1125,16 @@ try {
     });
     f.env.FINALIZER_DAILY_GAS_CAP_ETH = cap;
     const requests = behavior.requests;
-    const recovered = await runFinalizerCycle(f.env);
-    check("real Anvil rollback of a confirmed claim restores execution with bounded conservative fees", () => {
+    // Anvil can acknowledge a replay before its new receipt is visible. Force
+    // that boundary instead of assuming same-cycle finality depends on timing.
+    behavior.hiddenReceipts = true;
+    let recovered;
+    try { recovered = await runFinalizerCycle(f.env); }
+    finally { behavior.hiddenReceipts = false; }
+    check("confirmed-claim reorg recovery stages the same replay with bounded conservative fees", () => {
       assert.equal(recovered.checked, 3, JSON.stringify(recovered));
-      assert.equal(recovered.finalized, 1);
+      assert.equal(recovered.reason, "pending", JSON.stringify(recovered));
+      assert.equal(recovered.finalized, 0);
       assert.equal(recovered.submitted, 1);
       assert.ok(behavior.requests - requests <= 47); // Leaves three OP fee oracle calls.
       console.log("  confirmed reorg scan3/batch1 RPC requests: " + (behavior.requests - requests));
@@ -1137,6 +1143,20 @@ try {
       assert.equal(sends[0].raw, sends[1].raw);
       assert.equal(new Set(sends.map((send) => send.nonce)).size, 1);
       assert.equal(f.store.faults.reservations, 2);
+      assert.ok(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei >= 2 * spent);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "pending");
+    });
+    await provider.send("evm_mine", []);
+    const pollStart = behavior.requests;
+    const finalized = await runFinalizerCycle(f.env);
+    check("the next bounded cycle confirms a replay once its canonical receipt is visible", () => {
+      assert.equal(finalized.reason, "finalized", JSON.stringify(finalized));
+      assert.equal(finalized.finalized, 1);
+      assert.equal(finalized.submitted, 0);
+      assert.ok(behavior.requests - pollStart <= 47);
+      assert.equal(behavior.sends.length - start, 2);
+      assert.equal(f.store.faults.reservations, 2);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
       assert.ok(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei >= 2 * spent);
     });
     assert.equal(await f.token.balanceOf(heirAddress), parseEther("100"));
