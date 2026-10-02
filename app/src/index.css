@@ -1545,6 +1545,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 .yield-selected{border-color:#718d62;background:#f0f5e9}
 .yield-disclosure{font-size:12px;line-height:1.65;color:#48543a;margin-top:12px}
 .yield-disclosure p{margin:0 0 10px}.yield-disclosure a{text-decoration:underline}
+.yield-rate-summary{font-size:12px;line-height:1.65;border:1px solid #dde4d7;border-radius:12px;padding:12px;margin-bottom:12px;background:#f8faf5}
+.yield-rate-summary>strong{display:block;margin-bottom:10px}.yield-rate-summary p{margin:10px 0}
 .yield-consent{display:flex;align-items:flex-start;gap:10px;margin-top:15px;padding:12px 0;cursor:pointer}
 .yield-consent input{flex:none;margin-top:4px;accent-color:#485d43}
 .yield-values{margin:0;font-size:12px;display:grid;gap:10px}

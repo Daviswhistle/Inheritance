@@ -13,6 +13,8 @@ import { MORPHO_ABI, YIELD_FACTORY_ABI, YIELD_VAULT_ABI, MERKL_DISTRIBUTOR, mini
 import type { YieldPosition, YieldTerms } from "@/yield";
 import { fetchWldRewards } from "@/rewards";
 import type { WldRewards } from "@/rewards";
+import { fetchYieldRates } from "@/yield-rates";
+import type { YieldRates } from "@/yield-rates";
 import { confirmTransaction } from "@/transactions";
 import type { ReactElement } from "react";
 import {
@@ -181,6 +183,8 @@ export default function App() {
   const [creationKind, setCreationKind] = useState<"plain" | "yield">("plain");
   const [yieldConsent, setYieldConsent] = useState(false);
   const [yieldTerms, setYieldTerms] = useState<YieldTerms | null>(null);
+  const [yieldRates, setYieldRates] = useState<YieldRates | null>(null);
+  const [yieldRatesLoading, setYieldRatesLoading] = useState(false);
   const [yieldPosition, setYieldPosition] = useState<YieldPosition | null>(null);
   const [yieldHoldings, setYieldHoldings] = useState<{ scope: string; idle: bigint; shares: bigint } | null>(null);
   const [receivedRewards, setReceivedRewards] = useState<{ scope: string; amount: bigint } | null>(null);
@@ -1225,6 +1229,32 @@ export default function App() {
   }, [account]);
 
   // ---- contracts
+  const showYieldRates = YIELD_ENABLED && (creationKind === "yield" || isYieldVault);
+  useEffect(() => {
+    if (!showYieldRates) return;
+    let active = true;
+    let controller: AbortController | null = null;
+    const refresh = async () => {
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      setYieldRatesLoading(true);
+      const timeout = setTimeout(() => request.abort(), 8_000);
+      try {
+        const rates = await fetchYieldRates(request.signal);
+        if (active && controller === request) setYieldRates(rates);
+      } catch {
+        if (active && controller === request) setYieldRates(null);
+      } finally {
+        clearTimeout(timeout);
+        if (active && controller === request) setYieldRatesLoading(false);
+      }
+    };
+    void refresh();
+    const interval = setInterval(() => void refresh(), 5 * 60_000);
+    return () => { active = false; controller?.abort(); clearInterval(interval); };
+  }, [showYieldRates]);
+
   const factory = useMemo(() => {
     const rw = provider; // read-only provider
     return rw ? new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, rw) : null;
@@ -2784,6 +2814,7 @@ export default function App() {
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh yield balances</Button>
         </div>}
         {isYieldVault && (!isSettledClaim || vaultHasAssets) && ["vault", "money", "inherit"].includes(tab) && <YieldPositionCard
+          rates={yieldRates} ratesLoading={yieldRatesLoading}
           position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
           busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
         {isYieldVault && ["vault", "money", "inherit"].includes(tab) && <YieldRewardsCard
@@ -3861,6 +3892,7 @@ export default function App() {
                   <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
                   <CardContent className="grid gap-3">
               {YIELD_ENABLED && <YieldChoice kind={creationKind} terms={yieldTerms} consent={yieldConsent} busy={pendingAction}
+                rates={yieldRates} ratesLoading={yieldRatesLoading}
                 onKind={kind => { setCreationKind(kind); setYieldConsent(false); }} onConsent={setYieldConsent} />}
               {/* Send 탭과 같은 스탯 처리. 여기서 사용자가 먼저 확인하는 것은
                   "내가 얼마를 넣을 수 있는가" 다. 본문 글씨로 흘려두면 폼의 첫

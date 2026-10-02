@@ -4,9 +4,29 @@ import type { YieldPosition, YieldTerms } from "@/yield";
 import type { WldRewards } from "@/rewards";
 import { EXPLORER, MORPHO_VAULT_ADDRESS } from "@/config";
 import { formatYieldAmount } from "@/yield";
+import { formatRate, RATE_MAX_AGE_SECONDS } from "@/yield-rates";
+import type { YieldRates } from "@/yield-rates";
 
-export function YieldChoice({ kind, terms, consent, busy, onKind, onConsent }: {
+function YieldRateSummary({ rates, loading }: { rates: YieldRates | null; loading: boolean }) {
+  const now = Math.floor(Date.now() / 1000);
+  const fresh = rates && now - rates.reportedAt <= RATE_MAX_AGE_SECONDS && rates.campaignEndsAt > now;
+  return <div className="yield-rate-summary">
+    <strong>Indicative annual rates</strong>
+    {fresh ? <>
+      <dl className="yield-values">
+        <div><dt>Lending APR</dt><dd>{formatRate(rates.lendingApr)}</dd></div>
+        <div><dt>General WLD rewards APR</dt><dd>{formatRate(rates.rewardApr)}</dd></div>
+      </dl>
+      <p className="text-xs text-gray-600">Reported {new Date(rates.reportedAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} (UTC). Rewards currently scheduled through {new Date(rates.campaignEndsAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}.</p>
+    </> : <p role="status">{loading ? "Checking current rates…" : "Current rates are unavailable. Rewards and returns can change."}</p>}
+    <p className="text-xs text-gray-600">Shown before our exit fee. Campaign eligibility varies; World App’s verified-human boost is excluded. These are reported rates, not a forecast of your earnings.</p>
+    <a className="text-blue-600 underline text-xs" href={`https://app.merkl.xyz/opportunities/world-chain/MORPHOVAULT/${MORPHO_VAULT_ADDRESS}`} target="_blank" rel="noreferrer">View rate and reward source ↗</a>
+  </div>;
+}
+
+export function YieldChoice({ kind, terms, rates, ratesLoading, consent, busy, onKind, onConsent }: {
   kind: "plain" | "yield"; terms: YieldTerms | null; consent: boolean; busy: boolean;
+  rates: YieldRates | null; ratesLoading: boolean;
   onKind: (kind: "plain" | "yield") => void; onConsent: (value: boolean) => void;
 }) {
   return <div className="yield-choice">
@@ -21,6 +41,7 @@ export function YieldChoice({ kind, terms, consent, busy, onKind, onConsent }: {
       </label>
     </fieldset>
     {kind === "yield" && <div className="yield-disclosure">
+      <YieldRateSummary rates={rates} loading={ratesLoading} />
       <p>WLD is supplied to Re7 WLD on Morpho. Its current performance fee is {terms?.underlyingFeePercent}% and can change; our fee applies after that cost. Returns vary and funds can lose value.</p>
       <p>Cash withdrawals depend on liquidity. If cash cannot be redeemed at inheritance, the heir receives receipt shares and any idle WLD. A positive-gain fee is then paid in shares, based on their quoted WLD value.</p>
       <p>Available WLD campaign rewards can be claimed and reinvested. Rewards and rates vary. This contract does not automatically qualify for World App’s verified-human boost. Existing vaults stay separate; moving funds requires your wallet approval.</p>
@@ -58,13 +79,15 @@ export function YieldRewardsCard({ data, error, loading, settled, recipient, rec
     </CardContent></Card>;
 }
 
-export function YieldPositionCard({ position, holdings, terms, canExit, busy, onExit }: {
+export function YieldPositionCard({ position, holdings, terms, rates, ratesLoading, canExit, busy, onExit }: {
   position: YieldPosition | null; holdings: { idle: bigint; shares: bigint } | null;
   terms: YieldTerms | null; canExit: boolean; busy: boolean; onExit: () => void;
+  rates: YieldRates | null; ratesLoading: boolean;
 }) {
   const fmt = formatYieldAmount;
   return <Card><CardHeader><CardTitle>Morpho yield position</CardTitle></CardHeader>
     <CardContent className="grid gap-3">
+      <YieldRateSummary rates={rates} loading={ratesLoading} />
       {!position ? <p role="status">Value and cash liquidity are unavailable. Receipt shares can still be moved without a valuation.</p> : <>
         <div className="stat-row"><div className="stat yield-stat"><div className="stat-label">Estimated value after service fee</div><div className="stat-value">{position.valued ? `${fmt(position.net)} WLD` : "Value unavailable"}</div></div></div>
         <dl className="yield-values">

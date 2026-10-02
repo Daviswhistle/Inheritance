@@ -88,6 +88,9 @@ jobs:
       - name: Revert messages are human sentences
         run: node ../scripts/test-error-text.mjs
 
+      - name: Validate dated yield rates and exclude verified-human boosts
+        run: node ../scripts/test-yield-rates.mjs
+
       - name: Resolve user operations and verify canonical transaction outcomes
         run: node ../scripts/test-transaction-confirmation.mjs
 

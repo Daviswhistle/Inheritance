@@ -32,9 +32,19 @@ function installRpcFaults() {
   window.__E2E_RPC_FAULT_MATCHES__ = 0;
   window.__E2E_REWARDS__ = {};
   window.__E2E_REWARDS_DOWN__ = false;
+  window.__E2E_RATES_DOWN__ = false;
   const original = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input?.url ?? String(input);
+    const rateStrategy = url.match(/^https:\/\/api\.merkl\.xyz\/v4\/opportunities\?chainId=480&identifier=(0x[a-fA-F0-9]{40})$/)?.[1];
+    if (rateStrategy) {
+      const now = Math.floor(Date.now() / 1000);
+      return new Response(JSON.stringify([{ chainId: 480, type: "MORPHOVAULT", identifier: rateStrategy, status: "LIVE",
+        latestCampaignEnd: String(now + 86400), nativeAprRecord: { timestamp: String(now - 10), value: 0.0013 },
+        aprRecord: { timestamp: String(now - 10), cumulated: 1.7 },
+        rewardsRecord: { breakdowns: [{ token: { address: window.__E2E_RATE_TOKEN__, chainId: 480, decimals: 18 } }] } }]),
+      { status: window.__E2E_RATES_DOWN__ ? 503 : 200, headers: { "Content-Type": "application/json" } });
+    }
     const rewardsVault = url.match(/^https:\/\/api\.merkl\.xyz\/v4\/users\/(0x[a-f0-9]{40})\/rewards\?chainId=480$/)?.[1];
     if (rewardsVault) return new Response(JSON.stringify(window.__E2E_REWARDS__[rewardsVault] ?? []), {
       status: window.__E2E_REWARDS_DOWN__ ? 503 : 200, headers: { "Content-Type": "application/json" },
@@ -104,7 +114,7 @@ try {
   vite = await createVite({ root: process.cwd() + "/app", configFile: process.cwd() + "/app/vite.config.e2e.ts", logLevel: "error", server: { host: "127.0.0.1", port: await freePort() } });
   await vite.listen();
   const url = vite.resolvedUrls.local[0];
-  page = await launch({ pk: ACCOUNTS.a0.pk, url, preload }); await page.ev(HELPERS);
+  page = await launch({ pk: ACCOUNTS.a0.pk, url, preload: preload + `window.__E2E_RATE_TOKEN__ = ${JSON.stringify(await token.getAddress())};` }); await page.ev(HELPERS);
   await captureStore("welcome");
   await fault(yieldFactory, yieldFactory.interface.getFunction("vaultOf").selector);
   await clickReady("Continue with World App");
@@ -121,6 +131,19 @@ try {
   await page.ev("return __q.tab('Inherit')");
   await until(() => page.ev("return document.querySelector('input[value=yield]') && !document.querySelector('input[value=yield]').disabled"));
   await page.ev("document.querySelector('input[value=yield]').click(); return true");
+  await until(() => page.ev("return /General WLD rewards APR/.test(document.body.innerText) && /1.70%/.test(document.body.innerText)"));
+  assert.match(await page.ev("return document.body.innerText"), /<0.01%/);
+  assert.match(await page.ev("return document.body.innerText"), /verified-human boost is excluded/);
+  assert.doesNotMatch(await page.ev("return document.body.innerText"), /9.19%|7.55%/);
+  await page.ev("document.querySelector('.yield-rate-summary').scrollIntoView({block:'center'}); return true;");
+  await page.shot("morpho-rates-choice");
+  pass("Creation separates lending and general rewards from the excluded verified-human boost");
+  await page.ev("window.__E2E_RATES_DOWN__ = true; document.querySelector('input[value=plain]').click(); return true");
+  await until(() => page.ev("return !document.querySelector('.yield-rate-summary')"));
+  await page.ev("document.querySelector('input[value=yield]').click(); return true");
+  await until(() => page.ev("return /Current rates are unavailable/.test(document.body.innerText)"));
+  assert.doesNotMatch(await page.ev("return document.querySelector('.yield-rate-summary').innerText"), /1.70%/);
+  pass("A rate API failure removes the old quote without disabling fee consent or creation");
   await page.ev(`return __q.setInput('heir-input', '${ACCOUNTS.a1.a}')`);
   await until(() => page.ev("return /Resolved:/.test(document.body.innerText)"));
   assert.equal(await page.ev("return __q.btns().find(b => b.t === 'Create vault').d"), true);
