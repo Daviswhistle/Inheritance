@@ -109,6 +109,13 @@ try {
       let output = await (await fetch(upstream, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: raw,
       })).json();
+      if (call.method === "eth_sendRawTransaction" && output.result) {
+        // The default fixture models synchronous local automining. Anvil may
+        // acknowledge a hash before its receipt is indexed on a slower runner.
+        // Wait on the actual upstream chain, without inventing a receipt or
+        // adding client RPCs. Explicit receipt hiding still tests pending jobs.
+        await waitForCanonicalReceipt(output.result);
+      }
       if (call.method === "eth_sendRawTransaction" && behavior.droppedResponse) {
         behavior.droppedResponse = false;
         response.destroy(); // The node accepted it; the caller receives no acknowledgement.
@@ -232,6 +239,10 @@ try {
 
   async function mineCanonicalReplay(hash) {
     await provider.send("evm_mine", []);
+    return waitForCanonicalReceipt(hash);
+  }
+
+  async function waitForCanonicalReceipt(hash) {
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
       const receipt = await provider.send("eth_getTransactionReceipt", [hash]);
@@ -241,7 +252,7 @@ try {
       }
       await delay(25);
     }
-    throw new Error("Local replay did not produce a canonical receipt");
+    throw new Error("Local automining did not produce a canonical receipt");
   }
 
   async function yieldFixture({ cash = true, ready = true, mixed = false } = {}) {
