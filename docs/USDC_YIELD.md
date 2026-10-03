@@ -1,12 +1,13 @@
 # USDC inheritance route
 
 USDC support is a separate immutable yield factory. Existing basic WLD and Re7 WLD
-factories and balances stay in place. The interface manages the separate vaults
-on one screen; each vault retains its own heir, countdown and review window.
-New vault creation selects the configured Morpho route for either asset by default.
-Fee and risk consent is always unchecked, including after switching assets. WLD
-can still use basic custody; an environment without a WLD yield route defaults
-to basic custody instead. The default never moves existing vault funds.
+factories and balances stay in place. Users enter WLD and USDC amounts, an heir
+and a check-in interval in one plan. The app manages the separate contracts and
+reviews changes to existing settings before submitting them. New deposits use
+the configured Morpho routes, with explicit fee and risk consent. Existing basic
+WLD positions remain manageable; an environment without a WLD yield route uses
+basic custody for new WLD deposits. Existing funds never move automatically.
+See [the unified flow](UNIFIED_PLAN.md) and [protected owner income](OWNER_INCOME.md).
 
 ## Fixed deployment configuration
 
@@ -63,6 +64,8 @@ both asset tokens and both receipt tokens used for wallet redemption. Pending st
 metadata changes; do not enable a route with unusable transaction entrypoints.
 
 `scripts/deploy-usdc-factory.mjs` is a dry-run unless `--broadcast` is explicit.
+It uses a 9,500,000 gas ceiling and a 0.000020 ETH total-cost cap, including
+execution and L1 costs; it quotes the current reserve before any broadcast.
 Its gitignored 0600 signed state makes retries resume the same transaction. It
 checks World Chain, the fixed strategy, source runtime, total fee cap and existing
 funding. Do not disclose its state file, raw signed transaction or signing key.

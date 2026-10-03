@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FACTORY_ABI, VAULT_ABI } from "./abis";
+import { FACTORY_ABI, VAULT_ABI, INCOME_FACTORY_ABI, INCOME_VAULT_ABI } from "./abis";
 import { errorText } from "./errors";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
@@ -8,16 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Brand, Icon } from "@/components/Icon";
 import { Landing } from "@/components/Landing";
 import { AutomationNotice } from "@/components/AutomationNotice";
-import { YieldChoice, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
+import { PlanSetup } from "@/components/PlanSetup";
+import { AssetNavigation } from "@/components/AssetNavigation";
+import { IncomePositionCard, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
 import { MORPHO_ABI, MERKL_DISTRIBUTOR, minimumOutput, formatYieldAmount } from "@/yield";
 import type { YieldPosition, YieldTerms } from "@/yield";
 import { fetchWldRewards, remainingWldRewards } from "@/rewards";
 import type { WldRewards } from "@/rewards";
 import { fetchYieldRates } from "@/yield-rates";
 import type { YieldRates } from "@/yield-rates";
-import { HAS_YIELD_ROUTES, YIELD_ROUTES, TRUSTED_FACTORIES, yieldRouteFor, vaultLabel } from "@/assets";
+import { HAS_YIELD_ROUTES, PRIMARY_YIELD_ROUTES, YIELD_ROUTES, TRUSTED_FACTORIES, yieldRouteFor } from "@/assets";
 import type { AssetSymbol, YieldRoute } from "@/assets";
-import { confirmTransaction } from "@/transactions";
+import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetAmount, runRemainingPlanSteps } from "@/plan";
+import type { PlanAssetSymbol, PlanRoute } from "@/plan";
+import { ConfirmedTransactionFailure, confirmTransaction, verifyIncomeWithdrawalReceipt } from "@/transactions";
 import type { ReactElement } from "react";
 import {
   APP_ORIGIN,
@@ -41,13 +45,140 @@ import {
 import { signInWithWorldApp, readSessionAddress, clearSession, notificationFetch, fetchRegisteredVaults } from "@/auth";
 import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit, sendWorldChat, pickWorldContacts } from "@/minikit";
 
-// ===== WLD-only factory/vault ABI
+type AppPlanRoute = PlanRoute<YieldRoute | null>;
+const APP_PLAN_ROUTES: AppPlanRoute[] = buildPlanRoutes(
+  PRIMARY_YIELD_ROUTES.map(route => ({
+    symbol: route.symbol, asset: route.asset, decimals: route.decimals,
+    factory: route.factory, mode: "morpho" as const, details: route,
+  })),
+  { symbol: "WLD", asset: WLD_ADDRESS, decimals: 18, factory: FACTORY_ADDRESS, mode: "plain", details: null },
+  USDC_ENABLED,
+);
+
+type PlanDepositState = "ready" | "submitting" | "submitted" | "complete";
+type StoredPlanAsset = {
+  symbol: PlanAssetSymbol;
+  factory: string;
+  asset: string;
+  decimals: number;
+  mode: "morpho" | "plain";
+  amount: string;
+  vault: string;
+  depositState: PlanDepositState;
+  beforeBalance?: string;
+  beforeBlock?: number;
+  txHash?: string;
+  hashType?: "transaction" | "user-operation";
+};
+type StoredPlanAlignment = {
+  state: "submitting" | "submitted";
+  beforeBlock: number;
+  targets: Array<{ factory: string; vault: string; heir: string; periodSeconds: string; checkIn?: boolean }>;
+  txHash?: string;
+  hashType?: "transaction" | "user-operation";
+};
+type StoredPlan = {
+  version: 1;
+  account: string;
+  heir: string;
+  periodDays: number;
+  createdAt: number;
+  createState: "ready" | "submitting" | "submitted" | "complete";
+  createTargets: string[];
+  createBeforeBlock?: number;
+  createTxHash?: string;
+  createHashType?: "transaction" | "user-operation";
+  assets: StoredPlanAsset[];
+  alignment?: StoredPlanAlignment;
+};
+type PlanAlignmentConflict = {
+  symbol: PlanAssetSymbol; address: string; currentHeir: string; currentPeriod: number;
+  currentPeriodSeconds: bigint;
+  requestedHeir: string; requestedPeriod: number;
+};
+type PlanVaultIdentity = {
+  address: string; owner: string; heir: string; periodSeconds: bigint; claimedAt: bigint;
+  deadline: bigint; lastPing: bigint;
+};
+const storedPlanKey = (address: string) => `inheritance:pending-plan:${address.toLowerCase()}`;
+const canEditStoredPlan = (plan: StoredPlan) => (plan.createState === "ready" || plan.createState === "complete")
+  && !plan.alignment && !plan.createTxHash && plan.assets.every(asset => asset.depositState === "complete"
+    || asset.depositState === "ready" && !asset.txHash && asset.beforeBlock === undefined);
+
+function hasPendingPlanDeposit(plan: StoredPlan | null, account: string, factory: string, vault: string): boolean {
+  return Boolean(plan && plan.account.toLowerCase() === account.toLowerCase()
+    && plan.assets.some(asset => asset.depositState !== "complete"
+      && asset.factory.toLowerCase() === factory.toLowerCase()
+      && (!asset.vault || asset.vault.toLowerCase() === vault.toLowerCase())));
+}
+
+function trustedPlanRoute(factoryAddress: string): AppPlanRoute | null {
+  const yieldRoute = yieldRouteFor(factoryAddress);
+  const route: AppPlanRoute | null = yieldRoute
+    ? { symbol: yieldRoute.symbol, asset: yieldRoute.asset, decimals: yieldRoute.decimals,
+      factory: yieldRoute.factory, mode: "morpho", details: yieldRoute }
+    : TRUSTED_FACTORIES.some(factory => factory.toLowerCase() === factoryAddress.toLowerCase())
+      ? { symbol: "WLD", asset: WLD_ADDRESS, decimals: 18, factory: factoryAddress, mode: "plain", details: null }
+      : null;
+  return route;
+}
+
+function storedPlanRoute(step: StoredPlanAsset): AppPlanRoute | null {
+  const route = trustedPlanRoute(step.factory);
+  return route && route.symbol === step.symbol && route.asset.toLowerCase() === step.asset.toLowerCase()
+    && route.decimals === step.decimals && route.mode === step.mode ? route : null;
+}
+
+function optionalIncomeAbi(base: ethers.InterfaceAbi, optional: ethers.InterfaceAbi): ethers.InterfaceAbi {
+  const fragments = new ethers.Interface(base).fragments;
+  const signatures = new Set(fragments.map(fragment => fragment.format()));
+  return [...fragments, ...new ethers.Interface(optional).fragments.filter(fragment => !signatures.has(fragment.format()))];
+}
+
+function readStoredPlan(address: string): StoredPlan | null {
+  try {
+    const raw = sessionStorage.getItem(storedPlanKey(address));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<StoredPlan>;
+    if (value.version !== 1 || typeof value.account !== "string" || value.account.toLowerCase() !== address.toLowerCase()
+      || typeof value.heir !== "string" || !ethers.isAddress(value.heir)
+      || !Number.isInteger(value.periodDays) || Number(value.periodDays) < 1 || Number(value.periodDays) > 365
+      || !["ready", "submitting", "submitted", "complete"].includes(String(value.createState))
+      || !Array.isArray(value.createTargets) || !value.createTargets.every(target => typeof target === "string" && ethers.isAddress(target))
+      || value.createTxHash !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(value.createTxHash)
+      || !Array.isArray(value.assets) || value.assets.length === 0) return null;
+    const assets = value.assets as StoredPlanAsset[];
+    if (assets.length > 2 || new Set(assets.map(asset => asset.symbol)).size !== assets.length) return null;
+    if (!assets.every(asset => (asset.symbol === "WLD" || asset.symbol === "USDC")
+      && ethers.isAddress(asset.factory) && ethers.isAddress(asset.asset) && (!asset.vault || ethers.isAddress(asset.vault))
+      && Number.isInteger(asset.decimals) && asset.decimals >= 0 && asset.decimals <= 255
+      && (asset.mode === "plain" || asset.mode === "morpho") && /^\d+$/.test(asset.amount)
+      && BigInt(asset.amount) > 0n && ["ready", "submitting", "submitted", "complete"].includes(asset.depositState)
+      && (!asset.txHash || /^0x[0-9a-fA-F]{64}$/.test(asset.txHash)))) return null;
+    if (value.alignment !== undefined) {
+      const alignment = value.alignment;
+      if (!alignment || !["submitting", "submitted"].includes(alignment.state)
+        || !Number.isInteger(alignment.beforeBlock) || alignment.beforeBlock < 0
+        || !Array.isArray(alignment.targets) || !alignment.targets.length
+        // Configuration changes do not invalidate a structurally sound journal.
+        // Recovery checks route availability and keeps unresolved sends blocked.
+        || !alignment.targets.every(target => ethers.isAddress(target.factory)
+          && ethers.isAddress(target.vault) && target.vault !== ethers.ZeroAddress && ethers.isAddress(target.heir)
+          && typeof target.periodSeconds === "string" && /^\d+$/.test(target.periodSeconds) && BigInt(target.periodSeconds) > 0n
+          && (target.checkIn === undefined || typeof target.checkIn === "boolean"))
+        || new Set(alignment.targets.map(target => target.factory.toLowerCase())).size !== alignment.targets.length
+        || alignment.txHash !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(alignment.txHash)) return null;
+    }
+    return value as StoredPlan;
+  } catch {
+    return null;
+  }
+}
+
+// ===== Shared token ABI for configured asset routes
 //
-// 앱이 직접 호출하는 주소는 이 팩토리와 WLD 토큰 **두 곳뿐**이다.
-// 월드앱은 전송 전에 대상 컨트랙트를 allowlist 로 검사하고 목록에 없는
-// 컨트랙트는 `invalid_contract` 로 막는다. 사용자마다 주소가 다른 금고를 앱이
-// 직접 두드리면 목록에 올릴 수 없으므로, 모든 사용자 액션은 팩토리가 중계한다.
-// 금고는 calldata 인자로만 전달된다.
+// Wallet calls route through the configured asset factory. User-specific vaults
+// remain calldata values, so the app never sends a wallet transaction to a vault.
 
 
 const ERC20_ABI = [
@@ -57,6 +188,14 @@ const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
   "function approve(address spender, uint256 amount) returns (bool)",
 ];
+const TRANSFER_EVENT_IFACE = new ethers.Interface(["event Transfer(address indexed from,address indexed to,uint256 value)"]);
+const DEPOSIT_EVENT_IFACE = new ethers.Interface(["event Deposited(uint256 assets,uint256 shares)"]);
+const PING_EVENT_IFACE = new ethers.Interface(["event Ping(uint256 timestamp)"]);
+const SETTINGS_EVENT_IFACE = new ethers.Interface([
+  "event HeirUpdated(address indexed oldHeir,address indexed newHeir)",
+  "event HeartbeatUpdated(uint256 oldInterval,uint256 newInterval)",
+  "event Ping(uint256 timestamp)",
+]);
 
 /**
  * 금고가 상속 파이프라인에서 어느 단계인지.
@@ -86,9 +225,9 @@ type TabKey = "vault" | "money" | "inherit" | "support";
  * 남긴다.
  */
 const TABS: { key: TabKey; label: string; needsVault: boolean }[] = [
-  { key: "vault", label: "Vault", needsVault: true },
-  { key: "money", label: "Send", needsVault: true },
-  { key: "inherit", label: "Inherit", needsVault: false },
+  { key: "vault", label: "Home", needsVault: true },
+  { key: "money", label: "Assets", needsVault: true },
+  { key: "inherit", label: "Plan", needsVault: false },
   { key: "support", label: "Help", needsVault: false },
 ];
 
@@ -126,6 +265,7 @@ async function createProvider(): Promise<ethers.JsonRpcProvider> {
 export default function App() {
   // ---- state
   const [provider, setProvider] = useState<ethers.JsonRpcProvider | null>(null);
+  const navigationChosenFor = useRef("");
   // signer 경로는 비활성 (World App 내부에서만 실행)
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [account, setAccount] = useState<string>("");
@@ -187,18 +327,20 @@ export default function App() {
   const selectedStrategyAddress = selectedYieldRoute?.strategy ?? MORPHO_VAULT_ADDRESS;
   const selectedFactoryAbi = selectedYieldRoute?.factoryAbi ?? FACTORY_ABI;
   const selectedVaultAbi = selectedYieldRoute?.vaultAbi ?? VAULT_ABI;
-  const [creationAsset, setCreationAsset] = useState<AssetSymbol>("WLD");
-  const creationYieldRoute = YIELD_ROUTES.find(route => route.symbol === creationAsset);
-  const [creationKind, setCreationKind] = useState<"plain" | "yield">(creationYieldRoute ? "yield" : "plain");
+  const [planWldAmount, setPlanWldAmount] = useState("");
+  const [planUsdcAmount, setPlanUsdcAmount] = useState("");
   const [yieldConsent, setYieldConsent] = useState(false);
   const [yieldTermsByFactory, setYieldTermsByFactory] = useState<Record<string, YieldTerms | null>>({});
   const yieldTerms = selectedYieldRoute ? yieldTermsByFactory[selectedYieldRoute.factory] ?? null : null;
-  const creationYieldTerms = creationYieldRoute ? yieldTermsByFactory[creationYieldRoute.factory] ?? null : null;
   const [yieldRatesByFactory, setYieldRatesByFactory] = useState<Record<string, YieldRates | null>>({});
   const yieldRates = selectedYieldRoute ? yieldRatesByFactory[selectedYieldRoute.factory] ?? null : null;
-  const creationYieldRates = creationYieldRoute ? yieldRatesByFactory[creationYieldRoute.factory] ?? null : null;
   const [yieldRatesLoading, setYieldRatesLoading] = useState(false);
   const [yieldPosition, setYieldPosition] = useState<YieldPosition | null>(null);
+  const [incomeRead, setIncomeRead] = useState<{
+    scope: string; state: "loading" | "available" | "unavailable" | "error"; gross: bigint; fee: bigint;
+    net: bigint; withdrawableNet: bigint; valued: boolean;
+  } | null>(null);
+  const [incomeTo, setIncomeTo] = useState("");
   const [yieldHoldings, setYieldHoldings] = useState<{ scope: string; idle: bigint; shares: bigint } | null>(null);
   const [receivedRewards, setReceivedRewards] = useState<{ scope: string; amount: bigint } | null>(null);
   const [heldRewardCash, setHeldRewardCash] = useState<{ scope: string; amount: bigint } | null>(null);
@@ -213,19 +355,28 @@ export default function App() {
   const [walletShares, setWalletShares] = useState<{ account: string; amounts: Record<string, bigint> }>({ account: "", amounts: {} });
   const walletYieldShares = (route: YieldRoute) => walletShares.account.toLowerCase() === account.toLowerCase() ? walletShares.amounts[route.factory] ?? 0n : 0n;
   const [walletBalances, setWalletBalances] = useState<{ account: string; amounts: Partial<Record<AssetSymbol, bigint>> }>({ account: "", amounts: {} });
-  const creationWalletBalance = walletBalances.account.toLowerCase() === account.toLowerCase() ? walletBalances.amounts[creationAsset] ?? null : null;
+  const planWalletBalances = walletBalances.account.toLowerCase() === account.toLowerCase() ? walletBalances.amounts : {};
+  const [pendingPlan, setPendingPlan] = useState<StoredPlan | null>(null);
+  const pendingDeposit = hasPendingPlanDeposit(pendingPlan, account, vaultFactory, vault);
+  const [alignmentReview, setAlignmentReview] = useState<string>("");
+  const [alignmentConflicts, setAlignmentConflicts] = useState<PlanAlignmentConflict[]>([]);
+  const [checkinReview, setCheckinReview] = useState(false);
+  const [ownedPlanRead, setOwnedPlanRead] = useState<{
+    account: string; loading: boolean; incomplete: boolean;
+    unavailableSymbols: AssetSymbol[];
+    items: Array<{ address: string; factory: string; symbol: AssetSymbol; balance: bigint | null; additionalWld: bigint | null; heir: string; period: number; periodSeconds: bigint; lastPing: bigint; active: boolean | null }>;
+  }>({ account: "", loading: false, incomplete: false, unavailableSymbols: [], items: [] });
+  const ownedPlanRequest = useRef(0);
   type OwnedVault = { address: string; factory: string };
-  const [ownedVaultRead, setOwnedVaultRead] = useState<{ account: string; items: OwnedVault[]; incomplete: boolean }>({ account: "", items: [], incomplete: false });
+  const [ownedVaultRead, setOwnedVaultRead] = useState<{
+    account: string; items: OwnedVault[]; incomplete: boolean; unavailableFactories: string[];
+  }>({ account: "", items: [], incomplete: false, unavailableFactories: [] });
   const ownedVaults = ownedVaultRead.account === account.toLowerCase() ? ownedVaultRead.items : [];
   const vaultLookupIncomplete = ownedVaultRead.account === account.toLowerCase() && ownedVaultRead.incomplete;
   const ownedVaultCache = useRef<{ account: string; items: OwnedVault[] }>({ account: "", items: [] });
   const vaultLookupRequest = useRef(0);
   const vaultLookupAccount = useRef(account.toLowerCase());
   vaultLookupAccount.current = account.toLowerCase();
-  const creationFactoryAddress = creationKind === "yield" ? creationYieldRoute?.factory ?? "" : FACTORY_ADDRESS;
-  const creationHasVault = ownedVaults.some(v => creationKind === "yield"
-    ? v.factory.toLowerCase() === creationFactoryAddress.toLowerCase()
-    : !yieldRouteFor(v.factory));
   /**
    * `?vault=` 링크로 넘어온 금고.
    *
@@ -319,20 +470,24 @@ export default function App() {
    * 목표 수가 줄어드는 것이 오히려 usability 다.
    */
   const [tab, setTab] = useState<TabKey>("inherit");
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.querySelector<HTMLElement>(".page-intro h1")?.focus({ preventScroll: true });
+  }, [tab]);
 
   /**
    * 실제로 보여줄 탭.
    *
-   * 금고가 없으면 Vault/Send 는 내용이 없으므로 감춘다. 기본 탭을 "inherit" 로 둔
-   * 이유도 이것이다 — 첫 진입 사용자가 보게 되는 화면이 곧 "금고 만들기" 여야
-   * 하고, 아무것도 없는 화면을 먼저 보여주면 무엇을 해야 하는지 알 수 없다.
+   * Vault 는 소유자 요약이 있을 때만 보이고, Send 는 선택된 금고가 있을 때 보인다.
+   * 상속 링크만 가진 사용자는 상태와 타이머를 Inherit 에서 보므로 owner-only Vault 를
+   * 노출하지 않는다. 기본 탭은 첫 진입 사용자도 계획을 만들 수 있는 Inherit 다.
    *
    * 금고가 슬롯 해제 등으로 사라지면 현재 탭이 보이지 않게 되므로 Inherit 로 되돌린다.
    */
-  const visibleTabs = vault ? TABS : TABS.filter((t) => !t.needsVault);
+  const visibleTabs = TABS.filter(t => t.key === "vault" ? Boolean(ownVault) : t.needsVault ? Boolean(vault) : true);
   /** 현재 탭에 실제 카드가 하나라도 있는지. 금고 로딩 중이거나 조건이 어긋난 경우를 잡는다. */
   const tabHasContent =
-    tab === "support" || tab === "inherit" || Boolean(vault);
+    tab === "support" || tab === "inherit" || (tab === "vault" ? Boolean(ownVault) : Boolean(vault));
   const tabStillVisible = visibleTabs.some((t) => t.key === tab);
   useEffect(() => {
     if (!tabStillVisible) setTab("inherit");
@@ -413,6 +568,7 @@ export default function App() {
   const [vaultBalanceRead, setVaultBalanceRead] = useState<{ scope: string; amount: bigint }>({ scope: "", amount: 0n });
   const balanceScope = `${account.toLowerCase()}:${vault.toLowerCase()}:${vaultFactory.toLowerCase()}`;
   const walletWld = walletBalanceRead.scope === balanceScope ? walletBalanceRead.amount : 0n;
+  const walletBalanceKnown = walletBalanceRead.scope === balanceScope;
   const vaultWld = vaultBalanceRead.scope === balanceScope ? vaultBalanceRead.amount : 0n;
   const balanceScopeRef = useRef(balanceScope);
   balanceScopeRef.current = balanceScope;
@@ -428,13 +584,22 @@ export default function App() {
     ? selectedYieldHoldings.idle : vaultWld;
   const selectedRewards = rewardState?.scope === balanceScope ? rewardState : null;
   const selectedReceivedRewards = receivedRewards?.scope === balanceScope ? receivedRewards.amount : null;
+  const selectedIncome = incomeRead?.scope === balanceScope ? incomeRead : null;
+  const hasRewardAction = Boolean((selectedRewards?.data?.claimable ?? 0n) > 0n
+    || (selectedReceivedRewards ?? 0n) > 0n
+    || isUsdcVault && heldRewardCash?.scope === balanceScope && heldRewardCash.amount > 0n);
+  const incomeRecipientValid = Boolean(incomeTo && ethers.isAddress(incomeTo)
+    && ethers.getAddress(incomeTo) !== ethers.ZeroAddress);
   const [amountStr, setAmountStr] = useState("");
+  const depositAmount = parseAssetAmount(amountStr.trim() || "0", wldDecimals);
+  const depositEntryValid = depositAmount !== null && depositAmount > 0n && walletBalanceKnown && depositAmount <= walletWld;
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
   useEffect(() => {
     setAmountStr("");
     setWithdrawAmountStr("");
     setWithdrawTo("");
+    setIncomeTo("");
   }, [account, vault]);
   const [newHeir, setNewHeir] = useState<string>("");
   const [newHeirResolved, setNewHeirResolved] = useState<{ username?: string; address?: string } | null>(null);
@@ -476,7 +641,6 @@ export default function App() {
    * 계속 보이므로 정보는 사라지지 않고(3단계 · 금고 1개 · 기한 전 취소 가능), 규칙을
    * 아는 사람은 펼치면 된다.
    */
-  const [showHow, setShowHow] = useState(false);
   /** 모달 안의 포커스 대상을 순환시키기 위한 ref (Tab 가두기). */
   const releaseDialogRef = useRef<HTMLDivElement | null>(null);
   const [releasing, setReleasing] = useState<boolean>(false);
@@ -493,13 +657,41 @@ export default function App() {
     try { await action(); }
     finally { actionInFlight.current = false; setPendingAction(false); }
   };
+  const savePendingPlan = (next: StoredPlan) => {
+    const key = storedPlanKey(next.account);
+    const serialized = JSON.stringify(next);
+    try {
+      sessionStorage.setItem(key, serialized);
+      if (sessionStorage.getItem(key) !== serialized) throw new Error("Recovery record was not retained.");
+    } catch {
+      throw new Error("Your browser could not save the plan recovery record. Restore session storage and reopen the app before continuing.");
+    }
+    setPendingPlan(next);
+  };
+  const clearPendingPlan = (address: string) => {
+    try {
+      sessionStorage.removeItem(storedPlanKey(address));
+      if (sessionStorage.getItem(storedPlanKey(address)) !== null) throw new Error("Recovery record was not cleared.");
+    } catch {
+      throw new Error("Your browser could not clear the saved setup. Restore session storage and reopen the app before continuing.");
+    }
+    setPendingPlan(null);
+  };
+  useEffect(() => {
+    if (!account) { setPendingPlan(null); return; }
+    const restored = readStoredPlan(account);
+    setPendingPlan(restored);
+    if (!restored) {
+      try { sessionStorage.removeItem(storedPlanKey(account)); } catch { /* session storage may be unavailable */ }
+    }
+  }, [account]);
   const runVaultAction = async (action: () => Promise<void>) => {
     if (actionInFlight.current) return;
-    if (action !== createVault && !identityMatchesVault) {
+    if (action !== createPlan && !identityMatchesVault) {
       setStatus("Wait for this vault to be verified before continuing.");
       return;
     }
-    if (vaultIdentity?.released && action !== recoverArchivedYieldAssets && action !== claimYieldRewards && action !== processReceivedYieldRewards && action !== createVault && action !== fileClaim && action !== claim) {
+    if (vaultIdentity?.released && action !== recoverArchivedYieldAssets && action !== claimYieldRewards && action !== processReceivedYieldRewards && action !== createPlan && action !== fileClaim && action !== claim) {
       setStatus("This vault is archived. Its remaining rewards and inheritance can still reach the named recipient.");
       return;
     }
@@ -736,6 +928,62 @@ export default function App() {
    */
   const isVaultOwner = Boolean(vaultOwner) && account.toLowerCase() === vaultOwner.toLowerCase();
   const isMyVault = isVaultOwner && !vaultIdentity?.released;
+  const planRouteFor = (symbol: PlanAssetSymbol) => APP_PLAN_ROUTES.find(route => route.symbol === symbol) ?? null;
+  const activeOwnedPlans = ownedPlanRead.account === account.toLowerCase()
+    ? ownedPlanRead.items.filter(item => item.active === true) : [];
+  const ownedPlanTotal = (symbol: AssetSymbol) => {
+    const rows = activeOwnedPlans.filter(item => item.symbol === symbol
+      || symbol === "WLD" && item.symbol === "USDC" && item.additionalWld !== 0n);
+    const valueOf = (item: typeof rows[number]) => item.symbol === symbol ? item.balance : item.additionalWld;
+    const unavailable = ownedPlanRead.account === account.toLowerCase()
+      && ownedPlanRead.unavailableSymbols.includes(symbol);
+    return { rows, unavailable,
+      amount: !unavailable && rows.every(item => valueOf(item) !== null)
+        ? rows.reduce((sum, item) => sum + (valueOf(item) ?? 0n), 0n) : null };
+  };
+  const commonPlanSettings = activeOwnedPlans.length > 0
+    && activeOwnedPlans.every(item => item.heir.toLowerCase() === activeOwnedPlans[0].heir.toLowerCase()
+      && item.periodSeconds === activeOwnedPlans[0].periodSeconds);
+  const assetAccounts = ownedVaults.map(item => ({
+    ...item,
+    symbol: yieldRouteFor(item.factory)?.symbol ?? "WLD" as AssetSymbol,
+    current: APP_PLAN_ROUTES.some(route => route.factory.toLowerCase() === item.factory.toLowerCase()),
+  }));
+  const nextCheckIn = activeOwnedPlans.length && !ownedPlanRead.incomplete
+    ? Math.min(...activeOwnedPlans.map(item => Number(item.lastPing + item.periodSeconds))) : null;
+  const draftPlanRows = APP_PLAN_ROUTES.map(route => ({
+    symbol: route.symbol, decimals: route.decimals, mode: route.mode,
+    amount: route.symbol === "WLD" ? planWldAmount : planUsdcAmount,
+    walletBalance: planWalletBalances[route.symbol] ?? null,
+  }));
+  const parsedDraftAmounts = draftPlanRows.map(row => ({
+    row,
+    amount: row.amount.trim() ? parseAssetAmount(row.amount, row.decimals) : 0n,
+  }));
+  const selectedDraftRows = parsedDraftAmounts.filter(item => item.amount !== null && item.amount > 0n);
+  const draftTermsReady = selectedDraftRows.filter(item => item.row.mode === "morpho").every(item => {
+    const route = planRouteFor(item.row.symbol);
+    const terms = route?.details ? yieldTermsByFactory[route.factory] : null;
+    return Boolean(terms && terms.feeBps === 1000 && ethers.isAddress(terms.recipient) && terms.recipient !== ethers.ZeroAddress);
+  });
+  const draftAmountsValid = parsedDraftAmounts.every(item => item.amount !== null);
+  const draftBalancesReady = selectedDraftRows.every(item => item.row.walletBalance !== null
+    && item.amount !== null && item.amount <= item.row.walletBalance);
+  const createPlanDisabled = !provider || !miniInstalled || !account || !periodValid || !heirResolved?.address
+    || heirResolved.address === ethers.ZeroAddress || !draftAmountsValid || selectedDraftRows.length === 0
+    || !draftBalancesReady
+    || (selectedDraftRows.some(item => item.row.mode === "morpho") && (!yieldConsent || !draftTermsReady));
+  const resumePlanNeedsYieldConsent = Boolean(pendingPlan?.assets.some(asset => asset.mode === "morpho" && asset.depositState === "ready"));
+  const resumePlanTermsReady = Boolean(pendingPlan?.assets.filter(asset => asset.mode === "morpho" && asset.depositState === "ready").every(asset => {
+    const route = storedPlanRoute(asset);
+    const terms = route?.details ? yieldTermsByFactory[route.factory] : null;
+    return Boolean(terms && terms.feeBps === 1000 && terms.recipient !== ethers.ZeroAddress);
+  }));
+  const resumePlanHasOutstandingRequest = Boolean(pendingPlan && (pendingPlan.alignment
+    || pendingPlan.createState === "submitting" || pendingPlan.createState === "submitted"
+    || pendingPlan.assets.some(asset => asset.depositState === "submitting" || asset.depositState === "submitted")));
+  const resumePlanDisabled = !resumePlanHasOutstandingRequest
+    && Boolean(resumePlanNeedsYieldConsent && (!yieldConsent || !resumePlanTermsReady));
   /**
    * 내가 상속인으로 지정됐는가.
    *
@@ -975,16 +1223,20 @@ export default function App() {
   ) => {
     notifyWatchRequest.current++;
     const key = `${account.toLowerCase()}:${vaultAddress.toLowerCase()}`;
-    const res = await notificationFetch(`${NOTIFY_BACKEND_URL}/api/notifications/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        vaultAddress,
-        ownerAddress,
-        heirAddress,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    let res: Response;
+    let data: { status?: string; message?: string; watcher?: { active?: boolean } };
+    try {
+      res = await notificationFetch(`${NOTIFY_BACKEND_URL}/api/notifications/register`, {
+        method: "POST", signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vaultAddress, ownerAddress, heirAddress }),
+      });
+      data = await res.json().catch(() => ({}));
+    } finally {
+      window.clearTimeout(timeout);
+    }
     if (!res.ok || data?.status !== "success") {
       throw new Error(data?.message || "Failed to register notification watcher");
     }
@@ -1253,7 +1505,7 @@ export default function App() {
   }, [account]);
 
   // ---- contracts
-  const showYieldRates = HAS_YIELD_ROUTES && (creationKind === "yield" || isYieldVault);
+  const showYieldRates = HAS_YIELD_ROUTES && isYieldVault;
   useEffect(() => {
     if (!showYieldRates) return;
     let active = true;
@@ -1332,7 +1584,8 @@ export default function App() {
         ? result.value.address !== ethers.ZeroAddress ? [result.value] : []
         : previous.filter(item => item.factory.toLowerCase() === sources[index].toLowerCase()));
       ownedVaultCache.current = { account: key, items: found };
-      setOwnedVaultRead({ account: key, items: found, incomplete: results.some(result => result.status === "rejected") });
+      const unavailableFactories = results.flatMap((result, index) => result.status === "rejected" ? [sources[index]] : []);
+      setOwnedVaultRead({ account: key, items: found, incomplete: unavailableFactories.length > 0, unavailableFactories });
       // A failed optional registry must not hide successfully read basic vaults.
       // All creation paths still recheck their own registry before sending.
       if (results.every(result => result.status === "rejected")) throw new Error("Vault registries unavailable");
@@ -1341,7 +1594,10 @@ export default function App() {
         setOwnVault(v);
         // 링크 금고가 우선이다. 상속인에게 보낸 링크를 열었는데 자기 금고로 되돌아가면
         // 링크가 준 정보가 사라진다. 어느 쪽을 보는지는 화면에 알려준다.
-        if (!linkedVault) setVault(v);
+        if (!linkedVault) {
+          setVault(v);
+          if (!ownVault && navigationChosenFor.current !== key) setTab(current => current === "inherit" ? "vault" : current);
+        }
         setStale(true);
         return;
       }
@@ -1456,6 +1712,82 @@ export default function App() {
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
   }, [factory, account, loadVault]);
 
+  useEffect(() => {
+    const request = ++ownedPlanRequest.current;
+    const key = account.toLowerCase();
+    if (!account || !provider) {
+      setOwnedPlanRead({ account: key, loading: false, incomplete: false, unavailableSymbols: [], items: [] });
+      return;
+    }
+    let active = true;
+    const sources = ownedVaultRead.account === key ? ownedVaultRead.items : [];
+    setOwnedPlanRead(current => ({ account: key, loading: true, incomplete: current.account === key && current.incomplete,
+      unavailableSymbols: current.account === key ? current.unavailableSymbols : [], items: current.account === key ? current.items : [] }));
+    const refresh = async () => {
+      const results = await Promise.allSettled(sources.map(async item => {
+        const route = yieldRouteFor(item.factory);
+        const symbol: AssetSymbol = route?.symbol ?? "WLD";
+        const asset = route?.asset ?? WLD_ADDRESS;
+        const source = new ethers.Contract(item.factory, route?.factoryAbi ?? FACTORY_ABI, provider);
+        const child = new ethers.Contract(item.address, route?.vaultAbi ?? VAULT_ABI, provider);
+        const [canonical, owner, heirAddress, sourceFactory, tokenAddress, heartbeat, lastPing, claimedAt] = await Promise.all([
+          source.vaultOf(account), child.owner(), child.heir(), child.factory(), child[route?.tokenGetter ?? "WLD"](),
+          child.heartbeatInterval(), child.lastPing(), child.claimedAt(),
+        ]);
+        if (String(canonical).toLowerCase() !== item.address.toLowerCase()) {
+          return { address: item.address, factory: item.factory, symbol, balance: null, heir: String(heirAddress),
+            additionalWld: 0n, period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), active: false };
+        }
+        if (String(owner).toLowerCase() !== key || String(sourceFactory).toLowerCase() !== item.factory.toLowerCase()
+          || String(tokenAddress).toLowerCase() !== asset.toLowerCase()) throw new Error("Owner or asset identity mismatch");
+        let balance: bigint | null;
+        let additionalWld = 0n;
+        if (route) {
+          const [strategy, distributor, known] = await Promise.all([
+            child.strategy(), child.MERKL_DISTRIBUTOR(), source.knownVaults(item.address),
+          ]);
+          if (String(strategy).toLowerCase() !== route.strategy.toLowerCase()
+            || String(distributor).toLowerCase() !== MERKL_DISTRIBUTOR.toLowerCase() || !known) throw new Error("Yield identity mismatch");
+          if (route.symbol === "USDC" && String(await child.rewardToken()).toLowerCase() !== WLD_ADDRESS.toLowerCase()) throw new Error("Reward token mismatch");
+          const position = await child.position();
+          balance = position.valued ? BigInt(position.gross) : null;
+          if (route.symbol === "USDC") additionalWld = BigInt(await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(item.address));
+        } else {
+          const token = new ethers.Contract(asset, ERC20_ABI, provider);
+          const decimals = Number(await token.decimals());
+          if (decimals !== 18) throw new Error("Vault asset precision mismatch");
+          balance = BigInt(await token.balanceOf(item.address));
+        }
+        const heir = String(heirAddress);
+        const activePlan = BigInt(claimedAt) === 0n && heir !== ethers.ZeroAddress && heir.toLowerCase() !== key;
+        return { address: item.address, factory: item.factory, symbol, balance, additionalWld, heir,
+          period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), active: activePlan };
+      }));
+      if (!active || request !== ownedPlanRequest.current || key !== account.toLowerCase()) return;
+      const items = results.map((result, index) => result.status === "fulfilled" ? result.value : {
+        address: sources[index].address, factory: sources[index].factory,
+        symbol: yieldRouteFor(sources[index].factory)?.symbol ?? "WLD" as AssetSymbol,
+        balance: null, additionalWld: null, heir: "", period: 0, periodSeconds: 0n, lastPing: 0n, active: null,
+      });
+      const unavailableSymbols = new Set<AssetSymbol>();
+      const markUnavailable = (factoryAddress: string) => {
+        const symbol = yieldRouteFor(factoryAddress)?.symbol ?? "WLD";
+        unavailableSymbols.add(symbol);
+        if (symbol === "USDC") unavailableSymbols.add("WLD");
+      };
+      if (ownedVaultRead.account === key) ownedVaultRead.unavailableFactories.forEach(markUnavailable);
+      results.forEach((result, index) => {
+        if (result.status === "rejected") markUnavailable(sources[index].factory);
+      });
+      setOwnedPlanRead({ account: key, loading: false,
+        incomplete: ownedVaultRead.incomplete || results.some(result => result.status === "rejected"),
+        unavailableSymbols: [...unavailableSymbols], items });
+    };
+    void refresh();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 30_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [provider, account, ownedVaultRead.account, ownedVaultRead.items, ownedVaultRead.incomplete, ownedVaultRead.unavailableFactories]);
+
   // Optional capability probe for releaseMyVault (if env not set but contract supports)
   useEffect(() => {
     (async () => {
@@ -1544,6 +1876,7 @@ export default function App() {
       // 입력할 때마다 콜백이 재생성되어 이 effect 가 keystale 마다 다시 돌고,
       // 사용자가 필드를 지우면 즉시 소유자 주소로 되돌아가 비워둘 수 없게 된다.
       setWithdrawTo((prev) => prev || o);
+      setIncomeTo((prev) => prev || o);
       if (linkedVault) setLinkError("");
       setStale(true);
     } catch (error) {
@@ -1691,6 +2024,58 @@ export default function App() {
   }, [provider, account, vault, isYieldVault, selectedAssetAddress, selectedYieldRoute, wldDecimals, isUsdcVault, balanceScope]);
   useEffect(() => { void refreshBalances(); }, [refreshBalances]);
 
+  const refreshIncome = useCallback(async () => {
+    if (!provider || !account || !vault || !identityMatchesVault || !isVaultOwner) return;
+    const scope = balanceScope;
+    const selectedVault = vault;
+    const selectedFactory = vaultFactory;
+    const selectedOwner = account;
+    setIncomeRead({ scope, state: "loading", gross: 0n, fee: 0n, net: 0n, withdrawableNet: 0n, valued: false });
+    if (!isYieldVault) {
+      setIncomeRead({ scope, state: "unavailable", gross: 0n, fee: 0n, net: 0n, withdrawableNet: 0n, valued: false });
+      return;
+    }
+    try {
+      // These trusted contracts are immutable. Probe their deployed selectors and
+      // actual view response, regardless of whether the route is primary or legacy.
+      const [factoryCode, vaultCode] = await Promise.all([provider.getCode(selectedFactory), provider.getCode(selectedVault)]);
+      if (scope !== balanceScopeRef.current) return;
+      if (factoryCode === "0x" || vaultCode === "0x") throw new Error("Income contracts are unavailable.");
+      const hasSelector = (code: string, abi: ethers.InterfaceAbi, signature: string) =>
+        code.toLowerCase().includes(new ethers.Interface(abi).getFunction(signature)!.selector.slice(2).toLowerCase());
+      if (!hasSelector(factoryCode, INCOME_FACTORY_ABI, "withdrawIncomeFromMyVault(address,uint256)")
+        || !hasSelector(vaultCode, INCOME_VAULT_ABI, "incomePosition()")
+        || !hasSelector(vaultCode, INCOME_VAULT_ABI, "ownerWithdrawIncome(address,uint256)")) {
+        setIncomeRead({ scope, state: "unavailable", gross: 0n, fee: 0n, net: 0n, withdrawableNet: 0n, valued: false });
+        return;
+      }
+      const factoryContract = new ethers.Contract(selectedFactory, optionalIncomeAbi(selectedFactoryAbi, INCOME_FACTORY_ABI), provider);
+      const vaultContract = new ethers.Contract(selectedVault, optionalIncomeAbi(selectedVaultAbi, INCOME_VAULT_ABI), provider);
+      const [canonical, owner, sourceFactory, position] = await Promise.all([
+        factoryContract.vaultOf(selectedOwner), vaultContract.owner(), vaultContract.factory(), vaultContract.incomePosition(),
+      ]);
+      if (scope !== balanceScopeRef.current) return;
+      if (String(canonical).toLowerCase() !== selectedVault.toLowerCase()
+        || String(owner).toLowerCase() !== selectedOwner.toLowerCase()
+        || String(sourceFactory).toLowerCase() !== selectedFactory.toLowerCase()) {
+        throw new Error("The income position does not match this owner's canonical vault.");
+      }
+      setIncomeRead({ scope, state: "available", gross: position.gross, fee: position.fee, net: position.net,
+        withdrawableNet: position.withdrawableNet, valued: position.valued });
+    } catch {
+      if (scope === balanceScopeRef.current) {
+        setIncomeRead({ scope, state: "error",
+          gross: 0n, fee: 0n, net: 0n, withdrawableNet: 0n, valued: false });
+      }
+    }
+  }, [provider, account, vault, vaultFactory, identityMatchesVault, isVaultOwner, isYieldVault, selectedFactoryAbi, selectedVaultAbi, balanceScope]);
+  useEffect(() => {
+    if (!isMyVault || !vault) return;
+    void refreshIncome();
+    const interval = setInterval(() => void refreshIncome(), 30_000);
+    return () => clearInterval(interval);
+  }, [refreshIncome, isMyVault, vault]);
+
   const refreshRewards = useCallback(async () => {
     if (!isYieldVault || !vault || !provider) return;
     const scope = balanceScope;
@@ -1829,91 +2214,684 @@ export default function App() {
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
   }, [vaultCtr, refreshTimer]);
 
-  // ---- create vault
-  const createVault = async () => {
-    if (creating) return;
-    if (!factory) { setStatus("Connect first"); return; }
-    if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-    // Prevent double-create: factory enforces 1-per-owner and will revert with ALREADY_HAS_VAULT
-    if (creationHasVault || (!HAS_YIELD_ROUTES && ownVault)) { setStatus("You already have this type of vault. Use it or release after expiry."); pushToast('info', 'Vault already exists'); return; }
-    if (creationKind === "yield" && (!creationYieldRoute || !creationYieldTerms || !yieldConsent)) {
-      setStatus("Read and accept the yield vault terms before creating it."); return;
+  const planFactoryAbi = (route: AppPlanRoute) => route.details?.factoryAbi ?? FACTORY_ABI;
+  const planVaultAbi = (route: AppPlanRoute) => route.details?.vaultAbi ?? VAULT_ABI;
+
+  const verifyPlanYieldRoute = async (route: AppPlanRoute): Promise<YieldTerms> => {
+    if (!provider || route.mode !== "morpho" || !route.details) {
+      throw new Error(`${route.symbol} Morpho route is not configured.`);
     }
-    const resolved = heirResolved || await resolveHeirInput(heir);
-    if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
-    // 0x0 은 컨트랙트에서 InvalidAddress 로 거절된다.
-    // 경고만 띄우고 버튼을 활성화해 두면 반드시 실패하는 트랜잭션이 만들어진다.
-    if (resolved.address === ethers.ZeroAddress) {
-      setStatus("Heir cannot be the zero address");
-      pushToast('error', 'Heir cannot be the zero address');
-      return;
+    const details = route.details;
+    const factoryContract = new ethers.Contract(route.factory, details.factoryAbi, provider);
+    const strategyContract = new ethers.Contract(details.strategy, MORPHO_ABI, provider);
+    const tokenContract = new ethers.Contract(route.asset, ERC20_ABI, provider);
+    const [factoryAsset, strategy, recipient, fee, reward, underlyingAsset, underlyingFee, decimals] = await Promise.all([
+      factoryContract[details.tokenGetter](), factoryContract.strategy(), factoryContract.feeRecipient(),
+      factoryContract.performanceFeeBps(), route.symbol === "USDC" ? factoryContract.rewardToken() : Promise.resolve(WLD_ADDRESS),
+      strategyContract.asset(), strategyContract.fee(), tokenContract.decimals(),
+    ]);
+    if (String(factoryAsset).toLowerCase() !== route.asset.toLowerCase()
+      || String(underlyingAsset).toLowerCase() !== route.asset.toLowerCase()
+      || String(strategy).toLowerCase() !== details.strategy.toLowerCase()
+      || String(reward).toLowerCase() !== WLD_ADDRESS.toLowerCase()
+      || Number(decimals) !== route.decimals || fee !== 1000n
+      || !ethers.isAddress(String(recipient)) || String(recipient) === ethers.ZeroAddress) {
+      throw new Error(`${route.symbol} Morpho fee recipient, asset or strategy could not be verified.`);
     }
-    const days = periodNum;
-    if (!periodValid) { setStatus("Period must be between 1 and 365 days."); return; }
-    const seconds = BigInt(days) * 24n * 60n * 60n;
-    setCreating(true);
-    try {
-      // Cached lookup can still be loading or stale. Check both generations before
-      // creating so a delayed legacy lookup cannot leave two active app vaults.
-      const targetFactory = new ethers.Contract(creationFactoryAddress, creationKind === "yield" ? creationYieldRoute!.factoryAbi : FACTORY_ABI, provider);
-      const sources = creationKind === "yield" ? [targetFactory] : [factory, ...(LEGACY_FACTORY_ADDRESS && provider
-        ? [new ethers.Contract(LEGACY_FACTORY_ADDRESS, FACTORY_ABI, provider)] : [])];
-      const existing = await Promise.all(sources.map(source => source.vaultOf(account)));
-      if (existing.some(address => address && address !== ethers.ZeroAddress)) {
-        setStatus("You already have a vault. Use it or release after expiry.");
-        pushToast("info", "Vault already exists");
-        return;
-      }
-      const sent = await sendWorldChainTx([
-        {
-          address: creationFactoryAddress,
-          abi: FACTORY_ABI,
-          functionName: "createVault",
-          args: [resolved.address, seconds.toString()],
-        },
+    return { feeBps: Number(fee), recipient: String(recipient), underlyingFeePercent: Number(underlyingFee) / 1e16 };
+  };
+
+  const readPlanVaultIdentity = async (route: AppPlanRoute, ownerAddress: string, originalVault?: string): Promise<PlanVaultIdentity | null> => {
+    if (!provider) throw new Error("Connect to World Chain before continuing.");
+    const source = new ethers.Contract(route.factory, planFactoryAbi(route), provider);
+    const canonical = String(await source.vaultOf(ownerAddress));
+    const address = originalVault ?? canonical;
+    if (!ethers.isAddress(address) || address === ethers.ZeroAddress) return null;
+    // Yield registries retain knownVaults after release. Basic factories do not,
+    // so a historical basic target must still occupy its canonical slot.
+    if (originalVault && route.mode === "plain" && address.toLowerCase() !== canonical.toLowerCase()) {
+      throw new Error("The original basic vault was released or replaced. Its saved request is preserved and was not repeated.");
+    }
+    const child = new ethers.Contract(address, planVaultAbi(route), provider);
+    const [owner, heirAddress, heartbeat, sourceFactory, token, claimedAt, deadline, lastPing] = await Promise.all([
+      child.owner(), child.heir(), child.heartbeatInterval(), child.factory(), child[route.details?.tokenGetter ?? "WLD"](),
+      child.claimedAt(), child.deadline(), child.lastPing(),
+    ]);
+    if (String(owner).toLowerCase() !== ownerAddress.toLowerCase()
+      || String(sourceFactory).toLowerCase() !== route.factory.toLowerCase()
+      || String(token).toLowerCase() !== route.asset.toLowerCase()) {
+      throw new Error(`${route.symbol} vault identity does not match its canonical factory route.`);
+    }
+    if (route.mode === "morpho" && route.details) {
+      const [strategy, distributor, known] = await Promise.all([
+        child.strategy(), child.MERKL_DISTRIBUTOR(), source.knownVaults(address),
       ]);
-      if (!sent.ok) {
-        setStatus(sent.error);
-        if (sent.userFacing) pushToast("error", sent.error);
-        return;
+      if (String(strategy).toLowerCase() !== route.details.strategy.toLowerCase()
+        || String(distributor).toLowerCase() !== MERKL_DISTRIBUTOR.toLowerCase() || !known) {
+        throw new Error(`${route.symbol} vault strategy or registry identity could not be verified.`);
       }
-      setStatus("Pending… awaiting confirmation");
-      const prov = getRwProvider();
-      const txh = sent.tx.hash;
-      await waitForTxOrEvent(prov, {
-        txHash: txh,
-        hashType: sent.tx.hashType,
-        check: async () => {
-          const vchk = await targetFactory.vaultOf(account);
-          return vchk && vchk !== ethers.ZeroAddress;
-        },
-      });
-      setStatus("Vault created");
-      const v = await targetFactory.vaultOf(account);
-      setOwnVault(v);
-      setVault(v);
-      setLinkedVault("");
-      if (NOTIFY_BACKEND_ENABLED && v && v !== ethers.ZeroAddress) {
+      if (route.symbol === "USDC" && String(await child.rewardToken()).toLowerCase() !== WLD_ADDRESS.toLowerCase()) {
+        throw new Error("USDC vault reward token does not match the supported WLD route.");
+      }
+    }
+    return { address, owner: String(owner), heir: String(heirAddress), periodSeconds: BigInt(heartbeat),
+      claimedAt: BigInt(claimedAt), deadline: BigInt(deadline), lastPing: BigInt(lastPing) };
+  };
+
+  const planFingerprint = (plan: StoredPlan) => [plan.account.toLowerCase(), plan.heir.toLowerCase(), plan.periodDays,
+    ...plan.assets.map(asset => `${asset.symbol}:${asset.factory.toLowerCase()}:${asset.amount}`)].join("|");
+
+  const alignmentFingerprint = (plan: StoredPlan, conflicts: readonly PlanAlignmentConflict[]) => [planFingerprint(plan),
+    ...conflicts.map(conflict => [conflict.symbol, conflict.address.toLowerCase(), conflict.currentHeir.toLowerCase(),
+      conflict.currentPeriodSeconds, conflict.requestedHeir.toLowerCase(), conflict.requestedPeriod].join(":")).sort()].join("|");
+
+  const verifyCreateReceipt = (receipt: { logs: readonly { address: string; topics: readonly string[]; data: string }[] },
+    targets: readonly AppPlanRoute[], plan: StoredPlan, observed: Map<string, string>) => {
+    const iface = new ethers.Interface(FACTORY_ABI);
+    const targetFactories = new Set(targets.map(route => route.factory.toLowerCase()));
+    for (const log of receipt.logs) {
+      if (!targetFactories.has(log.address.toLowerCase())) continue;
+      try {
+        const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+        if (!parsed || parsed.name !== "VaultCreated") continue;
+        const owner = String(parsed.args.owner), heirAddress = String(parsed.args.heir);
+        const newVault = String(parsed.args.vault), heartbeat = BigInt(parsed.args.heartbeatInterval);
+        if (owner.toLowerCase() === plan.account.toLowerCase() && heirAddress.toLowerCase() === plan.heir.toLowerCase()
+          && heartbeat === BigInt(plan.periodDays) * 86400n && ethers.isAddress(newVault)) {
+          observed.set(log.address.toLowerCase(), ethers.getAddress(newVault));
+        }
+      } catch { /* Ignore logs from unrelated events. */ }
+    }
+    return observed.size > 0;
+  };
+
+  const verifyDepositReceipt = (receipt: { logs: readonly { address: string; topics: readonly string[]; data: string }[] },
+    route: AppPlanRoute, step: StoredPlanAsset, ownerAddress: string) => {
+    const amount = BigInt(step.amount), expectedOwner = ownerAddress.toLowerCase(), expectedVault = step.vault.toLowerCase();
+    let exactTransfer = false, deposited = route.mode === "plain";
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() === route.asset.toLowerCase()) {
         try {
-          await registerWatcher(v, account, resolved.address, true);
-        } catch {
-          const key = `${account.toLowerCase()}:${v.toLowerCase()}`;
-          if (notifyWatchScope.current === key) setNotifyWatch({ key, state: "not_registered" });
-          pushToast("info", "Vault saved on-chain. Monitoring could not be enabled; try again in the Inherit tab.");
+          const parsed = TRANSFER_EVENT_IFACE.parseLog({ topics: [...log.topics], data: log.data });
+          if (parsed && String(parsed.args.from).toLowerCase() === expectedOwner
+            && String(parsed.args.to).toLowerCase() === expectedVault && BigInt(parsed.args.value) === amount) exactTransfer = true;
+        } catch { /* Ignore unrelated token logs. */ }
+      }
+      if (route.mode === "morpho" && log.address.toLowerCase() === expectedVault) {
+        try {
+          const parsed = DEPOSIT_EVENT_IFACE.parseLog({ topics: [...log.topics], data: log.data });
+          if (parsed && BigInt(parsed.args.assets) === amount && BigInt(parsed.args.shares) > 0n) deposited = true;
+        } catch { /* Ignore unrelated vault logs. */ }
+      }
+    }
+    return exactTransfer && deposited;
+  };
+
+  const confirmPlanCreation = async (plan: StoredPlan, targets: readonly AppPlanRoute[]) => {
+    const observed = new Map<string, string>();
+    await waitForTxOrEvent(getRwProvider(), {
+      txHash: plan.createTxHash,
+      hashType: plan.createHashType,
+      verifyReceipt: receipt => verifyCreateReceipt(receipt, targets, plan, observed),
+      check: async () => {
+        for (const route of targets) {
+          const eventVault = observed.get(route.factory.toLowerCase());
+          if (!eventVault) continue;
+          const identity = await readPlanVaultIdentity(route, plan.account, eventVault);
+          if (!identity || identity.address.toLowerCase() !== eventVault.toLowerCase()
+            || identity.owner.toLowerCase() !== plan.account.toLowerCase()) return false;
+        }
+        return observed.size > 0;
+      },
+    });
+    return observed;
+  };
+
+  const verifyAlignmentReceipt = (receipt: { logs: readonly { address: string; topics: readonly string[]; data: string }[] },
+    plan: StoredPlan, alignment: StoredPlanAlignment) => {
+    const heirs = new Set<string>(), periods = new Set<string>(), checkIns = new Set<string>();
+    for (const log of receipt.logs) {
+      const address = log.address.toLowerCase();
+      if (!alignment.targets.some(target => target.vault.toLowerCase() === address)) continue;
+      try {
+        const event = SETTINGS_EVENT_IFACE.parseLog({ topics: [...log.topics], data: log.data });
+        if (event?.name === "HeirUpdated" && String(event.args.newHeir).toLowerCase() === plan.heir.toLowerCase()) heirs.add(address);
+        if (event?.name === "HeartbeatUpdated" && BigInt(event.args.newInterval) === BigInt(plan.periodDays) * 86400n) periods.add(address);
+        if (event?.name === "Ping" && BigInt(event.args.timestamp) > 0n) checkIns.add(address);
+      } catch { /* Unrelated events do not prove a settings update. */ }
+    }
+    return alignment.targets.length > 0 && alignment.targets.every(target =>
+      (target.heir.toLowerCase() !== plan.heir.toLowerCase() || BigInt(target.periodSeconds) !== BigInt(plan.periodDays) * 86400n)
+      &&
+      (target.heir.toLowerCase() === plan.heir.toLowerCase() || heirs.has(target.vault.toLowerCase()))
+      && (BigInt(target.periodSeconds) === BigInt(plan.periodDays) * 86400n || periods.has(target.vault.toLowerCase()))
+      && (!target.checkIn || checkIns.has(target.vault.toLowerCase())));
+  };
+
+  const confirmSavedAlignment = async (plan: StoredPlan, original: StoredPlanAlignment,
+    recordReceipt: (alignment: StoredPlanAlignment) => void) => {
+    if (!provider) throw new Error("World Chain is unavailable. The prior settings request was not repeated.");
+    const verifyTargets = async () => {
+      for (const target of original.targets) {
+        const route = trustedPlanRoute(target.factory);
+        if (!route) throw new Error("The original settings route is unavailable. Its request was preserved.");
+        const identity = await readPlanVaultIdentity(route, plan.account, target.vault);
+        if (!identity || identity.owner.toLowerCase() !== plan.account.toLowerCase()) return false;
+      }
+      return true;
+    };
+    if (!await verifyTargets()) throw new Error("The original settings targets could not be verified. No request was repeated.");
+    let alignment = original;
+    if (!alignment.txHash) {
+      const signatures = ["HeirUpdated", "HeartbeatUpdated"].map(name => SETTINGS_EVENT_IFACE.getEvent(name)!.topicHash);
+      const receipt = await findUniquePlanReceipt(alignment.beforeBlock,
+        () => provider.getBlockNumber(),
+        (fromBlock, toBlock) => provider.getLogs({ address: alignment.targets.map(target => target.vault),
+          topics: [signatures], fromBlock, toBlock }),
+        hash => provider.getTransactionReceipt(hash),
+        () => true,
+        candidate => candidate.status === 1 && verifyAlignmentReceipt(candidate, plan, alignment));
+      if (!receipt) throw new Error("The prior settings request has no verifiable result yet. It was not repeated; editing remains paused.");
+      alignment = { ...alignment, state: "submitted", txHash: receipt.hash, hashType: "transaction" };
+      recordReceipt(alignment);
+    }
+    await waitForTxOrEvent(getRwProvider(), {
+      txHash: alignment.txHash, hashType: alignment.hashType,
+      verifyReceipt: receipt => verifyAlignmentReceipt(receipt, plan, alignment),
+      check: verifyTargets,
+    });
+  };
+
+  const confirmSavedPlanDeposit = async (plan: StoredPlan, storedStep: StoredPlanAsset, route: AppPlanRoute,
+    recordReceipt?: (step: StoredPlanAsset) => void) => {
+    if (!provider || !storedStep.vault) throw new Error(`${storedStep.symbol} original deposit target is unavailable. No request was repeated.`);
+    const original = await readPlanVaultIdentity(route, plan.account, storedStep.vault);
+    if (!original) throw new Error(`${storedStep.symbol} original vault could not be verified. No request was repeated.`);
+    let step = storedStep;
+    if (step.depositState === "submitted" && !step.txHash) step = { ...step, depositState: "submitting" };
+    if (step.depositState === "submitting" && step.txHash) {
+      throw new Error(`The saved ${step.symbol} request has an unexpected transaction state. It was not repeated.`);
+    }
+    if (step.depositState === "submitting") {
+      const transferTopic = TRANSFER_EVENT_IFACE.getEvent("Transfer")!.topicHash;
+      const receipt = await findUniquePlanReceipt(
+        step.beforeBlock,
+        () => provider.getBlockNumber(),
+        (fromBlock, toBlock) => provider.getLogs({ address: route.asset,
+          topics: [transferTopic, ethers.zeroPadValue(ethers.getAddress(plan.account), 32), ethers.zeroPadValue(ethers.getAddress(step.vault), 32)],
+          fromBlock, toBlock }),
+        transactionHash => provider.getTransactionReceipt(transactionHash),
+        log => {
+          try {
+            const transfer = TRANSFER_EVENT_IFACE.parseLog({ topics: [...log.topics], data: log.data });
+            return Boolean(transfer && String(transfer.args.from).toLowerCase() === plan.account.toLowerCase()
+              && String(transfer.args.to).toLowerCase() === step.vault.toLowerCase()
+              && BigInt(transfer.args.value) === BigInt(step.amount));
+          } catch { return false; }
+        },
+        candidate => candidate.status === 1 && verifyDepositReceipt(candidate, route, step, plan.account),
+      );
+      if (!receipt) throw new Error(`The prior ${step.symbol} request has no verifiable result yet. It was not repeated.`);
+      step = { ...step, depositState: "submitted", txHash: receipt.hash, hashType: "transaction" };
+      recordReceipt?.(step);
+    }
+    if (step.depositState !== "submitted" || !step.txHash) {
+      throw new Error(`The prior ${step.symbol} request has no transaction ID. It was not repeated.`);
+    }
+    await waitForTxOrEvent(getRwProvider(), {
+      txHash: step.txHash, hashType: step.hashType,
+      verifyReceipt: receipt => verifyDepositReceipt(receipt, route, step, plan.account),
+      check: async () => {
+        const current = await readPlanVaultIdentity(route, plan.account, step.vault);
+        // A receipt proves the historical deposit. Later owner withdrawals,
+        // settlement, settings edits or slot replacement do not invalidate it.
+        return Boolean(current && current.address.toLowerCase() === step.vault.toLowerCase()
+          && current.owner.toLowerCase() === plan.account.toLowerCase());
+      },
+    });
+  };
+
+  const continuePlan = async (confirmAlignment = false) => {
+    if (creating) return;
+    if (!account || !factory) { setStatus("Connect first"); return; }
+    if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast("error", "Open in World App"); return; }
+    if (!provider) { setStatus("World Chain is still connecting. Try again shortly."); return; }
+    setCreating(true);
+    let workingPlan: StoredPlan | null = null;
+    const watcherRequests: Promise<void>[] = [];
+    let watcherFailed = false;
+    const monitorConfirmedVault = (route: AppPlanRoute, vaultAddress: string, ownerAddress: string) => {
+      if (!NOTIFY_BACKEND_ENABLED || !vaultAddress) return;
+      watcherRequests.push((async () => {
+        const identity = await readPlanVaultIdentity(route, ownerAddress);
+        // Monitor the current canonical position and its current heir, without
+        // transferring a historical deposit's monitoring to a replacement.
+        if (!identity || identity.address.toLowerCase() !== vaultAddress.toLowerCase()
+          || identity.claimedAt > 0n || identity.heir === ethers.ZeroAddress
+          || identity.heir.toLowerCase() === ownerAddress.toLowerCase()) return;
+        await registerWatcher(identity.address, ownerAddress, identity.heir, true);
+      })().catch(() => { watcherFailed = true; }));
+    };
+    const persist = (update: (current: StoredPlan) => StoredPlan) => {
+      if (!workingPlan) return;
+      const next = update(workingPlan);
+      savePendingPlan(next);
+      workingPlan = next;
+    };
+    try {
+      const existingPending = pendingPlan ?? readStoredPlan(account);
+      if (existingPending && existingPending.account.toLowerCase() !== account.toLowerCase()) {
+        throw new Error("The saved plan belongs to another wallet. Switch wallets to resume it.");
+      }
+      if (existingPending) {
+        workingPlan = existingPending;
+      } else {
+        if (!periodValid) throw new Error("Check-in interval must be between 1 and 365 days.");
+        const resolved = heirResolved || await resolveHeirInput(heir);
+        if (!resolved?.address || !ethers.isAddress(resolved.address)) throw new Error("Enter a valid heir username or address.");
+        if (resolved.address === ethers.ZeroAddress) throw new Error("Heir cannot be the zero address.");
+        const inputs: Record<PlanAssetSymbol, string> = { WLD: planWldAmount, USDC: planUsdcAmount };
+        const selectedAssets: StoredPlanAsset[] = [];
+        for (const route of APP_PLAN_ROUTES) {
+          const input = inputs[route.symbol];
+          const amount = input.trim() ? parseAssetAmount(input, route.decimals) : 0n;
+          if (amount === null) throw new Error(`${route.symbol} amount has too many decimal places or an invalid format.`);
+          if (amount > 0n) selectedAssets.push({ symbol: route.symbol, factory: route.factory, asset: route.asset,
+            decimals: route.decimals, mode: route.mode, amount: amount.toString(), vault: "", depositState: "ready" });
+        }
+        if (!selectedAssets.length) throw new Error("Enter a WLD or USDC amount greater than zero.");
+        if (selectedAssets.some(asset => asset.mode === "morpho") && !yieldConsent) {
+          throw new Error("Review and accept the Morpho fee and risk terms before continuing.");
+        }
+        workingPlan = { version: 1, account: ethers.getAddress(account), heir: ethers.getAddress(resolved.address),
+          periodDays: periodNum, createdAt: Date.now(), createState: "ready", createTargets: [], assets: selectedAssets };
+      }
+
+      const plan = workingPlan;
+      if (plan.account.toLowerCase() !== account.toLowerCase()) throw new Error("The saved plan account no longer matches this wallet.");
+      const routeForStep = (step: StoredPlanAsset): AppPlanRoute => {
+        const route = storedPlanRoute(step);
+        if (!route) {
+          throw new Error(`${step.symbol} route configuration changed. The saved plan was not sent.`);
+        }
+        return route;
+      };
+      // New deposits use the selected routes; shared settings review includes
+      // every trusted active generation, including existing basic WLD vaults.
+      const planRoutes = [...new Set(TRUSTED_FACTORIES.map(address => address.toLowerCase()))]
+        .map(trustedPlanRoute).filter((route): route is AppPlanRoute => Boolean(route));
+      for (const asset of plan.assets) routeForStep(asset);
+      const periodSeconds = BigInt(plan.periodDays) * 86400n;
+      let latestBlock = await provider.getBlock("latest");
+      if (!latestBlock) throw new Error("World Chain time is unavailable. Refresh before continuing.");
+
+      if (plan.alignment) {
+        await confirmSavedAlignment(plan, plan.alignment, recovered => persist(current => ({ ...current, alignment: recovered })));
+        persist(current => ({ ...current, alignment: undefined }));
+        for (const target of plan.alignment.targets) {
+          const route = trustedPlanRoute(target.factory);
+          if (route) monitorConfirmedVault(route, target.vault, plan.account);
         }
       }
-      refreshBalances(); refreshTimer();
-    } catch (e: unknown) {
-      const raw = errorText(e);
-      let friendly = raw;
-      if (/ALREADY_HAS_VAULT/i.test(raw)) friendly = 'You already have a vault (factory is one-per-owner).';
-      else if (/HeartbeatOutOfRange/i.test(raw)) friendly = 'Period must be 1–365 days.';
-      else if (/InvalidAddress/i.test(raw)) friendly = 'Invalid heir address.';
-      else if (/insufficient funds/i.test(raw)) friendly = 'Insufficient gas on World Chain (ETH needed for fees).';
-      setStatus("Create error: " + friendly);
-      pushToast('error', friendly);
+
+      for (const asset of workingPlan.assets.filter(item => item.depositState === "complete")) {
+        monitorConfirmedVault(routeForStep(asset), asset.vault, plan.account);
+      }
+
+      if (plan.createState === "submitted" && plan.createTxHash && plan.createTargets.length > 0) {
+        const submittedRoutes = plan.createTargets.map(factoryAddress => planRoutes.find(route => route.factory.toLowerCase() === factoryAddress.toLowerCase()))
+          .filter((route): route is AppPlanRoute => Boolean(route));
+        if (submittedRoutes.length !== plan.createTargets.length) throw new Error("The saved create route could not be matched. No retry was sent.");
+        await confirmPlanCreation(plan, submittedRoutes);
+        persist(current => ({ ...current, createState: "ready", createTargets: [], createTxHash: undefined, createHashType: undefined }));
+      } else if (plan.createState === "submitting" || (plan.createState === "submitted" && !plan.createTxHash)) {
+        const uncertain = plan.createTargets.map(factoryAddress => planRoutes.find(route => route.factory.toLowerCase() === factoryAddress.toLowerCase()))
+          .filter((route): route is AppPlanRoute => Boolean(route));
+        if (!uncertain.length || uncertain.length !== plan.createTargets.length) throw new Error("The original create targets are unavailable. No retry was sent.");
+        const createTopic = new ethers.Interface(FACTORY_ABI).getEvent("VaultCreated")!.topicHash;
+        const receipt = await findUniquePlanReceipt(plan.createBeforeBlock,
+          () => provider.getBlockNumber(),
+          (fromBlock, toBlock) => provider.getLogs({ address: uncertain.map(route => route.factory),
+            topics: [createTopic, ethers.zeroPadValue(ethers.getAddress(plan.account), 32)], fromBlock, toBlock }),
+          hash => provider.getTransactionReceipt(hash), () => true,
+          candidate => {
+            const observed = new Map<string, string>();
+            return candidate.status === 1 && verifyCreateReceipt(candidate, uncertain, plan, observed)
+              && observed.size === uncertain.length;
+          });
+        if (!receipt) throw new Error("A create request was interrupted before its transaction ID was saved. No duplicate create was sent; reopen the app after the wallet request settles.");
+        persist(current => ({ ...current, createState: "submitted", createTxHash: receipt.hash, createHashType: "transaction" }));
+        await confirmPlanCreation(workingPlan!, uncertain);
+        persist(current => ({ ...current, createState: "complete", createTargets: [], createTxHash: undefined, createHashType: undefined }));
+      }
+
+      // Resolve prior sends against their original targets before any new wallet
+      // request. Neither a completed nor a submitted step is a new deposit.
+      for (const asset of workingPlan.assets.filter(item => item.depositState === "submitting" || item.depositState === "submitted")) {
+        await confirmSavedPlanDeposit(plan, asset, routeForStep(asset), recovered =>
+          persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === recovered.symbol ? recovered : item) })));
+        persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === asset.symbol
+          ? { ...item, depositState: "complete", txHash: undefined, hashType: undefined } : item) }));
+        monitorConfirmedVault(routeForStep(asset), asset.vault, plan.account);
+      }
+
+      if (workingPlan.assets.some(asset => asset.mode === "morpho" && asset.depositState === "ready") && !yieldConsent) {
+        throw new Error("Please review and accept the Morpho fee and risk terms before sending the remaining deposits.");
+      }
+
+      // Check all remaining balances before alignment or contract creation can
+      // cost gas. A new invalid draft stays editable and has no saved journal.
+      for (const asset of workingPlan.assets.filter(item => item.depositState === "ready")) {
+        const route = routeForStep(asset);
+        const token = new ethers.Contract(route.asset, ERC20_ABI, provider);
+        const [decimals, balance] = await Promise.all([token.decimals(), token.balanceOf(plan.account)]);
+        if (Number(decimals) !== route.decimals) throw new Error(`${route.symbol} token precision does not match its configured route.`);
+        if (BigInt(balance) < BigInt(asset.amount)) throw new Error(`Not enough ${route.symbol} in your wallet. Adjust the remaining amount before continuing.`);
+        if (asset.mode === "morpho") await verifyPlanYieldRoute(route);
+      }
+      const assetByFactory = new Map(workingPlan.assets.map(asset => [asset.factory.toLowerCase(), asset]));
+      const currentIdentities = new Map<string, PlanVaultIdentity | null>();
+      const conflicts: PlanAlignmentConflict[] = [];
+      for (const route of planRoutes) {
+        const identity = await readPlanVaultIdentity(route, plan.account);
+        currentIdentities.set(route.factory.toLowerCase(), identity);
+        if (!identity) continue;
+        const step = assetByFactory.get(route.factory.toLowerCase());
+        const selectedForDeposit = step?.depositState === "ready";
+        if (identity.claimedAt > 0n || identity.heir.toLowerCase() === plan.account.toLowerCase() || identity.heir === ethers.ZeroAddress) {
+          if (selectedForDeposit) throw new Error(`${route.symbol} vault is closed or its inheritance is cancelled. Manage or release it before starting a new deposit.`);
+          continue;
+        }
+        const settingsDiffer = identity.heir.toLowerCase() !== plan.heir.toLowerCase() || identity.periodSeconds !== periodSeconds;
+        if (settingsDiffer) {
+          if (identity.deadline <= BigInt(latestBlock.timestamp)) {
+            if (selectedForDeposit) throw new Error(`${route.symbol} settings differ, but its check-in period has ended. The app will not overwrite them; renew or manage that vault first.`);
+            continue;
+          }
+          conflicts.push({ symbol: route.symbol, address: identity.address, currentHeir: identity.heir,
+            currentPeriod: Number(identity.periodSeconds) / 86400, currentPeriodSeconds: identity.periodSeconds,
+            requestedHeir: plan.heir, requestedPeriod: plan.periodDays });
+        }
+        if (selectedForDeposit && identity.deadline <= BigInt(latestBlock.timestamp)) {
+          throw new Error(`${route.symbol} check-in period has ended. Renew it before adding funds.`);
+        }
+      }
+
+      if (conflicts.length > 0) {
+        const fingerprint = alignmentFingerprint(plan, conflicts);
+        if (!confirmAlignment || alignmentReview !== fingerprint) {
+          setAlignmentReview(fingerprint);
+          setAlignmentConflicts(conflicts);
+          setStatus("Review the existing vault settings before continuing. No changes have been made.");
+          return;
+        }
+        const alignCalls = conflicts.flatMap(conflict => {
+          const route = planRoutes.find(candidate => candidate.factory.toLowerCase() === conflict.address.toLowerCase()
+            || currentIdentities.get(candidate.factory.toLowerCase())?.address.toLowerCase() === conflict.address.toLowerCase());
+          if (!route) return [];
+          const calls = [];
+          if (conflict.currentHeir.toLowerCase() !== plan.heir.toLowerCase()) calls.push({
+            address: route.factory, abi: planFactoryAbi(route), functionName: "updateMyHeir", args: [plan.heir],
+          });
+          if (conflict.currentPeriodSeconds !== periodSeconds) {
+            // The reviewed interval starts at this check-in. Preserving an old
+            // lastPing could immediately expire a funded, unselected asset.
+            calls.push({ address: route.factory, abi: planFactoryAbi(route), functionName: "pingMyVault", args: [] });
+            calls.push({ address: route.factory, abi: planFactoryAbi(route), functionName: "changeMyPeriod", args: [periodSeconds.toString()] });
+          }
+          return calls;
+        });
+        if (alignCalls.length > 0) {
+          const beforeBlock = await provider.getBlockNumber();
+          const targets = conflicts.map(conflict => {
+            const route = planRoutes.find(candidate => currentIdentities.get(candidate.factory.toLowerCase())?.address.toLowerCase() === conflict.address.toLowerCase());
+            if (!route) throw new Error("A reviewed settings target changed. Review the plan again.");
+            return { factory: route.factory, vault: conflict.address, heir: conflict.currentHeir,
+              periodSeconds: conflict.currentPeriodSeconds.toString(), checkIn: conflict.currentPeriodSeconds !== periodSeconds };
+          });
+          persist(current => ({ ...current, alignment: { state: "submitting", beforeBlock, targets } }));
+          const sent = await sendWorldChainTx(alignCalls);
+          if (!sent.ok) {
+            if (sent.definitelyNotSubmitted) persist(current => ({ ...current, alignment: undefined }));
+            setStatus(sent.error);
+            if (sent.userFacing) pushToast("error", sent.error);
+            return;
+          }
+          persist(current => ({ ...current, alignment: { ...current.alignment!, state: "submitted",
+            txHash: sent.tx.hash, hashType: sent.tx.hashType } }));
+          setStatus("Pending… aligning the reviewed plan settings");
+          await confirmSavedAlignment(workingPlan!, workingPlan!.alignment!, recovered =>
+            persist(current => ({ ...current, alignment: recovered })));
+          persist(current => ({ ...current, alignment: undefined }));
+          for (const target of targets) {
+            const route = trustedPlanRoute(target.factory);
+            if (route) monitorConfirmedVault(route, target.vault, plan.account);
+          }
+        }
+        setAlignmentReview("");
+        setAlignmentConflicts([]);
+        latestBlock = await provider.getBlock("latest");
+        if (!latestBlock) throw new Error("World Chain time is unavailable after settings review.");
+      } else {
+        setAlignmentReview("");
+        setAlignmentConflicts([]);
+      }
+
+      for (const asset of workingPlan.assets.filter(item => item.depositState === "ready" && item.mode === "morpho")) {
+        const route = routeForStep(asset);
+        await verifyPlanYieldRoute(route);
+      }
+
+      const missingRoutes: AppPlanRoute[] = [];
+      for (const asset of workingPlan.assets.filter(item => item.depositState === "ready")) {
+        const route = routeForStep(asset);
+        const identity = await readPlanVaultIdentity(route, plan.account);
+        if (!identity) missingRoutes.push(route);
+        else {
+          if (identity.heir.toLowerCase() !== plan.heir.toLowerCase() || identity.periodSeconds !== periodSeconds) {
+            throw new Error(`${asset.symbol} settings changed before deposit. Review the plan again.`);
+          }
+          if (identity.claimedAt > 0n || identity.deadline <= BigInt(latestBlock.timestamp)) {
+            throw new Error(`${asset.symbol} vault is no longer active. No deposit was sent.`);
+          }
+          persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === asset.symbol
+            ? { ...item, vault: identity.address } : item) }));
+        }
+      }
+
+      if (missingRoutes.length > 0) {
+        const beforeBlock = await provider.getBlockNumber();
+        persist(current => ({ ...current, createState: "submitting", createTargets: missingRoutes.map(route => route.factory),
+          createBeforeBlock: beforeBlock, createTxHash: undefined, createHashType: undefined }));
+        const sent = await sendWorldChainTx(missingRoutes.map(route => ({
+          address: route.factory, abi: FACTORY_ABI, functionName: "createVault",
+          args: [plan.heir, periodSeconds.toString()],
+        })));
+        if (!sent.ok) {
+          // Only a structured failure that proves pre-submission returns this step to
+          // ready. An ID-less bridge/transport error stays submitting for safe recovery.
+          if (sent.definitelyNotSubmitted) {
+            persist(current => ({ ...current, createState: "ready", createTargets: [], createBeforeBlock: undefined,
+              createTxHash: undefined, createHashType: undefined }));
+          }
+          setStatus(sent.error);
+          if (sent.userFacing) pushToast("error", sent.error);
+          return;
+        }
+        persist(current => ({ ...current, createState: "submitted", createTxHash: sent.tx.hash, createHashType: sent.tx.hashType }));
+        setStatus("Pending… verifying the new vaults");
+        const observed = await confirmPlanCreation(workingPlan!, missingRoutes);
+        const created: Record<string, string> = {};
+        for (const route of missingRoutes) {
+          const identity = await readPlanVaultIdentity(route, plan.account);
+          if (identity && identity.heir.toLowerCase() === plan.heir.toLowerCase() && identity.periodSeconds === periodSeconds) {
+            created[route.factory.toLowerCase()] = identity.address;
+          }
+        }
+        const stillMissing = missingRoutes.filter(route => !created[route.factory.toLowerCase()]);
+        persist(current => ({ ...current, createState: stillMissing.length ? "ready" : "complete",
+          createTargets: stillMissing.map(route => route.factory), createTxHash: undefined, createHashType: undefined,
+          assets: current.assets.map(item => {
+            const route = missingRoutes.find(candidate => candidate.symbol === item.symbol);
+            const address = route ? created[route.factory.toLowerCase()] : undefined;
+            return address ? { ...item, vault: address } : item;
+          }) }));
+        if (observed.size === 0) throw new Error("The create receipt did not identify a canonical vault. Check before retrying.");
+        if (stillMissing.length > 0) {
+          setStatus("Some vaults were created. Resume to finish the remaining asset.");
+          return;
+        }
+      } else if (workingPlan.createState !== "complete") {
+        persist(current => ({ ...current, createState: "complete", createTargets: [] }));
+      }
+
+      const steps = workingPlan.assets.map(asset => ({ key: asset.symbol, value: asset }));
+      await runRemainingPlanSteps(
+        steps,
+        symbol => workingPlan?.assets.find(asset => asset.symbol === symbol)?.depositState === "complete",
+        async asset => {
+          const route = routeForStep(asset);
+          const step = workingPlan!.assets.find(item => item.symbol === asset.symbol)!;
+          const identity = await readPlanVaultIdentity(route, plan.account);
+          if (!identity || !step.vault || identity.address.toLowerCase() !== step.vault.toLowerCase()) {
+            throw new Error(`${asset.symbol} canonical vault changed. No deposit was sent.`);
+          }
+          if (identity.owner.toLowerCase() !== plan.account.toLowerCase()
+            || identity.heir.toLowerCase() !== plan.heir.toLowerCase() || identity.periodSeconds !== periodSeconds) {
+            throw new Error(`${asset.symbol} owner, heir or interval changed. No deposit was sent.`);
+          }
+          const amount = BigInt(step.amount);
+          if (step.depositState !== "ready") throw new Error(`${asset.symbol} prior request still needs verification. It was not repeated.`);
+          if (identity.claimedAt > 0n || identity.deadline <= BigInt((await provider.getBlock("latest"))?.timestamp ?? 0)) {
+            throw new Error(`${asset.symbol} vault is no longer active. No deposit was sent.`);
+          }
+          const token = new ethers.Contract(route.asset, ERC20_ABI, provider);
+          const [decimals, walletBalance] = await Promise.all([token.decimals(), token.balanceOf(plan.account)]);
+          if (Number(decimals) !== route.decimals) throw new Error(`${route.symbol} token precision does not match its configured route.`);
+          if (BigInt(walletBalance) < amount) throw new Error(`Not enough ${route.symbol} in your wallet to finish this plan.`);
+          // Save a resumable ready step before quote/read RPCs. A failure here is
+          // provably before any wallet request, so it must never look ambiguous.
+          persist(current => ({ ...current }));
+          const beforeBlock = await provider.getBlockNumber();
+          const minShares = route.mode === "morpho"
+            ? minimumOutput(BigInt(await new ethers.Contract(route.details!.strategy, MORPHO_ABI, provider).previewDeposit(amount))) : 0n;
+          const depositCall = route.mode === "morpho"
+            ? { address: route.factory, abi: planFactoryAbi(route), functionName: "depositWithMinShares", args: [amount.toString(), minShares.toString()] }
+            : { address: route.factory, abi: planFactoryAbi(route), functionName: "deposit", args: [amount.toString()] };
+          persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === step.symbol
+            ? { ...item, depositState: "submitting", beforeBalance: undefined, beforeBlock,
+              txHash: undefined, hashType: undefined } : item) }));
+          const sent = await sendWorldChainTx([
+            { address: route.asset, abi: ERC20_ABI, functionName: "approve", args: [route.factory, amount.toString()] },
+            depositCall,
+          ]);
+          if (!sent.ok) {
+            // Only a structured pre-submission failure returns this step to ready.
+            // Other ID-less errors stay submitting until recovery proves the outcome.
+            if (sent.definitelyNotSubmitted) {
+              persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === step.symbol
+                ? { ...item, depositState: "ready", beforeBalance: undefined, beforeBlock: undefined,
+                  txHash: undefined, hashType: undefined } : item) }));
+            }
+            setStatus(sent.error);
+            if (sent.userFacing) pushToast("error", sent.error);
+            throw new Error(sent.error);
+          }
+          const submittedStep = { ...workingPlan!.assets.find(item => item.symbol === step.symbol)!,
+            depositState: "submitted" as const, txHash: sent.tx.hash, hashType: sent.tx.hashType };
+          persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === step.symbol ? submittedStep : item) }));
+          setStatus(`Pending… verifying ${asset.symbol} deposit`);
+          await confirmSavedPlanDeposit(plan, submittedStep, route);
+        },
+        symbol => {
+          persist(current => ({ ...current, assets: current.assets.map(asset => asset.symbol === symbol
+            ? { ...asset, depositState: "complete", txHash: undefined, hashType: undefined } : asset) }));
+          const asset = workingPlan!.assets.find(item => item.symbol === symbol)!;
+          monitorConfirmedVault(routeForStep(asset), asset.vault, plan.account);
+        },
+      );
+
+      const completedPlan = workingPlan;
+      if (!completedPlan || completedPlan.assets.some(asset => asset.depositState !== "complete")) {
+        throw new Error("The plan is not finished yet. Resume to complete the remaining asset.");
+      }
+      const currentPositions = await Promise.all(completedPlan.assets.map(async asset => ({
+        asset, identity: await readPlanVaultIdentity(routeForStep(asset), completedPlan.account),
+      })));
+      const currentActive = currentPositions.filter(({ identity }) => identity && identity.claimedAt === 0n
+        && identity.heir !== ethers.ZeroAddress && identity.heir.toLowerCase() !== completedPlan.account.toLowerCase());
+      const primaryIdentity = (currentActive[0] ?? currentPositions.find(({ identity }) => identity))?.identity;
+      const allPositionsUnchanged = currentPositions.every(({ asset, identity }) => identity
+        && identity.address.toLowerCase() === asset.vault.toLowerCase() && identity.claimedAt === 0n
+        && identity.heir.toLowerCase() === completedPlan.heir.toLowerCase() && identity.periodSeconds === periodSeconds);
+      clearPendingPlan(completedPlan.account);
+      setPlanWldAmount("");
+      setPlanUsdcAmount("");
+      setYieldConsent(false);
+      setOwnVault(primaryIdentity?.address ?? "");
+      setVault(primaryIdentity?.address ?? "");
+      setLinkedVault("");
+      setTab("vault");
+      setStatus(allPositionsUnchanged ? "Your inheritance plan is ready. Deposits and vaults are verified on World Chain."
+        : "Remaining setup is complete. Earlier deposits were verified; current assets and settings appear below.");
+      void loadVault();
+      void refreshBalances();
+      void refreshTimer();
+    } catch (error) {
+      if (error instanceof ConfirmedTransactionFailure && workingPlan) {
+        const failedHash = error.txHash.toLowerCase();
+        if (workingPlan.alignment?.txHash?.toLowerCase() === failedHash) {
+          persist(current => ({ ...current, alignment: undefined }));
+        } else if (workingPlan.createState === "submitted" && workingPlan.createTxHash?.toLowerCase() === failedHash) {
+          persist(current => ({ ...current, createState: "ready", createTargets: [], createBeforeBlock: undefined,
+            createTxHash: undefined, createHashType: undefined }));
+        } else if (workingPlan.assets.some(asset => asset.depositState === "submitted" && asset.txHash?.toLowerCase() === failedHash)) {
+          persist(current => ({ ...current, assets: current.assets.map(asset =>
+            asset.depositState === "submitted" && asset.txHash?.toLowerCase() === failedHash
+              ? { ...asset, depositState: "ready", beforeBalance: undefined, beforeBlock: undefined,
+                txHash: undefined, hashType: undefined }
+              : asset) }));
+        }
+      }
+      const message = errorText(error);
+      setStatus("Plan setup: " + message);
+      if (!/cancelled the transaction/i.test(message)) pushToast("error", message);
     } finally {
+      // A later asset failure or edit must not abandon monitoring of deposits
+      // that already succeeded. Registration remains best effort, never a reason
+      // to repeat a wallet transaction.
+      await Promise.all(watcherRequests);
+      if (watcherFailed) pushToast("info", "Your confirmed assets are saved. Some reminders could not be enabled; review them in Help.");
       setCreating(false);
+    }
+  };
+
+  const createPlan = (confirmAlignment = false) => continuePlan(confirmAlignment);
+
+  const editRemainingPlan = () => {
+    if (actionInFlight.current || !account || !pendingPlan) return;
+    const saved = readStoredPlan(account) ?? pendingPlan;
+    if (saved.account.toLowerCase() !== account.toLowerCase() || !canEditStoredPlan(saved)) {
+      setStatus("An earlier wallet request still needs verification. Resume it before editing.");
+      return;
+    }
+    try {
+      clearPendingPlan(account);
+      setAlignmentReview("");
+      setAlignmentConflicts([]);
+      onHeirInput(saved.heir);
+      onPeriodChange(String(saved.periodDays));
+      const amountFor = (symbol: PlanAssetSymbol) => {
+        const asset = saved.assets.find(item => item.symbol === symbol && item.depositState === "ready");
+        return asset ? ethers.formatUnits(asset.amount, asset.decimals) : "";
+      };
+      setPlanWldAmount(amountFor("WLD"));
+      setPlanUsdcAmount(amountFor("USDC"));
+      setYieldConsent(false);
+      setStatus("Adjust your remaining setup. Completed deposits and existing vaults stay in place.");
+      void refreshBalances();
+    } catch (error) {
+      setStatus("Plan setup: " + errorText(error));
     }
   };
 
@@ -2131,7 +3109,7 @@ export default function App() {
               </div>
               <div className="text-xs text-gray-600">
                 Open one to see whether the countdown has ended and whether you can file a claim.
-                Nothing is owed to you until the countdown runs out and you file — see the Inherit tab.
+                Nothing is owed to you until the countdown runs out and you file — see the Plan tab.
               </div>
               <div className="grid gap-2 text-xs">
                 {heirFoundVaults.map((v) => (
@@ -2162,6 +3140,10 @@ export default function App() {
   // ---- deposit WLD
   const deposit = async () => {
     if (!vault) return;
+    if (hasPendingPlanDeposit(readStoredPlan(account) ?? pendingPlan, account, vaultFactory, vault)) {
+      setStatus("Resume your saved setup in Inherit before adding more to this asset.");
+      return;
+    }
     if (!amountStr) { setStatus("Enter amount"); return; }
     if (!validDecimalInput(amountStr)) { setStatus("Enter a valid decimal amount"); return; }
     const amt = parseAmount(amountStr);
@@ -2213,6 +3195,12 @@ export default function App() {
       setStatus("Deposit complete");
       setAmountStr("");
       await refreshBalances();
+      if (NOTIFY_BACKEND_ENABLED && isMyVault && vaultHeir && vaultHeir !== ethers.ZeroAddress
+        && vaultHeir.toLowerCase() !== account.toLowerCase()) {
+        void registerWatcher(vault, account, vaultHeir, true).catch(() => {
+          pushToast("info", "Your deposit is confirmed. Monitoring could not be enabled; try again in Help.");
+        });
+      }
     } catch (e: unknown) {
       setStatus("Deposit error: " + errorText(e));
       pushToast('error', errorText(e));
@@ -2257,6 +3245,81 @@ export default function App() {
       pushToast('error', errorText(e));
     }
   };
+
+  const checkInAllPlans = async () => {
+    if (!provider || !account || !miniInstalled) { setStatus("Open in World App and connect before checking in."); return; }
+    if (ownedPlanRead.loading || ownedPlanRead.incomplete) { setStatus("Refresh every owned vault before checking in. No check-in was sent."); return; }
+    if (activeOwnedPlans.length === 0) { setStatus("There are no active inheritance vaults to check in to."); return; }
+    try {
+      const targets = await Promise.all(activeOwnedPlans.map(async item => {
+        const route = yieldRouteFor(item.factory);
+        const identityRoute: AppPlanRoute = route ? {
+          symbol: route.symbol, asset: route.asset, decimals: route.decimals, factory: route.factory,
+          mode: "morpho", details: route,
+        } : {
+          symbol: "WLD", asset: WLD_ADDRESS, decimals: 18, factory: item.factory,
+          mode: "plain", details: null,
+        };
+        const factoryAbi = route?.factoryAbi ?? FACTORY_ABI;
+        const vaultAbi = route?.vaultAbi ?? VAULT_ABI;
+        const identity = await readPlanVaultIdentity(identityRoute, account);
+        if (!identity || identity.address.toLowerCase() !== item.address.toLowerCase()
+          || identity.owner.toLowerCase() !== account.toLowerCase()
+          || identity.heir.toLowerCase() !== item.heir.toLowerCase()
+          || identity.periodSeconds !== item.periodSeconds || identity.claimedAt > 0n
+          || identity.heir.toLowerCase() === account.toLowerCase() || identity.heir === ethers.ZeroAddress) {
+          throw new Error(`${item.symbol} vault changed. Refresh the plan before checking in.`);
+        }
+        return { ...item, route, identityRoute, factoryAbi, vaultAbi, beforePing: identity.lastPing };
+      }));
+      const sent = await sendWorldChainTx(targets.map(target => ({
+        address: target.factory, abi: target.factoryAbi, functionName: "pingMyVault", args: [],
+      })));
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
+      setStatus("Pending… verifying each check-in");
+      const pingTimes = new Map<string, bigint>();
+      await waitForTxOrEvent(getRwProvider(), {
+        txHash: sent.tx.hash, hashType: sent.tx.hashType,
+        verifyReceipt: receipt => {
+          for (const log of receipt.logs) {
+            const target = targets.find(item => item.address.toLowerCase() === log.address.toLowerCase());
+            if (!target) continue;
+            try {
+              const parsed = PING_EVENT_IFACE.parseLog({ topics: [...log.topics], data: log.data });
+              const timestamp = parsed ? BigInt(parsed.args.timestamp) : -1n;
+              if (timestamp >= target.beforePing) pingTimes.set(target.address.toLowerCase(), timestamp);
+            } catch { /* Ignore non-ping logs. */ }
+          }
+          return targets.every(target => pingTimes.has(target.address.toLowerCase()));
+        },
+        check: async () => {
+          for (const target of targets) {
+            const identity = await readPlanVaultIdentity(target.identityRoute, account);
+            if (!identity || identity.address.toLowerCase() !== target.address.toLowerCase()
+              || identity.owner.toLowerCase() !== account.toLowerCase()
+              || identity.heir.toLowerCase() !== target.heir.toLowerCase()
+              || identity.periodSeconds !== target.periodSeconds
+              || identity.lastPing < (pingTimes.get(target.address.toLowerCase()) ?? 0n)) return false;
+          }
+          return true;
+        },
+      });
+      setOwnedPlanRead(current => ({ ...current, items: current.items.map(item => {
+        const timestamp = pingTimes.get(item.address.toLowerCase());
+        return timestamp === undefined ? item : { ...item, lastPing: timestamp };
+      }) }));
+      setCheckinReview(false);
+      setStatus(`Checked in to all ${targets.length} active vaults.`);
+    } catch (error) {
+      setStatus("Check-in error: " + errorText(error));
+      pushToast("error", errorText(error));
+    }
+  };
+
   const changePeriod = async () => {
     if (!vaultCtr) return;
     if (!periodValid) { setStatus('Period must be between 1 and 365 days.'); return; }
@@ -2509,6 +3572,69 @@ export default function App() {
     } catch (e: unknown) {
       setStatus("Withdraw error: " + errorText(e));
       pushToast('error', errorText(e));
+    }
+  };
+
+  const ownerWithdrawIncome = async () => {
+    if (!provider || !account || !vault || !isMyVault || !identityMatchesVault) return;
+    const selected = selectedIncome;
+    if (!selected || selected.state !== "available" || !selected.valued || selected.withdrawableNet <= 0n) {
+      setStatus("Separate income is unavailable for this vault. Refresh the income position before trying again.");
+      return;
+    }
+    if (!incomeRecipientValid) { setStatus("Enter a valid income recipient address"); return; }
+    if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast("error", "Open in World App"); return; }
+    const snapshot = {
+      vault, factory: vaultFactory, owner: account, to: ethers.getAddress(incomeTo),
+      factoryAbi: optionalIncomeAbi(selectedFactoryAbi, INCOME_FACTORY_ABI),
+      vaultAbi: optionalIncomeAbi(selectedVaultAbi, INCOME_VAULT_ABI), balanceScope,
+    };
+    const minNetAssets = minimumOutput(selected.withdrawableNet);
+    try {
+      const factoryContract = new ethers.Contract(snapshot.factory, snapshot.factoryAbi, provider);
+      const vaultContract = new ethers.Contract(snapshot.vault, snapshot.vaultAbi, provider);
+      const [canonical, owner, sourceFactory, before] = await Promise.all([
+        factoryContract.vaultOf(snapshot.owner), vaultContract.owner(), vaultContract.factory(), vaultContract.incomePosition(),
+      ]);
+      if (String(canonical).toLowerCase() !== snapshot.vault.toLowerCase()
+        || String(owner).toLowerCase() !== snapshot.owner.toLowerCase()
+        || String(sourceFactory).toLowerCase() !== snapshot.factory.toLowerCase()
+        || !before.valued || before.withdrawableNet < minNetAssets) {
+        throw new Error("The owner, vault route or available income changed. Refresh before collecting.");
+      }
+      const sent = await sendWorldChainTx([{
+        address: snapshot.factory, abi: snapshot.factoryAbi, functionName: "withdrawIncomeFromMyVault",
+        args: [snapshot.to, minNetAssets.toString()],
+      }]);
+      if (!sent.ok) {
+        setStatus(sent.error);
+        if (sent.userFacing) pushToast("error", sent.error);
+        return;
+      }
+      setStatus("Pending… verifying income collection");
+      await waitForTxOrEvent(getRwProvider(), {
+        txHash: sent.tx.hash,
+        hashType: sent.tx.hashType,
+        verifyReceipt: receipt => verifyIncomeWithdrawalReceipt(receipt, {
+          vault: snapshot.vault, factory: snapshot.factory, to: snapshot.to, minNetAssets,
+        }),
+        check: async () => {
+          const [mapped, currentOwner, currentFactory] = await Promise.all([
+            factoryContract.vaultOf(snapshot.owner), vaultContract.owner(), vaultContract.factory(),
+          ]);
+          const currentPosition = await vaultContract.incomePosition();
+          return snapshot.balanceScope === balanceScopeRef.current
+            && String(mapped).toLowerCase() === snapshot.vault.toLowerCase()
+            && String(currentOwner).toLowerCase() === snapshot.owner.toLowerCase()
+            && String(currentFactory).toLowerCase() === snapshot.factory.toLowerCase()
+            && Boolean(currentPosition.valued);
+        },
+      });
+      setStatus("Income collected. Your principal remains in the inheritance vault.");
+      await Promise.all([refreshIncome(), refreshBalances()]);
+    } catch (error) {
+      setStatus("Income collection error: " + errorText(error));
+      pushToast("error", errorText(error));
     }
   };
 
@@ -2848,20 +3974,87 @@ export default function App() {
             </Button>
           )}
         </div>
-        <div className="page-intro"><span className="eyebrow">{tab === "vault" ? "Your check-in" : tab === "money" ? "A little aside" : tab === "support" ? "Here to help" : "For the future"}</span><h1>{tab === "vault" ? "Peace of mind, today." : tab === "money" ? "Make room for tomorrow." : tab === "support" ? "A clearer way forward." : ownVault ? "Your person. Your plan." : "Start with someone you love."}</h1></div>
+        <div className="page-intro"><span className="eyebrow">{tab === "vault" ? "Your overview" : tab === "money" ? "Your assets" : tab === "support" ? "Here to help" : "Your inheritance plan"}</span><h1 tabIndex={-1}>{tab === "vault" ? "Today, and for their tomorrow." : tab === "money" ? "Your money, your choice." : tab === "support" ? "A clearer way forward." : ownVault ? "Your person. Your plan." : "Start with someone you love."}</h1></div>
+        {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
+          <CardHeader>
+            <span className="eyebrow">Set aside for your heir</span>
+            <CardTitle>Your inheritance plan</CardTitle>
+            <p className="plan-card-intro">Keep your money in your control, with a plan for someone you love.</p>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="plan-overview-assets">
+              {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
+                const total = ownedPlanTotal(symbol);
+                const decimals = symbol === "USDC" ? 6 : 18;
+                const value = ownedPlanRead.loading ? "Updating…" : total.amount === null ? "Value unavailable"
+                  : `${formatYieldAmount(total.amount, decimals)} ${symbol}`;
+                return <div className="plan-overview-asset" key={symbol}>
+                  <span>{symbol}</span><strong>{value}</strong>
+                  <small>{ownedPlanRead.loading ? "Checking status…" : total.unavailable ? "Status unavailable"
+                    : total.rows.length ? "Set aside for your heir" : "Not added yet"}</small>
+                </div>;
+              })}
+            </div>
+            {activeOwnedPlans.some(item => item.symbol === "USDC" && (item.additionalWld ?? 0n) > 0n)
+              && <p className="text-xs text-gray-600">WLD includes rewards and gifts held alongside your USDC.</p>}
+            {ownedPlanRead.incomplete
+              ? <p className="plan-settings-differ" role="status">Some vaults could not be refreshed. Totals may be incomplete and plan settings are withheld; combined check-in is disabled until every owned vault is verified.</p>
+              : activeOwnedPlans.length > 0 ? commonPlanSettings
+                ? <p className="plan-common-settings">Heir <strong>{short(activeOwnedPlans[0].heir)}</strong><span>·</span> Check in every <strong>{activeOwnedPlans[0].period} days</strong></p>
+                : <p className="plan-settings-differ">Your assets have different inheritance settings. Review them in Plan.</p>
+                : <p className="text-sm text-gray-600">No active inheritance plan. You can manage existing balances in Assets.</p>}
+            {nextCheckIn !== null && <div className="home-checkin-date">
+              <span>{chainNow > 0 && nextCheckIn <= chainNow ? "Check-in overdue" : "Next check-in"}</span>
+              <strong>{new Date(nextCheckIn * 1000).toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" })}</strong>
+              {chainNow > 0 && nextCheckIn <= chainNow && <small>Check in before inheritance executes to keep your plan active.</small>}
+            </div>}
+            {activeOwnedPlans.length > 0 && !checkinReview && <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
+              onClick={() => setCheckinReview(true)}>Review check-in</Button>}
+            {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
+              <h3 id="checkin-review-title">Confirm your check-in</h3>
+              <p>Renew the listed inheritance plans. Their timers restart with the same intervals; your money and heirs stay in place.</p>
+              <ul>{activeOwnedPlans.map(item => <li key={item.address}>
+                <strong>{item.symbol}</strong> · {formatPlanInterval(item.periodSeconds)}
+                <span>Last check-in {item.lastPing ? new Date(Number(item.lastPing) * 1000).toLocaleDateString() : "not available"}</span>
+              </li>)}</ul>
+              <details className="checkin-addresses"><summary>View accounts included</summary>
+                {activeOwnedPlans.map(item => <p key={item.address}>{item.symbol} · {short(item.address)}</p>)}
+              </details>
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
+                  onClick={() => void runWalletAction(checkInAllPlans)}>Confirm check-in</Button>
+                <Button disabled={pendingAction} onClick={() => setCheckinReview(false)}>Cancel</Button>
+              </div>
+            </section>}
+
+            {NOTIFY_BACKEND_ENABLED && activeOwnedPlans.length > 0
+              && (["WLD", "USDC"] as AssetSymbol[]).some(symbol => (ownedPlanTotal(symbol).amount ?? 0n) > 0n) && (
+              <div className="plan-overview-reminders text-xs text-gray-600" role="status">
+                <span>{notifyPermission === "granted" ? "Notifications are on for this wallet."
+                  : notifyPermission === "denied" ? "Notifications are off." : "Checking notification permission…"}</span>
+                <div className="flex gap-2 flex-wrap">
+                  {notifyPermission !== "granted" && <Button size="sm" variant="ghost" disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>
+                    {notifyBusy ? "Working…" : "Enable reminders"}
+                  </Button>}
+                </div>
+                <details><summary>Reminder preferences</summary><p>Your heir needs their own notification permission.</p>
+                  <Button size="sm" variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("support"); }}>Reminder settings</Button>
+                </details>
+              </div>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" disabled={pendingAction} onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("money"); }}>Manage assets and income</Button>
+              <Button variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("inherit"); }}>Update your plan</Button>
+            </div>
+          </CardContent>
+        </Card>}
         {HAS_YIELD_ROUTES && account && vaultLookupIncomplete && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
           Some vault registries could not be refreshed. Previously found vaults stay visible; their availability may be out of date. We will retry automatically.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>Retry vault lookup</Button>
         </div>}
-        {HAS_YIELD_ROUTES && account && ownedVaults.length > 1 && <Card>
-          <CardHeader><CardTitle>Your vaults</CardTitle></CardHeader><CardContent className="grid gap-2">
-            {ownedVaults.map(item => <Button key={item.address} disabled={pendingAction}
-              variant={vault.toLowerCase() === item.address.toLowerCase() ? "primary" : "outline"}
-              aria-pressed={vault.toLowerCase() === item.address.toLowerCase()}
-              onClick={() => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }}>
-              {vaultLabel(item.factory)} · {short(item.address)}
-            </Button>)}
-          </CardContent></Card>}
+        {account && ownedVaults.length > 0 && ["money", "inherit"].includes(tab) && <AssetNavigation
+          accounts={assetAccounts} selected={vault} busy={pendingAction}
+          onSelect={item => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }} />}
         {isYieldVault && vaultIdentity?.released && <p role="status" className="text-xs text-gray-600">
           This archived vault remains available for its rewards, inheritance and owner recovery. Your current vault stays separate.
         </p>}
@@ -2877,11 +4070,25 @@ export default function App() {
           Some Morpho balances could not be refreshed. The last available values may be out of date.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh yield balances</Button>
         </div>}
-        {isYieldVault && (!isSettledClaim || vaultHasAssets) && ["vault", "money", "inherit"].includes(tab) && <YieldPositionCard
+        {isYieldVault && (!isSettledClaim || vaultHasAssets) && (tab === "inherit" && !isMyVault) && <YieldPositionCard
           route={selectedYieldRoute} rates={yieldRates} ratesLoading={yieldRatesLoading}
           position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
           busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
-        {isYieldVault && ["vault", "money", "inherit"].includes(tab) && <YieldRewardsCard
+        {isMyVault && tab === "money" && <IncomePositionCard key={`income:${balanceScope}`}
+          state={selectedIncome?.state ?? "loading"}
+          position={selectedIncome?.state === "available" ? selectedIncome : null}
+          symbol={wldSymbol as "WLD" | "USDC"} decimals={wldDecimals} to={incomeTo} recipientValid={incomeRecipientValid}
+          canCollect={Boolean(miniInstalled && selectedIncome?.state === "available" && selectedIncome.valued
+            && incomeRecipientValid && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled))}
+          busy={pendingAction} onToChange={setIncomeTo} onCollect={() => void runVaultAction(ownerWithdrawIncome)}
+          account={account}
+          disabledReason={!miniInstalled ? "Open in World App to collect income."
+            : isSettledClaim ? "Inheritance has completed."
+            : isExpiredOrLater && !inheritanceCancelled ? "Check in from Plan before inheritance executes to collect income."
+            : ""}
+          onRefresh={() => void refreshIncome()}
+          onUseMyAddress={() => setIncomeTo(account)} />}
+        {isYieldVault && (tab === "inherit" && !isMyVault || tab === "money" && hasRewardAction) && <YieldRewardsCard
           usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
@@ -2889,7 +4096,7 @@ export default function App() {
           settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
           busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
           onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
-        {YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n).map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
+        {PRIMARY_YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n).map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
           <CardHeader><CardTitle>Receipt shares in your wallet · {route.symbol}</CardTitle></CardHeader><CardContent className="grid gap-2">
             <p>{formatYieldAmount(walletYieldShares(route))} Re7 {route.symbol} shares</p>
             <p className="text-xs text-gray-600">These shares belong to your wallet. Redeem as much as current Morpho cash liquidity allows. Inheritance and vault exits have already paid their service fee; this redemption charges no additional service fee.</p>
@@ -2923,10 +4130,10 @@ export default function App() {
 
         {/* ===== Send 탭: 자금 흐름 ===== */}
         {tab === "money" && vault && gate2(
-          <Card>
+          <Card className="asset-money-card">
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle>Vault & Send</CardTitle>
+                <CardTitle>{wldSymbol} balance</CardTitle>
                 <div className="flex items-center gap-2">
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && badge("Owner", "blue")}
                   {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
@@ -2957,20 +4164,142 @@ export default function App() {
               </div>
             </CardHeader>
             <CardContent className="grid gap-3">
+              {!isVaultOwner && vaultOwner && <p className="shared-asset-note" role="status">
+                This balance belongs to {short(vaultOwner)}.
+                {iAmHeir ? " You are the named heir; open Plan to follow its inheritance." : " You cannot deposit or withdraw from this shared plan."}
+              </p>}
                 {/* 이 탭의 질문은 "내 지갑에 얼마가 있고, 금고에 얼마가 들어갔는가" 다.
                     메타데이터(누가/언제/어느 체인)가 그 앞에 오는 동안 화면은 이 질문에
                     답하지 않았다. 두 숫자를 카드로 올려 화면이 답하게 한다. */}
                 <div className="stat-row">
                   <div className="stat">
                     <div className="stat-label">In your wallet</div>
-                    <div className="stat-value">{HAS_YIELD_ROUTES ? formatYieldAmount(walletWld, wldDecimals) : fmtUnits(walletWld)} {wldSymbol}</div>
+                    <div className="stat-value">{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : "Updating…"}</div>
                   </div>
                   <div className="stat">
-                    <div className="stat-label">{isYieldVault ? "Estimated value" : "In the vault"}</div>
+                    <div className="stat-label">{isYieldVault ? "Invested value before fee" : "In your plan"}</div>
                     <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld, wldDecimals)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
                   </div>
                 </div>
-              <div className="text-sm grid gap-1">
+              {isMyVault && (
+                <>
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="deposit-amount">Amount to deposit ({wldSymbol})</label>
+                    <div className="field-row-controls">
+                      <Input id="deposit-amount" inputMode="decimal" placeholder="0.0"
+                        value={amountStr} onChange={e => setAmountStr(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="deposit-actions">
+                    <p className="deposit-availability">{walletBalanceKnown ? `Available: ${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : "Checking wallet balance…"}</p>
+                    <div className="deposit-percentages">
+                    <Button variant="ghost" onClick={() => setPct(25)}>25%</Button>
+                    <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
+                    <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
+                    <Button variant="ghost" onClick={setMax}>Max</Button>
+                    </div>
+                    <Button
+                      variant="primary"
+                      className="deposit-primary"
+                      onClick={() => void runVaultAction(deposit)}
+                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || !depositEntryValid}
+                    >
+                      Deposit
+                    </Button>
+                    <Button variant="ghost" onClick={refreshBalances}>Refresh balance</Button>
+                  </div>
+                  {depositAmount === null && <p className="text-xs text-red-700" role="alert">Enter a valid {wldSymbol} amount with up to {wldDecimals} decimal places.</p>}
+                  {walletBalanceKnown && depositAmount !== null && depositAmount > walletWld && <p className="text-xs text-red-700" role="alert">This amount is above your available {wldSymbol} balance.</p>}
+                  {pendingDeposit && <p className="text-xs text-gray-600" role="status">
+                    Resume your saved setup in Plan before adding more to this asset.
+                  </p>}
+                </>
+              )}
+              {/* 정산된 금고에서 입금을 막는다. 계약을 막을 수는 없다 — 누군가 주소로
+                  직접 보낼 수 있으므로 sweep 이 여전히 필요하다 — 하지만 앱이 직접
+                  권하는 일은 하지 않는다. 잔액이 남으면 "비어 있다" 는 표시가 거짓이 되고
+                  사용자는 해제 수단까지 찾아내야 한다. */}
+              {isSettledClaim && (
+                <div className="text-xs text-gray-600">
+                  {vaultIdentity?.released
+                    ? "This archived vault is closed. Claimable campaign rewards still go to its fixed inheritance recipient. Use a current vault for new deposits."
+                    : "This vault is closed, so deposits are turned off here — create a new vault first. If you already sent funds to this vault address, the owner can sweep them from Plan."}
+                </div>
+              )}
+              {/* 마감 이후에도 입금을 막는다. 상속인이 이미 수령할 수 있는 상태에서
+                  입금하면 그 돈까지 상속인이 가져간다. 실제로 5 WLD 위에 10 WLD 를
+                  입금하고 상속인이 15 WLD 전부를 가져간 경우가 있었다. 화면에는
+                  "Claimable" 배지와 활성화된 입금 폼만 있었다. 막되 **왜** 막는지
+                  말하지 않으면 사용자는 버그로 여긴다. */}
+              {!isSettledClaim && isExpiredOrLater && (
+                <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
+                  {inheritanceCancelled
+                    /* 상속인이 없다(heir == owner). "당신의 상속인이 가져간다" 는 이
+                       자리에서 명제가 아니다 — 유일한 당사자는 읽는 사람 자신이고,
+                       꺼낼 방법도 있으므로 위험이 아니다. */
+                    ? "This vault's inheritance is cancelled, so nothing is inheriting it. Deposits are turned off because a cancelled vault is finished — withdraw what is here, or release your slot."
+                    : !isMyVault
+                      /* 소유자 전용 지시다. "당신의 상속인이 가져간다", "Deposit only into
+                         a fresh vault" 를 상속인이나 타인에게 말하면 그들이 할 수 있는 일이
+                         아니다. 사실을 말하되 지시하지 않는다. */
+                      ? "The countdown has ended, so deposits are turned off for this vault."
+                      : "Your plan is overdue, so deposits are paused. Check in before inheritance executes to renew it. Your heir must file a claim and wait through the review before funds can move."}
+                </div>
+              )}
+              <div className="text-xs text-gray-500">
+                Deposit {wldSymbol} on World Chain (480) using this app. {isUsdcVault ? "WLD campaign rewards are handled separately. " : ""}Do not send ETH or unrelated tokens. Review any transaction fees shown by World App.
+              </div>
+
+              {isMyVault && (
+                <>
+                <details className="principal-controls"><summary>Withdraw principal</summary><div className="space-y-2">
+                  <div className="text-xs text-gray-500">
+                    {/* 제목이 지시하는 조건이 두 개다. 계약의 `ownerMayWithdraw` 는
+                        `!ownerStillActive() && !inheritanceCancelled()` 일 때만 막으므로
+                        취소된 금고에서는 만료 후에도 회수할 수 있다 — 그것이 **유일한**
+                        출구다(잔액이 남아 있으면 슬롯 해제도 안 된다). 예전에는
+                        `isExpiredOrLater` 로만 막아서, 취소된 금고에 돈이 남으면
+                        " withdraw it" 라고 말하면서 버튼은 비활성이었고 sweep 도
+                        없었다(계약이 `claimedAt == 0` 이므로 sweep 도 불가능).
+                        그 상태에서 사용자는 앱을 나가지 않는 한 자금을 꺼낼 수 없다. */}
+                    {inheritanceCancelled
+                      ? "Withdraw principal (inheritance was cancelled — this stays yours)"
+                      : "Withdraw principal (before the countdown ends)"}
+                  </div>
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn {wldSymbol} to</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
+                      <Button onClick={setWithdrawToMe}>My address</Button>
+                    </div>
+                  </div>
+                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
+                    <div className="text-xs text-red-600">Invalid recipient address.</div>
+                  )}
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-amount">Principal amount to withdraw</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
+                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
+                      <Button onClick={setWithdrawMax}>All</Button>
+                      {/* 라벨이 실제 수신자를 말한다. 예전엔 "Withdraw to myself" 가
+                          고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
+                          라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
+                          이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
+                      <Button onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || isExpiredOrLater && !inheritanceCancelled}>
+                        {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
+                          ? "Withdraw to myself"
+                          : withdrawTo
+                            ? `Withdraw to ${short(withdrawTo)}`
+                            : "Withdraw"}
+                      </Button>
+                    </div>
+                  </div>
+                  {isYieldVault && <p className="text-xs text-gray-600">This changes principal. A Morpho exit charges 10% on realized positive income; cash withdrawals depend on liquidity, and receipt shares can be moved instead.{isUsdcVault && " A full exit also sends held WLD to this recipient after the separate WLD reward fee."}</p>}
+                  </div></details>
+                </>
+              )}
+              <details className="money-metadata"><summary>Account details &amp; activity</summary><div className="text-sm grid gap-1">
                 <div className="flex items-center gap-2">
                   <div>Owner:</div>
                   <div>
@@ -3102,120 +4431,29 @@ export default function App() {
                     </b>
                   </div>
                 )}
-              </div>
-              {isMyVault && (
-                <>
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="deposit-amount">Amount to deposit ({wldSymbol})</label>
-                    <div className="field-row-controls">
-                      <Input id="deposit-amount" inputMode="decimal" placeholder="0.0"
-                        value={amountStr} onChange={e => setAmountStr(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap items-center">
-                    <div className="text-xs text-gray-600">Available: {fmtUnits(walletWld)} {wldSymbol}</div>
-                    <Button variant="ghost" onClick={() => setPct(25)}>25%</Button>
-                    <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
-                    <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
-                    <Button variant="ghost" onClick={setMax}>Max</Button>
-                    <Button
-                      variant="primary"
-                      onClick={() => void runVaultAction(deposit)}
-                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater}
-                    >
-                      Deposit
-                    </Button>
-                    <Button onClick={refreshBalances}>Refresh balance</Button>
-                  </div>
-                </>
-              )}
-              {/* 정산된 금고에서 입금을 막는다. 계약을 막을 수는 없다 — 누군가 주소로
-                  직접 보낼 수 있으므로 sweep 이 여전히 필요하다 — 하지만 앱이 직접
-                  권하는 일은 하지 않는다. 잔액이 남으면 "비어 있다" 는 표시가 거짓이 되고
-                  사용자는 해제 수단까지 찾아내야 한다. */}
-              {isSettledClaim && (
-                <div className="text-xs text-gray-600">
-                  {vaultIdentity?.released
-                    ? "This archived vault is closed. Claimable campaign rewards still go to its fixed inheritance recipient. Use a current vault for new deposits."
-                    : "This vault is closed, so deposits are turned off here — create a new vault first. If you already sent funds to this vault address, the owner can sweep them from the Inherit tab."}
-                </div>
-              )}
-              {/* 마감 이후에도 입금을 막는다. 상속인이 이미 수령할 수 있는 상태에서
-                  입금하면 그 돈까지 상속인이 가져간다. 실제로 5 WLD 위에 10 WLD 를
-                  입금하고 상속인이 15 WLD 전부를 가져간 경우가 있었다. 화면에는
-                  "Claimable" 배지와 활성화된 입금 폼만 있었다. 막되 **왜** 막는지
-                  말하지 않으면 사용자는 버그로 여긴다. */}
-              {!isSettledClaim && isExpiredOrLater && (
-                <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
-                  {inheritanceCancelled
-                    /* 상속인이 없다(heir == owner). "당신의 상속인이 가져간다" 는 이
-                       자리에서 명제가 아니다 — 유일한 당사자는 읽는 사람 자신이고,
-                       꺼낼 방법도 있으므로 위험이 아니다. */
-                    ? "This vault's inheritance is cancelled, so nothing is inheriting it. Deposits are turned off because a cancelled vault is finished — withdraw what is here, or release your slot."
-                    : !isMyVault
-                      /* 소유자 전용 지시다. "당신의 상속인이 가져간다", "Deposit only into
-                         a fresh vault" 를 상속인이나 타인에게 말하면 그들이 할 수 있는 일이
-                         아니다. 사실을 말하되 지시하지 않는다. */
-                      ? "The countdown has ended, so deposits are turned off for this vault."
-                      : "The countdown has ended, so deposits are turned off. Your heir can take whatever is in the vault at any point now, and anything you add would go to them too. Deposit only into a fresh vault."}
-                </div>
-              )}
-              <div className="text-xs text-gray-500">
-                Deposit {wldSymbol} on World Chain (480) using this app. {isUsdcVault ? "WLD campaign rewards are handled separately. " : ""}Do not send ETH or unrelated tokens. Review any transaction fees shown by World App.
-              </div>
-
-              {isMyVault && (
-                <>
-                <div className="space-y-2 border-t pt-3">
-                  <div className="text-xs text-gray-500">
-                    {/* 제목이 지시하는 조건이 두 개다. 계약의 `ownerMayWithdraw` 는
-                        `!ownerStillActive() && !inheritanceCancelled()` 일 때만 막으므로
-                        취소된 금고에서는 만료 후에도 회수할 수 있다 — 그것이 **유일한**
-                        출구다(잔액이 남아 있으면 슬롯 해제도 안 된다). 예전에는
-                        `isExpiredOrLater` 로만 막아서, 취소된 금고에 돈이 남으면
-                        " withdraw it" 라고 말하면서 버튼은 비활성이었고 sweep 도
-                        없었다(계약이 `claimedAt == 0` 이므로 sweep 도 불가능).
-                        그 상태에서 사용자는 앱을 나가지 않는 한 자금을 꺼낼 수 없다. */}
-                    {inheritanceCancelled
-                      ? "Withdraw (inheritance was cancelled — this stays yours)"
-                      : "Emergency withdraw (before the countdown ends)"}
-                  </div>
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn {wldSymbol} to</label>
-                    <div className="field-row-controls">
-                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
-                      <Button onClick={setWithdrawToMe}>My address</Button>
-                    </div>
-                  </div>
-                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
-                    <div className="text-xs text-red-600">Invalid recipient address.</div>
-                  )}
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-amount">Amount to withdraw</label>
-                    <div className="field-row-controls">
-                      <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
-                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
-                      <Button onClick={setWithdrawMax}>All</Button>
-                      {/* 라벨이 실제 수신자를 말한다. 예전엔 "Withdraw to myself" 가
-                          고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
-                          라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
-                          이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
-                      <Button onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || isExpiredOrLater && !inheritanceCancelled}>
-                        {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
-                          ? "Withdraw to myself"
-                          : withdrawTo
-                            ? `Withdraw to ${short(withdrawTo)}`
-                            : "Withdraw"}
-                      </Button>
-                    </div>
-                  </div>
-                  {isYieldVault && <p className="text-xs text-gray-600">The entered amount is before the service fee. Your recipient gets this amount minus the fee on any redeemed positive gain. Cash withdrawals can fail if Morpho liquidity is unavailable; receipt shares can be moved instead.{isUsdcVault && " A full exit also sends held WLD to this recipient after the separate WLD reward fee."}</p>}
-                  </div>
-                </>
-              )}
+              </div></details>
             </CardContent>
           </Card>
         )}
+
+        {isYieldVault && tab === "money" && <details className="asset-details" key={`yield:${balanceScope}`}>
+          <summary>Yield details &amp; WLD rewards</summary>
+          <p>Morpho holds your invested asset. Rates and rewards can change; withdrawals depend on cash liquidity.</p>
+          <div className="asset-details-content">
+            {(!isSettledClaim || vaultHasAssets) && <YieldPositionCard
+          route={selectedYieldRoute} rates={yieldRates} ratesLoading={yieldRatesLoading}
+          position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
+          busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
+            {!hasRewardAction && <YieldRewardsCard
+          usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
+          canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
+          data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
+          received={selectedReceivedRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
+          settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
+          busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
+          onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
+          </div>
+        </details>}
 
         {/* ===== Inherit 탭: 상속 파이프라인을 그대로 보여준다 ===== */}
         {tab === "inherit" && vault && gate2(
@@ -3483,9 +4721,9 @@ export default function App() {
         )}
 
         {/* ===== Vault 탭: 타이머와 갱신 ===== */}
-        {tab === "vault" && vault && gate2(
+        {tab === "inherit" && vault && gate2(
           <Card>
-            <CardHeader><CardTitle>Vault & Controls</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Your plan settings</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <div className="section-label">Status</div>
               {/* **금액을 카운트다운보다 먼저** 보여준다.
@@ -3872,243 +5110,49 @@ export default function App() {
             수동 재확인이 필요한 경우는 거의 없다. 필요하면 Help 탭에 남긴다. */}
         {tab === "inherit" && account && notifyHeirWorthShowing && heirStatusCard}
 
-        {/* ===== Inherit 탭: 상속 설정과 상속 진행 상태 =====
-
-            "내가 아직 금고를 만들지 않았다"를 묻는 조건이지, "지금 보고 있는 금고가
-            내 것이 아니다" 가 아니다. 두 개를 섞으면 상속인 링크를 열어 남의 금고를
-            보는 순간 이 온보딩이 튀어나온다 — 자기 금고가 이미 있는데 "Create a vault"
-            를 권하고, Owner 화법("your heir can claim the balance", "you can keep
-            renewing to stop them") 으로 상속인에게 말한다. 링크가 처음 동작하게 만든
-            변경이 만든 부작용이다. */}
-        {tab === "inherit" && !ownVault && gate2(
-          <Card>
-            {/* 헤더를 토글 버튼으로. 카드가 접힌 상태에서도 규칙의 윤곽은 보여야 하고,
-                펼쳐야만 전부가 보이도록 한다. */}
-            <button
-              type="button"
-              className="how-toggle"
-              aria-expanded={showHow}
-              onClick={() => setShowHow((v) => !v)}
-            >
-              <span className="how-toggle-title">How this works</span>
-              {/* 접힌 카드의 요약은 **한 줄**이어야 한다. 예전 요약은 390px 에서 두 줄로
-                  접혀서, 펼치지도 않은 설명 카드가 180px 를 차지했다 — 그 높이는 첫
-                  화면에서 "Create vault" 버튼을 밀어 내렸다. 상세가 안에 있으니 요약은
-                  "안 읽어도 괜찮지만 읽을 수 있다" 를 알리는 한 줄이면 충분하다. */}
-              <span className="how-toggle-sub">{HAS_YIELD_ROUTES ? "3 steps · choose your asset and vault" : "3 steps · one vault per wallet"}</span>
-              <span className="how-toggle-chevron" aria-hidden="true">{showHow ? "▴" : "▾"}</span>
-            </button>
-            {showHow && (
-              <>
-            <CardContent className="space-y-4">
-              {/*
-                순서와 제약을 먼저 말한다.
-
-                폼만 있으면 "이거 만들고 나서 뭐?" 가 안 보인다. 실제로
-                "금고를 먼저 만들고 입금한다는 점도 뚜렷하지 않고 금고를 하나만
-                만들 수 있는 건지, 취소하면 다시 못 만드는 건지도 모르겠네" 라는
-                지적을 받았다. 전부 컨트랙트에 구현되어 있는 규칙인데 화면에
-                없었던 것이 문제였다.
-
-                3단계를 위에 두고, 제약은 폼 아래가 아니라 폼 위에서 말하는 편이
-                낫다 — 잘못 판단하고 만드는 것이 되돌리기 번거로우니까.
-              */}
-              <ol className="steps">
-                <li>
-                  <b>Create a vault</b>
-                  <span>Choose an asset, name your heir and how often you want to renew. No funds move at this step.</span>
-                </li>
-                <li>
-                  <b>Put funds aside</b>
-                  <span>After you create it, the Send tab appears and you deposit the chosen asset there.</span>
-                </li>
-                <li>
-                  <b>Renew before the countdown ends</b>
-                  <span>Miss it and your heir can file a claim. After a seven-day review, a new vault can transfer automatically. You can renew until the transfer executes to cancel the claim.</span>
-                </li>
-              </ol>
-
-              <div className="text-xs text-gray-600 space-y-1">
-                <div>
-                  {USDC_ENABLED ? "Manage WLD and USDC in one place. Each asset has its own yield vault, heir and countdown; WLD also has a free basic vault." : HAS_YIELD_ROUTES ? "You can have one WLD basic vault and one WLD Morpho yield vault. Each has its own heir and countdown." : "One vault per wallet. The contract refuses a second one, so there is nothing to keep track of."}
-                </div>
-                <div>
-                  Changed your mind? Before the countdown ends you can switch to a different
-                  heir, or cancel entirely — then the funds are yours to withdraw whenever you
-                  like.
-                </div>
-                <div className="text-gray-500">
-                  A vault cannot be deleted. To start a new one, the old vault has to be
-                  finished and empty — then the slot releases.
-                </div>
-              </div>
-              <div className="text-sm text-gray-700 border-l-2 border-blue-200 pl-3">
-                The countdown ending <b>moves nothing on its own.</b> Your heir must file a claim
-                and wait seven days. A registered new vault can then transfer automatically;
-                the heir can also complete it manually. The owner can renew until execution.
-              </div>
-              </CardContent>
-              </>
-            )}
-              </Card>
-              )}
-
-              {tab === "inherit" && (!ownVault || HAS_YIELD_ROUTES) && gate2(
-                <Card>
-                  <CardHeader><CardTitle>Create My Vault</CardTitle></CardHeader>
-                  <CardContent className="grid gap-3">
-              {USDC_ENABLED && <fieldset className="yield-choice" disabled={pendingAction}><legend>Asset to inherit</legend>
-                <div className="flex gap-2">
-                  {(["WLD", "USDC"] as const).map(symbol => <Button key={symbol} id={`asset-${symbol.toLowerCase()}`} variant={creationAsset === symbol ? "primary" : "outline"}
-                    aria-pressed={creationAsset === symbol} onClick={() => { setCreationAsset(symbol); setCreationKind(YIELD_ROUTES.some(route => route.symbol === symbol) ? "yield" : "plain"); setYieldConsent(false); }}>{symbol}</Button>)}
-                </div>
-                <p className="text-xs text-gray-600">Each asset has its own personal vault. USDC deposits earn with Morpho; nothing is converted between currencies.</p>
-              </fieldset>}
-              {HAS_YIELD_ROUTES && <YieldChoice kind={creationKind} terms={creationYieldTerms} consent={yieldConsent} busy={pendingAction}
-                route={creationYieldRoute} rates={creationYieldRates} ratesLoading={yieldRatesLoading}
-                onKind={kind => { setCreationKind(kind); setYieldConsent(false); }} onConsent={setYieldConsent} />}
-              {/* Send 탭과 같은 스탯 처리. 여기서 사용자가 먼저 확인하는 것은
-                  "내가 얼마를 넣을 수 있는가" 다. 본문 글씨로 흘려두면 폼의 첫
-                  필드(상속인)와 같은 무게로 보여, 남은 금액이라는 사실이 묻힌다. */}
-              <div className="stat-row">
-                <div className="stat">
-                  <div className="stat-label">In your wallet</div>
-                  <div className="stat-value">{creationWalletBalance === null ? "Checking balance…" : `${formatYieldAmount(creationWalletBalance, creationAsset === "USDC" ? 6 : 18)} ${creationAsset}`}</div>
-                </div>
-              </div>
-              <div className="field-row">
-                <label className="field-row-label" htmlFor="heir-input">
-                  Heir — who receives the funds if you stop renewing
-                </label>
-                <div className="field-row-controls">
-                  <Input id="heir-input" placeholder="@username or 0x..." value={heir} onChange={e => onHeirInput(e.target.value)} />
-                  <Button
-                    size="sm"
-                    onClick={pickHeirFromContacts}
-                    disabled={pendingAction || shareBusy}
-                    title="Open your World App contacts and choose an heir"
-                  >
-                    {shareBusy ? "…" : "From contacts"}
-                  </Button>
-                </div>
-                {/* 세 줄짜리 설명이 라벨("Heir — who receives the funds…")과 버튼 라벨
-                    ("From contacts")을 그대로 반복했다. 화면이 세 번 같은 말을 하면
-                    세 번 중 하나는 틀린 것처럼 읽힌다. 새로 말하는 정보는 두 가지뿐이다 —
-                    username/주소 를 직접 넣을 수 있고, 연락처에서 고를 수 있다는 것. */}
-                <div className="text-xs text-gray-600">
-                  Type a username or address, or pick one from your World App contacts.
-                </div>
-              </div>
-              {heir && (
-                resolvingHeir ? (
-                  <div className="text-xs text-gray-600">Resolving…</div>
-                ) : heirResolved?.address ? (
-                  <div className="text-xs text-gray-600">
-                    Resolved: {heirResolved.username ? <b>@{heirResolved.username}</b> : 'Address'} → <b>{short(heirResolved.address)}</b>
-                    <button className="ml-2 underline" onClick={() => copyText(heirResolved!.address!, 'heir')}>Copy</button>
-                  </div>
-                ) : (
-                  <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
-                )
-              )}
-              {heirResolved?.address && isHeirSuspicious() && (
-                <div className="text-xs text-yellow-700">Warning: Heir equals owner or zero address — this disables inheritance.</div>
-              )}
-              <div className="field-row">
-                <label className="field-row-label" htmlFor="period-input">
-                  Renewal period — how often you must reset the timer (1–365 days)
-                </label>
-                <div className="field-row-controls">
-                  <Input
-                    id="period-input"
-                    type="text"
-                    inputMode="numeric"
-                    className="w-28"
-                    value={periodInput}
-                    placeholder="30"
-                    onChange={e => onPeriodChange(e.target.value)}
-                  />
-                  <span className="text-xs text-gray-500">days</span>
-                </div>
-                <div className="period-presets" aria-label="Suggested renewal periods">
-                  {[30, 90, 180].map(days => <button key={days} type="button" className={`period-preset ${periodNum === days ? "period-preset-selected" : ""}`} aria-pressed={periodNum === days} onClick={() => onPeriodChange(String(days))}>{days} days</button>)}
-                </div>
-              </div>
-              <div className="text-xs text-red-600">
-                {!periodValid && periodInput !== '' ? "Period must be between 1 and 365 days." : ""}
-              </div>
-              {/* 알림을 **금고를 만들 때** 먼저 알린다.
-                  알림 안내를 Vault 탭에만 두면 안 된다 — Vault 탭은 금고가 있어야
-                  보이는데(`needsVault`), 금고가 없으면 그 탭 자체가 없다. 처음 쓰는
-                  사람은 Inherit 탭(기본 탭)에서 금고를 만들 텐데, 알림을 그때 알려주지
-                  않으면 존재를 모른 채 지나가고 Help 탭을 열어볼 일도 없다.
-
-                  또 알림은 **잔액이 0 이면 아무것도 보내지 않는다**(백엔드가 그렇게
-                  되어 있다). 그러므로 "알려줄게요" 라고 해놓고 실제로는 입금 이후에야
-                  통보가 시작되는데, 그 사실까지 말하는 편이 정직하다. */}
-              {NOTIFY_BACKEND_ENABLED && !vault && notifyHealth.level !== "checking" && (
-                <div
-                  className={
-                    // 여기서는 `notifyNeedsAttention` 을 쓰면 안 된다. 그 판정은
-                    // "잔액이 있는 금고" 를 전제하는데, 지금은 금고가 없으므로 항상
-                    // false 다. 결과적으로 "켜라"고 말하면서 **초록(정상) styling** 이
-                    // 붙었다. 색은 "알림이 켜져 있는가" 로만 정한다.
-                    notifyHealth.level === "off" || notifyHealth.level === "broken"
-                      ? "text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3"
-                      : "text-xs text-green-800 bg-green-100 border border-green-200 rounded py-2 px-3"
-                  }
-                  role={notifyPermission === "granted" ? "status" : "alert"}
-                  aria-live="polite"
-                >
-                  {/* 순서는 제목 → 이유 → 버튼 이다. 예전 시도에서 버튼을 제목 옆에
-                      밀어붙였는데 390px 에서 줄이 접혀 **버튼이 이유보다 위로** 올라왔다.
-                      "왜" 를 읽기 전에 "켜라" 가 먼저 오는 셈이라 더 나빴다.
-                      높이는 대신 문장을 하나로 합쳐서 줄인다 — 상자 네 단이 세 단이 되고,
-                      "Nobody is told" 와 "notices start after a deposit" 가 한 흐름으로
-                      읽힌다. (하네스가 리프 요소 + rounded + 경고톤 + 두 문구 모두를
-                      요구하므로 그 계약은 지키되, 줄 수는 줄인다.) */}
-                  <div className="font-medium">{notifyPermission === "granted" ? "Notifications are on" : "Turn on notifications first"}</div>
-                  <div className="mt-1">
-                    {notifyHealth.level === "off" || notifyHealth.level === "broken"
-                      ? `Reminders are optional. You will not receive them until you enable notifications. Your heir needs their own permission. Notices start once the vault holds funds.`
-                      : `Reminders are enabled for you. Your heir must also open this app and enable notifications. Notices start once the vault holds funds.`}
-                  </div>
-                  {notifyPermission !== "granted" && (
-                    <Button size="sm" className="mt-1.5" variant="outline"
-                      onClick={requestNotifyPermission} disabled={pendingAction || !miniInstalled || notifyBusy}>
-                      {notifyBusy ? "Working…" : "Turn on notifications"}
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {/* 주 액션. 알림 안내 블록 **밖** 이다.
-                  알림 안내를 옮기면서 이 버튼이 조건 블록 안으로 딸려 들어간 적이 있다.
-                  그러면 VITE_NOTIFY_BACKEND_URL 이 빠진 빌드에서 "Create vault" 가
-                  화면에서 사라지고, 아무도 금고를 만들 수 없게 된다 — 부가 기능이
-                  주 액션을 삼킨 구조. 알림은 없어도 금고 만들기는 가능해야 한다. */}
-              <p className="text-xs text-gray-600">Creating a vault means you accept the <a href="/terms.html" className="underline">Terms</a> and <a href="/privacy.html" className="underline">Privacy Policy</a>, including the seven-day claim and automatic transfer rules.</p>
-              {creationHasVault && <p className="text-xs text-gray-600">You already have this type of vault. Select another type above or manage the existing one.</p>}
-              <Button variant="primary" onClick={() => void runVaultAction(createVault)} disabled={pendingAction || creating || !miniInstalled || !account || creationHasVault || (!HAS_YIELD_ROUTES && isMyVault) || (creationKind === "yield" && (!creationYieldTerms || !yieldConsent)) || !periodValid || !heirResolved?.address}>{creating ? <><span className="spinner" />Creating vault…</> : "Create vault"}</Button>
-              {!HAS_YIELD_ROUTES && isMyVault && (
-                <div className="text-xs text-gray-600">You already have a vault. Update settings below or deposit WLD.</div>
-              )}
-              {vault && (!HAS_YIELD_ROUTES || !isVaultOwner || (isYieldVault ? creationFactoryAddress.toLowerCase() === vaultFactory.toLowerCase() : creationKind === "plain")) && (
-                <div className="text-xs text-gray-600 break-all">
-                  {/* "Your vault" 는 **내 소유** 일 때만 사실이다. 상속인이 `?vault=` 링크로
-                      남의 금고를 보고 있으면 이 라벨은 소유권을 주장하는 셈이 되고, 같은
-                      화면에 "Withdraw 15.0 WLD" 까지 있으니 훨씬 나쁘다. 상속인에게는
-                      그것이 누구의 금고인지로 말해야 한다. */}
-                  {vaultIdentity?.released ? "Archived vault:" : isMyVault ? "Your vault:" : "Vault you were named heir of:"}
-                  <button className="ml-1 underline text-blue-700" onClick={() => copyText(vault, "vault")}>
-                    {short(vault)}
-                  </button>
-                  {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {tab === "inherit" && account && gate2(
+          <PlanSetup
+            rows={draftPlanRows.map(row => ({ ...row, walletBalance: planWalletBalances[row.symbol] ?? null }))}
+            heir={heir}
+            onHeirChange={onHeirInput}
+            onPickHeir={pickHeirFromContacts}
+            resolvingHeir={resolvingHeir}
+            heirResolved={heirResolved?.address ?? ""}
+            heirUsername={heirResolved?.username ?? ""}
+            heirSuspicious={Boolean(heirResolved?.address && isHeirSuspicious())}
+            shareBusy={shareBusy}
+            period={periodInput}
+            periodValid={periodValid}
+            onPeriodChange={onPeriodChange}
+            onPreset={days => onPeriodChange(String(days))}
+            onAmountChange={(symbol, value) => symbol === "WLD" ? setPlanWldAmount(value) : setPlanUsdcAmount(value)}
+            yieldConsent={yieldConsent}
+            onYieldConsent={setYieldConsent}
+            pendingPlan={pendingPlan}
+            alignmentConflicts={alignmentConflicts}
+            onConfirmAlignment={() => void runWalletAction(() => continuePlan(true))}
+            onCancelAlignment={() => { setAlignmentReview(""); setAlignmentConflicts([]); }}
+            onCreate={() => void runVaultAction(createPlan)}
+            onResume={() => void runWalletAction(() => continuePlan(false))}
+            canEditRemaining={Boolean(pendingPlan && canEditStoredPlan(pendingPlan))}
+            onEditRemaining={editRemainingPlan}
+            busy={pendingAction || creating}
+            createDisabled={createPlanDisabled}
+            resumeDisabled={resumePlanDisabled}
+            reminderNote={NOTIFY_BACKEND_ENABLED && !ownVault && notifyHealth.level !== "checking" ? (
+              <section className={`plan-notification-note ${notifyPermission === "granted" ? "notice-ready" : "notice-needs-action"}`} role={notifyPermission === "granted" ? "status" : "alert"}>
+                <strong>{notifyPermission === "granted" ? "Reminders are on" : "Reminders are optional"}</strong>
+                <p>{notifyPermission === "granted"
+                  ? "Your heir must also open this app and enable reminders. Notices begin after a vault holds funds."
+                  : "Enable World App notifications to receive reminders. Your heir needs their own permission; notices begin after a vault holds funds."}</p>
+                {notifyPermission !== "granted" && <Button disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>
+                  {notifyBusy ? "Working…" : "Enable reminders"}
+                </Button>}
+              </section>
+            ) : null}
+          />
         )}
+
 
         {/*
           상속인 경로를 주인 폼에서 분리한다.
@@ -4193,7 +5237,7 @@ export default function App() {
                     ? "Checking the chain for vaults that name you…"
                     : heirScanAttempted
                       ? heirFoundVaults.length > 0
-                        ? `You are the heir of ${heirFoundVaults.length} vault${heirFoundVaults.length > 1 ? "s" : ""}. Open the Inherit tab to see them.`
+                        ? `You are the heir of ${heirFoundVaults.length} vault${heirFoundVaults.length > 1 ? "s" : ""}. Open Plan to see them.`
                         : heirScanIncomplete
                           ? "Some vaults could not be checked. Please try again."
                           : "No registered or recent vaults found in this check."
@@ -4212,11 +5256,11 @@ export default function App() {
           <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-700">
             <div>
-              Your wallet keys stay in World App. Deposited funds are held by your on-chain vault. We cannot redirect an inheritance or withdraw an active owner’s funds.
+              Your wallet keys stay in World App. One plan covers the WLD and/or USDC amounts you choose; the app manages a separate on-chain vault contract for each selected asset with the same heir and check-in interval. We cannot redirect inheritance or withdraw an active owner’s funds.
             </div>
             <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
               <li>Your setup and management transactions require World App approval. After an heir’s claim and seven-day review, a new vault may transfer automatically without a second signature.</li>
-              <li>Deposits move the selected asset into your personal vault contract. Yield deposits supply it to the disclosed Morpho vault. Eligible inheritance transfers can only pay its named heir; active-owner withdrawals require your approval.</li>
+              <li>Each selected amount goes to its asset-specific vault contract; WLD and USDC are never converted. Yield deposits supply that asset to the disclosed Morpho vault. Eligible inheritance transfers can only pay its named heir; active-owner withdrawals require your approval.</li>
               <li>World App provides your address and asks you to approve wallet sign-in and management transactions.</li>
               <li>We store sign-in security records and registered vault addresses, monitoring state and delivery or execution records. See Privacy for details. We never collect your wallet keys.</li>
             </ul>
@@ -4306,7 +5350,7 @@ export default function App() {
           말해준다. */}
       {tabStillVisible && !tabHasContent && (
         <div className="text-sm text-gray-600">
-          {tab === "money" && "Your vault is not set up yet. Create it in the Inherit tab first."}
+          {tab === "money" && "Your vault is not set up yet. Create it in Plan first."}
           {tab === "vault" && "Loading your vault..."}
         </div>
       )}
@@ -4320,10 +5364,10 @@ export default function App() {
           <button
             key={t.key}
             className={`tab-item ${tab === t.key ? "tab-item-active" : ""}`}
-            onClick={() => setTab(t.key)}
+            onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab(t.key); }}
             aria-current={tab === t.key ? "page" : undefined}
           >
-            <Icon name={t.key === "money" ? "send" : t.key === "support" ? "help" : t.key} size={21} /><span>{t.label}</span>
+            <Icon name={t.key === "money" ? "assets" : t.key === "vault" ? "home" : t.key === "support" ? "help" : t.key} size={21} /><span>{t.label}</span>
           </button>
         ))}
       </nav>

@@ -47,6 +47,7 @@ contract InheritanceVaultUSDC {
     /// @notice Asset amounts are USDC; receipt shares represent only USDC yield.
     event PerformanceFeePaid(address indexed recipient, uint256 assets, uint256 shares);
     event OwnerWithdrawnAsset(address indexed to, uint256 amount);
+    event IncomeWithdrawn(address indexed to, uint256 gross, uint256 fee, uint256 net);
     event SharesWithdrawn(address indexed to, uint256 shares);
     event InheritanceFinalized(address indexed recipient, uint256 assetAmount, uint256 claimedAt);
     event InheritanceSharesFinalized(address indexed recipient, uint256 shares, uint256 claimedAt);
@@ -57,6 +58,8 @@ contract InheritanceVaultUSDC {
     uint256 public constant MAX_PERFORMANCE_FEE_BPS = 1000;
     uint256 public constant AUTOMATIC_REDEEM_GAS = 300_000;
     uint256 public constant SHARE_VALUATION_GAS = 150_000;
+    /// @notice Read-only income quotes traverse up to 32 configured lending markets.
+    uint256 public constant INCOME_VALUATION_GAS = 2_000_000;
     address public constant MERKL_DISTRIBUTOR = 0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae;
     address public immutable owner;
     address public immutable factory;
@@ -79,6 +82,19 @@ contract InheritanceVaultUSDC {
     /// @dev Cumulative canonical WLD rewards already paid; never USDC capital.
     uint256 private accountedRewards;
     uint256 private locked = 1;
+
+    struct IncomeWithdrawalState {
+        uint256 heldShares;
+        uint256 managedAssets;
+        uint256 protectedAmount;
+        uint256 idle;
+        uint256 gross;
+        uint256 fee;
+        uint256 expectedNet;
+        uint256 burned;
+        uint256 beforeTo;
+        uint256 beforeFeeRecipient;
+    }
 
     modifier nonReentrant() {
         if (locked != 1) revert Reentrancy();
@@ -213,6 +229,53 @@ contract InheritanceVaultUSDC {
         net = gross - fee;
     }
 
+    /// @notice Positive USDC income attributable only to tracked receipt shares.
+    /// Idle USDC, WLD rewards and receipt-share gifts are excluded.
+    function incomePosition()
+        external
+        view
+        returns (uint256 gross, uint256 fee, uint256 net, uint256 withdrawableNet, bool valued)
+    {
+        uint256 heldShares;
+        try strategy.balanceOf(address(this)) returns (uint256 shares) {
+            heldShares = shares;
+        } catch {
+            return (0, 0, 0, 0, false);
+        }
+        if (accountedShares > heldShares) return (0, 0, 0, 0, false);
+
+        uint256 managedAssets;
+        if (accountedShares != 0) {
+            try strategy.convertToAssets{gas: INCOME_VALUATION_GAS}(accountedShares) returns (uint256 value) {
+                managedAssets = value;
+            } catch {
+                return (0, 0, 0, 0, false);
+            }
+        }
+        if (costBasis > type(uint256).max - realizedLoss) return (0, 0, 0, 0, false);
+
+        uint256 protected = costBasis + realizedLoss;
+        gross = managedAssets > protected ? managedAssets - protected : 0;
+        fee = YieldMath.mulDiv(gross, performanceFeeBps, 10_000);
+        net = gross - fee;
+        valued = true;
+        if (gross == 0) return (gross, fee, net, 0, valued);
+
+        uint256 liquid;
+        try strategy.maxWithdraw(address(this)) returns (uint256 available) {
+            liquid = available < gross ? available : gross;
+        } catch {
+            return (gross, fee, net, 0, valued);
+        }
+        try strategy.convertToAssets{gas: INCOME_VALUATION_GAS}(1) returns (uint256 unitValue) {
+            if (unitValue == type(uint256).max) return (gross, fee, net, 0, valued);
+            uint256 reserve = unitValue + 1;
+            uint256 withdrawableGross = liquid > reserve ? liquid - reserve : 0;
+            uint256 withdrawableFee = YieldMath.mulDiv(withdrawableGross, performanceFeeBps, 10_000);
+            withdrawableNet = withdrawableGross - withdrawableFee;
+        } catch { /* Unknown share granularity must not appear withdrawable. */ }
+    }
+
     /// @notice WLD units only; gifts are held but are not fee-bearing rewards.
     function rewardPosition() external view returns (uint256 held, uint256 feeBearing, uint256 net, uint256 fee) {
         held = IERC20(rewardToken).balanceOf(address(this));
@@ -345,6 +408,71 @@ contract InheritanceVaultUSDC {
         _payFee(fee, 0);
         SafeERC20Lib.safeTransfer(asset, to, grossAssets - fee);
         emit OwnerWithdrawnAsset(to, grossAssets - fee);
+    }
+
+    /// @notice Withdraw only USDC value above the unchanged capital and closed-loss reserve.
+    function ownerWithdrawIncome(address to, uint256 minNetAssets)
+        external
+        onlyOwnerOrFactory
+        withdrawableOwner
+        nonReentrant
+        returns (uint256 netReceived)
+    {
+        _validRecipient(to);
+        IncomeWithdrawalState memory state_;
+        state_.heldShares = strategy.balanceOf(address(this));
+        if (accountedShares > state_.heldShares) revert InvalidStrategy();
+        state_.managedAssets = accountedShares == 0 ? 0 : strategy.convertToAssets(accountedShares);
+        if (costBasis > type(uint256).max - realizedLoss) revert InvalidStrategy();
+        state_.protectedAmount = costBasis + realizedLoss;
+        if (state_.managedAssets <= state_.protectedAmount) revert NothingToTransfer();
+
+        uint256 income = state_.managedAssets - state_.protectedAmount;
+        uint256 liquid = strategy.maxWithdraw(address(this));
+        if (liquid > income) liquid = income;
+        uint256 unitValue = strategy.convertToAssets(1);
+        if (unitValue == type(uint256).max) revert NothingToTransfer();
+        uint256 reserve = unitValue + 1;
+        state_.gross = liquid > reserve ? liquid - reserve : 0;
+        if (state_.gross == 0) revert NothingToTransfer();
+        state_.fee = YieldMath.mulDiv(state_.gross, performanceFeeBps, 10_000);
+        state_.expectedNet = state_.gross - state_.fee;
+        if (state_.expectedNet == 0) revert NothingToTransfer();
+        if (state_.expectedNet < minNetAssets) revert SlippageExceeded();
+
+        state_.idle = IERC20(asset).balanceOf(address(this));
+        state_.burned = strategy.withdraw(state_.gross, address(this), address(this));
+        uint256 afterShares = strategy.balanceOf(address(this));
+        uint256 afterAssets = IERC20(asset).balanceOf(address(this));
+        if (
+            afterShares > state_.heldShares || state_.heldShares - afterShares != state_.burned || state_.burned == 0
+                || state_.burned > accountedShares || afterAssets < state_.idle || afterAssets - state_.idle != state_.gross
+        ) revert InvalidStrategy();
+        accountedShares -= state_.burned;
+
+        state_.beforeTo = IERC20(asset).balanceOf(to);
+        state_.beforeFeeRecipient = IERC20(asset).balanceOf(feeRecipient);
+        _payFee(state_.fee, 0);
+        SafeERC20Lib.safeTransfer(asset, to, state_.expectedNet);
+        uint256 afterTo = IERC20(asset).balanceOf(to);
+        uint256 afterFeeRecipient = IERC20(asset).balanceOf(feeRecipient);
+        if (afterTo < state_.beforeTo) revert InvalidStrategy();
+        if (to == feeRecipient) {
+            if (afterTo - state_.beforeTo != state_.gross) revert InvalidStrategy();
+        } else if (
+            afterTo - state_.beforeTo != state_.expectedNet || afterFeeRecipient < state_.beforeFeeRecipient
+                || afterFeeRecipient - state_.beforeFeeRecipient != state_.fee
+        ) {
+            revert InvalidStrategy();
+        }
+        netReceived = state_.expectedNet;
+        if (netReceived < minNetAssets) revert SlippageExceeded();
+
+        if (IERC20(asset).balanceOf(address(this)) != state_.idle) revert InvalidStrategy();
+        if (accountedShares > strategy.balanceOf(address(this))) revert InvalidStrategy();
+        uint256 managedAfter = accountedShares == 0 ? 0 : strategy.convertToAssets(accountedShares);
+        if (managedAfter < state_.protectedAmount) revert InvalidStrategy();
+        emit IncomeWithdrawn(to, state_.gross, state_.fee, state_.expectedNet);
     }
 
     /// @notice Exit USDC receipt shares without liquidity; WLD remains held.

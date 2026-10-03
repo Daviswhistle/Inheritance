@@ -35,7 +35,13 @@ export const FACTORY_ABI = [
   ...FACTORY_ERROR_ABI,
 ] satisfies InterfaceAbi;
 
+/** Optional on newer yield factories; absent from the basic and older deployments. */
+export const INCOME_FACTORY_ABI: InterfaceAbi = [
+  "function withdrawIncomeFromMyVault(address to, uint256 minNetAssets) external returns (uint256 net)",
+];
+
 export const VAULT_ABI: InterfaceAbi = [
+  "event Ping(uint256 timestamp)",
   "function WLD() view returns (address)",
   "function heir() view returns (address)",
   "function owner() view returns (address)",
@@ -57,4 +63,11 @@ export const VAULT_ABI: InterfaceAbi = [
   "function timeRemaining() view returns (uint256)",
   "function isSettled() view returns (bool)",
   ...VAULT_ERROR_ABI,
+];
+
+/** Optional API implemented by the income-capable yield vault generation. */
+export const INCOME_VAULT_ABI: InterfaceAbi = [
+  "event IncomeWithdrawn(address indexed to, uint256 gross, uint256 fee, uint256 net)",
+  "function incomePosition() view returns (uint256 gross,uint256 fee,uint256 net,uint256 withdrawableNet,bool valued)",
+  "function ownerWithdrawIncome(address to,uint256 minNetAssets) returns (uint256 net)",
 ];

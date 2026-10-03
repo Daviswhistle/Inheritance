@@ -510,6 +510,10 @@ body {
   color: #dc2626;
 }
 
+.text-red-700 {
+  color: #b91c1c;
+}
+
 .text-blue-800 {
   color: #1e40af;
 }
@@ -1553,3 +1557,68 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 .yield-values>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .yield-values dt{color:#647160}.yield-values dd{margin:0;text-align:right;overflow-wrap:anywhere}
 .yield-stat.stat:only-child{display:block}.yield-stat .stat-label{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.6}.yield-stat.stat:only-child .stat-value{margin-top:8px;overflow-wrap:anywhere}
+
+/* Unified inheritance plan and income controls. */
+.plan-card-intro { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.plan-setup-card .card-header { padding-bottom: 15px; }
+.plan-setup-card .card-title { margin-top: 5px; font-size: 19px; letter-spacing: -.55px; }
+.plan-assets { display: grid; gap: 11px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.plan-assets legend { margin-bottom: 2px; font-size: 13px; font-weight: 650; color: var(--ink); }
+.plan-asset-row { min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 15px; background: #fbfcf8; }
+.plan-asset-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.plan-asset-heading label { font-size: 14px; font-weight: 700; color: var(--ink); }
+.plan-asset-heading span { color: #526959; font-size: 11px; font-weight: 600; }
+.plan-amount-control { display: flex; min-width: 0; align-items: center; gap: 9px; }
+.plan-amount-control .input-control { min-width: 0; flex: 1 1 auto; font-variant-numeric: tabular-nums; }
+.plan-amount-control strong { min-width: 42px; color: #415e4c; font-size: 12px; text-align: right; }
+.plan-asset-row > p { margin: 7px 0 0; line-height: 1.5; }
+.plan-period-input { max-width: 118px; }
+.field-suffix { color: var(--muted); font-size: 13px; }
+.resolved-heir { display: flex; align-items: center; gap: 9px; margin: 0; color: #375944; font-size: 12px; font-weight: 650; }
+.resolved-heir span { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 500; }
+.plan-risk, .plan-review, .plan-resume, .checkin-review { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: #f7f9f3; color: #43564b; font-size: 12px; line-height: 1.65; }
+.plan-risk h3, .plan-review h3, .plan-resume h3, .checkin-review h3 { margin: 0 0 7px; color: var(--ink); font-size: 14px; font-weight: 700; }
+.plan-risk p, .plan-review p, .plan-resume p, .checkin-review p { margin: 0 0 8px; }
+.plan-risk p:last-of-type, .plan-review p:last-of-type, .plan-resume p:last-of-type { margin-bottom: 7px; }
+.plan-risk a { display: inline-flex; min-height: 44px; align-items: center; text-decoration: underline; font-weight: 600; }
+.plan-risk .yield-consent { margin-top: 6px; padding: 8px 0 0; color: #2f4838; font-size: 12px; }
+.plan-risk .yield-consent input { width: 20px; height: 20px; }
+.plan-submit { width: 100%; }
+.plan-resume { border-color: #b9cdb8; background: #f1f6ed; }
+.plan-progress-list { display: grid; gap: 6px; margin: 10px 0; }
+.plan-progress-list > div { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.plan-progress-list dt { min-width: 0; color: var(--ink); font-weight: 650; overflow-wrap: anywhere; }
+.plan-progress-list dd { margin: 0; color: #506b55; text-align: right; }
+.plan-review { border-color: #d5bd7d; background: #fff9e9; }
+.plan-review ul { margin: 7px 0 12px; padding-left: 18px; }
+.plan-review li { margin: 4px 0; overflow-wrap: anywhere; }
+.plan-overview-reminders { display: grid; gap: 4px; }
+.plan-overview-reminders p { margin: 0; }
+.plan-notification-note { padding: 14px; border: 1px solid #d5dfcc; border-radius: 15px; background: #f4f7ef; color: #43564b; font-size: 12px; line-height: 1.6; }
+.plan-notification-note strong { display: block; color: var(--ink); font-size: 13px; }
+.plan-notification-note p { margin: 5px 0 8px; }
+.notice-needs-action { border-color: #d7c692; background: #fff9e8; }
+.notice-ready { border-color: #cbdcc4; background: #f1f7ed; }
+.plan-overview-card .card-header { padding-bottom: 14px; }
+.plan-overview-assets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.plan-overview-asset { display: grid; gap: 5px; min-width: 0; padding: 14px; border-radius: 15px; background: #f4f7ef; }
+.plan-overview-asset > span { color: #526959; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.plan-overview-asset strong { min-width: 0; color: var(--ink); font-size: clamp(15px, 4.4vw, 20px); line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.plan-overview-asset small { color: var(--muted); font-size: 10px; }
+.plan-common-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: #506457; font-size: 12px; }
+.plan-common-settings strong { color: var(--ink); font-weight: 650; }
+.plan-settings-differ { margin: 0; padding: 10px 12px; border-radius: 12px; background: #fff8e6; color: #75551d; font-size: 12px; line-height: 1.6; }
+.checkin-review { background: #fbfcf8; }
+.checkin-review ul { display: grid; gap: 7px; margin: 9px 0 13px; padding: 0; list-style: none; }
+.checkin-review li { display: grid; gap: 2px; min-width: 0; padding: 9px 10px; border-radius: 10px; background: #f2f5ed; color: var(--ink); overflow-wrap: anywhere; }
+.checkin-review li span { color: var(--muted); font-size: 11px; }
+.income-card .income-stat { background: #f2f6ed; }
+.income-card .yield-values { padding-top: 2px; }
+.income-card .field-row-controls .input-control { min-width: 0; }
+@media (max-width: 360px) {
+  .plan-overview-assets { gap: 7px; }
+  .plan-overview-asset { padding: 12px 10px; }
+  .plan-asset-row, .plan-risk, .plan-review, .plan-resume, .checkin-review { padding: 12px; }
+  .plan-progress-list > div { display: grid; gap: 2px; }
+  .plan-progress-list dd { text-align: left; }
+}

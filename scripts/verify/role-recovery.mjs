@@ -74,8 +74,8 @@ try {
   page = await launch({ pk: ACCOUNTS.a0.pk, url: vite.resolvedUrls.local[0] });
   await page.ev(HELPERS);
   await page.ev("return __q.click('Continue with World App')");
-  await until(() => page.ev("return __q.tabs().includes('Vault')"));
-  await page.ev("return __q.tab('Vault')");
+  await until(() => page.ev("return __q.tabs().includes('Plan')"));
+  await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return !!document.getElementById('period-change')"));
   pass("Owner controls appear after canonical identity verification");
   failNextOwner = true;

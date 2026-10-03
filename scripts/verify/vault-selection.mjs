@@ -47,6 +47,7 @@ try {
   const preload = `
     const networkFetch = window.fetch.bind(window);
     window.__holdWatcher = false; window.__heldWatchers = [];
+    window.__holdRegistration = true; window.__heldRegistrations = [];
     window.__watchers = { ${JSON.stringify(legacyVault.toLowerCase())}: true };
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' ? input : input.url, location.origin);
@@ -62,8 +63,14 @@ try {
         return response();
       }
       if (url.pathname === '/api/notifications/register') {
-        const vault = JSON.parse(init.body).vaultAddress.toLowerCase(); window.__watchers[vault] = true;
-        return Response.json({ status: 'success', watcher: {active:true} });
+        const vault = JSON.parse(init.body).vaultAddress.toLowerCase();
+        const response = () => { window.__watchers[vault] = true; return Response.json({ status: 'success', watcher: {active:true} }); };
+        if (window.__holdRegistration && vault === ${JSON.stringify(currentVault.toLowerCase())})
+          return new Promise((resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {once:true});
+            window.__heldRegistrations.push(() => resolve(response()));
+          });
+        return response();
       }
       throw new Error('Unexpected local notification route: ' + url.pathname);
     };
@@ -80,7 +87,10 @@ try {
   page = await launch({ pk: ACCOUNTS.a0.pk, url, preload }); await page.ev(HELPERS);
   await page.ev("return __q.click('Continue with World App')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Back to your own vault')"));
-  await page.ev("return __q.tab('Send')");
+  await page.ev("return __q.tab('Assets')");
+  await page.waitFor('.money-metadata');
+  await page.ev("return __q.reveal('.money-metadata')");
+  await page.ev("return __q.click('Show addresses & explorer links')");
   await until(() => page.ev("return document.getElementById('deposit-amount') && /90 days/.test(document.body.innerText) && /100.0 WLD/.test(document.body.innerText)"));
   pass("The linked legacy owner's vault is verified before depositing");
   await page.ev("return __q.tab('Help')");
@@ -88,7 +98,7 @@ try {
   await until(() => page.ev("return /Reminders are enabled for you/.test(document.body.innerText)"));
   await page.ev("window.__holdWatcher = true; return __q.click('Refresh status')");
   await until(() => page.ev("return window.__heldWatchers.length > 0"));
-  await page.ev("return __q.tab('Inherit')");
+  await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Back to your own vault')"));
   const switched = await page.ev(`const original = window.fetch.bind(window); window.__heldReads = []; window.__holdNew = true; window.__seenReads = [];
     window.fetch = async (input, init) => { const url = typeof input === 'string' ? input : input.url;
@@ -99,7 +109,7 @@ try {
       return original(input, init); };
     return __q.click('Back to your own vault');`);
   assert.match(switched, /clicked/);
-  await page.ev("return __q.tab('Send')");
+  await page.ev("return __q.tab('Assets')");
   await until(() => page.ev("return window.__heldReads.length > 0"));
   assert.equal(await page.ev("return __q.btns().some(b => b.t === 'Deposit' && !b.d)"), false);
   pass("Switching vaults blocks deposit while canonical identity is unresolved");
@@ -107,25 +117,30 @@ try {
   assert.equal(await token.balanceOf(legacyVault), 0n); assert.equal(await token.balanceOf(currentVault), 0n);
   pass("Delayed reads cannot send a transaction or move funds into the previous vault");
   await page.ev("window.__holdNew = false; window.__heldReads.forEach(resolve => resolve()); return true");
+  await until(() => page.ev("return !!document.getElementById('deposit-amount')"));
+  await page.ev("return __q.setInput('deposit-amount', '1')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Deposit' && !b.d)"));
-  await page.ev("return __q.setInput('deposit-amount', '1')"); await page.ev("return __q.click('Deposit')");
+  await page.ev("return __q.click('Deposit')");
   await until(() => page.ev("return window.__E2E_MINIKIT__.lastCalldata().length === 2"));
   assert.equal((await page.ev("return window.__E2E_MINIKIT__.lastCalldata()[1].to")).toLowerCase(), (await factory.getAddress()).toLowerCase());
   pass("Verified deposit routes to the selected current factory");
   await until(async () => await token.balanceOf(currentVault) === parseEther("1"));
   assert.equal(await token.balanceOf(legacyVault), 0n);
   pass("Only the selected vault receives the actual WLD deposit");
-  await page.ev("return __q.tab('Inherit')");
+  await until(() => page.ev("return window.__heldRegistrations.length === 1"));
+  await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Enable vault monitoring' && !b.d)"));
-  pass("A new unregistered vault does not inherit the prior vault's monitoring status");
+  pass("A new vault awaiting its automatic registration does not inherit the prior vault's monitoring status");
   await page.ev("window.__holdWatcher = false; window.__heldWatchers.forEach(resolve => resolve()); return true");
   await sleep(500);
   assert.equal(await page.ev("return /Automatic transfer is enabled/.test(document.body.innerText)"), false);
   assert.equal(await page.ev("return __q.btns().some(b => b.t === 'Enable vault monitoring' && !b.d)"), true);
   pass("A delayed registered response cannot hide monitoring setup for the selected vault");
+  await page.ev("window.__holdRegistration = false; return true;");
   await page.ev("return __q.click('Enable vault monitoring')");
   await until(() => page.ev("return /Automatic transfer is enabled/.test(document.body.innerText)"));
   pass("Monitoring becomes enabled only after the selected vault's registration succeeds");
+  await page.ev("window.__heldRegistrations.forEach(resolve => resolve()); return true;");
   await page.close(); page = null;
 
   await (await token.mint(legacyVault, parseEther("3"))).wait();

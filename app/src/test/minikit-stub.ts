@@ -59,6 +59,24 @@ export function __setState(patch: Partial<typeof state>) {
   if (patch.address) state.address = patch.address;
 }
 
+/** Exercise the installed MiniKit SDK's structured send-error class in browser fixtures. */
+export async function __throwSendTransactionError(code: string): Promise<never> {
+  const { SendTransactionError } = await import("@worldcoin/minikit-js/commands");
+  throw new SendTransactionError(code);
+}
+
+/** Run the installed SDK's real pre-handoff availability check, without a native send. */
+export async function __sendUnavailableTransaction(input: Parameters<typeof import("@worldcoin/minikit-js/commands").sendTransaction>[0]) {
+  const commands = await import("@worldcoin/minikit-js/commands");
+  const wasAvailable = commands.isCommandAvailable(commands.Command.SendTransaction);
+  commands.setCommandAvailable(commands.Command.SendTransaction, false);
+  try {
+    return await commands.sendTransaction(input);
+  } finally {
+    commands.setCommandAvailable(commands.Command.SendTransaction, wasAvailable);
+  }
+}
+
 async function getSigner() {
   const { ethers } = await import("ethers");
   const cfg = window.__E2E_SIGNER__;
@@ -76,6 +94,27 @@ async function rpcProvider() {
   const url = (import.meta as any).env?.VITE_RPC as string | undefined;
   const { ethers } = await import("ethers");
   return new ethers.JsonRpcProvider(url);
+}
+
+/** E2E-only: emulate an atomic smart-account batch with real local receipts. */
+export async function __sendAtomicBatch(transactions: { to: string; data?: string; value?: string }[]) {
+  const { Wallet, JsonRpcProvider, Interface } = await import("ethers");
+  const local = window as unknown as { __E2E_RPC__: string; __E2E_BATCH_WALLET__: string };
+  const provider = new JsonRpcProvider(local.__E2E_RPC__, 480, { staticNetwork: true, cacheTimeout: -1, batchMaxCount: 1 });
+  try {
+    const signer = new Wallet(window.__E2E_SIGNER__!.privateKey!, provider);
+    const nonce = await signer.getNonce("pending");
+    const code = await provider.getCode(signer.address);
+    const authorization = code === "0x" ? await signer.authorize({ address: local.__E2E_BATCH_WALLET__, chainId: 480, nonce: nonce + 1 }) : null;
+    const abi = new Interface(["function execute((address to,bytes data,uint256 value)[] calls)"]);
+    const calls = transactions.map(tx => ({ to: tx.to, data: tx.data || "0x", value: BigInt(tx.value || 0) }));
+    const tx = await signer.sendTransaction({ to: signer.address, data: abi.encodeFunctionData("execute", [calls]), nonce,
+      gasLimit: 12_000_000n, ...(authorization ? { type: 4, authorizationList: [authorization] } : {}) });
+    const receipt = await tx.wait();
+    return { executedWith: "minikit", data: { status: "success", transaction_hash: receipt!.hash, from: signer.address } };
+  } catch (error: any) {
+    return { executedWith: "minikit", data: { status: "fail", error: error.shortMessage || error.message } };
+  } finally { provider.destroy(); }
 }
 
 /** 2.x 의 walletAuth 응답: { executedWith, data } */

@@ -3,7 +3,7 @@ main = "src/worker.mjs"
 compatibility_date = "2026-02-26"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]
 
 [[d1_databases]]
 binding = "DB"

@@ -83,14 +83,12 @@ function localAuth(): Plugin {
 // 프로덕션 빌드에는 절대 사용하지 않는다 (`pnpm build` 는 vite.config.ts 를 쓴다).
 export default defineConfig({
   plugins: [react(), tsconfigPaths({ projects: ["./tsconfig.app.json"] }), localAuth()],
+  optimizeDeps: { include: ["@worldcoin/minikit-js/commands"] },
   resolve: {
     alias: [
-      // 서브패스를 먼저 둔다. Vite 의 문자열 alias 는 prefix 매칭이라
-      // 순서를 뒤집으면 `/commands` 가 스텁 파일 뒤에 붙는다.
-      {
-        find: /^@worldcoin\/minikit-js\/commands$/,
-        replacement: path.resolve(__dirname, "./src/test/minikit-stub.ts"),
-      },
+      // Keep /commands on the installed SDK so error identity and pre-handoff
+      // availability checks exercise real SDK behavior. Only the native bridge
+      // entry point uses the local signer fixture.
       {
         find: /^@worldcoin\/minikit-js$/,
         replacement: path.resolve(__dirname, "./src/test/minikit-stub.ts"),

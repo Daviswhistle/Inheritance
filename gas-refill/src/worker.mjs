@@ -1,4 +1,4 @@
-import { readGasRefillHealth, runGasRefillCycle } from "./refill.mjs";
+import { readGasRefillHealth, runGasRefillCycle } from "./funding.mjs";
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -19,7 +19,7 @@ export default {
     const url = new URL(request.url);
     if (request.method !== "GET") return json({ error: "not_found" }, 404);
     if (url.pathname === "/api/health") {
-      return json({ status: "ok", version: "gas-refill-usdc-1", gasRefill: await readGasRefillHealth(env) });
+      return json({ status: "ok", version: "gas-funding-atomic-2", gasRefill: await readGasRefillHealth(env) });
     }
     if (url.pathname === "/api/gas-refill/health") {
       return json(await readGasRefillHealth(env));

@@ -93,10 +93,14 @@ jobs:
           VITE_LEGACY_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_LEGACY_FACTORY_DEPLOY_BLOCK }}
           VITE_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_YIELD_FACTORY_ADDRESS }}
           VITE_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_YIELD_FACTORY_DEPLOY_BLOCK }}
+          VITE_LEGACY_YIELD_FACTORY_ADDRESSES: ${{ vars.VITE_LEGACY_YIELD_FACTORY_ADDRESSES }}
+          VITE_LEGACY_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_LEGACY_YIELD_FACTORY_DEPLOY_BLOCK }}
           VITE_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_MORPHO_VAULT_ADDRESS }}
           VITE_USDC_ADDRESS: ${{ vars.VITE_USDC_ADDRESS }}
           VITE_USDC_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_USDC_YIELD_FACTORY_ADDRESS }}
           VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK }}
+          VITE_LEGACY_USDC_YIELD_FACTORY_ADDRESSES: ${{ vars.VITE_LEGACY_USDC_YIELD_FACTORY_ADDRESSES }}
+          VITE_LEGACY_USDC_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_LEGACY_USDC_YIELD_FACTORY_DEPLOY_BLOCK }}
           VITE_USDC_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_USDC_MORPHO_VAULT_ADDRESS }}
           VITE_FACTORY_RELEASE_SUPPORTED: ${{ vars.VITE_FACTORY_RELEASE_SUPPORTED }}
           VITE_REQUIRE_VERIFY: ${{ vars.VITE_REQUIRE_VERIFY }}
@@ -234,27 +238,80 @@ jobs:
           USDC_ADDRESS: ${{ vars.VITE_USDC_ADDRESS }}
           USDC_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_USDC_YIELD_FACTORY_ADDRESS }}
           USDC_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_USDC_MORPHO_VAULT_ADDRESS }}
+          LEGACY_YIELD_FACTORY_ADDRESSES: ${{ vars.LEGACY_YIELD_FACTORY_ADDRESSES }}
+          LEGACY_USDC_YIELD_FACTORY_ADDRESSES: ${{ vars.LEGACY_USDC_YIELD_FACTORY_ADDRESSES }}
+          FINALIZER_DAILY_GAS_CAP_ETH: ${{ vars.FINALIZER_DAILY_GAS_CAP_ETH }}
+          GAS_FUNDING_CONTRACT_ADDRESS: ${{ vars.GAS_FUNDING_CONTRACT_ADDRESS }}
+          GAS_FUNDING_CODE_HASH: ${{ vars.GAS_FUNDING_CODE_HASH }}
         run: |
           set -uo pipefail
           DEPLOY_ARGS=()
           YIELD_EXECUTION_GAS=850000
           USDC_EXECUTION_GAS=900000
           FINALIZER_GAS_LIMIT=""
+          compose_legacy_factories() {
+            local label="$1" primary="$2" previous="$3" additional="$4" result="" address lower previous_lower
+            local -a entries=()
+            local -A seen=()
+            if [[ "$additional" =~ ^,|,$|,, ]]; then
+              echo "::error::$label must not contain empty list entries."; return 1
+            fi
+            if [[ -n "$additional" ]]; then IFS=',' read -r -a entries <<< "$additional"; fi
+            for address in "${entries[@]}"; do
+              if [[ ! "$address" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ "$address" =~ ^0x0{40}$ ]]; then
+                echo "::error::$label must be a comma-separated list of nonzero EVM addresses."; return 1
+              fi
+              lower="${address,,}"
+              if [[ "$lower" == "${primary,,}" ]] || [[ -n "${seen[$lower]:-}" ]]; then
+                echo "::error::$label contains a duplicate or the primary factory."; return 1
+              fi
+              seen[$lower]=1
+              result="${result}${result:+,}$address"
+            done
+            previous_lower="${previous,,}"
+            if [[ -n "$primary" && "${primary,,}" != "$previous_lower" && -z "${seen[$previous_lower]:-}" ]]; then
+              result="$previous${result:+,$result}"
+            fi
+            IFS=',' read -r -a entries <<< "$result"
+            if ((${#entries[@]} > 8)); then
+              echo "::error::$label may contain at most eight legacy factory addresses."; return 1
+            fi
+            printf '%s' "$result"
+          }
           if [ -n "$YIELD_FACTORY_ADDRESS" ] || [ -n "$MORPHO_VAULT_ADDRESS" ]; then
             if [[ ! "$YIELD_FACTORY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ ! "$MORPHO_VAULT_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
               echo "::error::The yield factory and Morpho strategy must be configured together."; exit 1
             fi
+            if ! LEGACY_YIELD_FACTORY_ADDRESSES="$(compose_legacy_factories 'LEGACY_YIELD_FACTORY_ADDRESSES' "$YIELD_FACTORY_ADDRESS" '0xfC3F6f0B2234923b3F3aDBAaC797e920C8FdA248' "$LEGACY_YIELD_FACTORY_ADDRESSES")"; then exit 1; fi
             DEPLOY_ARGS+=(--var "YIELD_FACTORY_ADDRESS:$YIELD_FACTORY_ADDRESS" --var "MORPHO_VAULT_ADDRESS:$MORPHO_VAULT_ADDRESS")
+            if [ -n "$LEGACY_YIELD_FACTORY_ADDRESSES" ]; then DEPLOY_ARGS+=(--var "LEGACY_YIELD_FACTORY_ADDRESSES:$LEGACY_YIELD_FACTORY_ADDRESSES"); fi
             FINALIZER_GAS_LIMIT="$YIELD_EXECUTION_GAS"
           fi
           if [ -n "$USDC_ADDRESS" ] || [ -n "$USDC_YIELD_FACTORY_ADDRESS" ] || [ -n "$USDC_MORPHO_VAULT_ADDRESS" ]; then
             if [[ ! "$USDC_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ ! "$USDC_YIELD_FACTORY_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] || [[ ! "$USDC_MORPHO_VAULT_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
               echo "::error::USDC token, yield factory and Morpho strategy must be configured together."; exit 1
             fi
+            if ! LEGACY_USDC_YIELD_FACTORY_ADDRESSES="$(compose_legacy_factories 'LEGACY_USDC_YIELD_FACTORY_ADDRESSES' "$USDC_YIELD_FACTORY_ADDRESS" '0x67c8DE756FCD04dc5976960533931984d0348758' "$LEGACY_USDC_YIELD_FACTORY_ADDRESSES")"; then exit 1; fi
             DEPLOY_ARGS+=(--var "USDC_ADDRESS:$USDC_ADDRESS" --var "USDC_YIELD_FACTORY_ADDRESS:$USDC_YIELD_FACTORY_ADDRESS" --var "USDC_MORPHO_VAULT_ADDRESS:$USDC_MORPHO_VAULT_ADDRESS")
+            if [ -n "$LEGACY_USDC_YIELD_FACTORY_ADDRESSES" ]; then DEPLOY_ARGS+=(--var "LEGACY_USDC_YIELD_FACTORY_ADDRESSES:$LEGACY_USDC_YIELD_FACTORY_ADDRESSES"); fi
             FINALIZER_GAS_LIMIT="$USDC_EXECUTION_GAS"
           fi
           if [ -n "$FINALIZER_GAS_LIMIT" ]; then DEPLOY_ARGS+=(--var "FINALIZER_MAX_GAS:$FINALIZER_GAS_LIMIT"); fi
+          if [ -n "$GAS_FUNDING_CONTRACT_ADDRESS" ] || [ -n "$GAS_FUNDING_CODE_HASH" ]; then
+            if [[ ! "$GAS_FUNDING_CONTRACT_ADDRESS" =~ ^0x[0-9a-fA-F]{40}$ ]] ||
+                [[ "$GAS_FUNDING_CONTRACT_ADDRESS" =~ ^0x0{40}$ ]] ||
+                [[ ! "$GAS_FUNDING_CODE_HASH" =~ ^0x[0-9a-fA-F]{64}$ ]]; then
+              echo "::error::GAS_FUNDING_CONTRACT_ADDRESS and GAS_FUNDING_CODE_HASH must be configured together with valid formats."; exit 1
+            fi
+            DEPLOY_ARGS+=(--var "GAS_FUNDING_CONTRACT_ADDRESS:$GAS_FUNDING_CONTRACT_ADDRESS"
+              --var "GAS_FUNDING_CODE_HASH:$GAS_FUNDING_CODE_HASH")
+          fi
+          if [ -n "$FINALIZER_DAILY_GAS_CAP_ETH" ]; then
+            if [[ "$FINALIZER_DAILY_GAS_CAP_ETH" == "0" && -z "$GAS_FUNDING_CONTRACT_ADDRESS" ]]; then
+              echo "::error::A zero daily gas cap requires the protected gas-funding contract address and runtime hash."; exit 1
+            fi
+            DEPLOY_ARGS+=(--var "FINALIZER_DAILY_GAS_CAP_ETH:$FINALIZER_DAILY_GAS_CAP_ETH")
+          fi
           LOG=$(mktemp)
           if npx wrangler deploy "${DEPLOY_ARGS[@]}" 2>&1 | tee "$LOG"; then
             echo "Worker 배포 완료"

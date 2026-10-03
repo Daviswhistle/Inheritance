@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import './launch.css'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 
 // 설정 검증(config.ts)은 App import 시점에 실행된다.

@@ -102,7 +102,7 @@ try {
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Check again' && !b.d)"));
   text = await page.ev("return document.body.innerText");
   assert.match(text, /incomplete/i); assert.doesNotMatch(text, /No registered or recent vaults found|Checked registered vaults/);
-  await page.ev("return __q.tab('Inherit')");
+  await page.ev("return __q.tab('Plan')");
   text = await page.ev("return document.body.innerText");
   assert.match(text, /incomplete|Some vaults could not be checked/i); assert.doesNotMatch(text, /No vaults found in this check/);
   await page.ev("return __q.tab('Help')");

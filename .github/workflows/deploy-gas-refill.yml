@@ -10,6 +10,9 @@ on:
       - "scripts/test-gas-refill.mjs"
       - "scripts/lib/gas-refill-test-storage.mjs"
       - "test/mocks/MockGasRefill.sol"
+      - "contracts/OperatorGasFunding.sol"
+      - "contracts/libraries/GasPriceMath.sol"
+      - "test/OperatorGasFunding.t.sol"
       - ".github/workflows/deploy-gas-refill.yml"
   workflow_dispatch:
     inputs:
@@ -29,7 +32,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Validate and deploy bounded USDC refill
+    name: Validate and deploy guarded WLD and USDC gas funding
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -52,7 +55,7 @@ jobs:
         run: node scripts/test-gas-refill.mjs
       - name: Check Worker syntax
         run: |
-          node --check gas-refill/src/refill.mjs
+          node --check gas-refill/src/funding.mjs
           node --check gas-refill/src/worker.mjs
       - name: Deploy gas refill Worker
         run: |
@@ -69,7 +72,7 @@ jobs:
           node --input-type=module - <<'JS'
           import fs from 'node:fs';
           const health = JSON.parse(fs.readFileSync('/tmp/gas-refill-health.json','utf8'));
-          if (health.status !== 'ok' || health.version !== 'gas-refill-usdc-1' ||
+          if (health.status !== 'ok' || health.version !== 'gas-funding-atomic-2' ||
               health.gasRefill?.enabled !== (process.env.GAS_REFILL_ENABLED === 'true')) {
             throw new Error('Refill Worker health or enable flag differs from this deployment');
           }

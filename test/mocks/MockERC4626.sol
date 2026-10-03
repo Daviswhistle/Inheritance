@@ -12,6 +12,7 @@ contract MockERC4626 is MockERC20 {
     uint256 public rate = 1 ether;
     uint256 public liquidityLimit = type(uint256).max;
     bool public brokenQuote;
+    bool public brokenLiquidity;
     uint256 public fee = 0.1 ether;
     bool public consumeRedeemGas;
     bool public consumeQuoteGas;
@@ -33,6 +34,10 @@ contract MockERC4626 is MockERC20 {
 
     function setBrokenQuote(bool next) external {
         brokenQuote = next;
+    }
+
+    function setBrokenLiquidity(bool next) external {
+        brokenLiquidity = next;
     }
 
     function setGasFailure(bool redeem_, bool quote_) external {
@@ -68,6 +73,7 @@ contract MockERC4626 is MockERC20 {
     }
 
     function maxWithdraw(address who) public view returns (uint256) {
+        require(!brokenLiquidity, "liquidity unavailable");
         uint256 available = IERC20(asset).balanceOf(address(this));
         if (available > liquidityLimit) available = liquidityLimit;
         uint256 value = convertToAssets(balanceOf[who]);

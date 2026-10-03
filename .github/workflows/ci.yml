@@ -94,6 +94,11 @@ jobs:
       - name: Resolve user operations and verify canonical transaction outcomes
         run: node ../scripts/test-transaction-confirmation.mjs
 
+      - name: Verify unified plans, protected income receipts and legacy route configuration
+        run: |
+          node ../scripts/verify/unified-plan.mjs
+          node ../scripts/test-legacy-yield-routes.mjs
+
       # supported_languages 는 ["en"] 뿐이다. 알림 발송 실패 안내(가장 중요한 실패
       # 경로)가 한국어였고, 코드 주석도 한국어라 검토자가 놓쳤다. 사용자 노출 문자열만 본다.
       - name: No Korean on screen (source)
