@@ -64,8 +64,8 @@ jobs:
       - name: Verify deployed read-only health
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --retry 4 --max-time 20 \
-            'https://world-inheritance-gas-refill.rkddkwl725.workers.dev/api/health' > /tmp/gas-refill-health.json
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 --retry-max-time 180 --max-time 20 \
+            "https://world-inheritance-gas-refill.rkddkwl725.workers.dev/api/health?deployment=${GITHUB_SHA}&attempt=${GITHUB_RUN_ATTEMPT}" > /tmp/gas-refill-health.json
           node --input-type=module - <<'JS'
           import fs from 'node:fs';
           const health = JSON.parse(fs.readFileSync('/tmp/gas-refill-health.json','utf8'));
