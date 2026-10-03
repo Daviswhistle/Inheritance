@@ -11,6 +11,8 @@ contract MockERC20 {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
     constructor(string memory _name, string memory _symbol) {
         name = _name;
         symbol = _symbol;
@@ -23,6 +25,7 @@ contract MockERC20 {
 
     function approve(address spender, uint256 amount) external returns (bool) {
         allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
         return true;
     }
 
