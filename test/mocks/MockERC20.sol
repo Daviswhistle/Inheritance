@@ -12,6 +12,7 @@ contract MockERC20 {
     mapping(address => mapping(address => uint256)) public allowance;
 
     event Approval(address indexed owner, address indexed spender, uint256 value);
+    event Transfer(address indexed from, address indexed to, uint256 value);
 
     constructor(string memory _name, string memory _symbol) {
         name = _name;
@@ -21,6 +22,7 @@ contract MockERC20 {
     function mint(address to, uint256 amount) external {
         totalSupply += amount;
         balanceOf[to] += amount;
+        emit Transfer(address(0), to, amount);
     }
 
     function approve(address spender, uint256 amount) external returns (bool) {
@@ -50,5 +52,6 @@ contract MockERC20 {
             balanceOf[from] -= amount;
         }
         balanceOf[to] += amount;
+        emit Transfer(from, to, amount);
     }
 }

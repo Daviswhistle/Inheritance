@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import type { YieldPosition, YieldTerms } from "@/yield";
 import type { WldRewards } from "@/rewards";
 import { EXPLORER, MORPHO_VAULT_ADDRESS } from "@/config";
@@ -111,4 +112,56 @@ export function YieldPositionCard({ position, holdings, terms, rates, ratesLoadi
       {canExit && <p className="text-xs text-gray-600">Moving shares works without cash liquidity and pays any positive-gain fee in shares. It does not cancel inheritance or move idle {symbol}{symbol === "USDC" ? " or WLD rewards" : ""}.</p>}
       <a className="text-blue-600 underline text-xs" href={`${EXPLORER}/address/${route?.strategy ?? MORPHO_VAULT_ADDRESS}`} target="_blank" rel="noreferrer">View underlying vault ↗</a>
     </CardContent></Card>;
+}
+
+export function IncomePositionCard({ state, symbol, decimals, position, to, recipientValid, canCollect, busy, onToChange, onCollect, onUseMyAddress, onRefresh }: {
+  state: "loading" | "available" | "unavailable" | "error";
+  symbol: "WLD" | "USDC";
+  decimals: number;
+  position: { gross: bigint; fee: bigint; net: bigint; withdrawableNet: bigint; valued: boolean } | null;
+  to: string;
+  recipientValid: boolean;
+  canCollect: boolean;
+  busy: boolean;
+  onToChange: (value: string) => void;
+  onCollect: () => void;
+  onUseMyAddress: () => void;
+  onRefresh: () => void;
+}) {
+  const fmt = (amount: bigint) => formatYieldAmount(amount, decimals);
+  return <Card className="income-card">
+    <CardHeader><CardTitle>Collect income</CardTitle></CardHeader>
+    <CardContent className="grid gap-3">
+      {state === "loading" && <p role="status">Checking available income…</p>}
+      {state === "unavailable" && <p className="text-sm text-gray-600">This vault does not expose separate income tracking. Its balance remains available through principal controls.</p>}
+      {state === "error" && <div className="grid gap-2"><p role="alert" className="text-sm text-yellow-800">Income status could not be refreshed. No collection was sent.</p><Button disabled={busy} onClick={onRefresh}>Refresh income</Button></div>}
+      {state === "available" && position && <>
+        {position.valued ? <>
+          <div className="stat-row">
+            <div className="stat income-stat">
+              <div className="stat-label">Available after fee</div>
+              <div className="stat-value">{fmt(position.withdrawableNet)} {symbol}</div>
+            </div>
+          </div>
+          <dl className="yield-values">
+            <div><dt>Gross realized income</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
+            <div><dt>Service fee</dt><dd>{fmt(position.fee)} {symbol}</dd></div>
+            <div><dt>Net income</dt><dd>{fmt(position.net)} {symbol}</dd></div>
+          </dl>
+          <p className="text-xs text-gray-600">This collects income only. Principal stays in the inheritance vault. The request keeps a 99.5% minimum of the quoted available amount; market value and liquidity can change before confirmation.</p>
+          <div className="field-row">
+            <label className="field-row-label" htmlFor="income-to">Send income to</label>
+            <div className="field-row-controls">
+              <Input id="income-to" inputMode="text" autoComplete="off" placeholder="0x…" value={to} onChange={event => onToChange(event.target.value)} />
+              <Button onClick={onUseMyAddress}>My address</Button>
+            </div>
+            {to && !recipientValid && <p role="alert" className="text-xs text-red-700">Enter a valid wallet address.</p>}
+          </div>
+          <Button variant="primary" disabled={busy || !canCollect || position.withdrawableNet <= 0n || !position.valued} onClick={onCollect}>
+            Collect {fmt(position.withdrawableNet)} {symbol}
+          </Button>
+        </> : <div className="grid gap-2"><p role="status">Income value is unavailable. Refresh before collecting.</p><Button disabled={busy} onClick={onRefresh}>Refresh income</Button></div>}
+      </>}
+    </CardContent>
+  </Card>;
 }

@@ -242,8 +242,21 @@ log("\n[3] 상속인에게 피상속인 목소리가 나오지 않는가 (P1-6, 
   check("상속인 화면에 자기 username 이 Owner 로 찍히지 않는다", !/@e2e_[0-9a-f]+\s*$/m.test(first(/Owner:\n([^\n]*)/, tm) || ""),
     first(/Owner:[\s\S]{0,60}/, tm) || "없음");
   await clickTab(b, "vault");
+  const heirOwn = await vaultOf(A.a7.a);
+  const ownOverview = await b.ev('return document.querySelector(".plan-overview-card")?.innerText || "";');
+  const ownPlanHeir = cast(["call", heirOwn, "heir()(address)", "--rpc-url", RPC]);
+  const shortAddress = (address) => `${address.slice(0, 6)}...${address.slice(-4)}`;
+  check("Vault 탭은 상속 중인 링크가 아니라 자기 계획을 보여준다",
+    /Your active assets/.test(ownOverview)
+      && ownOverview.includes(shortAddress(ownPlanHeir))
+      && !ownOverview.includes(shortAddress(heirOfA6)),
+    ownOverview.split("\n").filter((line) => /Heir|active assets/i.test(line)).join(" / ") || "자기 계획 요약 없음");
+  await clickTab(b, "inherit");
   const tv = await text(b);
-  check("Vault 탭도 상속인 화법", !/Your heir can now file a claim/.test(tv), first(/[^\n]*Your heir[^\n]*/, tv) || "없음");
+  check("Inherit 탭에서 링크 금고의 상속인 상태를 본다",
+    /viewing a vault you were sent/i.test(tv) && /Inheritance Status/i.test(tv),
+    first(/You are viewing[^\n]*/i, tv) || "공유 금고 상태 없음");
+  check("공유 금고의 상속인 화법", !/Your heir can now file a claim/.test(tv), first(/[^\n]*Your heir[^\n]*/, tv) || "없음");
   // 만료 전 금고면 "Counting down" 이 맞고, 만료 후면 "You can now file a claim" 이 맞다.
   // 어느 쪽이든 상속인 화법이어야 한다.
   const countdown = cast(["call", target, "deadline()(uint256)", "--rpc-url", RPC]);
@@ -267,7 +280,7 @@ log("\n[4] 주기 입력 필드가 실제 값으로 시드되는가 (P1-5)");
   const v90 = await vaultOf(who.a);
   log(`    ${who.a.slice(0,10)} vault=${v90} heartbeat=90일`);
   const b = await openApp(who);
-  await clickTab(b, "vault");
+  await clickTab(b, "inherit");
   await sleep(1600);
   const v = await b.ev('return (()=>{const e=document.querySelector("#period-change");return e?e.value:"NOTFOUND";})();');
   check("필드가 금고의 실제 주기(90)를 보여준다", v === "90", `값="${v}"  (고정 30 이었다면 "30")`);
@@ -307,16 +320,21 @@ log("\n[6] 자기 행동 뒤 화면이 갱신되는가 (P1-3)");
     return cast(["call", v, "lastPing()(uint256)", "--rpc-url", RPC]);
   };
   const chainBefore = await readPing();
-  // "Last ping" 은 money(Vault & Send) 탭의 "Show addresses & explorer links" 안쪽에 있다.
-  // 다른 탭에 있거나 접혀 있으면 없는 것처럼 보여서 오검증된다.
+  // "Last ping" 은 Send 탭의 주소 상세 안쪽에 있다. 같은 위치와 조건에서 읽는다.
   await clickTab(b, "send");
   const tog = await b.ev('return (()=>{const e=[...document.querySelectorAll("button")].find(x=>/Show addresses|Hide details/.test(x.innerText));if(e){e.click();return "toggled:"+e.innerText.trim();}return "no-toggle";})();');
   log(`    토글: ${tog}`);
   await sleep(900);
   const shownBefore = ((await text(b)).match(/Last ping[^\n]*/) || ["(표시 없음)"])[0];
   await clickTab(b, "vault");
-  const r = await click(b, "Reset timer");
-  log(`    클릭 결과: ${r}`);
+  const review = await click(b, "Review check-in");
+  log(`    검토 열기: ${review}`);
+  await sleep(500);
+  const reviewText = await text(b);
+  check("검토 단계에서 체크인 대상을 확인한다", review === "OK" && /Confirm your check-in/i.test(reviewText),
+    reviewText.split("\n").find((line) => /Confirm your check-in/.test(line)) || "검토 화면 없음");
+  const r = await click(b, "Confirm check-in");
+  log(`    체크인 확인: ${r}`);
   await sleep(6000);
   const chainAfter = await readPing();
   // 갱신 후에는 money 탭으로 돌아가 접힌 상태를 다시 펼치고, 같은 조건에서 다시 읽는다.

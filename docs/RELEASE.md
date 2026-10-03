@@ -1,4 +1,50 @@
-# Release evidence — October 2, 2026
+# Release evidence
+
+## October 3, 2026 candidate — deployment pending
+
+The candidate adds a unified WLD/USDC plan with default Morpho routes, protected
+owner income collection, 10% realized-gain fees and purpose-constrained operator
+gas funding. Previously deployed factories remain supported. Contract and runtime
+commits have completed independent internal commit review. Local validation,
+including the adapted legacy browser suite, has passed. Publication requires an
+independently reviewed final UI commit and complete contract activation.
+
+| Candidate verification surface | Current evidence |
+| --- | --- |
+| Combined Solidity suite | 375 passed, 0 failed; 5 opt-in fork tests skipped locally |
+| Genuine World Chain protocol forks | 20 passed; transactions ran on local forks |
+| Automated executor, actual Anvil | 138 passed |
+| Guarded gas Worker, actual Anvil | 12 passed |
+| Authentication | 68 passed |
+| Alert decisions / database persistence | 28 / 16 passed |
+| User-operation and receipt confirmation | 11 passed |
+| Unified-plan actual browser checks | 58 passed, including Send duplicate-deposit prevention and ordinary-deposit monitoring after cancelled setup; consented atomic check-in during interval alignment and required check-in receipt proof, partial-deposit monitoring, edit continuity, unavailable monitoring timeout and missing-route journal preservation; genuine SDK rejection before native handoff, completed-asset fee-query outage, receipt recovery before fresh consent, durable settings recovery, daily wallet-policy rejection, historical creation proof, USDC-held WLD totals and owner management from a shared link |
+| Adapted legacy browser suite | 190 passed across stages, including the focused 13-check vault-selection rerun with delayed automatic monitoring; transaction flows, layout, notification UX, cancellation, roles, discovery and outage recovery passed, and mainnet reads had 0 failures |
+| Morpho asset-specific browser flows | 43 WLD and 16 USDC checks passed on Anvil, including rewards, liquidity failures, exits, claims and archived payouts |
+| New income ABI / legacy routing | 132 functions matched / 28 route checks passed |
+| Rewards proof / dated yield-rate validation | 25 / 18 passed |
+| Frontend types, lint, build, CSS and English-only copy | Passed |
+| Current UI store compositions | Six refreshed compositions below 500 KB, including combined WLD/USDC overview and protected income collection |
+
+Production has not received this candidate. At the last preparation check, the
+World Chain deployment treasury had 0.000023751542239837 ETH, below the combined
+new-factory and guard activation reserve; the dedicated keeper reserve is retained.
+The October 4 KST read-only preparation budget is 0.000044432928863794 ETH,
+including 0.00001 ETH bot funding, leaving a 0.000020681386623957 ETH shortfall.
+The Developer Portal metadata is now `unverified`, confirmed by both the app
+config and direct GraphQL reads on October 3; the previous review has been
+removed. Its existing registration uses the production URL whose
+latest Pages frontend deployment is `3eb2e3d`; gas Worker deployment evidence at
+`4e81931` is a separate surface. Existing portal copy still describes optional WLD
+yield and separate setup and has not received this candidate. New deployments,
+canonical bytecode verification, address
+and legacy configuration, portal allowlisting, exact-commit CI/deploy receipts and
+live health checks remain release gates. No production gas swap is claimed.
+
+A local browser bridge and internal commit review do not verify native World App
+approval sheets or recipient push arrival and do not constitute an external audit.
+
+## October 2, 2026 release — historical evidence
 
 This records reproducible release validation and its limits. Production deployment receipts belong to the exact release commit in GitHub Actions. Verify the live service separately through `/api/health` and a fresh, advancing `/api/automation/health` cycle; local test results do not establish deployment or World App store approval.
 

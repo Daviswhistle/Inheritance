@@ -170,7 +170,7 @@ World Chain 블록 35787339 포크에서는 실제 예치·현금 상속·지분
 
 1. 성과 수수료율과 운영자 수취 주소, 새 계약 배포의 범위를 확정한다. 계약은 이를 나중에 바꾸지 못한다.
 2. 최신 전체 검증과 정확한 커밋 SHA의 독립 코드 리뷰를 완료한다.
-3. `node scripts/deploy-yield-factory.mjs`로 먼저 dry-run한다. 기존 운영자 지갑을 배포자·수수료 수취인으로 사용하고, 가스 한도 650만 및 실행·L1 합계 0.000015 ETH 상한을 검증한다. `--broadcast`를 명시한 경우에만 전송하며, 응답 중단 후 재실행은 `.env.yield-deployment.json`의 동일 서명 거래를 복구한다. 팩토리 생성자는 동일한 고정 설정의 immutable 배포 helper를 함께 생성한다. helper는 팩토리만 금고를 생성하도록 허용하며 관리자 권한이 없다. 두 runtime·설정 getter·Sourcify 소스 일치를 확인한다. Foundry 대안은 `script/DeployMorphoFactory.s.sol`이다.
+3. `node scripts/deploy-yield-factory.mjs`로 먼저 dry-run한다. 기존 운영자 지갑을 배포자·수수료 수취인으로 사용하고, 가스 한도 950만 및 실행·L1 합계 0.000020 ETH 상한을 검증한다. `--broadcast`를 명시한 경우에만 전송하며, 응답 중단 후 재실행은 `.env.yield-deployment.json`의 동일 서명 거래를 복구한다. 팩토리 생성자는 동일한 고정 설정의 immutable 배포 helper를 함께 생성한다. helper는 팩토리만 금고를 생성하도록 허용하며 관리자 권한이 없다. 두 runtime·설정 getter·Sourcify 소스 일치를 확인한다. Foundry 대안은 `script/DeployMorphoFactory.s.sol`이다.
 4. 기존 World App 허용 목록을 보존하면서 새 팩토리와 Re7 WLD 지분 토큰을 추가한다. 기존 기본 팩토리와 WLD 주소를 덮어쓰지 않는다.
 5. 저장소의 `VITE_YIELD_FACTORY_ADDRESS`, `VITE_YIELD_FACTORY_DEPLOY_BLOCK`, `VITE_MORPHO_VAULT_ADDRESS`를 함께 설정한다. 배포 workflow가 프론트와 Worker의 대응 변수를 함께 주입하며, yield가 설정되면 Worker의 최대 거래 가스를 850000으로 지정한다. 직접 배포하는 경우 Worker에도 `YIELD_FACTORY_ADDRESS`, `MORPHO_VAULT_ADDRESS`와 가스 설정을 명시한다.
 6. 수익형 실행에 `FINALIZER_MAX_GAS=850000`을 사용한다. 기존 하루 ETH 한도와 OP 예비금은 유지한다. 새 가스 충전이나 하루 한도 증액은 별도 비용 결정이다.
@@ -178,3 +178,5 @@ World Chain 블록 35787339 포크에서는 실제 예치·현금 상속·지분
 
 주소가 비어 있으면 기본 서비스에는 수익 기능이 나타나지 않는다. D1의 기존 스키마와
 서명 키를 재사용하며, 운영 signer는 이 실행 때문에 사용자 금고 출금 권한을 얻지 않는다.
+
+새 수익 수령 계약은 소유자가 상속 원금과 타이머를 유지하면서 실현 가능한 이자를 받을 수 있다. [원금 보호 이자 수령](OWNER_INCOME.md)과 [통합 계획 화면](UNIFIED_PLAN.md)을 따른다. 이전 배포 계약은 지원하는 원래 출금 경로를 유지한다.

@@ -47,6 +47,7 @@ try {
   const preload = `
     const networkFetch = window.fetch.bind(window);
     window.__holdWatcher = false; window.__heldWatchers = [];
+    window.__holdRegistration = true; window.__heldRegistrations = [];
     window.__watchers = { ${JSON.stringify(legacyVault.toLowerCase())}: true };
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' ? input : input.url, location.origin);
@@ -62,8 +63,14 @@ try {
         return response();
       }
       if (url.pathname === '/api/notifications/register') {
-        const vault = JSON.parse(init.body).vaultAddress.toLowerCase(); window.__watchers[vault] = true;
-        return Response.json({ status: 'success', watcher: {active:true} });
+        const vault = JSON.parse(init.body).vaultAddress.toLowerCase();
+        const response = () => { window.__watchers[vault] = true; return Response.json({ status: 'success', watcher: {active:true} }); };
+        if (window.__holdRegistration && vault === ${JSON.stringify(currentVault.toLowerCase())})
+          return new Promise((resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {once:true});
+            window.__heldRegistrations.push(() => resolve(response()));
+          });
+        return response();
       }
       throw new Error('Unexpected local notification route: ' + url.pathname);
     };
@@ -115,17 +122,20 @@ try {
   await until(async () => await token.balanceOf(currentVault) === parseEther("1"));
   assert.equal(await token.balanceOf(legacyVault), 0n);
   pass("Only the selected vault receives the actual WLD deposit");
+  await until(() => page.ev("return window.__heldRegistrations.length === 1"));
   await page.ev("return __q.tab('Inherit')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Enable vault monitoring' && !b.d)"));
-  pass("A new unregistered vault does not inherit the prior vault's monitoring status");
+  pass("A new vault awaiting its automatic registration does not inherit the prior vault's monitoring status");
   await page.ev("window.__holdWatcher = false; window.__heldWatchers.forEach(resolve => resolve()); return true");
   await sleep(500);
   assert.equal(await page.ev("return /Automatic transfer is enabled/.test(document.body.innerText)"), false);
   assert.equal(await page.ev("return __q.btns().some(b => b.t === 'Enable vault monitoring' && !b.d)"), true);
   pass("A delayed registered response cannot hide monitoring setup for the selected vault");
+  await page.ev("window.__holdRegistration = false; return true;");
   await page.ev("return __q.click('Enable vault monitoring')");
   await until(() => page.ev("return /Automatic transfer is enabled/.test(document.body.innerText)"));
   pass("Monitoring becomes enabled only after the selected vault's registration succeeds");
+  await page.ev("window.__heldRegistrations.forEach(resolve => resolve()); return true;");
   await page.close(); page = null;
 
   await (await token.mint(legacyVault, parseEther("3"))).wait();

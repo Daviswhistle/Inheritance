@@ -6,8 +6,8 @@
 자동 이체를 실행하며, 상속인의 수동 수령도 가능합니다.
 
 신규 WLD·USDC 금고는 설정된 Morpho 수익형 경로를 기본으로 선택합니다. 수수료·손실·지분 상속에
-직접 동의해야 생성할 수 있으며, 기존 금고의 자금은 이동하지 않습니다. WLD는 무료 보관형으로
-바꿀 수 있습니다. WLD 수익형 경로가 설정되지 않은 환경에서는 보관형이 기본입니다.
+직접 동의해야 생성할 수 있으며, 기존 보관형 WLD 금고도 계속 관리할 수 있습니다.
+WLD 수익형 경로가 설정되지 않은 환경에서는 보관형이 기본입니다.
 
 ## WLD 금고의 실제 규칙
 
@@ -24,19 +24,23 @@
 자동 실행은 감시 등록, 서버·RPC 가용성, 가스 잔액 및 지출 한도를 필요로 합니다.
 정확히 7일째의 실행이나 알림 도착을 보장하지 않습니다. 독립 외부 보안 감사는 없습니다.
 
-운영자 USDC 예산을 ETH로 교환하는 별도 자동 가스 충전 서비스의 권한, 소액 한도와
-복구 규칙은 [가스 충전 운영 문서](docs/GAS_REFILL.md)에 설명합니다. 고객 금고를 인출하지
-않으며, 별도 실행 지갑·유한 USDC 승인·초기 ETH가 필요합니다.
+운영자가 받은 WLD·USDC 수수료를 필요할 때 ETH로 교환하는 별도 가스 충전 서비스의
+권한과 복구 규칙은 [가스 충전 운영 문서](docs/GAS_REFILL.md)에 설명합니다. 고정된
+가스 지갑에만 지급하는 계약에 승인하며, 고객 자산은 사용하지 않습니다. 소액 반복
+교환을 피하기 위해 잔액이 낮을 때 충분한 예비 가스를 한 번에 보충합니다.
 
 ## 구성과 신뢰 경계
 
 - `app/`: React/Vite/MiniKit 화면 및 Pages SIWE 인증 함수.
-- `contracts/InheritanceVaultWLD*.sol`: 현재 WLD 전용 금고 및 주소당 하나의 금고를 관리하는 팩토리.
+- `contracts/InheritanceVaultWLD*.sol`, `InheritanceVaultMorpho*.sol`, `InheritanceVaultUSDC*.sol`: 보관형 WLD 및 수익형 WLD·USDC 개인 금고와 팩토리.
+- `contracts/OperatorGasFunding.sol`, `gas-refill/`: 운영자 수수료만으로 고정 가스 지갑을 보충하는 계약과 실행기.
 - `backend/`: Cloudflare D1을 공유하는 인증된 알림 API와 제한된 자동 실행기.
 - `test/`, `scripts/verify/`: 계약 검증 및 실제 로컬 체인·브라우저 검증.
 - `DEPLOYMENTS.md`: 배포 주소, 블록과 실제 거래 기록.
 
-소유자·상속인 키는 서버에 전송하지 않습니다. WLD는 사용자별 금고 컨트랙트에 보관됩니다.
+소유자·상속인 키는 서버에 전송하지 않습니다. 사용자는 WLD·USDC 금액, 상속인과 갱신
+주기를 한 계획에 지정합니다. 앱이 자산별 개인 계약을 만들고 관리하며, 각 팩토리는
+주소당 활성 슬롯 하나를 허용합니다. 이전 계약의 자산도 원래 경로로 계속 관리합니다.
 자동 실행기의 전용 키는 가스만 지급하며 수령자를 바꾸거나 활성 소유자 자금을 인출할 권한이 없습니다.
 새 팩토리는 임의 호출자의 `executeInheritance(vault)`도 허용하지만 금고 소속과 계약 조건을 확인합니다.
 기존 팩토리의 금고는 기존 주소와 수동 수령 경로를 그대로 사용합니다.
@@ -82,11 +86,14 @@ main push는 GitHub Actions로 Pages와 Worker를 배포합니다. 공유 D1 마
 [심사 안내](docs/REVIEW_NOTES.md), [출시 검증](docs/QA_CHECKLIST.md),
 [개인정보 처리](https://inheritance.pages.dev/privacy.html), [약관](https://inheritance.pages.dev/terms.html).
 
-## 선택형 Morpho 수익 금고
+## 기본 Morpho 예치와 이자 수령
 
 별도 `InheritanceVaultMorphoFactory`는 WLD를 고정 ERC-4626 금고에 예치하고
 개인 상속 금고가 예치 지분을 보유합니다. 출금 시 남은 납입 원금보다 증가한 부분에만
-고정 성과 수수료 10%(계약 상한 10%)를 부과합니다. 관리 수수료는 없으며 기존 WLD 금고는
+고정 성과 수수료 10%(계약 상한 10%)를 부과합니다. 새 수익형 계약에서는 소유자가
+상속 원금을 유지하면서 실현 가능한 이자만 수령할 수도 있습니다. `incomePosition()`으로
+계산한 실현 순이익에 10%를 부과하며, 이자 수령은 원금 기준이나 갱신 타이머를 바꾸지
+않습니다. 관리 수수료는 없으며 기존 WLD 금고는
 자동으로 변환하지 않습니다. 상속 때 현금 인출이 실패하면 예치 지분과 대기 WLD를
 상속인에게 전달합니다. 지분 수수료와 이자·인센티브의 차이는 [설계와 활성화 조건](docs/MORPHO_YIELD.md)에 설명합니다.
 
@@ -102,11 +109,15 @@ MORPHO_FORK_RPC=https://worldchain-mainnet.g.alchemy.com/public forge test --mat
 ```
 
 USDC는 별도 `InheritanceVaultUSDCFactory`로 Re7 USDC에 예치한다. 앱에서 WLD와
-USDC 금고를 함께 관리하되 각 금고의 잔액·상속인·타이머는 독립적이다. USDC는
+USDC를 한 계획으로 관리한다. 새 계획은 같은 상속인과 주기를 자산별 계약에 적용하며,
+기존 설정을 바꿔야 할 때는 먼저 확인받는다. 개별 계약 상태는 독립적이고, 통합 갱신은
+모든 확인된 활성 자산에 적용한다. USDC는
 6자리, 예치 지분은 18자리이며 USDC 실현 순이익과 실제 수령한 WLD 보상을 각각
 10%로 정산한다. WLD 보상은 자동 환전하지 않는다. [USDC 설계와 활성화](docs/USDC_YIELD.md)를 따른다.
 
 ```sh
 node scripts/verify/usdc-yield.mjs
+node scripts/verify/unified-plan.mjs
+node scripts/verify/unified-plan-browser.mjs
 USDC_FORK_RPC=https://worldchain-mainnet.g.alchemy.com/public forge test --match-contract USDCWorldChainForkTest -vv
 ```

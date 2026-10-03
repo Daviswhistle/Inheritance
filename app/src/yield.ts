@@ -1,4 +1,4 @@
-import { FACTORY_ABI, VAULT_ABI } from "./abis";
+import { FACTORY_ABI, INCOME_FACTORY_ABI, INCOME_VAULT_ABI, VAULT_ABI } from "./abis";
 import { YIELD_FACTORY_ERROR_ABI, YIELD_VAULT_ERROR_ABI } from "./abi-errors";
 import { formatUnits } from "ethers";
 
@@ -36,6 +36,15 @@ export const YIELD_VAULT_ABI = [
   "function position() view returns (uint256 idle,uint256 shares,uint256 gross,uint256 net,uint256 fee,uint256 liquid,bool valued)",
   ...YIELD_VAULT_ERROR_ABI,
 ];
+/** New primary routes opt in to the optional income API; legacy routes stay on the base ABI. */
+export const INCOME_YIELD_FACTORY_ABI = [
+  ...YIELD_FACTORY_ABI,
+  ...INCOME_FACTORY_ABI,
+];
+export const INCOME_YIELD_VAULT_ABI = [
+  ...YIELD_VAULT_ABI,
+  ...INCOME_VAULT_ABI,
+];
 export const USDC_YIELD_FACTORY_ABI = [
   ...YIELD_FACTORY_ABI.filter(fragment => typeof fragment !== "string" || !/^function WLD\(/.test(fragment)),
   "function asset() view returns (address)",
@@ -47,6 +56,14 @@ export const USDC_YIELD_VAULT_ABI = [
   "function asset() view returns (address)",
   "function rewardToken() view returns (address)",
   "function rewardPosition() view returns (uint256 held,uint256 feeBearing,uint256 net,uint256 fee)",
+];
+export const USDC_INCOME_YIELD_FACTORY_ABI = [
+  ...USDC_YIELD_FACTORY_ABI,
+  ...INCOME_FACTORY_ABI,
+];
+export const USDC_INCOME_YIELD_VAULT_ABI = [
+  ...USDC_YIELD_VAULT_ABI,
+  ...INCOME_VAULT_ABI,
 ];
 export const MORPHO_ABI = [
   "function asset() view returns (address)",
