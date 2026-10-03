@@ -34,8 +34,8 @@ const send = (to, sig, args, from) =>
 const owner = ACCOUNTS.a2;
 const heir = ACCOUNTS.a3;
 
-// 탭 라벨은 "Vault"/"Send"/"Inherit"/"Help" 로 **대문자**다. 첫 구현은 소문자로
-// 비교해서 클릭이 조용히 실패했고, "Inherit" 탭을 "Vault" 탭인 줄 알고 저장했다.
+// 탭 라벨은 "Home"/"Assets"/"Plan"/"Help" 로 **대문자**다. 첫 구현은 소문자로
+// 비교해서 클릭이 조용히 실패했고, "Plan" 탭을 "Home" 탭인 줄 알고 저장했다.
 // 반환값을 실제로 확인해야 그 다음 줄이 조용히 잘못된 화면을 찍지 않는다.
 // 스토어 이미지에는 `@e2e_3c44cd` 같은 테스트 계정이 보이면 안 된다. 리뷰어가 "테스트
 // 빌드를 그대로 찍었구나" 하고 읽고, 앱이 미완성이라고 판단한다. 하네스는 `/@e2e_/` 로
@@ -121,10 +121,10 @@ await sleep(1000);
 {
   const p = await launch({ pk: owner.pk, url: APP, preload: PRELOAD });
   await connect(p);
-  await goto(p, "vault");
+  await goto(p, "home");
   await sleep(1800);
   await capture(p, "store-2-countdown");
-  await goto(p, "inherit");
+  await goto(p, "plan");
   await sleep(1800);
   await capture(p, "store-3-steps");
   await p.close();

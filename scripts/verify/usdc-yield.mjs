@@ -60,6 +60,7 @@ const anvil = spawn("anvil", ["--port", new URL(rpc).port, "--chain-id", "480", 
 let provider, vite, page, passed = 0;
 const pass = label => { passed++; console.log("PASS " + label); };
 async function click(label) {
+  await page.ev(`return __q.revealButton(${JSON.stringify(label)})`);
   await until(() => page.ev(`return __q.btns().some(b => b.t === ${JSON.stringify(label)} && !b.d)`), label);
   assert.match(await page.ev(`return __q.click(${JSON.stringify(label)})`), /^clicked/);
 }
@@ -85,20 +86,23 @@ async function setPlanAmount(symbol, amount) {
   await page.ev(`return __q.setInput(${JSON.stringify(id)}, ${JSON.stringify(amount)})`);
 }
 async function clickPlanSubmit() {
-  return click("Create plan and deposit");
+  await click("Review plan");
+  return click("Confirm and deposit");
 }
 async function selectVault(labelPrefix) {
   const result = await page.ev(`
     const prefix = ${JSON.stringify(labelPrefix)};
-    const selector = [...document.querySelectorAll('select')].find(item => [...item.options].some(option => option.textContent.trim().startsWith(prefix)));
-    if (selector) {
-      const option = [...selector.options].find(item => item.textContent.trim().startsWith(prefix));
-      selector.value = option.value;
-      selector.dispatchEvent(new Event('change', { bubbles: true }));
-      return 'selected ' + option.textContent.trim();
-    }
-    const button = [...document.querySelectorAll('button')].find(item => item.offsetParent !== null && item.textContent.trim().startsWith(prefix));
-    if (!button) return 'missing ' + prefix;
+    const symbol = prefix.startsWith('USDC') ? 'USDC' : 'WLD';
+    const assetButton = [...document.querySelectorAll('.asset-switcher button')].find(item => item.textContent.trim().endsWith(symbol));
+    if (!assetButton) return 'missing asset ' + prefix;
+    assetButton.click();
+    await new Promise(requestAnimationFrame);
+    const history = document.querySelector('.asset-history');
+    if (!history) return 'selected ' + symbol;
+    if (!history.open) history.querySelector('summary').click();
+    const current = prefix.includes('Morpho');
+    const button = [...history.querySelectorAll('button')].find(item => item.textContent.trim().startsWith(current ? 'Current ' : 'Earlier '));
+    if (!button) return 'missing account ' + prefix;
     button.click();
     return 'selected ' + button.textContent.trim();
   `);
@@ -163,7 +167,7 @@ try {
     await page.ev(HELPERS); await enableAtomicBatch(); await click("Continue with World App");
   };
   await open(ACCOUNTS.a0);
-  await until(() => page.ev("return __q.tabs().includes('Inherit')")); await page.ev("return __q.tab('Inherit')");
+  await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return !!(document.getElementById('yield-consent') && document.querySelector('.plan-assets'))"));
   const planRows = JSON.parse(await page.ev(`
     const wld = document.getElementById('plan-wld');
@@ -172,8 +176,8 @@ try {
       usdcRow: usdc?.closest('.plan-asset-row')?.innerText || '', radios: [...document.querySelectorAll('.plan-setup-card input[type="radio"]')].length,
       obsoleteAssetMode: document.querySelector('input[value="yield"], input[value="plain"]') !== null });
   `));
-  assert.match(planRows.wldRow, /Morpho yield/);
-  assert.match(planRows.usdcRow, /Morpho yield/);
+  assert.match(planRows.wldRow, /WLD[\s\S]*Yield/);
+  assert.match(planRows.usdcRow, /USDC[\s\S]*Yield/);
   assert.equal(planRows.radios, 0);
   assert.equal(planRows.obsoleteAssetMode, false);
   await until(() => page.ev("return /Available: 200\.123456 USDC/.test(document.body.innerText)"));
@@ -198,8 +202,8 @@ try {
   await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   assert.equal(await page.ev("return window.__E2E_MINIKIT__.lastCalldata().length"), 0);
   await clickPlanSubmit();
-  await until(() => page.ev("return document.querySelector('.plan-review') !== null"), "shared WLD settings review");
-  assert.match(await page.ev("return document.querySelector('.plan-review').innerText"), /WLD[\s\S]*Confirm and align settings/);
+  await until(() => page.ev("return document.querySelector('.plan-alignment-review') !== null"), "shared WLD settings review");
+  assert.match(await page.ev("return document.querySelector('.plan-alignment-review').innerText"), /WLD[\s\S]*Confirm and align settings/);
   assert.equal(await plainVaultContract.heir(), originalPlainHeir);
   assert.equal(await plainVaultContract.heartbeatInterval(), originalPlainInterval);
   assert.equal(await wld.balanceOf(plainVault), originalPlainBalance);
@@ -227,9 +231,11 @@ try {
   assert.equal(plannedDeposit[1].to.toLowerCase(), (await usdcFactory.getAddress()).toLowerCase());
   assert.equal(usdcFactory.interface.parseTransaction({ data: plannedDeposit[1].data }).args[0], 1_000000n);
   pass("After explicit review the USDC vault receives the entered amount while both existing WLD positions and balances remain intact");
-  await page.ev("return __q.tab('Send')"); await page.waitFor("#deposit-amount");
+  await page.ev("return __q.tab('Assets')"); await page.waitFor("#deposit-amount");
+  await page.ev("return __q.reveal('.yield-rate-summary')");
   await until(() => page.ev("return /Available: 199.123456 USDC/.test(document.body.innerText)"));
   await until(() => page.ev("return /1.79%/.test(document.body.innerText) && /5.68%/.test(document.body.innerText)"));
+  await until(() => page.ev("__q.reveal('.yield-rate-summary'); return /Loss recovery is not charged/.test(document.body.innerText) && /USDC gains and losses are accounted in USDC/.test(document.body.innerText)"), "complete USDC position and fee disclosure");
   const usdcFeeCopy = await page.ev("return document.body.innerText");
   assert.match(usdcFeeCopy, /Loss recovery is not charged/);
   assert.match(usdcFeeCopy, /USDC gains and losses are accounted in USDC, without cross-currency offsets/);
@@ -238,15 +244,18 @@ try {
   assert.match(await page.ev("return document.body.innerText"), /Available: 199.123456 USDC/);
   await click("Max");
   assert.equal(await page.ev("return document.getElementById('deposit-amount').value"), "199.123456");
-  await page.ev("return __q.tab('Inherit')");
+  await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return /^(29|30)d/.test(document.querySelector('.timer-value')?.textContent.trim() ?? '')"));
   await sleep(500);
   assert.match(await page.ev("return document.querySelector('.timer-value').textContent.trim()"), /^(29|30)d/);
   assert.equal(await child.heartbeatInterval(), 30n * 86400n);
-  await page.ev("return __q.tab('Send')");
+  await page.ev("return __q.tab('Assets')");
   pass("A delayed creation-monitoring response cannot overwrite USDC balance, Max or countdown with the prior WLD vault");
-  await page.ev("return __q.setInput('deposit-amount', '100.1234567')"); await click("Deposit");
-  await until(() => page.ev("return /Enter a valid decimal amount/.test(document.body.innerText)"));
+  const beforeInvalidAmount = JSON.stringify(await page.ev("return window.__E2E_MINIKIT__.lastCalldata()"));
+  await page.ev("return __q.setInput('deposit-amount', '100.1234567')");
+  assert.equal(await page.ev("return __q.btns().some(button => button.t === 'Deposit' && button.d)"), true);
+  assert.match(await page.ev("return document.body.innerText"), /Enter a valid USDC amount with up to 6 decimal places/);
+  assert.equal(JSON.stringify(await page.ev("return window.__E2E_MINIKIT__.lastCalldata()")), beforeInvalidAmount);
   assert.equal(await usdcStrategy.balanceOf(vault), 1_000000n * 10n ** 12n);
   pass("More than six USDC decimal places are rejected instead of being silently rounded");
   await page.ev("return __q.setInput('deposit-amount', '99.123456')"); await click("Deposit");
@@ -299,10 +308,10 @@ try {
   await page.ev("return __q.setInput('deposit-amount', '20')"); await click("Deposit");
   await until(async () => await child.costBasis() === 20_000000n); await externalReward(parseEther("20"));
   await (await usdcStrategy.setLiquidity(0)).wait(); await provider.send("evm_increaseTime", [30 * 86400 + 1]); await provider.send("evm_mine", []);
-  await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Inherit')")); await page.ev("return __q.tab('Inherit')");
+  await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
   await click("File claim"); await until(async () => await child.claimFiledAt() > 0n);
   await provider.send("evm_increaseTime", [7 * 86400 + 1]); await provider.send("evm_mine", []);
-  await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Inherit')")); await page.ev("return __q.tab('Inherit')");
+  await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
   await page.ev("window.__E2E_REWARDS_DOWN__=true;return true;"); await click("Refresh rewards");
   await click("Complete inheritance"); await until(async () => await child.claimedAt() > 0n);
   assert.equal(await usdcStrategy.balanceOf(ACCOUNTS.a1.a), parseEther("20"));

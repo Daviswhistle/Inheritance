@@ -152,7 +152,7 @@ const clickTab = async (n) => {
 };
 
 log("\n[1] funded own-plan overview shows wallet permission and its actions");
-await clickTab("vault");
+await clickTab("home");
 await b.waitFor(".plan-overview-reminders");
 const overview = await b.ev("return document.querySelector('.plan-overview-card')?.innerText || ''; ");
 const reminder = await b.ev(`return (() => {
@@ -160,18 +160,18 @@ const reminder = await b.ev(`return (() => {
   if (!row) return null;
   const r = row.getBoundingClientRect();
   const assets = document.querySelector('.plan-overview-assets')?.getBoundingClientRect();
-  const next = [...document.querySelectorAll('.plan-common-settings')].find(el => /Next check-in/i.test(el.innerText || ''))?.getBoundingClientRect();
+  const next = document.querySelector('.home-checkin-date')?.getBoundingClientRect();
   return {
     text: row.innerText || '', visible: r.width > 0 && r.height > 0,
     lines: (row.innerText || '').split("\\n").filter(line => line.trim()).length,
     height: Math.round(r.height), primaryHeight: Math.round((assets?.height || 0) + (next?.height || 0)),
     hasHeading: !!row.querySelector('h1,h2,h3'),
-    buttons: [...row.querySelectorAll('button,a')].map(el => ({ text: el.innerText.trim(), disabled: !!el.disabled }))
+    buttons: [...row.querySelectorAll('button,a')].map(el => ({ text: el.textContent.trim(), disabled: !!el.disabled }))
   };
 })();`);
-check("funded owner sees the own-plan overview and next check-in", /Your active assets/i.test(overview)
+check("funded owner sees the own-plan overview and next check-in", /Your inheritance plan/i.test(overview)
   && /Next check-in/i.test(overview),
-  overview.split("\n").filter(line => /active assets|Next check-in/i.test(line)).join(" / ") || "overview missing");
+  overview.split("\n").filter(line => /inheritance plan|Next check-in/i.test(line)).join(" / ") || "overview missing");
 check("overview states this wallet's notification permission", !!reminder && reminder.visible
   && /Notifications are off|Notifications are on for this wallet/i.test(reminder.text),
   reminder ? reminder.text.slice(0, 140) : "plan reminder row missing");
@@ -186,6 +186,7 @@ check("reminder row stays visually subordinate to the plan overview", !!reminder
   && reminder.lines <= 4 && reminder.height < reminder.primaryHeight && !reminder.hasHeading,
   reminder ? `${reminder.lines} lines; ${reminder.height}px vs primary ${reminder.primaryHeight}px` : "row missing");
 
+await b.ev("const details = document.querySelector('.plan-overview-reminders details'); if (details && !details.open) details.querySelector('summary').click(); return true;");
 const reminderSettings = await b.ev(`return (() => {
   const row = document.querySelector('.plan-overview-reminders');
   const control = [...(row?.querySelectorAll('button,a') || [])].find(el => el.innerText.trim() === 'Reminder settings');
@@ -197,14 +198,14 @@ const helpTab = await b.ev("return document.querySelector('.tab-item-active')?.i
 check("Reminder settings opens Help", reminderSettings && /Help/i.test(helpTab), helpTab || "Help tab not selected");
 
 log("\n[2] overview permissions do not leak backend state or delivery claims");
-await clickTab("vault");
+await clickTab("home");
 const rowText = await b.ev("return document.querySelector('.plan-overview-reminders')?.innerText || ''; ");
 const leaked = ["unknown", "not_registered", "not registered", "enabled", "disabled"].filter(
   word => new RegExp(`(^|\\n)\\s*${word}\\s*($|\\n)`, "i").test(rowText));
 check("backend state values are not exposed", leaked.length === 0, leaked.length ? leaked.join(", ") : "none");
 
 log("\n[3] selected-vault reminder detail stays with Inherit");
-await clickTab("inherit");
+await clickTab("plan");
 await b.waitFor(".automation-note");
 const detail = await b.ev(`return (() => {
   const notice = document.querySelector('.automation-note');
@@ -237,6 +238,7 @@ await sleep(2800);
 await c.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
 await sleep(1000);
+await c.ev("const section = document.querySelector('.plan-reminder-details'); if (section && !section.open) section.querySelector('summary').click(); return true;");
 const emptyPlan = await c.ev(`return (() => ({
   overviewReminder: !!document.querySelector('.plan-overview-reminders'),
   note: document.querySelector('.plan-notification-note')?.innerText || ''
@@ -265,10 +267,10 @@ log("\n[5] 새 사용자가 양의 입금액으로 unified plan 을 만들 수 �
   const heirSet = await setInput(c3, "heir-input", A.a9.a);
   const amountSet = await setInput(c3, "plan-wld", "0.01");
   await waitUntil(() => c3.ev(`return [...document.querySelectorAll("button")]
-    .some(button => button.innerText.trim() === "Create plan and deposit" && !button.disabled);`));
+    .some(button => button.innerText.trim() === "Review plan" && !button.disabled);`));
   const amount = await c3.ev("return document.getElementById('plan-wld')?.value || ''; ");
   const btn = await c3.ev(`return (()=>{
-    const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Create plan and deposit");
+    const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan");
     return e ? (e.disabled ? "disabled" : "enabled") : "missing";
   })();`);
   check("새 plan 입력은 지정한 상속인과 양의 WLD 금액을 보존한다", heirSet && amountSet && amount === "0.01",
@@ -288,20 +290,22 @@ log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 �
   const setAmount = await setInput(c2, "plan-wld", "0.01");
   const requestedAmount = await c2.ev("return document.getElementById('plan-wld')?.value || ''; ");
   await waitUntil(() => c2.ev(`return [...document.querySelectorAll("button")]
-    .some(button => button.innerText.trim() === "Create plan and deposit" && !button.disabled);`));
+    .some(button => button.innerText.trim() === "Review plan" && !button.disabled);`));
   const clicked = await c2.ev(`return (()=>{
-    const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Create plan and deposit");
+    const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan");
     if(!e) return "NO BUTTON";
     if(e.disabled) return "DISABLED";
     e.click(); return "clicked";
   })()`);
+  await waitUntil(() => c2.ev("return !!document.querySelector('.plan-final-review')"));
+  await c2.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Confirm and deposit'); if (!button || button.disabled) throw new Error('Final deposit approval unavailable'); button.click(); return true;");
   log(`    상속인 입력 ${setHeir} / amount 입력 ${setAmount} / 생성 CTA ${clicked}`);
   const creationObserved = await waitUntil(() => c2.ev(`return (window.__NOTIFY_REQUESTS__ || []).some(call => call.path === '/api/notifications/register')
     && !document.getElementById('heir-input')
-    && document.querySelector('.page-intro h1')?.textContent === 'A plan for the people you love.'
+    && document.querySelector('.page-intro h1')?.textContent === 'Today, and for their tomorrow.'
     && !!document.querySelector('.plan-overview-card');`), 30000);
   const registrationObserved = await c2.ev("return (window.__NOTIFY_REQUESTS__ || []).some(call => call.path === '/api/notifications/register');");
-  const managed = await c2.ev("return !document.getElementById('heir-input') && document.querySelector('.page-intro h1')?.textContent === 'A plan for the people you love.' && !!document.querySelector('.plan-overview-card');");
+  const managed = await c2.ev("return !document.getElementById('heir-input') && document.querySelector('.page-intro h1')?.textContent === 'Today, and for their tomorrow.' && !!document.querySelector('.plan-overview-card');");
   const calls = await c2.ev("return (window.__NOTIFY_REQUESTS__ || []);");
   const regCalls = Array.isArray(calls) ? calls.filter((x) => x.path === "/api/notifications/register") : [];
   const canonicalVault = cast(["call", FACTORY, "vaultOf(address)(address)", A.a10.a, "--rpc-url", RPC]);
@@ -321,7 +325,7 @@ log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 �
     JSON.stringify(registeredBody));
   const createdUi = await c2.ev("return {form: Boolean(document.getElementById('heir-input')), heading: document.querySelector('.page-intro h1')?.textContent};");
   check("금고 생성 직후 새로고침 없이 관리 화면으로 바뀐다",
-    creationObserved && managed && !createdUi.form && createdUi.heading === "A plan for the people you love.", JSON.stringify(createdUi));
+    creationObserved && managed && !createdUi.form && createdUi.heading === "Today, and for their tomorrow.", JSON.stringify(createdUi));
   await c2.close();
 }
 
@@ -334,13 +338,14 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
   await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5000);
   const tabs = await fresh.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
-  check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.some((t) => /vault/i.test(t)),
+  check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.includes("Home"),
     `탭: ${tabs.join(" | ")}`);
+  await fresh.ev("const section = document.querySelector('.plan-reminder-details'); if (section && !section.open) section.querySelector('summary').click(); return true;");
   await fresh.waitFor(".plan-notification-note");
   const placement = await fresh.ev(`return (() => {
     const card = document.querySelector('.plan-setup-card');
     const note = card?.querySelector('.plan-notification-note');
-    const cta = [...(card?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Create plan and deposit');
+    const cta = [...(card?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Review plan');
     const enable = [...(note?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Enable reminders');
     if (!card || !note || !cta || !enable) return { err: 'missing control', card: !!card, note: !!note, cta: !!cta, enable: !!enable };
     const n = note.getBoundingClientRect(), b = cta.getBoundingClientRect();
@@ -353,7 +358,7 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
   })();`);
   check("새 계획 안내와 CTA 는 같은 setup 카드에 있다", !!placement && placement.sameCard === true,
     placement ? (placement.err || "same plan card") : "measurement failed");
-  check("새 계획 안내는 Create plan and deposit 앞에 있다", !!placement && placement.before === true,
+  check("새 계획 안내는 Review plan 앞에 있다", !!placement && placement.before === true,
     placement && placement.gap !== undefined ? `${placement.gap}px before CTA` : "measurement failed");
   check("꺼진 권한은 안내의 alert 톤으로 표시되고 Enable reminders 가 있다", !!placement
     && placement.role === "alert" && /notice-needs-action/.test(placement.classes) && !placement.enableDisabled,
@@ -367,9 +372,9 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
   const heirSet = await setInput(fresh, "heir-input", A.a9.a);
   const amountSet = await setInput(fresh, "plan-wld", "0.01");
   await waitUntil(() => fresh.ev(`return [...document.querySelectorAll('button')]
-    .some(button => button.innerText.trim() === 'Create plan and deposit' && !button.disabled);`));
+    .some(button => button.innerText.trim() === 'Review plan' && !button.disabled);`));
   const enabledCta = await fresh.ev(`return [...document.querySelectorAll('button')]
-    .some(button => button.innerText.trim() === 'Create plan and deposit' && !button.disabled);`);
+    .some(button => button.innerText.trim() === 'Review plan' && !button.disabled);`);
   check("초기 사용자의 실제 생성 CTA 에 양의 test amount 와 heir 로 도달한다", heirSet && amountSet && enabledCta,
     `heir=${heirSet}, amount=${amountSet}, enabled=${enabledCta}`);
   await fresh.shot("notify-first-run");
@@ -455,7 +460,7 @@ const perm = await launch({ pk: A.a4.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE
 await sleep(2800);
 await perm.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(6000);
-await perm.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim().toLowerCase().includes("vault"));if(e)e.click();return 1;})()`);
+await perm.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim()==="Home");if(e)e.click();return 1;})()`);
 await sleep(1500);
 const before = await perm.ev("return document.querySelector('.plan-overview-reminders')?.innerText || ''; ");
 check("누르기 전 overview 는 지갑 권한이 꺼졌다고 표시한다", /Notifications are off/i.test(before)

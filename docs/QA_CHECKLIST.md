@@ -22,9 +22,14 @@ Use current evidence, not checked boxes copied from a previous release. Local re
 - Fresh-chain browser suite: creation, deposit, renewal, management, claim, completion, residue sweep, release/recreate, linked-vault owner/heir separation, delayed dual-factory selection, linked-vault reauthentication, cancellation and chain outage/recovery.
 - Responsive inspection at 320px, 390px and desktop; footer controls accessible above the safe area; store images generated from current UI.
 
+- Amount-first creation: “Review plan” sends no wallet request, preserves exact 18/6-decimal amounts and the full resolved heir, and “Edit plan” restores input focus. Final confirmation retains durable recovery and pending-wallet guards.
+- Home/Assets/Plan navigation: token selection retains canonical routing, earlier balances remain reachable, a shared balance identifies its owner, and income/principal controls remain separate. Asset switches clear custom income destinations and render one income card.
+- Audit both default and expanded disclosures; closed descendants must not be counted as visible controls. Inspect at 320px as well as 390px, including the final approval screen.
+
 ## Remote checks
 
 - Factory deployment receipt and runtime bytecode match the reviewed artifact, WLD address and chain480.
+- Hosted cron runtime: inspect invocation outcome and CPU time, then confirm advancing successful automation cycles. An HTTP 200 and local executor tests do not clear an `exceededCpu` failure; verify the actual account resource limits before release.
 - Current and legacy factory addresses/block numbers agree across frontend, Worker, GitHub variables and portal allowlist.
 - Shared D1 migration and shared session secret applied; deployed nonce and replay behavior match local checks.
 - Exact pushed commit has successful CI and Pages/Worker deploy runs; public pages and assets resolve.

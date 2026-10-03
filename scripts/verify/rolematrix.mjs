@@ -27,8 +27,18 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { spawnSync, spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { createServer } from "node:net";
+import { createServer as createVite } from "../../app/node_modules/vite/dist/node/index.js";
 import { launch, ACCOUNTS } from "./drv.mjs";
+
+async function freePort() {
+  const socket = createServer();
+  await new Promise(resolve => socket.listen(0, "127.0.0.1", resolve));
+  const port = socket.address().port;
+  await new Promise(resolve => socket.close(resolve));
+  return port;
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
@@ -44,7 +54,7 @@ const log = (s) => console.log(s);
 const F = process.env.FACTORY;
 const WLD = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const RPC = "http://127.0.0.1:8546";
-const PORT = Number(process.env.PORT || 7715);
+const PORT = await freePort();
 const APP = `http://127.0.0.1:${PORT}/`;
 
 if (!F) {
@@ -61,7 +71,7 @@ const cast = (args) => {
 const owner = ACCOUNTS.a5;
 const heir = ACCOUNTS.a6;
 const stranger = ACCOUNTS.a7;
-const TABS = ["vault", "send", "inherit", "help"];
+const TABS = ["home", "assets", "plan", "help"];
 
 /**
  * 소유자가 아닌 지갑에게 나오면 안 되는 표현.
@@ -98,33 +108,17 @@ const HEIR_ONLY = [
   { re: /You can withdraw the vault balance/i, why: "인출 권한이 없는 타인에게 인출할 수 있다고 말한다" },
 ];
 
-let up = false;
+// Own a fresh server rather than reusing a stale build on a fixed port.
+// envDir:false prevents production yield routes from entering a basic-vault fixture.
+for (const key of Object.keys(process.env)) if (key.startsWith("VITE_")) delete process.env[key];
+Object.assign(process.env, { VITE_RPC: RPC, VITE_FACTORY_ADDRESS: F, VITE_WLD_ADDRESS: WLD,
+  VITE_FACTORY_DEPLOY_BLOCK: "1", VITE_FACTORY_RELEASE_SUPPORTED: "true",
+  VITE_REQUIRE_VERIFY: "false", VITE_NOTIFY_BACKEND_URL: "" });
+const vite = await createVite({ root: REPO + "/app", configFile: REPO + "/app/vite.config.e2e.ts",
+  envDir: false, logLevel: "error", server: {host:"127.0.0.1",port:PORT,strictPort:true} });
+await vite.listen();
 try {
-  up = (await fetch(APP)).ok;
-} catch {
-  up = false;
-}
-if (!up) {
-  spawn("node", ["node_modules/vite/bin/vite.js", "--config", "vite.config.e2e.ts", "--port", String(PORT), "--strictPort"], {
-    cwd: REPO + "/app",
-    env: { ...process.env, VITE_RPC: RPC, VITE_FACTORY_ADDRESS: F, VITE_WLD_ADDRESS: WLD, VITE_FACTORY_DEPLOY_BLOCK: "1" },
-    stdio: "ignore",
-    detached: true,
-  });
-  for (let i = 0; i < 60; i++) {
-    await sleep(500);
-    try {
-      if ((await fetch(APP)).ok) {
-        up = true;
-        break;
-      }
-    } catch {
-      /* 아직 */
-    }
-  }
-}
-check("dev 서버 기동", up, up ? APP : "실패");
-if (!up) process.exit(1);
+check("dev 서버 기동", (await fetch(APP)).ok, APP);
 
 const mk = (pk, url) => launch({ pk, url });
 const connect = async (page) => {
@@ -194,7 +188,7 @@ if (v !== "0x" + "0".repeat(40)) {
 const created = send(F, "createVault(address,uint256)", [heir.a, "259200"], owner);
 if (!created.ok) {
   console.error("  금고 생성 실패: " + (created.err || created.out).slice(0, 180));
-  process.exit(1);
+  throw new Error("Fixture creation failed");
 }
 const VAULT = cast(["call", F, "vaultOf(address)(address)", owner.a, "--rpc-url", RPC]).out;
 process.env.VAULT = VAULT;
@@ -234,4 +228,7 @@ if (BigInt(bal2) > 0n) send(F, "rescueFromMyVault(address,uint256,address)", [WL
 send(F, "releaseMyVault()", [], owner);
 
 log(`\n  통과 ${pass} / 실패 ${fail}`);
-process.exit(fail ? 1 : 0);
+process.exitCode = fail ? 1 : 0;
+} finally {
+  await vite.close();
+}

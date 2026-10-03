@@ -12,8 +12,8 @@ User keys never reach our servers. Basic WLD stays in the user's vault; yield WL
 
 ## The inheritance flow
 
-1. Choose WLD and/or USDC amounts, an heir and a 1–365-day timer. Configured new routes default to Morpho with explicit risk and fee consent; earlier basic WLD positions remain manageable. The app creates any missing asset contracts and then requests each deposit. Each confirmed deposit receives monitoring even if a later step is interrupted or the user edits the remaining setup.
-2. Use **Vault** to review the combined plan and check in to verified active assets. **Send** separates principal withdrawals from income collection on new supporting contracts. Collecting income charges 10% of realized gains while preserving the inheritance principal and timer. **Tell your heir** offers World Chat and a shareable vault link. Notification permission is separate and is required on each recipient's World App.
+1. Choose WLD and/or USDC amounts, an heir and a 1–365-day timer. Configured new routes default to Morpho with explicit risk and fee consent; earlier basic WLD positions remain manageable. Review the exact amounts and full recipient address in **Review plan**, then use **Confirm and deposit** for wallet approval. The review itself sends no wallet request. The app creates any missing asset contracts and then requests each deposit. Each confirmed deposit receives monitoring even if a later step is interrupted or the user edits the remaining setup.
+2. Use **Home** to review the combined plan and check in to verified active assets. **Assets** separates principal withdrawals from income collection on new supporting contracts. Collecting income charges 10% of realized gains while preserving the inheritance principal and timer. **Tell your heir** offers World Chat and a shareable vault link. Notification permission is separate and is required on each recipient's World App.
 3. After expiry the named heir files a claim. Funds remain in the vault or its strategy for the fixed seven-day review window.
 4. For registered supported vaults, the service can execute the eligible transfer after the review window. Only the named heir receives the funds. Manual completion remains available. Earlier basic deployments require manual completion.
 5. The owner can renew to cancel the claim until the actual transfer executes, including after the seven days. Transaction ordering determines which action wins.
@@ -21,9 +21,9 @@ User keys never reach our servers. Basic WLD stays in the user's vault; yield WL
 Automation depends on registration, network/service availability, gas funding and spending caps. The interface shows service availability and keeps manual completion available. It does not promise execution at an exact time. A timer is not death verification, a legal will or an investment product.
 
 An unfinished saved deposit blocks additional deposits into that position from
-Send as well as Inherit. Resume verifies the original receipt before allowing new
+Assets as well as Plan. Resume verifies the original receipt before allowing new
 funds. If a proven-unsent setup is cancelled and later funded through ordinary
-Send, the confirmed deposit also requests monitoring; a delayed registration
+Assets deposits, the confirmed deposit also requests monitoring; a delayed registration
 response does not hold the user's asset navigation.
 
 Yield exits charge 10% of realized positive net gains after loss recovery, without
@@ -40,7 +40,7 @@ rates, end dates and published Merkl claim proofs determine actual rewards. See 
 
 ## Interface and verification
 
-The public landing explains the plan and opens World App; authenticated users have a four-tab mobile interface. Empty Vault/Send tabs stay hidden until a vault exists. Linked heir vaults remain distinct from the user's own vault. Discovery checks the authenticated monitoring index and bounded recent chain history; older unregistered vaults can be opened directly from a shared link. Current heir identity and canonical factory membership are checked before listing results.
+The public landing explains the plan and opens World App; authenticated users have a four-tab mobile interface. Home and Assets stay hidden until an appropriate personal plan or selected balance exists. Linked heir vaults remain distinct from the user's own vault. Discovery checks the authenticated monitoring index and bounded recent chain history; older unregistered vaults can be opened directly from a shared link. Current heir identity and canonical factory membership are checked before listing results.
 
 MiniKit user-operation hashes are resolved through the official transaction-status API before waiting for the canonical transaction receipt. Success requires a successful receipt and observed contract outcome; cancellation, failed operations, timeout and unavailable refreshed state remain explicit. Duplicate action taps are blocked. Switching vaults immediately invalidates the prior roles and transaction route; new actions wait for canonical verification. Reauthentication restores a preserved shared-vault selection. System fonts, safe-area spacing, focus styles, labelled inputs, live status regions and a keyboard-accessible release dialog are provided.
 

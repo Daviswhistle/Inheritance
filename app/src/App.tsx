@@ -9,6 +9,7 @@ import { Brand, Icon } from "@/components/Icon";
 import { Landing } from "@/components/Landing";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { PlanSetup } from "@/components/PlanSetup";
+import { AssetNavigation } from "@/components/AssetNavigation";
 import { IncomePositionCard, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
 import { MORPHO_ABI, MERKL_DISTRIBUTOR, minimumOutput, formatYieldAmount } from "@/yield";
 import type { YieldPosition, YieldTerms } from "@/yield";
@@ -16,7 +17,7 @@ import { fetchWldRewards, remainingWldRewards } from "@/rewards";
 import type { WldRewards } from "@/rewards";
 import { fetchYieldRates } from "@/yield-rates";
 import type { YieldRates } from "@/yield-rates";
-import { HAS_YIELD_ROUTES, PRIMARY_YIELD_ROUTES, YIELD_ROUTES, TRUSTED_FACTORIES, yieldRouteFor, vaultLabel } from "@/assets";
+import { HAS_YIELD_ROUTES, PRIMARY_YIELD_ROUTES, YIELD_ROUTES, TRUSTED_FACTORIES, yieldRouteFor } from "@/assets";
 import type { AssetSymbol, YieldRoute } from "@/assets";
 import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetAmount, runRemainingPlanSteps } from "@/plan";
 import type { PlanAssetSymbol, PlanRoute } from "@/plan";
@@ -224,9 +225,9 @@ type TabKey = "vault" | "money" | "inherit" | "support";
  * 남긴다.
  */
 const TABS: { key: TabKey; label: string; needsVault: boolean }[] = [
-  { key: "vault", label: "Vault", needsVault: true },
-  { key: "money", label: "Send", needsVault: true },
-  { key: "inherit", label: "Inherit", needsVault: false },
+  { key: "vault", label: "Home", needsVault: true },
+  { key: "money", label: "Assets", needsVault: true },
+  { key: "inherit", label: "Plan", needsVault: false },
   { key: "support", label: "Help", needsVault: false },
 ];
 
@@ -469,6 +470,10 @@ export default function App() {
    * 목표 수가 줄어드는 것이 오히려 usability 다.
    */
   const [tab, setTab] = useState<TabKey>("inherit");
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.querySelector<HTMLElement>(".page-intro h1")?.focus({ preventScroll: true });
+  }, [tab]);
 
   /**
    * 실제로 보여줄 탭.
@@ -563,6 +568,7 @@ export default function App() {
   const [vaultBalanceRead, setVaultBalanceRead] = useState<{ scope: string; amount: bigint }>({ scope: "", amount: 0n });
   const balanceScope = `${account.toLowerCase()}:${vault.toLowerCase()}:${vaultFactory.toLowerCase()}`;
   const walletWld = walletBalanceRead.scope === balanceScope ? walletBalanceRead.amount : 0n;
+  const walletBalanceKnown = walletBalanceRead.scope === balanceScope;
   const vaultWld = vaultBalanceRead.scope === balanceScope ? vaultBalanceRead.amount : 0n;
   const balanceScopeRef = useRef(balanceScope);
   balanceScopeRef.current = balanceScope;
@@ -579,9 +585,14 @@ export default function App() {
   const selectedRewards = rewardState?.scope === balanceScope ? rewardState : null;
   const selectedReceivedRewards = receivedRewards?.scope === balanceScope ? receivedRewards.amount : null;
   const selectedIncome = incomeRead?.scope === balanceScope ? incomeRead : null;
+  const hasRewardAction = Boolean((selectedRewards?.data?.claimable ?? 0n) > 0n
+    || (selectedReceivedRewards ?? 0n) > 0n
+    || isUsdcVault && heldRewardCash?.scope === balanceScope && heldRewardCash.amount > 0n);
   const incomeRecipientValid = Boolean(incomeTo && ethers.isAddress(incomeTo)
     && ethers.getAddress(incomeTo) !== ethers.ZeroAddress);
   const [amountStr, setAmountStr] = useState("");
+  const depositAmount = parseAssetAmount(amountStr.trim() || "0", wldDecimals);
+  const depositEntryValid = depositAmount !== null && depositAmount > 0n && walletBalanceKnown && depositAmount <= walletWld;
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
   useEffect(() => {
@@ -933,6 +944,13 @@ export default function App() {
   const commonPlanSettings = activeOwnedPlans.length > 0
     && activeOwnedPlans.every(item => item.heir.toLowerCase() === activeOwnedPlans[0].heir.toLowerCase()
       && item.periodSeconds === activeOwnedPlans[0].periodSeconds);
+  const assetAccounts = ownedVaults.map(item => ({
+    ...item,
+    symbol: yieldRouteFor(item.factory)?.symbol ?? "WLD" as AssetSymbol,
+    current: APP_PLAN_ROUTES.some(route => route.factory.toLowerCase() === item.factory.toLowerCase()),
+  }));
+  const nextCheckIn = activeOwnedPlans.length && !ownedPlanRead.incomplete
+    ? Math.min(...activeOwnedPlans.map(item => Number(item.lastPing + item.periodSeconds))) : null;
   const draftPlanRows = APP_PLAN_ROUTES.map(route => ({
     symbol: route.symbol, decimals: route.decimals, mode: route.mode,
     amount: route.symbol === "WLD" ? planWldAmount : planUsdcAmount,
@@ -3091,7 +3109,7 @@ export default function App() {
               </div>
               <div className="text-xs text-gray-600">
                 Open one to see whether the countdown has ended and whether you can file a claim.
-                Nothing is owed to you until the countdown runs out and you file — see the Inherit tab.
+                Nothing is owed to you until the countdown runs out and you file — see the Plan tab.
               </div>
               <div className="grid gap-2 text-xs">
                 {heirFoundVaults.map((v) => (
@@ -3956,12 +3974,12 @@ export default function App() {
             </Button>
           )}
         </div>
-        <div className="page-intro"><span className="eyebrow">{tab === "vault" ? "Your plan" : tab === "money" ? "Manage your assets" : tab === "support" ? "Here to help" : "For the future"}</span><h1>{tab === "vault" ? "A plan for the people you love." : tab === "money" ? "Your vault, your choice." : tab === "support" ? "A clearer way forward." : ownVault ? "Your person. Your plan." : "Start with someone you love."}</h1></div>
+        <div className="page-intro"><span className="eyebrow">{tab === "vault" ? "Your overview" : tab === "money" ? "Your assets" : tab === "support" ? "Here to help" : "Your inheritance plan"}</span><h1 tabIndex={-1}>{tab === "vault" ? "Today, and for their tomorrow." : tab === "money" ? "Your money, your choice." : tab === "support" ? "A clearer way forward." : ownVault ? "Your person. Your plan." : "Start with someone you love."}</h1></div>
         {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
           <CardHeader>
-            <span className="eyebrow">Inheritance overview</span>
-            <CardTitle>Your active assets</CardTitle>
-            <p className="plan-card-intro">Your assets stay in WLD and USDC.</p>
+            <span className="eyebrow">Set aside for your heir</span>
+            <CardTitle>Your inheritance plan</CardTitle>
+            <p className="plan-card-intro">Keep your money in your control, with a plan for someone you love.</p>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="plan-overview-assets">
@@ -3983,18 +4001,25 @@ export default function App() {
               ? <p className="plan-settings-differ" role="status">Some vaults could not be refreshed. Totals may be incomplete and plan settings are withheld; combined check-in is disabled until every owned vault is verified.</p>
               : activeOwnedPlans.length > 0 ? commonPlanSettings
                 ? <p className="plan-common-settings">Heir <strong>{short(activeOwnedPlans[0].heir)}</strong><span>·</span> Check in every <strong>{activeOwnedPlans[0].period} days</strong></p>
-                : <p className="plan-settings-differ">Your active vaults have different settings. Review them in the Inherit tab.</p>
-                : <p className="text-sm text-gray-600">No active inheritance plan. Closed and older vaults remain available in vault management.</p>}
-            {activeOwnedPlans.length > 0 && !ownedPlanRead.incomplete && <p className="plan-common-settings">Next check-in <strong>{new Date(Math.min(...activeOwnedPlans.map(item => Number(item.lastPing + item.periodSeconds))) * 1000).toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" })}</strong></p>}
+                : <p className="plan-settings-differ">Your assets have different inheritance settings. Review them in Plan.</p>
+                : <p className="text-sm text-gray-600">No active inheritance plan. You can manage existing balances in Assets.</p>}
+            {nextCheckIn !== null && <div className="home-checkin-date">
+              <span>{chainNow > 0 && nextCheckIn <= chainNow ? "Check-in overdue" : "Next check-in"}</span>
+              <strong>{new Date(nextCheckIn * 1000).toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" })}</strong>
+              {chainNow > 0 && nextCheckIn <= chainNow && <small>Check in before inheritance executes to keep your plan active.</small>}
+            </div>}
             {activeOwnedPlans.length > 0 && !checkinReview && <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
               onClick={() => setCheckinReview(true)}>Review check-in</Button>}
             {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
               <h3 id="checkin-review-title">Confirm your check-in</h3>
-              <p>Each listed timer will reset to its existing interval. This does not move funds or change your heir.</p>
+              <p>Renew the listed inheritance plans. Their timers restart with the same intervals; your money and heirs stay in place.</p>
               <ul>{activeOwnedPlans.map(item => <li key={item.address}>
-                <strong>{item.symbol}</strong> · {short(item.address)} · {formatPlanInterval(item.periodSeconds)}
+                <strong>{item.symbol}</strong> · {formatPlanInterval(item.periodSeconds)}
                 <span>Last check-in {item.lastPing ? new Date(Number(item.lastPing) * 1000).toLocaleDateString() : "not available"}</span>
               </li>)}</ul>
+              <details className="checkin-addresses"><summary>View accounts included</summary>
+                {activeOwnedPlans.map(item => <p key={item.address}>{item.symbol} · {short(item.address)}</p>)}
+              </details>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
                   onClick={() => void runWalletAction(checkInAllPlans)}>Confirm check-in</Button>
@@ -4007,13 +4032,14 @@ export default function App() {
               <div className="plan-overview-reminders text-xs text-gray-600" role="status">
                 <span>{notifyPermission === "granted" ? "Notifications are on for this wallet."
                   : notifyPermission === "denied" ? "Notifications are off." : "Checking notification permission…"}</span>
-                <p>Your heir needs their own notification permission.</p>
                 <div className="flex gap-2 flex-wrap">
                   {notifyPermission !== "granted" && <Button size="sm" variant="ghost" disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>
                     {notifyBusy ? "Working…" : "Enable reminders"}
                   </Button>}
-                  <Button size="sm" variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("support"); }}>Reminder settings</Button>
                 </div>
+                <details><summary>Reminder preferences</summary><p>Your heir needs their own notification permission.</p>
+                  <Button size="sm" variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("support"); }}>Reminder settings</Button>
+                </details>
               </div>
             )}
             <div className="flex gap-2 flex-wrap">
@@ -4026,15 +4052,9 @@ export default function App() {
           Some vault registries could not be refreshed. Previously found vaults stay visible; their availability may be out of date. We will retry automatically.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>Retry vault lookup</Button>
         </div>}
-        {account && ownedVaults.length > 1 && ["money", "inherit"].includes(tab) && <Card>
-          <CardHeader><CardTitle>Your vaults</CardTitle></CardHeader><CardContent className="grid gap-2">
-            {ownedVaults.map(item => <Button key={item.address} disabled={pendingAction}
-              variant={vault.toLowerCase() === item.address.toLowerCase() ? "primary" : "outline"}
-              aria-pressed={vault.toLowerCase() === item.address.toLowerCase()}
-              onClick={() => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }}>
-              {vaultLabel(item.factory)} · {short(item.address)}
-            </Button>)}
-          </CardContent></Card>}
+        {account && ownedVaults.length > 0 && ["money", "inherit"].includes(tab) && <AssetNavigation
+          accounts={assetAccounts} selected={vault} busy={pendingAction}
+          onSelect={item => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }} />}
         {isYieldVault && vaultIdentity?.released && <p role="status" className="text-xs text-gray-600">
           This archived vault remains available for its rewards, inheritance and owner recovery. Your current vault stays separate.
         </p>}
@@ -4050,20 +4070,25 @@ export default function App() {
           Some Morpho balances could not be refreshed. The last available values may be out of date.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh yield balances</Button>
         </div>}
-        {isYieldVault && (!isSettledClaim || vaultHasAssets) && (tab === "money" || tab === "inherit" && !isMyVault) && <YieldPositionCard
+        {isYieldVault && (!isSettledClaim || vaultHasAssets) && (tab === "inherit" && !isMyVault) && <YieldPositionCard
           route={selectedYieldRoute} rates={yieldRates} ratesLoading={yieldRatesLoading}
           position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
           busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
-        {isMyVault && tab === "money" && <IncomePositionCard
+        {isMyVault && tab === "money" && <IncomePositionCard key={`income:${balanceScope}`}
           state={selectedIncome?.state ?? "loading"}
           position={selectedIncome?.state === "available" ? selectedIncome : null}
           symbol={wldSymbol as "WLD" | "USDC"} decimals={wldDecimals} to={incomeTo} recipientValid={incomeRecipientValid}
           canCollect={Boolean(miniInstalled && selectedIncome?.state === "available" && selectedIncome.valued
             && incomeRecipientValid && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled))}
           busy={pendingAction} onToChange={setIncomeTo} onCollect={() => void runVaultAction(ownerWithdrawIncome)}
+          account={account}
+          disabledReason={!miniInstalled ? "Open in World App to collect income."
+            : isSettledClaim ? "Inheritance has completed."
+            : isExpiredOrLater && !inheritanceCancelled ? "Check in from Plan before inheritance executes to collect income."
+            : ""}
           onRefresh={() => void refreshIncome()}
           onUseMyAddress={() => setIncomeTo(account)} />}
-        {isYieldVault && (tab === "money" || tab === "inherit" && !isMyVault) && <YieldRewardsCard
+        {isYieldVault && (tab === "inherit" && !isMyVault || tab === "money" && hasRewardAction) && <YieldRewardsCard
           usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
@@ -4105,10 +4130,10 @@ export default function App() {
 
         {/* ===== Send 탭: 자금 흐름 ===== */}
         {tab === "money" && vault && gate2(
-          <Card>
+          <Card className="asset-money-card">
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle>Vault & Send</CardTitle>
+                <CardTitle>{wldSymbol} balance</CardTitle>
                 <div className="flex items-center gap-2">
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && badge("Owner", "blue")}
                   {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
@@ -4139,20 +4164,142 @@ export default function App() {
               </div>
             </CardHeader>
             <CardContent className="grid gap-3">
+              {!isVaultOwner && vaultOwner && <p className="shared-asset-note" role="status">
+                This balance belongs to {short(vaultOwner)}.
+                {iAmHeir ? " You are the named heir; open Plan to follow its inheritance." : " You cannot deposit or withdraw from this shared plan."}
+              </p>}
                 {/* 이 탭의 질문은 "내 지갑에 얼마가 있고, 금고에 얼마가 들어갔는가" 다.
                     메타데이터(누가/언제/어느 체인)가 그 앞에 오는 동안 화면은 이 질문에
                     답하지 않았다. 두 숫자를 카드로 올려 화면이 답하게 한다. */}
                 <div className="stat-row">
                   <div className="stat">
                     <div className="stat-label">In your wallet</div>
-                    <div className="stat-value">{HAS_YIELD_ROUTES ? formatYieldAmount(walletWld, wldDecimals) : fmtUnits(walletWld)} {wldSymbol}</div>
+                    <div className="stat-value">{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : "Updating…"}</div>
                   </div>
                   <div className="stat">
-                    <div className="stat-label">{isYieldVault ? "Estimated value" : "In the vault"}</div>
+                    <div className="stat-label">{isYieldVault ? "Invested value before fee" : "In your plan"}</div>
                     <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld, wldDecimals)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
                   </div>
                 </div>
-              <div className="text-sm grid gap-1">
+              {isMyVault && (
+                <>
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="deposit-amount">Amount to deposit ({wldSymbol})</label>
+                    <div className="field-row-controls">
+                      <Input id="deposit-amount" inputMode="decimal" placeholder="0.0"
+                        value={amountStr} onChange={e => setAmountStr(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="deposit-actions">
+                    <p className="deposit-availability">{walletBalanceKnown ? `Available: ${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : "Checking wallet balance…"}</p>
+                    <div className="deposit-percentages">
+                    <Button variant="ghost" onClick={() => setPct(25)}>25%</Button>
+                    <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
+                    <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
+                    <Button variant="ghost" onClick={setMax}>Max</Button>
+                    </div>
+                    <Button
+                      variant="primary"
+                      className="deposit-primary"
+                      onClick={() => void runVaultAction(deposit)}
+                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || !depositEntryValid}
+                    >
+                      Deposit
+                    </Button>
+                    <Button variant="ghost" onClick={refreshBalances}>Refresh balance</Button>
+                  </div>
+                  {depositAmount === null && <p className="text-xs text-red-700" role="alert">Enter a valid {wldSymbol} amount with up to {wldDecimals} decimal places.</p>}
+                  {walletBalanceKnown && depositAmount !== null && depositAmount > walletWld && <p className="text-xs text-red-700" role="alert">This amount is above your available {wldSymbol} balance.</p>}
+                  {pendingDeposit && <p className="text-xs text-gray-600" role="status">
+                    Resume your saved setup in Plan before adding more to this asset.
+                  </p>}
+                </>
+              )}
+              {/* 정산된 금고에서 입금을 막는다. 계약을 막을 수는 없다 — 누군가 주소로
+                  직접 보낼 수 있으므로 sweep 이 여전히 필요하다 — 하지만 앱이 직접
+                  권하는 일은 하지 않는다. 잔액이 남으면 "비어 있다" 는 표시가 거짓이 되고
+                  사용자는 해제 수단까지 찾아내야 한다. */}
+              {isSettledClaim && (
+                <div className="text-xs text-gray-600">
+                  {vaultIdentity?.released
+                    ? "This archived vault is closed. Claimable campaign rewards still go to its fixed inheritance recipient. Use a current vault for new deposits."
+                    : "This vault is closed, so deposits are turned off here — create a new vault first. If you already sent funds to this vault address, the owner can sweep them from Plan."}
+                </div>
+              )}
+              {/* 마감 이후에도 입금을 막는다. 상속인이 이미 수령할 수 있는 상태에서
+                  입금하면 그 돈까지 상속인이 가져간다. 실제로 5 WLD 위에 10 WLD 를
+                  입금하고 상속인이 15 WLD 전부를 가져간 경우가 있었다. 화면에는
+                  "Claimable" 배지와 활성화된 입금 폼만 있었다. 막되 **왜** 막는지
+                  말하지 않으면 사용자는 버그로 여긴다. */}
+              {!isSettledClaim && isExpiredOrLater && (
+                <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
+                  {inheritanceCancelled
+                    /* 상속인이 없다(heir == owner). "당신의 상속인이 가져간다" 는 이
+                       자리에서 명제가 아니다 — 유일한 당사자는 읽는 사람 자신이고,
+                       꺼낼 방법도 있으므로 위험이 아니다. */
+                    ? "This vault's inheritance is cancelled, so nothing is inheriting it. Deposits are turned off because a cancelled vault is finished — withdraw what is here, or release your slot."
+                    : !isMyVault
+                      /* 소유자 전용 지시다. "당신의 상속인이 가져간다", "Deposit only into
+                         a fresh vault" 를 상속인이나 타인에게 말하면 그들이 할 수 있는 일이
+                         아니다. 사실을 말하되 지시하지 않는다. */
+                      ? "The countdown has ended, so deposits are turned off for this vault."
+                      : "Your plan is overdue, so deposits are paused. Check in before inheritance executes to renew it. Your heir must file a claim and wait through the review before funds can move."}
+                </div>
+              )}
+              <div className="text-xs text-gray-500">
+                Deposit {wldSymbol} on World Chain (480) using this app. {isUsdcVault ? "WLD campaign rewards are handled separately. " : ""}Do not send ETH or unrelated tokens. Review any transaction fees shown by World App.
+              </div>
+
+              {isMyVault && (
+                <>
+                <details className="principal-controls"><summary>Withdraw principal</summary><div className="space-y-2">
+                  <div className="text-xs text-gray-500">
+                    {/* 제목이 지시하는 조건이 두 개다. 계약의 `ownerMayWithdraw` 는
+                        `!ownerStillActive() && !inheritanceCancelled()` 일 때만 막으므로
+                        취소된 금고에서는 만료 후에도 회수할 수 있다 — 그것이 **유일한**
+                        출구다(잔액이 남아 있으면 슬롯 해제도 안 된다). 예전에는
+                        `isExpiredOrLater` 로만 막아서, 취소된 금고에 돈이 남으면
+                        " withdraw it" 라고 말하면서 버튼은 비활성이었고 sweep 도
+                        없었다(계약이 `claimedAt == 0` 이므로 sweep 도 불가능).
+                        그 상태에서 사용자는 앱을 나가지 않는 한 자금을 꺼낼 수 없다. */}
+                    {inheritanceCancelled
+                      ? "Withdraw principal (inheritance was cancelled — this stays yours)"
+                      : "Withdraw principal (before the countdown ends)"}
+                  </div>
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn {wldSymbol} to</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
+                      <Button onClick={setWithdrawToMe}>My address</Button>
+                    </div>
+                  </div>
+                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
+                    <div className="text-xs text-red-600">Invalid recipient address.</div>
+                  )}
+                  <div className="field-row">
+                    <label className="field-row-label" htmlFor="withdraw-amount">Principal amount to withdraw</label>
+                    <div className="field-row-controls">
+                      <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
+                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
+                      <Button onClick={setWithdrawMax}>All</Button>
+                      {/* 라벨이 실제 수신자를 말한다. 예전엔 "Withdraw to myself" 가
+                          고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
+                          라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
+                          이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
+                      <Button onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || isExpiredOrLater && !inheritanceCancelled}>
+                        {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
+                          ? "Withdraw to myself"
+                          : withdrawTo
+                            ? `Withdraw to ${short(withdrawTo)}`
+                            : "Withdraw"}
+                      </Button>
+                    </div>
+                  </div>
+                  {isYieldVault && <p className="text-xs text-gray-600">This changes principal. A Morpho exit charges 10% on realized positive income; cash withdrawals depend on liquidity, and receipt shares can be moved instead.{isUsdcVault && " A full exit also sends held WLD to this recipient after the separate WLD reward fee."}</p>}
+                  </div></details>
+                </>
+              )}
+              <details className="money-metadata"><summary>Account details &amp; activity</summary><div className="text-sm grid gap-1">
                 <div className="flex items-center gap-2">
                   <div>Owner:</div>
                   <div>
@@ -4284,123 +4431,29 @@ export default function App() {
                     </b>
                   </div>
                 )}
-              </div>
-              {isMyVault && (
-                <>
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="deposit-amount">Amount to deposit ({wldSymbol})</label>
-                    <div className="field-row-controls">
-                      <Input id="deposit-amount" inputMode="decimal" placeholder="0.0"
-                        value={amountStr} onChange={e => setAmountStr(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap items-center">
-                    <div className="text-xs text-gray-600">Available: {fmtUnits(walletWld)} {wldSymbol}</div>
-                    <Button variant="ghost" onClick={() => setPct(25)}>25%</Button>
-                    <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
-                    <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
-                    <Button variant="ghost" onClick={setMax}>Max</Button>
-                    <Button
-                      variant="primary"
-                      onClick={() => void runVaultAction(deposit)}
-                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit}
-                    >
-                      Deposit
-                    </Button>
-                    <Button onClick={refreshBalances}>Refresh balance</Button>
-                  </div>
-                  {pendingDeposit && <p className="text-xs text-gray-600" role="status">
-                    Resume your saved setup in Inherit before adding more to this asset.
-                  </p>}
-                </>
-              )}
-              {/* 정산된 금고에서 입금을 막는다. 계약을 막을 수는 없다 — 누군가 주소로
-                  직접 보낼 수 있으므로 sweep 이 여전히 필요하다 — 하지만 앱이 직접
-                  권하는 일은 하지 않는다. 잔액이 남으면 "비어 있다" 는 표시가 거짓이 되고
-                  사용자는 해제 수단까지 찾아내야 한다. */}
-              {isSettledClaim && (
-                <div className="text-xs text-gray-600">
-                  {vaultIdentity?.released
-                    ? "This archived vault is closed. Claimable campaign rewards still go to its fixed inheritance recipient. Use a current vault for new deposits."
-                    : "This vault is closed, so deposits are turned off here — create a new vault first. If you already sent funds to this vault address, the owner can sweep them from the Inherit tab."}
-                </div>
-              )}
-              {/* 마감 이후에도 입금을 막는다. 상속인이 이미 수령할 수 있는 상태에서
-                  입금하면 그 돈까지 상속인이 가져간다. 실제로 5 WLD 위에 10 WLD 를
-                  입금하고 상속인이 15 WLD 전부를 가져간 경우가 있었다. 화면에는
-                  "Claimable" 배지와 활성화된 입금 폼만 있었다. 막되 **왜** 막는지
-                  말하지 않으면 사용자는 버그로 여긴다. */}
-              {!isSettledClaim && isExpiredOrLater && (
-                <div className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
-                  {inheritanceCancelled
-                    /* 상속인이 없다(heir == owner). "당신의 상속인이 가져간다" 는 이
-                       자리에서 명제가 아니다 — 유일한 당사자는 읽는 사람 자신이고,
-                       꺼낼 방법도 있으므로 위험이 아니다. */
-                    ? "This vault's inheritance is cancelled, so nothing is inheriting it. Deposits are turned off because a cancelled vault is finished — withdraw what is here, or release your slot."
-                    : !isMyVault
-                      /* 소유자 전용 지시다. "당신의 상속인이 가져간다", "Deposit only into
-                         a fresh vault" 를 상속인이나 타인에게 말하면 그들이 할 수 있는 일이
-                         아니다. 사실을 말하되 지시하지 않는다. */
-                      ? "The countdown has ended, so deposits are turned off for this vault."
-                      : "The countdown has ended, so deposits are turned off. Your heir can take whatever is in the vault at any point now, and anything you add would go to them too. Deposit only into a fresh vault."}
-                </div>
-              )}
-              <div className="text-xs text-gray-500">
-                Deposit {wldSymbol} on World Chain (480) using this app. {isUsdcVault ? "WLD campaign rewards are handled separately. " : ""}Do not send ETH or unrelated tokens. Review any transaction fees shown by World App.
-              </div>
-
-              {isMyVault && (
-                <>
-                <div className="space-y-2 border-t pt-3">
-                  <div className="text-xs text-gray-500">
-                    {/* 제목이 지시하는 조건이 두 개다. 계약의 `ownerMayWithdraw` 는
-                        `!ownerStillActive() && !inheritanceCancelled()` 일 때만 막으므로
-                        취소된 금고에서는 만료 후에도 회수할 수 있다 — 그것이 **유일한**
-                        출구다(잔액이 남아 있으면 슬롯 해제도 안 된다). 예전에는
-                        `isExpiredOrLater` 로만 막아서, 취소된 금고에 돈이 남으면
-                        " withdraw it" 라고 말하면서 버튼은 비활성이었고 sweep 도
-                        없었다(계약이 `claimedAt == 0` 이므로 sweep 도 불가능).
-                        그 상태에서 사용자는 앱을 나가지 않는 한 자금을 꺼낼 수 없다. */}
-                    {inheritanceCancelled
-                      ? "Withdraw principal (inheritance was cancelled — this stays yours)"
-                      : "Withdraw principal (before the countdown ends)"}
-                  </div>
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn {wldSymbol} to</label>
-                    <div className="field-row-controls">
-                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
-                      <Button onClick={setWithdrawToMe}>My address</Button>
-                    </div>
-                  </div>
-                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
-                    <div className="text-xs text-red-600">Invalid recipient address.</div>
-                  )}
-                  <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-amount">Principal amount to withdraw</label>
-                    <div className="field-row-controls">
-                      <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
-                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
-                      <Button onClick={setWithdrawMax}>All</Button>
-                      {/* 라벨이 실제 수신자를 말한다. 예전엔 "Withdraw to myself" 가
-                          고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
-                          라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
-                          이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
-                      <Button onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || isExpiredOrLater && !inheritanceCancelled}>
-                        {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
-                          ? "Withdraw to myself"
-                          : withdrawTo
-                            ? `Withdraw to ${short(withdrawTo)}`
-                            : "Withdraw"}
-                      </Button>
-                    </div>
-                  </div>
-                  {isYieldVault && <p className="text-xs text-gray-600">This changes principal. A Morpho exit charges 10% on realized positive income; cash withdrawals depend on liquidity, and receipt shares can be moved instead.{isUsdcVault && " A full exit also sends held WLD to this recipient after the separate WLD reward fee."}</p>}
-                  </div>
-                </>
-              )}
+              </div></details>
             </CardContent>
           </Card>
         )}
+
+        {isYieldVault && tab === "money" && <details className="asset-details" key={`yield:${balanceScope}`}>
+          <summary>Yield details &amp; WLD rewards</summary>
+          <p>Morpho holds your invested asset. Rates and rewards can change; withdrawals depend on cash liquidity.</p>
+          <div className="asset-details-content">
+            {(!isSettledClaim || vaultHasAssets) && <YieldPositionCard
+          route={selectedYieldRoute} rates={yieldRates} ratesLoading={yieldRatesLoading}
+          position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
+          busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
+            {!hasRewardAction && <YieldRewardsCard
+          usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
+          canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
+          data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
+          received={selectedReceivedRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
+          settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
+          busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
+          onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
+          </div>
+        </details>}
 
         {/* ===== Inherit 탭: 상속 파이프라인을 그대로 보여준다 ===== */}
         {tab === "inherit" && vault && gate2(
@@ -4670,7 +4723,7 @@ export default function App() {
         {/* ===== Vault 탭: 타이머와 갱신 ===== */}
         {tab === "inherit" && vault && gate2(
           <Card>
-            <CardHeader><CardTitle>Vault & Controls</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Your plan settings</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <div className="section-label">Status</div>
               {/* **금액을 카운트다운보다 먼저** 보여준다.
@@ -5184,7 +5237,7 @@ export default function App() {
                     ? "Checking the chain for vaults that name you…"
                     : heirScanAttempted
                       ? heirFoundVaults.length > 0
-                        ? `You are the heir of ${heirFoundVaults.length} vault${heirFoundVaults.length > 1 ? "s" : ""}. Open the Inherit tab to see them.`
+                        ? `You are the heir of ${heirFoundVaults.length} vault${heirFoundVaults.length > 1 ? "s" : ""}. Open Plan to see them.`
                         : heirScanIncomplete
                           ? "Some vaults could not be checked. Please try again."
                           : "No registered or recent vaults found in this check."
@@ -5297,7 +5350,7 @@ export default function App() {
           말해준다. */}
       {tabStillVisible && !tabHasContent && (
         <div className="text-sm text-gray-600">
-          {tab === "money" && "Your vault is not set up yet. Create it in the Inherit tab first."}
+          {tab === "money" && "Your vault is not set up yet. Create it in Plan first."}
           {tab === "vault" && "Loading your vault..."}
         </div>
       )}
@@ -5314,7 +5367,7 @@ export default function App() {
             onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab(t.key); }}
             aria-current={tab === t.key ? "page" : undefined}
           >
-            <Icon name={t.key === "money" ? "send" : t.key === "support" ? "help" : t.key} size={21} /><span>{t.label}</span>
+            <Icon name={t.key === "money" ? "assets" : t.key === "vault" ? "home" : t.key === "support" ? "help" : t.key} size={21} /><span>{t.label}</span>
           </button>
         ))}
       </nav>

@@ -1,9 +1,14 @@
 # A plan with WLD and USDC
 
-New plans ask for an heir, a check-in interval, and separate WLD and USDC
-amounts. The configured primary Morpho routes are the default. The user reviews
+New plans ask for WLD and USDC amounts first, then an heir and a check-in
+interval. Users do not choose or create individual vaults. The configured primary
+Morpho routes are the default. The user reviews
 the 10% positive-gain service fee and the lending/liquidity risks before any
-deposit. The app creates missing asset contracts and manages them internally;
+deposit. “Review plan” is a local step with exact token amounts and the full
+resolved recipient address; it sends no wallet request. “Confirm and deposit”
+then starts the existing durable transaction flow. Editing values invalidates
+that review, and the fee/risk consent starts unchecked. The app creates missing
+asset contracts and manages them internally;
 it does not convert between WLD and USDC.
 
 Progress is saved per authenticated wallet in the tab. A completed asset is
@@ -38,8 +43,8 @@ draft stays editable. A saved setup can be edited only when its creation and
 unfinished deposits are proven unsent; completed deposits stay in place and
 their amounts are not copied into a new draft. Ambiguous requests must first
 be verified and cannot be cleared through this edit control.
-Send also pauses additional deposits into a position with unfinished saved setup.
-Resume the original request first, or edit a proven-unsent setup in Inherit. This
+Assets also pauses additional deposits into a position with unfinished saved setup.
+Resume the original request first, or edit a proven-unsent setup in Plan. This
 keeps another matching deposit from making the original receipt ambiguous.
 Only new, ready deposits require fresh fee queries and consent. Completed assets
 do not gate the remaining setup. Earlier receipts can be verified without consent
@@ -53,14 +58,27 @@ or replaced historical slots do not transfer monitoring to a replacement.
 An unavailable monitoring backend times out and shows a Help reminder without
 repeating funds or reverting the confirmed deposit.
 If the user cancels a proven-unsent setup and later funds its new position through
-ordinary Send, that confirmed deposit also requests monitoring. Registration runs
+ordinary Assets deposits, that confirmed deposit also requests monitoring.
+Registration runs
 independently so a delayed backend response does not block switching assets.
+
+Home shows the combined plan and the earliest next check-in, with an overdue
+state that does not imply an automatic payout. Assets leads with available income,
+then deposits, with principal withdrawals and contract details in disclosures.
+Plan contains recipient, check-in and inheritance controls. Token buttons choose
+WLD or USDC; earlier balances remain reachable under “Other … balances” without
+moving funds. A shared balance identifies its owner before hidden account details.
 
 The overview totals assets in their own units, includes held WLD rewards and gifts
 inside USDC positions in the WLD total, and offers a combined check-in. Its asset
 management action opens the owner's position even when a shared heir link was
 previously selected.
 Asset management contains income collection and a separate principal withdrawal.
+Switching assets shows exactly one income card and resets the optional receiving
+wallet to the signed-in wallet. The default destination is stated before collection;
+a different destination stays available under “Change receiving wallet”. Empty,
+over-balance and excessive-precision deposit amounts cannot submit. Disclosure
+controls remain reachable at the bottom of the page, including after expansion.
 Income is quoted by the contract, retains principal/loss accounting and the
 inheritance timer, and uses a 99.5% minimum of the available net quote. Existing
 contracts without this API show that limitation and retain their withdrawal

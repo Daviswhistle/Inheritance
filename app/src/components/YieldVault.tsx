@@ -114,12 +114,14 @@ export function YieldPositionCard({ position, holdings, terms, rates, ratesLoadi
     </CardContent></Card>;
 }
 
-export function IncomePositionCard({ state, symbol, decimals, position, to, recipientValid, canCollect, busy, onToChange, onCollect, onUseMyAddress, onRefresh }: {
+export function IncomePositionCard({ state, symbol, decimals, position, to, account, disabledReason, recipientValid, canCollect, busy, onToChange, onCollect, onUseMyAddress, onRefresh }: {
   state: "loading" | "available" | "unavailable" | "error";
   symbol: "WLD" | "USDC";
   decimals: number;
   position: { gross: bigint; fee: bigint; net: bigint; withdrawableNet: bigint; valued: boolean } | null;
   to: string;
+  account: string;
+  disabledReason: string;
   recipientValid: boolean;
   canCollect: boolean;
   busy: boolean;
@@ -133,7 +135,7 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, reci
     <CardHeader><CardTitle>Collect income</CardTitle></CardHeader>
     <CardContent className="grid gap-3">
       {state === "loading" && <p role="status">Checking available income…</p>}
-      {state === "unavailable" && <p className="text-sm text-gray-600">This vault does not expose separate income tracking. Its balance remains available through principal controls.</p>}
+      {state === "unavailable" && <p className="text-sm text-gray-600">Separate income collection is not available for this earlier balance. You can still use Withdraw principal below to manage it.</p>}
       {state === "error" && <div className="grid gap-2"><p role="alert" className="text-sm text-yellow-800">Income status could not be refreshed. No collection was sent.</p><Button disabled={busy} onClick={onRefresh}>Refresh income</Button></div>}
       {state === "available" && position && <>
         {position.valued ? <>
@@ -144,11 +146,22 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, reci
             </div>
           </div>
           <dl className="yield-values">
-            <div><dt>Gross realized income</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
+            <div><dt>Income before fee</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
             <div><dt>Service fee</dt><dd>{fmt(position.fee)} {symbol}</dd></div>
             <div><dt>Net income</dt><dd>{fmt(position.net)} {symbol}</dd></div>
           </dl>
-          <p className="text-xs text-gray-600">This collects income only. Principal stays in the inheritance vault. The request keeps a 99.5% minimum of the quoted available amount; market value and liquidity can change before confirmation.</p>
+          <p className="income-explainer">Collect income while your principal stays invested for your plan. This does not reset your check-in timer.</p>
+          <p className="income-destination">{recipientValid
+            ? to.toLowerCase() === account.toLowerCase() ? "To your World App wallet" : `To ${to.slice(0, 6)}…${to.slice(-4)}`
+            : "Choose a receiving wallet before collecting."}</p>
+          <Button className="income-collect" variant="primary" disabled={busy || !canCollect || position.withdrawableNet <= 0n || !position.valued} onClick={onCollect}>
+            Collect {fmt(position.withdrawableNet)} {symbol}
+          </Button>
+          {disabledReason && <p className="income-explainer" role="status">{disabledReason}</p>}
+          {!disabledReason && position.withdrawableNet <= 0n && <p className="income-explainer" role="status">{position.net > 0n
+            ? "Income has accrued, but cash is not available to collect right now. Check Yield details below."
+            : "No income is available to collect yet. Returns can change."}</p>}
+          <details className="income-recipient"><summary>Change receiving wallet</summary><div>
           <div className="field-row">
             <label className="field-row-label" htmlFor="income-to">Send income to</label>
             <div className="field-row-controls">
@@ -157,9 +170,10 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, reci
             </div>
             {to && !recipientValid && <p role="alert" className="text-xs text-red-700">Enter a valid wallet address.</p>}
           </div>
-          <Button variant="primary" disabled={busy || !canCollect || position.withdrawableNet <= 0n || !position.valued} onClick={onCollect}>
-            Collect {fmt(position.withdrawableNet)} {symbol}
-          </Button>
+          </div></details>
+          <details className="income-recipient"><summary>Fees &amp; collection details</summary><div>
+            <p className="income-explainer">The service fee is 10% of realized positive gains after loss recovery, never principal. Your approval requests at least 99.5% of the quoted available amount; value and liquidity can change before confirmation.</p>
+          </div></details>
         </> : <div className="grid gap-2"><p role="status">Income value is unavailable. Refresh before collecting.</p><Button disabled={busy} onClick={onRefresh}>Refresh income</Button></div>}
       </>}
     </CardContent>

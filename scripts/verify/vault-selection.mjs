@@ -87,7 +87,10 @@ try {
   page = await launch({ pk: ACCOUNTS.a0.pk, url, preload }); await page.ev(HELPERS);
   await page.ev("return __q.click('Continue with World App')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Back to your own vault')"));
-  await page.ev("return __q.tab('Send')");
+  await page.ev("return __q.tab('Assets')");
+  await page.waitFor('.money-metadata');
+  await page.ev("return __q.reveal('.money-metadata')");
+  await page.ev("return __q.click('Show addresses & explorer links')");
   await until(() => page.ev("return document.getElementById('deposit-amount') && /90 days/.test(document.body.innerText) && /100.0 WLD/.test(document.body.innerText)"));
   pass("The linked legacy owner's vault is verified before depositing");
   await page.ev("return __q.tab('Help')");
@@ -95,7 +98,7 @@ try {
   await until(() => page.ev("return /Reminders are enabled for you/.test(document.body.innerText)"));
   await page.ev("window.__holdWatcher = true; return __q.click('Refresh status')");
   await until(() => page.ev("return window.__heldWatchers.length > 0"));
-  await page.ev("return __q.tab('Inherit')");
+  await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Back to your own vault')"));
   const switched = await page.ev(`const original = window.fetch.bind(window); window.__heldReads = []; window.__holdNew = true; window.__seenReads = [];
     window.fetch = async (input, init) => { const url = typeof input === 'string' ? input : input.url;
@@ -106,7 +109,7 @@ try {
       return original(input, init); };
     return __q.click('Back to your own vault');`);
   assert.match(switched, /clicked/);
-  await page.ev("return __q.tab('Send')");
+  await page.ev("return __q.tab('Assets')");
   await until(() => page.ev("return window.__heldReads.length > 0"));
   assert.equal(await page.ev("return __q.btns().some(b => b.t === 'Deposit' && !b.d)"), false);
   pass("Switching vaults blocks deposit while canonical identity is unresolved");
@@ -114,8 +117,10 @@ try {
   assert.equal(await token.balanceOf(legacyVault), 0n); assert.equal(await token.balanceOf(currentVault), 0n);
   pass("Delayed reads cannot send a transaction or move funds into the previous vault");
   await page.ev("window.__holdNew = false; window.__heldReads.forEach(resolve => resolve()); return true");
+  await until(() => page.ev("return !!document.getElementById('deposit-amount')"));
+  await page.ev("return __q.setInput('deposit-amount', '1')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Deposit' && !b.d)"));
-  await page.ev("return __q.setInput('deposit-amount', '1')"); await page.ev("return __q.click('Deposit')");
+  await page.ev("return __q.click('Deposit')");
   await until(() => page.ev("return window.__E2E_MINIKIT__.lastCalldata().length === 2"));
   assert.equal((await page.ev("return window.__E2E_MINIKIT__.lastCalldata()[1].to")).toLowerCase(), (await factory.getAddress()).toLowerCase());
   pass("Verified deposit routes to the selected current factory");
@@ -123,7 +128,7 @@ try {
   assert.equal(await token.balanceOf(legacyVault), 0n);
   pass("Only the selected vault receives the actual WLD deposit");
   await until(() => page.ev("return window.__heldRegistrations.length === 1"));
-  await page.ev("return __q.tab('Inherit')");
+  await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Enable vault monitoring' && !b.d)"));
   pass("A new vault awaiting its automatic registration does not inherit the prior vault's monitoring status");
   await page.ev("window.__holdWatcher = false; window.__heldWatchers.forEach(resolve => resolve()); return true");

@@ -81,9 +81,18 @@ async function deploy(name, args, signer, file = name) {
 }
 
 async function clickButton(targetPage, label) {
+  if (label === "Create plan and deposit") {
+    if (!await targetPage.ev("return !!document.querySelector('.plan-final-review')")) await clickButton(targetPage, "Review plan");
+    return clickButton(targetPage, "Confirm and deposit");
+  }
   const quoted = JSON.stringify(label);
-  await until(() => targetPage.ev(`return __q.btns().some(button => button.t === ${quoted} && !button.d)`), `enabled button ${label}`);
-  assert.match(await targetPage.ev(`return __q.click(${quoted})`), /^clicked /, `could not click ${label}`);
+  await targetPage.ev(`return __q.revealButton(${quoted})`);
+  // Check availability and perform one native click in the same browser turn.
+  // Separate CDP calls can observe a button just before a role refresh disables it.
+  await until(() => targetPage.ev(`const button = [...document.querySelectorAll('button')]
+    .find(item => item.textContent.trim() === ${quoted} && !item.disabled);
+    if (!button) return false;
+    return /^clicked /.test(__q.click(${quoted}));`), `enabled button ${label}`);
 }
 
 async function clickMatchingButton(targetPage, matcher) {
@@ -335,11 +344,52 @@ try {
   const preload = `${exampleNames}window.__E2E_EXTERNAL_FETCHES__ = []; window.__E2E_RPC__ = ${JSON.stringify(rpc)}; window.__E2E_BATCH_WALLET__ = ${JSON.stringify(batchWallet.target)}; window.__E2E_STRATEGIES__ = ${JSON.stringify(rateStrategies)}; window.__MONITOR_FACTORIES__ = ${JSON.stringify([await plainFactory.getAddress(), await wldFactory.getAddress(), await usdcFactory.getAddress()])}; window.__E2E_WLD__ = ${JSON.stringify(await wld.getAddress())}; (${localPublicFixtures.toString()})(); (function(){${HELPERS}})();`;
   const pendingKey = `inheritance:pending-plan:${ACCOUNTS.a0.a.toLowerCase()}`;
   const wldFactoryAddress = (await wldFactory.getAddress()).toLowerCase();
+  // Exercise the real confirmation component without background App refreshes.
+  // A pre-journal failure must allow retry using only the busy-state transition.
+  const retryPage = await launch({ pk: ACCOUNTS.a0.pk, url: appUrl, preload });
+  regressionPages.push(["pre-journal retry", retryPage]);
+  await retryPage.ev(`
+    const reactModule = await import('/node_modules/.vite/deps/react.js');
+    const React = reactModule.default ?? reactModule;
+    const dom = await import('/node_modules/.vite/deps/react-dom_client.js');
+    const createRoot = dom.createRoot ?? dom.default.createRoot;
+    const { PlanSetup } = await import('/src/components/PlanSetup.tsx');
+    const mount = document.createElement('div'); mount.id = 'retry-plan';
+    document.body.replaceChildren(mount);
+    window.__PLAN_RETRY_CALLS__ = 0;
+    function RetryPlan() {
+      const [busy, setBusy] = React.useState(false);
+      window.__FINISH_PLAN_RETRY__ = () => setBusy(false);
+      return React.createElement(PlanSetup, {
+        rows: [{ symbol: 'WLD', decimals: 18, mode: 'plain', amount: '1', walletBalance: 10000000000000000000n }],
+        heir: '${ACCOUNTS.a1.a}', heirResolved: '${ACCOUNTS.a1.a}', heirUsername: '',
+        resolvingHeir: false, heirSuspicious: false, shareBusy: false, period: '30', periodValid: true,
+        yieldConsent: false, pendingPlan: null, alignmentConflicts: [], busy, createDisabled: false,
+        resumeDisabled: false, canEditRemaining: false,
+        onCreate: () => { window.__PLAN_RETRY_CALLS__++; setBusy(true); },
+        onHeirChange: () => {}, onPickHeir: () => {}, onPeriodChange: () => {}, onPreset: () => {},
+        onAmountChange: () => {}, onYieldConsent: () => {}, onConfirmAlignment: () => {},
+        onCancelAlignment: () => {}, onResume: () => {}, onEditRemaining: () => {},
+      });
+    }
+    createRoot(mount).render(React.createElement(RetryPlan)); return true;
+  `);
+  await clickButton(retryPage, "Review plan");
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await until(() => retryPage.ev("return !!document.querySelector('#retry-plan .plan-final-review') && !document.querySelector('#retry-plan .plan-submit').disabled"), "confirmation reenabled without unrelated render");
+    await retryPage.ev("const button = document.querySelector('#retry-plan .plan-submit'); button.click(); button.click(); return true;");
+    await until(() => retryPage.ev("return document.querySelector('#retry-plan .plan-submit').disabled"), "confirmation busy lock");
+    assert.equal(await retryPage.ev("return window.__PLAN_RETRY_CALLS__"), attempt, "a duplicate tap must not start another request");
+    await retryPage.ev("window.__FINISH_PLAN_RETRY__(); return true;");
+  }
+  await until(() => retryPage.ev("return !document.querySelector('#retry-plan .plan-submit').disabled"), "second confirmation failure allows another retry");
+  evidence.plan.preJournalRetry = { attempts: 2, duplicateTapsBlocked: true, unrelatedRefreshRequired: false };
+  pass("a failure before saving a plan reenables confirmation without editing or an unrelated refresh, while duplicate taps remain blocked");
   page = await launch({ pk: ACCOUNTS.a0.pk, url: appUrl, preload });
   await until(() => page.ev("return !!document.querySelector('.landing-content')"), "public welcome screen");
   await captureStore(page, "unified-store-welcome");
   await signIn(page);
-  await chooseTab(page, "Inherit");
+  await chooseTab(page, "Plan");
   await installBridgeRecorder(page, await usdc.getAddress());
 
   await until(() => page.ev("return !!(document.getElementById('plan-wld') && document.getElementById('plan-usdc') && document.getElementById('heir-input'))"), "unified plan form");
@@ -353,6 +403,7 @@ try {
   await until(() => page.ev("return /Resolved:|Wallet address/.test(document.querySelector('#heir-help')?.parentElement?.innerText || '') || document.querySelector('.resolved-heir') !== null"), "heir resolution");
   await until(() => page.ev("return !!document.getElementById('yield-consent') && !document.getElementById('yield-consent').disabled"), "verified yield terms and consent control");
   assert.equal(await page.ev("return document.querySelectorAll('input[name=\"vault-kind\"]').length"), 0, "unified form must not show a primary-vault chooser");
+  await captureLayout(page, "create", 320, ["#plan-wld", "#plan-usdc", "#period-input", "label.yield-consent", ".plan-submit"]);
   await captureLayout(page, "create", 360, ["#plan-wld", "#plan-usdc", "#period-input", "label.yield-consent", ".plan-submit"]);
   await captureLayout(page, "create", 390, ["#plan-wld", "#plan-usdc", "#period-input", "label.yield-consent", ".plan-submit"]);
   await page.ev("document.getElementById('yield-consent').click(); return true;");
@@ -365,6 +416,26 @@ try {
   assert.deepEqual(JSON.parse(selectedPlan), { amounts: ["2.5", "12.123456"], consent: true, chooserCount: 0 });
   pass("unified form requires explicit fee consent and keeps the two decimal scales distinct", "2.5 WLD / 12.123456 USDC");
   await captureStore(page, "unified-store-create", "#plan-wld");
+  await clickButton(page, "Review plan");
+  await until(() => page.ev("return !!document.querySelector('.plan-final-review')"), "local plan review");
+  assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), /2\.5 WLD[\s\S]*12\.123456 USDC/);
+  assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), new RegExp(ACCOUNTS.a1.a, 'i'));
+  assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length, 0, "review opened the wallet");
+  assert.equal(await page.ev("return document.activeElement?.id"), 'plan-review-title');
+  await captureLayout(page, "review", 320, [".plan-submit", ".plan-step-actions button"]);
+  await captureLayout(page, "review", 390, [".plan-submit", ".plan-step-actions button"]);
+  await clickButton(page, "Edit plan");
+  assert.equal(await page.ev("return document.activeElement?.id"), 'plan-wld');
+  await page.ev("return __q.setInput('plan-wld', '2.500000000000000001')");
+  await clickButton(page, "Review plan");
+  assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), /2\.500000000000000001 WLD/);
+  await clickButton(page, "Edit plan");
+  await page.ev("return __q.setInput('plan-wld', '2.5')");
+  await page.ev("return __q.setInput('plan-usdc', '12.1234567')");
+  assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true, "excess USDC precision reached review");
+  await page.ev("return __q.setInput('plan-usdc', '12.123456')");
+  pass("plan review shows exact amounts and recipient without a wallet request; editing restores focus and rejects excess USDC precision");
+
 
   // A browser that cannot retain the crash-recovery journal must never hand a
   // create/deposit request to the wallet, including when writes silently vanish.
@@ -452,9 +523,9 @@ try {
     await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(interrupted))}); return true;`);
     await page.send("Page.reload", { ignoreCache: true });
     await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "interrupted deposit restored");
-    await chooseTab(page, "Send");
-    await clickMatchingButton(page, label => label.startsWith("WLD · Morpho yield"));
-    await until(() => page.ev("return !!document.getElementById('deposit-amount') && /Resume your saved setup in Inherit/.test(document.body.innerText)"), "Send recovery guard");
+    await chooseTab(page, "Assets");
+    await clickMatchingButton(page, label => label === "WLD");
+    await until(() => page.ev("return !!document.getElementById('deposit-amount') && /Resume your saved setup in Plan/.test(document.body.innerText)"), "Send recovery guard");
     assert.equal(await page.ev("return __q.btns().find(button => button.t === 'Deposit')?.d"), true);
     await installBridgeRecorder(page);
     await page.ev("__q.setInput('deposit-amount', '2.5'); const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === 'Deposit'); button.disabled = false; button.click(); return true;");
@@ -463,7 +534,7 @@ try {
     assert.equal(await wldStrategy.balanceOf(fundedWldAddress), parseUnits("2.5", 18));
     assert.equal(JSON.parse(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`)).assets[0].depositState, state);
   }
-  await chooseTab(page, "Inherit");
+  await chooseTab(page, "Plan");
   await acceptYieldTerms(page);
   await clickButton(page, "Resume remaining setup");
   await until(() => page.ev(`const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(pendingKey)}) || 'null');
@@ -476,7 +547,7 @@ try {
   await page.send("Page.reload", { ignoreCache: true });
   await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => page.ev("return __q.tabs().length > 0"), "session restored after reload");
-  await chooseTab(page, "Inherit");
+  await chooseTab(page, "Plan");
   await until(() => page.ev("return __q.btns().some(button => button.t === 'Resume remaining setup')"), "saved plan resume affordance");
   await installBridgeRecorder(page);
   const savedAfterReload = JSON.parse(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`));
@@ -495,7 +566,7 @@ try {
   await page.send("Page.reload", { ignoreCache: true });
   await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => page.ev("return __q.tabs().length > 0"), "session restored with ambiguous progress");
-  await chooseTab(page, "Inherit");
+  await chooseTab(page, "Plan");
   await installBridgeRecorder(page);
   await acceptYieldTerms(page);
   await clickButton(page, "Resume remaining setup");
@@ -515,7 +586,7 @@ try {
   await page.send("Page.reload", { ignoreCache: true });
   await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => page.ev("return __q.tabs().length > 0"), "session restored for USDC retry");
-  await chooseTab(page, "Inherit");
+  await chooseTab(page, "Plan");
   await installBridgeRecorder(page);
   await acceptYieldTerms(page);
   await page.ev(`window.__E2E_REJECTED_TARGET__ = ${JSON.stringify((await usdc.getAddress()).toLowerCase())};
@@ -598,6 +669,7 @@ try {
     resumedBridgeCalls: resumedCalls, overviewText: overviewState };
   pass("reload resumes only USDC and canonical discovery shows both assets separately", "1 active WLD vault and 1 active USDC vault; no primary-vault chooser");
 
+  await captureLayout(page, "overview", 320, [".plan-overview-assets", ".plan-overview-asset", ".tab-item"]);
   await captureLayout(page, "overview", 360, [".plan-overview-assets", ".plan-overview-asset", ".tab-item"]);
   await captureLayout(page, "overview", 390, [".plan-overview-assets", ".plan-overview-asset", ".tab-item"]);
   await captureStore(page, "unified-store-overview");
@@ -620,7 +692,7 @@ try {
 
   const generalWithdrawal = await page.ev(`
     const tabs = [...document.querySelectorAll('.tab-item')];
-    const vaultTab = tabs.find(button => button.textContent.trim() === 'Send');
+    const vaultTab = tabs.find(button => button.textContent.trim() === 'Assets');
     vaultTab?.click();
     return true;
   `);
@@ -634,18 +706,29 @@ try {
   await page.send("Page.reload", { ignoreCache: true });
   await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => page.ev("return __q.tabs().length > 0"), "session restored for income screen");
-  await chooseTab(page, "Send");
+  await chooseTab(page, "Assets");
   await until(async () => {
     const position = await wldVault.incomePosition();
     return position.valued && position.withdrawableNet > 0n && /Available after fee/i.test(await page.ev("return document.querySelector('.income-card')?.innerText || ''"));
   }, "positive, valued income display", 35_000);
-  await page.ev("return [...document.querySelectorAll('.income-card button')].find(button => button.textContent.trim() === 'My address')?.click() ?? false;");
+  await page.ev("__q.reveal('#income-to'); return [...document.querySelectorAll('.income-card button')].find(button => button.textContent.trim() === 'My address')?.click() ?? false;");
   assert.equal(await page.ev("return document.getElementById('income-to')?.value"), owner);
   await page.ev("document.querySelector('.income-card button')?.scrollIntoView({block:'center'}); return true;");
   await page.ev("document.querySelector('.income-card')?.scrollIntoView({block:'start'}); window.scrollBy(0,-100); return true;");
-  await captureLayout(page, "income", 360, [".income-card #income-to", ".income-card button", ".tab-item"]);
-  await captureLayout(page, "income", 390, [".income-card #income-to", ".income-card button", ".tab-item"]);
+  await page.ev("const details = document.getElementById('income-to')?.closest('details'); if (details?.open) details.querySelector('summary').click(); return true;");
+  assert.equal(await page.ev("return document.querySelectorAll('.income-card').length"), 1, "income must render once");
+  await captureLayout(page, "income", 320, [".income-collect", ".asset-switcher button", ".tab-item"]);
+  await captureLayout(page, "income", 360, [".income-collect", ".asset-switcher button", ".tab-item"]);
+  await captureLayout(page, "income", 390, [".income-collect", ".asset-switcher button", ".tab-item"]);
   await captureStore(page, "unified-store-income", ".income-card");
+  await page.ev(`return __q.setInput('income-to', ${JSON.stringify(ACCOUNTS.a2.a)})`);
+  await clickMatchingButton(page, text => text === 'USDC');
+  await until(() => page.ev("return document.querySelectorAll('.income-card').length === 1 && document.querySelector('.income-card')?.innerText.includes('USDC') && document.getElementById('income-to')?.value.toLowerCase() === " + JSON.stringify(owner.toLowerCase())), "USDC income context and recipient reset");
+  await clickMatchingButton(page, text => text === 'WLD');
+  await until(() => page.ev("return document.querySelectorAll('.income-card').length === 1 && document.querySelector('.income-card')?.innerText.includes('WLD') && document.getElementById('income-to')?.value.toLowerCase() === " + JSON.stringify(owner.toLowerCase())), "WLD income context restored");
+  assert.doesNotMatch(await page.ev("return document.querySelector('.income-card').innerText"), /USDC/);
+  pass("asset switching shows one income card for the selected token and clears a custom receiving wallet");
+
   await page.ev("document.querySelector('.income-card')?.scrollIntoView({block:'start'}); return true;");
   const incomeBefore = await wldVault.incomePosition();
   assert.ok(incomeBefore.withdrawableNet > 0n);
@@ -708,7 +791,7 @@ try {
   assert.notEqual(preexistingAlignVault, ZeroAddress);
   alignmentPage = await launch({ pk: ACCOUNTS.a3.pk, url: appUrl, preload });
   await signIn(alignmentPage);
-  await chooseTab(alignmentPage, "Inherit");
+  await chooseTab(alignmentPage, "Plan");
   await installBridgeRecorder(alignmentPage);
   assert.equal(await alignmentPage.ev("return document.getElementById('yield-consent')?.checked"), false);
   await alignmentPage.ev(`return __q.setInput('heir-input', ${JSON.stringify(ACCOUNTS.a5.a)})`);
@@ -718,12 +801,12 @@ try {
   await alignmentPage.ev("document.getElementById('yield-consent').click(); return true;");
   await until(() => alignmentPage.ev("return !document.querySelector('.plan-submit')?.disabled"), "alignment plan form");
   await clickButton(alignmentPage, "Create plan and deposit");
-  await until(() => alignmentPage.ev("return document.querySelector('.plan-review') !== null"), "settings alignment review");
+  await until(() => alignmentPage.ev("return document.querySelector('.plan-alignment-review') !== null"), "settings alignment review");
   assert.equal((await wldFactory.vaultOf(ACCOUNTS.a3.a)).toLowerCase(), preexistingAlignVault.toLowerCase());
   assert.equal((await new Contract(preexistingAlignVault, artifact("InheritanceVaultMorpho").abi, provider).heir()).toLowerCase(), ACCOUNTS.a4.a.toLowerCase());
   assert.equal(await new Contract(preexistingAlignVault, artifact("InheritanceVaultMorpho").abi, provider).heartbeatInterval(), 14n * 86400n);
   assert.equal(await wldStrategy.balanceOf(preexistingAlignVault), 0n, "settings changed before explicit consent");
-  const reviewText = await alignmentPage.ev("return document.querySelector('.plan-review').innerText");
+  const reviewText = await alignmentPage.ev("return document.querySelector('.plan-alignment-review').innerText");
   assert.match(reviewText, /Confirm and align settings/);
   assert.match(reviewText, /WLD/);
   await clickButton(alignmentPage, "Confirm and align settings");
@@ -749,15 +832,15 @@ try {
   await (await driftWldFactory.createVault(ACCOUNTS.a4.a, 14 * 86400)).wait();
   driftPage = await launch({ pk: ACCOUNTS.a8.pk, url: appUrl, preload });
   await signIn(driftPage);
-  await chooseTab(driftPage, "Inherit");
+  await chooseTab(driftPage, "Plan");
   await installBridgeRecorder(driftPage);
   await driftPage.ev(`return __q.setInput('heir-input', ${JSON.stringify(ACCOUNTS.a5.a)})`);
   await driftPage.ev("return __q.setInput('period-input', '30')");
   await driftPage.ev("return __q.setInput('plan-wld', '0.1')");
   await acceptYieldTerms(driftPage);
   await clickButton(driftPage, "Create plan and deposit");
-  await until(() => driftPage.ev("return !!document.querySelector('.plan-review')"), "first one-asset review");
-  assert.doesNotMatch(await driftPage.ev("return document.querySelector('.plan-review').innerText"), /USDC/);
+  await until(() => driftPage.ev("return !!document.querySelector('.plan-alignment-review')"), "first one-asset review");
+  assert.doesNotMatch(await driftPage.ev("return document.querySelector('.plan-alignment-review').innerText"), /USDC/);
   const driftUsdcCreateBeforeBlock = await provider.getBlockNumber();
   const driftUsdcCreateReceipt = await (await driftUsdcFactory.createVault(ACCOUNTS.a4.a, 14 * 86400)).wait();
   await (await new Contract(await usdc.getAddress(), artifact("MockGasRefillERC20", "MockGasRefill").abi, driftSigner)
@@ -766,7 +849,7 @@ try {
   const driftWldVault = new Contract(await wldFactory.vaultOf(ACCOUNTS.a8.a), artifact("InheritanceVaultMorpho").abi, provider);
   const driftUsdcVault = new Contract(await usdcFactory.vaultOf(ACCOUNTS.a8.a), artifact("InheritanceVaultUSDC").abi, provider);
   await clickButton(driftPage, "Confirm and align settings");
-  await until(() => driftPage.ev("return /USDC/.test(document.querySelector('.plan-review')?.innerText || '')"), "changed target list requires re-review");
+  await until(() => driftPage.ev("return /USDC/.test(document.querySelector('.plan-alignment-review')?.innerText || '')"), "changed target list requires re-review");
   assert.equal(JSON.parse(await driftPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length, 0);
   for (const child of [driftWldVault, driftUsdcVault]) {
     assert.equal((await child.heir()).toLowerCase(), ACCOUNTS.a4.a.toLowerCase());
@@ -787,7 +870,7 @@ try {
   const previewSelector = new Interface(artifact("MockERC4626").abi).getFunction("previewDeposit").selector;
   const previewRetryVault = await wldFactory.vaultOf(ACCOUNTS.a3.a);
   const previewRetryBefore = await wldStrategy.balanceOf(previewRetryVault);
-  await chooseTab(alignmentPage, "Inherit");
+  await chooseTab(alignmentPage, "Plan");
   await alignmentPage.ev("return __q.setInput('plan-wld', '0.125')");
   await alignmentPage.ev("return __q.setInput('plan-usdc', '')");
   await acceptYieldTerms(alignmentPage);
@@ -852,7 +935,7 @@ try {
 
   // A terminally reverted create receipt clears its old identifier and can be
   // retried; pending/no-identifier recovery remains covered below.
-  await chooseTab(alignmentPage, "Inherit");
+  await chooseTab(alignmentPage, "Plan");
   await (await usdc.mint(ACCOUNTS.a3.a, parseUnits("10", 6))).wait();
   await alignmentPage.ev("return __q.setInput('plan-wld', '')");
   await alignmentPage.ev("return __q.setInput('plan-usdc', '1')");
@@ -898,7 +981,7 @@ try {
 
   // A failed USDC deposit must not roll back the completed WLD step. Retrying
   // after a status-zero receipt should send only USDC.
-  await chooseTab(alignmentPage, "Inherit");
+  await chooseTab(alignmentPage, "Plan");
   await alignmentPage.ev("return __q.setInput('plan-wld', '0.1')");
   await alignmentPage.ev("return __q.setInput('plan-usdc', '0.25')");
   await acceptYieldTerms(alignmentPage);
@@ -992,7 +1075,7 @@ try {
   await alignmentPage.send("Page.reload", { ignoreCache: true });
   await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => alignmentPage.ev("return __q.tabs().length > 0"), "session restored for saved deposit receipt");
-  await chooseTab(alignmentPage, "Inherit");
+  await chooseTab(alignmentPage, "Plan");
   await installBridgeRecorder(alignmentPage);
   await acceptYieldTerms(alignmentPage);
   await clickButton(alignmentPage, "Resume remaining setup");
@@ -1021,7 +1104,7 @@ try {
   await alignmentPage.send("Page.reload", { ignoreCache: true });
   await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => alignmentPage.ev("return __q.tabs().length > 0"), "session restored for old no-ID deposit");
-  await chooseTab(alignmentPage, "Inherit");
+  await chooseTab(alignmentPage, "Plan");
   await installBridgeRecorder(alignmentPage);
   await acceptYieldTerms(alignmentPage);
   await clickButton(alignmentPage, "Resume remaining setup");
@@ -1045,10 +1128,10 @@ try {
   await legacyPage?.close();
   legacyPage = await launch({ pk: ACCOUNTS.a6.pk, url: appUrl, preload });
   await signIn(legacyPage);
-  await chooseTab(legacyPage, "Send");
-  await until(() => legacyPage.ev("return document.querySelector('.income-card')?.innerText.includes('does not expose separate income tracking')"), "legacy income API unavailable label");
+  await chooseTab(legacyPage, "Assets");
+  await until(() => legacyPage.ev("return document.querySelector('.income-card')?.innerText.includes('Separate income collection is not available')"), "legacy income API unavailable label");
   const legacyIncomeText = await legacyPage.ev("return document.querySelector('.income-card')?.innerText || ''");
-  assert.doesNotMatch(legacyIncomeText, /Available after fee|Gross realized income|Net income/i);
+  assert.doesNotMatch(legacyIncomeText, /Available after fee|Income before fee|Net income/i);
   assert.equal(await legacyPage.ev("return document.getElementById('withdraw-to') !== null"), true, "legacy principal withdrawal is no longer accessible");
   evidence.legacyIncome = { vault: legacyVaultAddress, apiPresentInArtifact: false, displayedText: legacyIncomeText, principalControlAccessible: true };
   pass("legacy vault without the income API is not labeled as protected income; principal controls stay available");
@@ -1061,7 +1144,7 @@ try {
     return targetPage;
   };
   const preparePlanForm = async (targetPage, heirAddress, days, symbol, amount) => {
-    await chooseTab(targetPage, "Inherit");
+    await chooseTab(targetPage, "Plan");
     await installBridgeRecorder(targetPage);
     await targetPage.ev(`return __q.setInput('heir-input', ${JSON.stringify(heirAddress)})`);
     await targetPage.ev(`return __q.setInput('period-input', ${JSON.stringify(String(days))})`);
@@ -1076,7 +1159,7 @@ try {
       await targetPage.ev(HELPERS);
       return targetPage.ev("return __q.tabs().length > 0");
     }, "regression session restored");
-    await chooseTab(targetPage, "Inherit");
+    await chooseTab(targetPage, "Plan");
     await installBridgeRecorder(targetPage);
     await acceptYieldTerms(targetPage);
     return key;
@@ -1106,15 +1189,17 @@ try {
   assert.equal(await monitoredPage.ev(`return sessionStorage.getItem(${JSON.stringify(monitoredKey)})`), null);
   await monitoredPage.ev("window.__E2E_REJECTED_TARGET__ = ''; window.__E2E_BRIDGE_CALLS__ = []; return true;");
   const manualDepositSnapshot = await provider.send("evm_snapshot", []);
-  await chooseTab(monitoredPage, "Send");
-  await clickMatchingButton(monitoredPage, label => label.startsWith("USDC · Morpho yield"));
+  await chooseTab(monitoredPage, "Assets");
+  await clickMatchingButton(monitoredPage, label => label === "USDC");
   await until(() => monitoredPage.ev("return !!document.getElementById('deposit-amount') && /Amount to deposit \\(USDC\\)/.test(document.body.innerText)"), "manual USDC management");
   await installBridgeRecorder(monitoredPage);
   await monitoredPage.ev("return __q.setInput('deposit-amount', '0.1')");
   await clickButton(monitoredPage, "Deposit");
   await until(() => monitoredPage.ev(`return /Deposit complete/.test(document.body.innerText)
     && window.__MONITOR_REGISTERED__[${JSON.stringify(monitoredUsdc.toLowerCase())}]
-    && __q.btns().some(button => button.t === 'Deposit' && !button.d)`), "manual deposit is monitored");
+    && document.getElementById('deposit-amount')?.value === ''`), "manual deposit is monitored");
+  assert.equal(await monitoredPage.ev("return __q.btns().some(button => button.t === 'Deposit' && button.d)"), true,
+    "an empty amount cannot submit a second deposit");
   assert.equal(await usdcStrategy.balanceOf(monitoredUsdc), parseUnits("0.1", 18));
   assert.equal(JSON.parse(await monitoredPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 1);
   const manualRegistrations = JSON.parse(await monitoredPage.ev("return JSON.stringify(window.__MONITOR_REGISTRATIONS__)"));
@@ -1124,7 +1209,7 @@ try {
     registrations: manualRegistrations.filter(item => item.vaultAddress.toLowerCase() === monitoredUsdc.toLowerCase()) };
   pass("Send registers a new vault after a cancelled unified deposit is completed through ordinary deposit");
   assert.equal(await provider.send("evm_revert", [manualDepositSnapshot]), true);
-  await chooseTab(monitoredPage, "Inherit");
+  await chooseTab(monitoredPage, "Plan");
   await until(() => monitoredPage.ev("return !!document.getElementById('plan-usdc')"), "remaining setup restored after isolated manual scenario");
   await monitoredPage.ev("window.__E2E_BRIDGE_CALLS__ = []; return true;");
   await acceptYieldTerms(monitoredPage);
@@ -1163,8 +1248,8 @@ try {
   assert.equal(await agedWld.isExpired(), false, "the original funded WLD must still be active");
   await preparePlanForm(monitoredPage, ACCOUNTS.a5.a, 1, "USDC", "0.01");
   await clickButton(monitoredPage, "Create plan and deposit");
-  await until(() => monitoredPage.ev("return !!document.querySelector('.plan-review')"), "shorter interval review");
-  assert.match(await monitoredPage.ev("return document.querySelector('.plan-review').innerText"), /Changing an interval also checks in.*same transaction/);
+  await until(() => monitoredPage.ev("return !!document.querySelector('.plan-alignment-review')"), "shorter interval review");
+  assert.match(await monitoredPage.ev("return document.querySelector('.plan-alignment-review').innerText"), /Changing an interval also checks in.*starts its new timer/);
   assert.equal(await agedWld.heartbeatInterval(), 30n * 86400n, "review must not change the old period");
   assert.equal(await agedWld.lastPing(), agedWldPing, "review must not check in before consent");
   await clickButton(monitoredPage, "Confirm and align settings");
@@ -1217,11 +1302,11 @@ try {
   await until(() => legacyPage.ev("return __q.tabs().length > 0"), "funded basic-vault session restored");
   await preparePlanForm(legacyPage, ACCOUNTS.a5.a, 30, "USDC", "0.1");
   await clickButton(legacyPage, "Create plan and deposit");
-  await until(() => legacyPage.ev("return !!document.querySelector('.plan-review')"), "basic-vault settings review");
+  await until(() => legacyPage.ev("return !!document.querySelector('.plan-alignment-review')"), "basic-vault settings review");
   const basicVault = new Contract(legacyVaultAddress, artifact("InheritanceVaultWLD").abi, provider);
   assert.equal((await basicVault.heir()).toLowerCase(), ACCOUNTS.a7.a.toLowerCase());
   assert.equal(JSON.parse(await legacyPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)")).length, 0);
-  assert.match(await legacyPage.ev("return document.querySelector('.plan-review').innerText"), /WLD/);
+  assert.match(await legacyPage.ev("return document.querySelector('.plan-alignment-review').innerText"), /WLD/);
   await clickButton(legacyPage, "Confirm and align settings");
   await until(() => legacyPage.ev("return /Your inheritance plan is ready/.test(document.body.innerText)"), "basic WLD aligned before USDC addition");
   assert.equal((await basicVault.heir()).toLowerCase(), ACCOUNTS.a5.a.toLowerCase());
@@ -1237,7 +1322,7 @@ try {
   await alignmentPage.send("Page.reload", { ignoreCache: true });
   await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => alignmentPage.ev("return __q.tabs().length > 0"), "fractional-period session restored");
-  await chooseTab(alignmentPage, "Vault");
+  await chooseTab(alignmentPage, "Home");
   await installBridgeRecorder(alignmentPage);
   await clickButton(alignmentPage, "Review check-in");
   const fractionalVault = new Contract(recoveryVaultAddress, artifact("InheritanceVaultMorpho").abi, provider);
@@ -1254,8 +1339,8 @@ try {
   pass("combined check-in confirms a valid 30-day-plus-one-second interval without a false timeout");
   await preparePlanForm(alignmentPage, ACCOUNTS.a5.a, 30, "WLD", "0.01");
   await clickButton(alignmentPage, "Create plan and deposit");
-  await until(() => alignmentPage.ev("return !!document.querySelector('.plan-review')"), "exact-seconds conflict review");
-  assert.match(await alignmentPage.ev("return document.querySelector('.plan-review').innerText"), /30 days \+ 1 second/);
+  await until(() => alignmentPage.ev("return !!document.querySelector('.plan-alignment-review')"), "exact-seconds conflict review");
+  assert.match(await alignmentPage.ev("return document.querySelector('.plan-alignment-review').innerText"), /30 days \+ 1 second/);
   await clickButton(alignmentPage, "Confirm and align settings");
   await until(() => alignmentPage.ev("return /Your inheritance plan is ready/.test(document.body.innerText)"), "exact-seconds alignment and deposit complete");
   assert.equal(await fractionalVault.heartbeatInterval(), 30n * 86400n);
@@ -1358,7 +1443,7 @@ try {
   await (await wld.mint(ACCOUNTS.a4.a, parseUnits("1", 18))).wait();
   const balancePage = await newRegressionPage(4, "balance-and-edit");
   await preparePlanForm(balancePage, ACCOUNTS.a5.a, 30, "WLD", "2");
-  await until(() => balancePage.ev("return /exceeds your available WLD/.test(document.body.innerText)"), "oversized draft balance message");
+  await until(() => balancePage.ev("return /This amount is above your available balance/.test(document.body.innerText)"), "oversized draft balance message");
   assert.equal(await balancePage.ev("return document.querySelector('.plan-submit').disabled"), true);
   assert.equal(await balancePage.ev("return document.getElementById('plan-wld').matches(':disabled')"), false);
   assert.equal(await wldFactory.vaultOf(ACCOUNTS.a4.a), ZeroAddress);
@@ -1396,7 +1481,7 @@ try {
   await (await wld.mint(usdcVaultAddress, parseUnits("3", 18))).wait();
   await page.send("Page.reload", { ignoreCache: true });
   await until(() => page.ev("return __q.tabs().length > 0"), "held-WLD overview reload");
-  await chooseTab(page, "Vault");
+  await chooseTab(page, "Home");
   const expectedCombinedWld = (await wldVault.position()).gross + await wld.balanceOf(usdcVaultAddress);
   await until(() => page.ev(`return /WLD includes rewards and gifts/.test(document.querySelector('.plan-overview-card')?.innerText || '')
     && / WLD$/.test(document.querySelector('.plan-overview-asset strong')?.innerText || '')`), "WLD includes USDC-held cash");
@@ -1442,7 +1527,7 @@ try {
   // alignment and deposit until the original event receipt is verified.
   await preparePlanForm(balancePage, ACCOUNTS.a1.a, 30, "WLD", "0.01");
   await clickButton(balancePage, "Create plan and deposit");
-  await until(() => balancePage.ev("return !!document.querySelector('.plan-review')"), "alignment pending regression review");
+  await until(() => balancePage.ev("return !!document.querySelector('.plan-alignment-review')"), "alignment pending regression review");
   await balancePage.ev(`window.__E2E_REJECTED_TARGET__ = ${JSON.stringify(wldFactoryAddress)}; return true;`);
   await clickButton(balancePage, "Confirm and align settings");
   await until(() => balancePage.ev(`return JSON.parse(sessionStorage.getItem(${JSON.stringify(balanceKey)}) || 'null')?.alignment?.state === 'submitting'`), "ambiguous alignment journal retained");
@@ -1496,7 +1581,7 @@ try {
   // A status-zero alignment receipt is a proven failure and may be edited again.
   await preparePlanForm(balancePage, ACCOUNTS.a5.a, 30, "WLD", "0.001");
   await clickButton(balancePage, "Create plan and deposit");
-  await until(() => balancePage.ev("return !!document.querySelector('.plan-review')"), "alignment revert review");
+  await until(() => balancePage.ev("return !!document.querySelector('.plan-alignment-review')"), "alignment revert review");
   await balancePage.ev(`
     const fixture = await import('/src/test/minikit-stub.ts'); window.__ALIGN_NORMAL_SEND__ = fixture.MiniKit.sendTransaction;
     const invalid = ${JSON.stringify(wldFactory.interface.encodeFunctionData("updateMyHeir", [ZeroAddress]))};
@@ -1531,7 +1616,7 @@ try {
       }] };
     await restorePlan(driftPage, historicalCreatePlan);
     await clickButton(driftPage, "Resume remaining setup");
-    await until(() => driftPage.ev("return !!document.querySelector('.plan-review') && __q.btns().some(button => button.t === 'Edit remaining setup')"), "historical creation verified before settings review");
+    await until(() => driftPage.ev("return !!document.querySelector('.plan-alignment-review') && __q.btns().some(button => button.t === 'Edit remaining setup')"), "historical creation verified before settings review");
     assert.equal(JSON.parse(await driftPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
     assert.equal((await driftUsdcVault.heir()).toLowerCase(), ACCOUNTS.a5.a.toLowerCase());
     assert.equal(await driftUsdcVault.heartbeatInterval(), 30n * 86400n);
@@ -1548,7 +1633,7 @@ try {
   const ownerManagementPage = await launch({ pk: ACCOUNTS.a4.pk, url: appUrl + '/?vault=' + otherOwnerVault, preload });
   regressionPages.push(["owned-management", ownerManagementPage]);
   await signIn(ownerManagementPage);
-  await chooseTab(ownerManagementPage, "Vault");
+  await chooseTab(ownerManagementPage, "Home");
   await until(() => ownerManagementPage.ev("return !!document.querySelector('.plan-overview-card')"), "owned overview from incoming link");
   await clickButton(ownerManagementPage, "Manage assets and income");
   await until(() => ownerManagementPage.ev("return !!document.querySelector('.income-card') && !!document.getElementById('withdraw-to')"), "management focuses own income-capable vault");
@@ -1686,8 +1771,8 @@ try {
 
   // If a known funded route cannot be read, its total and membership status are
   // unavailable; a combined check-in stays disabled until all routes verify.
-  await chooseTab(page, "Inherit");
-  await clickMatchingButton(page, text => text.startsWith("USDC · Morpho yield"));
+  await chooseTab(page, "Plan");
+  await clickMatchingButton(page, text => text === "USDC");
   const readFailureUsdcVault = await usdcFactory.vaultOf(owner);
   const positionSelector = new Interface(artifact("InheritanceVaultUSDC").abi).getFunction("position").selector;
   await page.ev(`
@@ -1714,7 +1799,7 @@ try {
     document.dispatchEvent(new Event('visibilitychange'));
     return true;
   `);
-  await chooseTab(page, "Vault");
+  await chooseTab(page, "Home");
   await until(() => page.ev(`return /Some vaults could not be refreshed/.test(document.querySelector('.plan-overview-card')?.innerText || '')
     && /Value unavailable/.test([...document.querySelectorAll('.plan-overview-asset')].find(item => item.querySelector('span')?.textContent === 'USDC')?.innerText || '')`), "unavailable funded USDC overview");
   const unavailableUsdc = await page.ev("return [...document.querySelectorAll('.plan-overview-asset')].find(item => item.querySelector('span')?.textContent === 'USDC')?.innerText || ''");
@@ -1728,14 +1813,14 @@ try {
   // is hidden when the viewer has no owned vault of their own.
   heirPage = await launch({ pk: ACCOUNTS.a1.pk, url: `${appUrl}?vault=${wldVaultAddress}`, preload });
   await signIn(heirPage);
-  await chooseTab(heirPage, "Inherit");
+  await chooseTab(heirPage, "Plan");
   await until(() => heirPage.ev("return document.querySelector('.timer-block') !== null && /Inheritance Status/.test(document.body.innerText)"), "linked heir status and timer");
   const heirTabs = JSON.parse(await heirPage.ev("return JSON.stringify(__q.tabs())"));
-  assert.equal(heirTabs.includes("Vault"), false, "owner-only Vault tab stayed visible for an heir without an owned vault");
-  assert.equal(await heirPage.ev("return document.querySelector('.tab-item-active')?.textContent.trim()"), "Inherit");
+  assert.equal(heirTabs.includes("Home"), false, "owner-only Vault tab stayed visible for an heir without an owned vault");
+  assert.equal(await heirPage.ev("return document.querySelector('.tab-item-active')?.textContent.trim()"), "Plan");
   assert.equal(await heirPage.ev("return document.querySelector('.plan-overview-card') !== null"), false);
   assert.equal(await heirPage.ev("return [...document.querySelectorAll('button')].some(button => /Review check-in|Confirm check-in/.test(button.textContent))"), false);
-  evidence.heirView = { tabs: heirTabs, activeTab: "Inherit", statusVisible: true, timerVisible: true };
+  evidence.heirView = { tabs: heirTabs, activeTab: "Plan", statusVisible: true, timerVisible: true };
   pass("heir deep link keeps read-only status and timer visible without an empty Vault tab");
 
   const originalWldShares = await wldStrategy.balanceOf(wldVaultAddress);
@@ -1759,7 +1844,7 @@ try {
   await page.send("Page.reload", { ignoreCache: true });
   await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
   await until(() => page.ev("return __q.tabs().length > 0"), "session restored after factory rotation");
-  await chooseTab(page, "Inherit");
+  await chooseTab(page, "Plan");
   await installBridgeRecorder(page);
   await acceptYieldTerms(page);
   await clickButton(page, "Resume remaining setup");
@@ -1776,11 +1861,13 @@ try {
   pass("factory rotation preserves the saved original route and resumes only the remaining asset");
 
   await (await wldStrategy.setRate(parseUnits("1.6", 18))).wait();
-  await chooseTab(page, "Inherit");
-  await clickMatchingButton(page, text => text.startsWith("WLD · Legacy Morpho yield"));
-  await chooseTab(page, "Send");
+  await chooseTab(page, "Plan");
+  await clickMatchingButton(page, text => text === "WLD");
+  const hasWldHistory = await page.ev("const details = document.querySelector('.asset-history'); if (details && !details.open) details.querySelector('summary').click(); return !!details;");
+  if (hasWldHistory) await clickMatchingButton(page, text => /^Earlier WLD ·/.test(text));
+  await chooseTab(page, "Assets");
   await until(() => page.ev("return /Available after fee/i.test(document.querySelector('.income-card')?.innerText || '')"), "income API on rotated legacy route");
-  await page.ev("[...document.querySelectorAll('.income-card button')].find(button => button.textContent.trim() === 'My address').click(); return true;");
+  await page.ev("__q.reveal('#income-to'); [...document.querySelectorAll('.income-card button')].find(button => button.textContent.trim() === 'My address').click(); return true;");
   const rotatedIncomeBefore = { basis: await wldVault.costBasis(), ping: await wldVault.lastPing(),
     owner: await wld.balanceOf(owner), fee: await wld.balanceOf(ACCOUNTS.a2.a) };
   await page.ev("window.__E2E_BRIDGE_CALLS__ = []; return true;");
