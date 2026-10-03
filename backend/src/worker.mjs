@@ -98,6 +98,26 @@ const normalizeAddress = (value) => {
   return `0x${v.slice(2).toLowerCase()}`;
 };
 
+const configuredAddress = (env, key) => {
+  const value = env[key];
+  if (value == null || String(value).trim() === "") return null;
+  const address = normalizeAddress(String(value));
+  if (!address || address === ZERO_ADDRESS) throw new HttpError(503, `Invalid ${key} configuration`);
+  return address;
+};
+
+const configuredAddressList = (env, key) => {
+  const value = env[key];
+  if (value == null || String(value).trim() === "") return [];
+  const parts = String(value).split(",").map((part) => part.trim());
+  const addresses = parts.map(normalizeAddress);
+  if (parts.length > 8 || parts.some((part) => !part) || addresses.some((address) => !address || address === ZERO_ADDRESS) ||
+      new Set(addresses).size !== addresses.length) {
+    throw new HttpError(503, `Invalid ${key} configuration`);
+  }
+  return addresses;
+};
+
 const addrEq = (a, b) => normalizeAddress(a) === normalizeAddress(b);
 
 const padAddress = (address) => {
@@ -128,24 +148,28 @@ const decodeUint = (hex) => {
   return BigInt(hex);
 };
 
-const usdcFactoryConfig = (env, { factory, legacyFactory, yieldFactory, wld }) => {
+const usdcFactoryConfig = (env, { existingFactories, wld, wldStrategy }) => {
   const keys = ["USDC_YIELD_FACTORY_ADDRESS", "USDC_MORPHO_VAULT_ADDRESS", "USDC_ADDRESS"];
   const values = keys.map((key) => env[key]);
   const configured = values.map((value) => value != null && String(value).trim() !== "");
-  if (!configured.some(Boolean)) return null;
+  const legacyUsdcFactories = configuredAddressList(env, "LEGACY_USDC_YIELD_FACTORY_ADDRESSES");
+  if (!configured.some(Boolean) && !legacyUsdcFactories.length) return null;
   if (!configured.every(Boolean)) {
     throw new HttpError(503, "Canonical USDC vault configuration is incomplete");
   }
 
   const [usdcYieldFactory, usdcStrategy, usdc] = values.map(normalizeAddress);
-  const existingFactories = [factory, legacyFactory, yieldFactory].filter(Boolean);
-  if (!usdcYieldFactory || !usdcStrategy || !usdc ||
+  const usdcFactories = [usdcYieldFactory, ...legacyUsdcFactories];
+  if (usdcFactories.some((address) => !address || address === ZERO_ADDRESS) || !usdcStrategy || !usdc ||
       [usdcYieldFactory, usdcStrategy, usdc].includes(ZERO_ADDRESS) ||
-      existingFactories.includes(usdcYieldFactory) || usdcYieldFactory === usdcStrategy ||
-      usdcYieldFactory === usdc || usdc === wld || usdc === usdcStrategy) {
+      usdcFactories.some((address) => existingFactories.includes(address)) ||
+      new Set(usdcFactories).size !== usdcFactories.length ||
+      usdcStrategy === usdc || usdcFactories.includes(usdcStrategy) || existingFactories.includes(usdcStrategy) ||
+      usdcYieldFactory === usdc || usdcFactories.includes(usdc) || existingFactories.includes(usdc) ||
+      usdc === wld || usdc === wldStrategy || usdcStrategy === wldStrategy) {
     throw new HttpError(503, "Canonical USDC vault configuration is invalid");
   }
-  return { factoryAddress: usdcYieldFactory, strategyAddress: usdcStrategy, assetAddress: usdc };
+  return { factoryAddresses: usdcFactories, strategyAddress: usdcStrategy, assetAddress: usdc };
 };
 
 const resolveCors = (request, env) => {
@@ -273,15 +297,30 @@ const readUint = async (env, to, selector, fallback = null) => {
 const getVaultIdentity = async (env, vaultAddress) => {
   const vault = normalizeAddress(vaultAddress);
   if (!vault) throw new Error("Invalid vault address");
-  const factory = normalizeAddress(env.FACTORY_ADDRESS);
-  const legacyFactory = normalizeAddress(env.LEGACY_FACTORY_ADDRESS);
-  const yieldFactory = normalizeAddress(env.YIELD_FACTORY_ADDRESS);
-  const strategy = normalizeAddress(env.MORPHO_VAULT_ADDRESS);
-  const wld = normalizeAddress(env.WLD_ADDRESS);
-  if (!factory || factory === ZERO_ADDRESS || !wld || wld === ZERO_ADDRESS) {
+  const factory = configuredAddress(env, "FACTORY_ADDRESS");
+  const legacyFactory = configuredAddress(env, "LEGACY_FACTORY_ADDRESS");
+  const yieldFactory = configuredAddress(env, "YIELD_FACTORY_ADDRESS");
+  const strategy = configuredAddress(env, "MORPHO_VAULT_ADDRESS");
+  const wld = configuredAddress(env, "WLD_ADDRESS");
+  if (!factory || !wld || factory === wld) {
     throw new HttpError(503, "Canonical vault configuration is missing");
   }
-  const usdcConfig = usdcFactoryConfig(env, { factory, legacyFactory, yieldFactory, wld });
+  const legacyYieldFactories = configuredAddressList(env, "LEGACY_YIELD_FACTORY_ADDRESSES");
+  const yieldFactories = [yieldFactory, ...legacyYieldFactories].filter(Boolean);
+  const basicFactories = [factory, legacyFactory].filter(Boolean);
+  if (Boolean(yieldFactory) !== Boolean(strategy) ||
+      legacyYieldFactories.length && !strategy ||
+      new Set(basicFactories).size !== basicFactories.length ||
+      new Set(yieldFactories).size !== yieldFactories.length ||
+      yieldFactories.some((address) => basicFactories.includes(address)) ||
+      strategy && (strategy === ZERO_ADDRESS || yieldFactories.includes(strategy) || basicFactories.includes(strategy))) {
+    throw new HttpError(503, "Canonical WLD yield configuration is invalid");
+  }
+  const usdcConfig = usdcFactoryConfig(env, {
+    existingFactories: [...basicFactories, ...yieldFactories],
+    wld,
+    wldStrategy: strategy,
+  });
   const [ownerAddress, heirAddress, factoryAddress, claimedAt] = await Promise.all([
     ethCall(env, vault, SELECTORS.OWNER).then(decodeAddress),
     ethCall(env, vault, SELECTORS.HEIR).then(decodeAddress),
@@ -290,9 +329,9 @@ const getVaultIdentity = async (env, vaultAddress) => {
     ethCall(env, vault, SELECTORS.CLAIMED_AT).then(decodeUint),
   ]);
 
-  const wldYieldVault = Boolean(yieldFactory && factoryAddress === yieldFactory);
-  const usdcYieldVault = Boolean(usdcConfig && factoryAddress === usdcConfig.factoryAddress);
-  const knownFactory = [factory, legacyFactory].filter(Boolean).includes(factoryAddress) ||
+  const wldYieldVault = yieldFactories.includes(factoryAddress);
+  const usdcYieldVault = Boolean(usdcConfig && usdcConfig.factoryAddresses.includes(factoryAddress));
+  const knownFactory = basicFactories.includes(factoryAddress) ||
     wldYieldVault || usdcYieldVault;
   if (ownerAddress === ZERO_ADDRESS || !knownFactory) {
     throw new HttpError(400, "Vault is not from a configured inheritance factory");
@@ -320,6 +359,16 @@ const getVaultIdentity = async (env, vaultAddress) => {
   } else {
     tokenAddress = decodeAddress(await ethCall(env, vault, SELECTORS.WLD));
     if (tokenAddress !== wld) throw new HttpError(400, "Vault does not use the configured WLD token");
+  }
+
+  if (wldYieldVault) {
+    const [factoryWld, factoryStrategy] = await Promise.all([
+      ethCall(env, factoryAddress, SELECTORS.WLD).then(decodeAddress),
+      ethCall(env, factoryAddress, SELECTORS.STRATEGY).then(decodeAddress),
+    ]);
+    if (factoryWld !== wld || !strategy || factoryStrategy !== strategy) {
+      throw new HttpError(400, "Source factory does not match the configured WLD asset and Morpho strategy");
+    }
   }
 
   const expectedStrategy = usdcYieldVault ? usdcConfig.strategyAddress : strategy;

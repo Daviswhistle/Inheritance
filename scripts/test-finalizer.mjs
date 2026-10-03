@@ -35,6 +35,37 @@ const mnemonic = "test test test test test test test test test test test junk"; 
 const keeper = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/2");
 let assertions = 0;
 const check = (name, callback) => { callback(); assertions++; console.log("PASS " + name); };
+const gasFundingInterface = new Interface([
+  "function keeper() view returns (address)",
+  "function treasury() view returns (address)",
+  "function bot() view returns (address)",
+]);
+const GAS_FUNDING_ADDRESS = "0x000000000000000000000000000000000000dEaD";
+const GAS_FUNDING_TREASURY = "0x93bC44B8296977Feb479F95855D9b9E051C17dA2";
+const GAS_FUNDING_BOT = "0x20A85A9e929C69A440938eb650d70619b7562eD5";
+
+function gasFundingRuntime({ keeper: keeperAddress, treasury = GAS_FUNDING_TREASURY, bot = GAS_FUNDING_BOT }) {
+  const getters = [
+    [gasFundingInterface.getFunction("keeper").selector.slice(2), keeperAddress],
+    [gasFundingInterface.getFunction("treasury").selector.slice(2), treasury],
+    [gasFundingInterface.getFunction("bot").selector.slice(2), bot],
+  ];
+  const branchSize = 10;
+  const fallback = "5060006000fd";
+  const returnSize = 31;
+  const labels = getters.map((_, index) => 6 + getters.length * branchSize + fallback.length / 2 + index * returnSize);
+  const returnCode = (address) => `5b5073${address.slice(2).toLowerCase()}60005260206000f3`;
+  return "60003560e01c" + getters.map(([selectorHex], index) =>
+    `8063${selectorHex}1460${labels[index].toString(16).padStart(2, "0")}57`).join("") + fallback +
+    getters.map(([, address]) => returnCode(address)).join("");
+}
+
+async function configureGasFunding(env, { keeper: keeperAddress = keeper.address, treasury, bot } = {}) {
+  const code = gasFundingRuntime({ keeper: keeperAddress, ...(treasury ? { treasury } : {}), ...(bot ? { bot } : {}) });
+  await provider.send("anvil_setCode", [GAS_FUNDING_ADDRESS, "0x" + code]);
+  Object.assign(env, { GAS_FUNDING_CONTRACT_ADDRESS: GAS_FUNDING_ADDRESS, GAS_FUNDING_CODE_HASH: keccak256("0x" + code) });
+  return code;
+}
 
 async function unusedPort() {
   const socket = createNetServer();
@@ -79,72 +110,85 @@ try {
     try {
       let raw = "";
       for await (const part of request) raw += part;
-      const call = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      const batch = Array.isArray(parsed);
+      const calls = batch ? parsed : [parsed];
+      // Count outbound fetches at the Worker boundary; each JSON-RPC batch is one request.
       behavior.requests++;
-      const historicalReadError = behavior.historicalReadErrorSelector && call.method === "eth_call" &&
-        call.params[1] !== "latest" && call.params[0].data?.startsWith(behavior.historicalReadErrorSelector);
-      if (historicalReadError || call.method === behavior.rpcErrorMethod || behavior.requestLimit != null && behavior.requests > behavior.requestLimit) {
-        response.end(JSON.stringify({ jsonrpc: "2.0", id: call.id,
-          error: { code: -32000, message: "Local fixture RPC unavailable" } }));
-        return;
-      }
-      if (call.method === "eth_chainId" && behavior.chainId) {
-        response.end(JSON.stringify({ jsonrpc: "2.0", id: call.id, result: behavior.chainId }));
-        return;
-      }
-      if (call.method === "eth_getBlockByNumber" && call.params[0] === "finalized") {
-        call.params[0] = behavior.finalizedBlock ?? "latest";
-        raw = JSON.stringify(call);
-      }
-      if (call.method === "eth_call" &&
-          call.params[0].to?.toLowerCase() === "0x420000000000000000000000000000000000000f" &&
-          behavior.oracleQuote != null) {
-        response.end(JSON.stringify({ jsonrpc: "2.0", id: call.id,
-          result: "0x" + BigInt(behavior.oracleQuote).toString(16).padStart(64, "0") }));
-        return;
-      }
-      if (call.method === "eth_call" &&
-          call.params[0].data?.startsWith(selector) &&
-          behavior.renewedBeforeSimulation &&
-          !call.params[0].data.endsWith("0".repeat(40))) {
-        const renew = behavior.renewedBeforeSimulation;
-        behavior.renewedBeforeSimulation = null;
-        await renew();
-      }
-      if (call.method === "eth_sendRawTransaction") {
-        const tx = Transaction.from(call.params[0]);
-        behavior.sends.push({ to: tx.to, data: tx.data, value: tx.value, chainId: tx.chainId,
-          nonce: tx.nonce, hash: tx.hash, raw: call.params[0] });
-      }
-      let output = await (await fetch(upstream, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: raw,
-      })).json();
-      if (call.method === "eth_sendRawTransaction" && output.result) {
-        // The default fixture models synchronous local automining. Anvil may
-        // acknowledge a hash before its receipt is indexed on a slower runner.
-        // Wait on the actual upstream chain, without inventing a receipt or
-        // adding client RPCs. Explicit receipt hiding still tests pending jobs.
-        await waitForCanonicalReceipt(output.result);
-      }
-      if (call.method === "eth_sendRawTransaction" && behavior.droppedResponse) {
-        behavior.droppedResponse = false;
-        response.destroy(); // The node accepted it; the caller receives no acknowledgement.
-        return;
-      }
-      if (call.method === "eth_getTransactionReceipt" && behavior.hiddenReceipts) output.result = null;
-      if (call.method === "eth_getTransactionReceipt" && output.result && behavior.receiptExtra != null) {
-        output.result.l1Fee = "0x" + BigInt(behavior.receiptExtra).toString(16);
+      const outputs = [];
+      for (const call of calls) {
+        const historicalReadError = behavior.historicalReadErrorSelector && call.method === "eth_call" &&
+          call.params[1] !== "latest" && call.params[0].data?.startsWith(behavior.historicalReadErrorSelector);
+        if (historicalReadError || call.method === behavior.rpcErrorMethod ||
+            behavior.requestLimit != null && behavior.requests > behavior.requestLimit) {
+          outputs.push({ jsonrpc: "2.0", id: call.id,
+            error: { code: -32000, message: "Local fixture RPC unavailable" } });
+          continue;
+        }
+        if (call.method === "eth_chainId" && behavior.chainId) {
+          outputs.push({ jsonrpc: "2.0", id: call.id, result: behavior.chainId });
+          continue;
+        }
+        if (call.method === "eth_getBlockByNumber" && call.params[0] === "finalized") {
+          call.params[0] = behavior.finalizedBlock ?? "latest";
+        }
+        if (call.method === "eth_call" &&
+            call.params[0].to?.toLowerCase() === "0x420000000000000000000000000000000000000f" &&
+            behavior.oracleQuote != null) {
+          outputs.push({ jsonrpc: "2.0", id: call.id,
+            result: "0x" + BigInt(behavior.oracleQuote).toString(16).padStart(64, "0") });
+          continue;
+        }
+        if (call.method === "eth_call" &&
+            call.params[0].data?.startsWith(selector) &&
+            behavior.renewedBeforeSimulation &&
+            !call.params[0].data.endsWith("0".repeat(40))) {
+          const renew = behavior.renewedBeforeSimulation;
+          behavior.renewedBeforeSimulation = null;
+          await renew();
+        }
+        if (call.method === "eth_sendRawTransaction") {
+          const tx = Transaction.from(call.params[0]);
+          behavior.sends.push({ to: tx.to, data: tx.data, value: tx.value, chainId: tx.chainId,
+            nonce: tx.nonce, hash: tx.hash, raw: call.params[0] });
+        }
+        const output = await (await fetch(upstream, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(call),
+        })).json();
+        if (call.method === "eth_sendRawTransaction" && output.result) {
+          // The default fixture models synchronous local automining. Anvil may
+          // acknowledge a hash before its receipt is indexed on a slower runner.
+          // Wait on the actual upstream chain, without inventing a receipt or
+          // adding client RPCs. Explicit receipt hiding still tests pending jobs.
+          await waitForCanonicalReceipt(output.result);
+        }
+        if (call.method === "eth_sendRawTransaction" && behavior.droppedResponse) {
+          behavior.droppedResponse = false;
+          response.destroy(); // The node accepted it; the caller receives no acknowledgement.
+          return;
+        }
+        if (call.method === "eth_getTransactionReceipt" && behavior.hiddenReceipts) output.result = null;
+        if (call.method === "eth_getTransactionReceipt" && output.result && behavior.receiptExtra != null) {
+          output.result.l1Fee = "0x" + BigInt(behavior.receiptExtra).toString(16);
+        }
+        outputs.push(output);
       }
       response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify(output));
+      response.end(JSON.stringify(batch ? outputs : outputs[0]));
     } catch { response.statusCode = 500; response.end("{}"); }
   });
   await new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve));
   const rpcUrl = "http://127.0.0.1:" + proxy.address().port;
-  provider = new JsonRpcProvider(upstream, undefined, { cacheTimeout: -1, batchMaxCount: 1 });
+  // The fixture deliberately switches Anvil between31337 and480. Its local
+  // unlocked-account signer must detect those changes; production providers
+  // still pin and independently validate the configured chain on every cycle.
+  provider = new JsonRpcProvider(upstream, "any", { cacheTimeout: -1, batchMaxCount: 1 });
   provider.pollingInterval = 100;
-  const owner = await provider.getSigner(0);
-  const heir = await provider.getSigner(1);
+  // Anvil's unlocked-account signer retains its genesis chain ID after a
+  // deliberate chain-ID switch. Sign locally with the public fixture mnemonic
+  // so the480 reorg setup uses actual480 signatures instead.
+  const owner = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/0").connect(provider);
+  const heir = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/1").connect(provider);
   const keeperAddress = keeper.address;
   const heirAddress = await heir.getAddress();
 
@@ -385,6 +429,25 @@ try {
   assertions++;
 
   {
+    const f = await fixture(0, false);
+    const tooMany = Array.from({ length: 9 }, (_, index) => "0x" + (index + 1).toString(16).padStart(40, "0")).join(",");
+    for (const [label, value] of [
+      ["malformed", "0x1234"],
+      ["zero", ZeroAddress],
+      ["empty trailing entry", "0x" + "12".repeat(20) + ","],
+      ["empty middle entry", "0x" + "12".repeat(20) + ",,0x" + "13".repeat(20)],
+      ["duplicate", "0x" + "11".repeat(20) + ",0x" + "11".repeat(20)],
+      ["over-bound", tooMany],
+    ]) {
+      const result = await runFinalizerCycle({ ...f.env, LEGACY_YIELD_FACTORY_ADDRESSES: value });
+      check(`invalid legacy factory ${label} list fails closed`, () => {
+        assert.equal(result.reason, "invalid_configuration", JSON.stringify(result));
+        assert.equal(behavior.sends.length, 0);
+      });
+    }
+  }
+
+  {
     const f = await fixture(1, false);
     f.env.FINALIZER_EXTRA_FEE_RESERVE_ETH = "0.000001";
     const extra = parseEther(f.env.FINALIZER_EXTRA_FEE_RESERVE_ETH);
@@ -454,6 +517,60 @@ try {
       assert.equal(stale.reason, "stale", JSON.stringify(stale));
       assert.equal(stale.cycleFresh, false);
     });
+  }
+
+  {
+    const f = await fixture();
+    const oldDailyCap = parseEther("0.00001");
+    f.env.FINALIZER_DAILY_GAS_CAP_ETH = "0";
+    const controllerCode = await configureGasFunding(f.env);
+    const start = behavior.sends.length;
+    const cycle = await runFinalizerCycle(f.env);
+    const health = await readFinalizerHealth(f.env);
+    const spent = BigInt(f.store.native.prepare("SELECT CAST(spent_wei AS TEXT) AS spent FROM finalizer_budget").get().spent);
+    check("verified protected gas funding permits work above the former daily cap and health remains ready", () => {
+      assert.equal(cycle.reason, "finalized", JSON.stringify(cycle));
+      assert.equal(behavior.sends.length - start, 1);
+      assert.ok(spent > oldDailyCap, `${spent} <= ${oldDailyCap}`);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+      assert.equal(health.reason, "ready", JSON.stringify(health));
+      assert.equal(health.dailyBudgetLimited, false);
+      assert.equal(health.dailyCapWei, null);
+      assert.equal(health.dailyRemainingWei, null);
+      assert.ok(BigInt(health.dailyReservedWei) > oldDailyCap);
+      assert.equal(health.gasFundingVerified, true);
+      assert.equal(health.gasFundingCodeHash, keccak256("0x" + controllerCode));
+    });
+  }
+
+  {
+    const missingGuard = await fixture(0, false);
+    missingGuard.env.FINALIZER_DAILY_GAS_CAP_ETH = "0";
+    const absent = await runFinalizerCycle(missingGuard.env);
+    const start = behavior.sends.length;
+    check("zero daily cap without both protected-controller settings stays disabled", () => {
+      assert.equal(absent.reason, "invalid_configuration", JSON.stringify(absent));
+      assert.equal(behavior.sends.length, start);
+    });
+
+    for (const [label, guard] of [
+      ["runtime hash", { keeper: keeper.address }],
+      ["keeper identity", { keeper: HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/16").address }],
+    ]) {
+      const f = await fixture(0, false);
+      f.env.FINALIZER_DAILY_GAS_CAP_ETH = "0";
+      await configureGasFunding(f.env, guard);
+      if (label === "runtime hash") f.env.GAS_FUNDING_CODE_HASH = keccak256("0x60006000fd");
+      const before = behavior.sends.length;
+      const result = await runFinalizerCycle(f.env);
+      const health = await readFinalizerHealth(f.env);
+      check(`incorrect gas-funding ${label} fails closed before scheduling and readiness`, () => {
+        assert.equal(result.reason, "gas_funding_unverified", JSON.stringify(result));
+        assert.equal(health.reason, "gas_funding_unverified", JSON.stringify(health));
+        assert.equal(health.gasFundingVerified, false);
+        assert.equal(behavior.sends.length, before);
+      });
+    }
   }
 
   {
@@ -605,7 +722,7 @@ try {
     check("production scan3/batch1 bound fits 50 RPCs even with two skipped vaults", () => {
       assert.equal(result.checked, 3, JSON.stringify(result));
       assert.equal(result.finalized, 1);
-      assert.ok(behavior.requests - start <= 48); // Leaves two extra OP fee oracle calls.
+      assert.ok(behavior.requests - start <= 48); // Leaves headroom under the Worker limit.
       console.log("  scan3/batch1 RPC requests: " + (behavior.requests - start));
     });
   }
@@ -794,6 +911,28 @@ try {
 
   {
     const f = await fixture();
+    f.env.FINALIZER_EXTRA_FEE_RESERVE_ETH = "0.000001";
+    const job = await stageWithoutBroadcast(f);
+    const start = behavior.sends.length;
+    f.env.FINALIZER_DAILY_GAS_CAP_ETH = "0.000001000000000001";
+    const capped = await runFinalizerCycle(f.env);
+    check("lowering a finite daily cap cannot broadcast an already signed reservation above it", () => {
+      assert.equal(capped.reason, "daily_cap", JSON.stringify(capped));
+      assert.equal(behavior.sends.length, start);
+      assert.equal(f.store.native.prepare("SELECT state,tx_hash FROM finalizer_jobs").get().state, "pending");
+    });
+    f.env.FINALIZER_DAILY_GAS_CAP_ETH = "0";
+    await configureGasFunding(f.env);
+    const recovered = await runFinalizerCycle(f.env);
+    check("verified unlimited gas funding recovers that exact signature without a second reservation", () => {
+      assert.equal(recovered.reason, "finalized", JSON.stringify(recovered));
+      assert.equal(behavior.sends.at(-1).raw, job.tx_raw);
+      assert.equal(behavior.sends.at(-1).hash, job.tx_hash);
+      assert.equal(f.store.faults.reservations, 1);
+    });
+  }
+  {
+    const f = await fixture();
     const job = await stageWithoutBroadcast(f);
     const start = behavior.sends.length, requests = behavior.requests;
     const results = await Promise.all([runFinalizerCycle(f.env), runFinalizerCycle(f.env)]);
@@ -840,6 +979,24 @@ try {
       assert.equal(ready.reason, "ready", JSON.stringify(ready));
       assert.equal(behavior.sends.length - start, 1);
       assert.equal(behavior.sends[start].hash, job.tx_hash);
+    });
+  }
+  {
+    const f = await fixture();
+    const job = await stageWithoutBroadcast(f);
+    const reserved = BigInt(job.reserved_wei);
+    f.store.native.prepare("UPDATE finalizer_budget SET spent_wei=?").run((reserved * 2n).toString());
+    f.env.FINALIZER_DAILY_GAS_CAP_ETH = formatEther(reserved);
+    const before = behavior.sends.length;
+    const result = await runFinalizerCycle(f.env);
+    check("finite daily budget blocks exact signed recovery when the existing day's spend exceeds its cap", () => {
+      assert.equal(result.reason, "daily_cap", JSON.stringify(result));
+      assert.equal(behavior.sends.length, before);
+      assert.equal(f.store.native.prepare("SELECT tx_hash,state FROM finalizer_jobs").get().tx_hash, job.tx_hash);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "pending");
+      assert.equal(f.store.native.prepare("SELECT halted FROM finalizer_locks").get().halted, 0);
+      assert.equal(BigInt(f.store.native.prepare("SELECT CAST(spent_wei AS TEXT) AS spent_wei FROM finalizer_budget").get().spent_wei), reserved * 2n);
+      assert.equal(f.store.faults.reservations, 1);
     });
   }
 
@@ -907,6 +1064,10 @@ try {
       ["zero asset", { USDC_ADDRESS: ZeroAddress }],
       ["WLD alias", { USDC_ADDRESS: f.env.WLD_ADDRESS }],
       ["conflicting source", { USDC_YIELD_FACTORY_ADDRESS: f.env.YIELD_FACTORY_ADDRESS }],
+      ["primary repeated in legacy list", { LEGACY_YIELD_FACTORY_ADDRESSES: f.env.YIELD_FACTORY_ADDRESS }],
+      ["cross-asset duplicate legacy source", { LEGACY_YIELD_FACTORY_ADDRESSES: f.env.USDC_YIELD_FACTORY_ADDRESS }],
+      ["over-bound USDC legacy list", { LEGACY_USDC_YIELD_FACTORY_ADDRESSES:
+        Array.from({ length: 9 }, (_, index) => "0x" + (index + 20).toString(16).padStart(40, "0")).join(",") }],
     ]) {
       const invalid = await runFinalizerCycle({ ...f.env, ...overrides });
       check(`${label} USDC configuration fails closed`, () => {
@@ -1082,6 +1243,51 @@ try {
   }
 
   {
+    const f = await productionUSDCFixture("cash");
+    const oldAddress = f.env.USDC_YIELD_FACTORY_ADDRESS;
+    const oldFactory = new Contract(oldAddress, artifact("InheritanceVaultUSDCFactory").abi, owner);
+    const newFactory = await deploy(artifact("InheritanceVaultUSDCFactory"), owner,
+      [f.env.USDC_ADDRESS, f.env.USDC_MORPHO_VAULT_ADDRESS, f.env.WLD_ADDRESS, f.feeRecipient, 1000]);
+    const newAddress = await newFactory.getAddress();
+    const otherOwner = await provider.getSigner(4), otherAddress = await otherOwner.getAddress();
+    await (await newFactory.connect(otherOwner).createVault(heirAddress, 86400)).wait();
+    const newVault = await newFactory.vaultOf(otherAddress);
+    await (await f.usdc.mint(otherAddress, 100_000000n)).wait();
+    await (await f.usdc.connect(otherOwner).approve(newAddress, 100_000000n)).wait();
+    const newShares = await f.morpho.previewDeposit(100_000000n);
+    await (await newFactory.connect(otherOwner).depositWithMinShares(100_000000n, newShares * 9950n / 10000n)).wait();
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(newVault);
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await newFactory.connect(heir).fileClaimFor(newVault)).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    f.env.USDC_YIELD_FACTORY_ADDRESS = newAddress;
+    f.env.LEGACY_USDC_YIELD_FACTORY_ADDRESSES = oldAddress;
+    const sentStart = behavior.sends.length;
+    const cycles = [await runFinalizerCycle(f.env), await runFinalizerCycle(f.env)];
+    const jobs = f.store.native.prepare("SELECT factory_address,tx_raw,state FROM finalizer_jobs ORDER BY vault_address").all();
+    const targets = new Set(jobs.map((job) => Transaction.from(job.tx_raw).to.toLowerCase()));
+    const health = await readFinalizerHealth(f.env);
+    check("USDC scans both verified factory generations with correct asset and per-job recovery provenance", () => {
+      assert.ok(cycles.every((cycle) => cycle.finalized === 1), JSON.stringify(cycles));
+      assert.equal(behavior.sends.length - sentStart, 2);
+      assert.equal(jobs.length, 2);
+      assert.ok(jobs.every((job) => job.state === "confirmed"));
+      assert.ok(targets.has(oldAddress.toLowerCase()));
+      assert.ok(targets.has(newAddress.toLowerCase()));
+      assert.deepEqual(new Set(jobs.map((job) => job.factory_address.toLowerCase())), targets);
+      assert.ok(health.factoryAddresses.includes(oldAddress));
+      assert.ok(health.factoryAddresses.includes(newAddress));
+      assert.equal(health.supportsUSDC, true);
+      assert.ok([f.vaultAddress, newVault].every((vault) => jobs.some((job) =>
+        Transaction.from(job.tx_raw).data === factoryInterface.encodeFunctionData("executeInheritance", [vault]))));
+    });
+    assert.equal(await oldFactory.asset(), f.env.USDC_ADDRESS);
+    assert.equal(await newFactory.asset(), f.env.USDC_ADDRESS);
+    assert.equal(await oldFactory.rewardToken(), f.env.WLD_ADDRESS);
+    assert.equal(await newFactory.rewardToken(), f.env.WLD_ADDRESS);
+  }
+
+  {
     const f = await fixture();
     await stageWithoutBroadcast(f);
     await (await f.factory.connect(f.owners[0]).pingMyVault()).wait();
@@ -1175,19 +1381,37 @@ try {
     let recovered;
     try { recovered = await runFinalizerCycle(f.env); }
     finally { behavior.hiddenReceipts = false; }
-    check("confirmed-claim reorg recovery stages the same replay with bounded conservative fees", () => {
+    const stagedRequests = behavior.requests - requests;
+    check("confirmed-claim reorg recovery stages one exact replay reservation for the next invocation", () => {
       assert.equal(recovered.checked, 3, JSON.stringify(recovered));
       assert.equal(recovered.reason, "pending", JSON.stringify(recovered));
       assert.equal(recovered.finalized, 0);
-      assert.equal(recovered.submitted, 1);
-      assert.ok(behavior.requests - requests <= 47); // Leaves three OP fee oracle calls.
-      console.log("  confirmed reorg scan3/batch1 RPC requests: " + (behavior.requests - requests));
+      assert.equal(recovered.submitted, 0);
+      assert.ok(stagedRequests <= 50, `used ${stagedRequests} requests`);
+      console.log("  confirmed reorg staging HTTP requests: " + stagedRequests);
+      const sends = behavior.sends.slice(start);
+      assert.equal(sends.length, 1);
+      assert.equal(f.store.faults.reservations, 2);
+      assert.ok(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei >= 2 * spent);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "pending");
+    });
+    const replayRequests = behavior.requests;
+    behavior.hiddenReceipts = true;
+    let replayed;
+    try { replayed = await runFinalizerCycle(f.env); }
+    finally { behavior.hiddenReceipts = false; }
+    const replayRequestCount = behavior.requests - replayRequests;
+    check("the following bounded invocation rebroadcasts the same signature without reserving it again", () => {
+      assert.equal(replayed.reason, "pending", JSON.stringify(replayed));
+      assert.equal(replayed.submitted, 1);
+      assert.ok(replayRequestCount <= 50, `used ${replayRequestCount} requests`);
+      console.log("  confirmed reorg exact replay HTTP requests: " + replayRequestCount);
       const sends = behavior.sends.slice(start);
       assert.equal(sends.length, 2);
       assert.equal(sends[0].raw, sends[1].raw);
+      assert.equal(sends[0].hash, sends[1].hash);
       assert.equal(new Set(sends.map((send) => send.nonce)).size, 1);
       assert.equal(f.store.faults.reservations, 2);
-      assert.ok(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei >= 2 * spent);
       assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "pending");
     });
     await mineCanonicalReplay(job.tx_hash);
@@ -1206,6 +1430,90 @@ try {
     assert.equal(await f.token.balanceOf(heirAddress), parseEther("100"));
     assert.equal(await f.token.balanceOf(last), 0n);
     assert.equal((await runFinalizerCycle(f.env)).submitted, 0);
+  }
+  {
+    const f = await productionUSDCFixture("cash");
+    Object.assign(f.env, { FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001",
+      FINALIZER_DAILY_GAS_CAP_ETH: "0" });
+    await provider.send("anvil_setChainId", [480]);
+    await configureGasFunding(f.env);
+    behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
+    const rollback = await provider.send("evm_snapshot", []);
+    const initialRequests = behavior.requests;
+    behavior.requestLimit = initialRequests + 50;
+    const initial = await runFinalizerCycle(f.env);
+    behavior.requestLimit = null;
+    const initialRequestCount = behavior.requests - initialRequests;
+    const job = f.store.native.prepare("SELECT * FROM finalizer_jobs WHERE state='confirmed'").get();
+    const originalSpend = BigInt(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei);
+    const start = behavior.sends.length;
+    assert.equal(await provider.send("evm_revert", [rollback]), true);
+    const newFactory = await deploy(artifact("InheritanceVaultUSDCFactory"), owner,
+      [f.env.USDC_ADDRESS, f.env.USDC_MORPHO_VAULT_ADDRESS, f.env.WLD_ADDRESS, f.feeRecipient, 1000]);
+    f.env.USDC_YIELD_FACTORY_ADDRESS = newFactory.target;
+    f.env.LEGACY_USDC_YIELD_FACTORY_ADDRESSES = job.factory_address;
+
+    const stageRequests = behavior.requests;
+    behavior.requestLimit = stageRequests + 50;
+    const staged = await runFinalizerCycle(f.env);
+    behavior.requestLimit = null;
+    const stageRequestCount = behavior.requests - stageRequests;
+    check("confirmed legacy USDC reorg stages the same signed transaction and one bounded reservation", () => {
+      assert.equal(initial.reason, "finalized", JSON.stringify(initial));
+      assert.ok(initialRequestCount <= 50, `initial cycle used ${initialRequestCount} requests`);
+      assert.equal(staged.reason, "pending", JSON.stringify(staged));
+      assert.equal(staged.submitted, 0);
+      assert.ok(stageRequestCount <= 50, `staging cycle used ${stageRequestCount} requests`);
+      const current = f.store.native.prepare("SELECT * FROM finalizer_jobs").get();
+      assert.equal(current.state, "pending");
+      assert.equal(current.tx_raw, job.tx_raw);
+      assert.equal(current.tx_hash, job.tx_hash);
+      assert.equal(current.factory_address.toLowerCase(), job.factory_address.toLowerCase());
+      assert.equal(f.store.faults.reservations, 2);
+      assert.equal(behavior.sends.length - start, 0);
+      assert.equal(BigInt(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei),
+        originalSpend + BigInt(job.reserved_wei));
+    });
+
+    const replayRequests = behavior.requests;
+    behavior.requestLimit = replayRequests + 50;
+    behavior.hiddenReceipts = true;
+    let replayed;
+    try { replayed = await runFinalizerCycle(f.env); }
+    finally { behavior.requestLimit = null; behavior.hiddenReceipts = false; }
+    const replayRequestCount = behavior.requests - replayRequests;
+    check("legacy USDC recovery broadcasts only the persisted signature in the next bounded invocation", () => {
+      assert.equal(replayed.reason, "pending", JSON.stringify(replayed));
+      assert.equal(replayed.submitted, 1);
+      assert.ok(replayRequestCount <= 50, `replay cycle used ${replayRequestCount} requests`);
+      assert.equal(behavior.sends.length - start, 1);
+      assert.equal(behavior.sends.at(-1).raw, job.tx_raw);
+      assert.equal(behavior.sends.at(-1).hash, job.tx_hash);
+      assert.equal(Transaction.from(behavior.sends.at(-1).raw).to.toLowerCase(), job.factory_address.toLowerCase());
+      assert.equal(f.store.faults.reservations, 2);
+      assert.equal(BigInt(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei),
+        originalSpend + BigInt(job.reserved_wei));
+    });
+
+    const finalizeRequests = behavior.requests;
+    behavior.requestLimit = finalizeRequests + 50;
+    const finalized = await runFinalizerCycle(f.env);
+    behavior.requestLimit = null;
+    const finalizeRequestCount = behavior.requests - finalizeRequests;
+    check("legacy USDC replay reaches finality within the request bound without duplicate spend or broadcast", () => {
+      assert.equal(finalized.reason, "finalized", JSON.stringify(finalized));
+      assert.equal(finalized.finalized, 1);
+      assert.equal(finalized.submitted, 0);
+      assert.ok(finalizeRequestCount <= 50, `finality cycle used ${finalizeRequestCount} requests`);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+      assert.equal(behavior.sends.length - start, 1);
+      assert.equal(f.store.faults.reservations, 2);
+      assert.equal(BigInt(f.store.native.prepare("SELECT spent_wei FROM finalizer_budget").get().spent_wei),
+        2n * originalSpend);
+    });
+    assert.ok(await f.usdc.balanceOf(heirAddress) > 0n);
+    await provider.send("anvil_setChainId", [31337]);
+    behavior.oracleQuote = null; behavior.receiptExtra = null;
   }
 
   {
@@ -1395,6 +1703,36 @@ try {
     });
   }
   {
+    const f = await yieldFixture();
+    const wrongStrategy = await deploy(artifact("MockERC4626"), owner, [f.env.WLD_ADDRESS]);
+    const unsupportedLegacy = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, await wrongStrategy.getAddress(), await owner.getAddress(), 1000]);
+    f.env.LEGACY_YIELD_FACTORY_ADDRESSES = unsupportedLegacy.target;
+    const cycle = await runFinalizerCycle(f.env);
+    const start = behavior.requests;
+    behavior.requestLimit = start + 50;
+    let health;
+    try { health = await readFinalizerHealth(f.env); }
+    finally { behavior.requestLimit = null; }
+    const invalid = health.factoryStatuses.find((factory) =>
+      factory.address.toLowerCase() === unsupportedLegacy.target.toLowerCase());
+    const noticeReadyFor = (address) => health.enabled && health.supported && health.funded && !health.halted &&
+      ["ready", "pending"].includes(health.reason) &&
+      health.factoryAddresses.some((factory) => factory.toLowerCase() === address.toLowerCase());
+    check("health does not advertise an unverified legacy strategy as ready", () => {
+      assert.equal(cycle.reason, "finalized", JSON.stringify(cycle));
+      assert.equal(health.reason, "ready", JSON.stringify(health));
+      assert.equal(health.supported, true);
+      assert.equal(invalid?.supported, false, JSON.stringify(health.factoryStatuses));
+      assert.equal(invalid?.reason, "wrong_token");
+      assert.ok(health.factoryAddresses.includes(f.env.YIELD_FACTORY_ADDRESS));
+      assert.ok(!health.factoryAddresses.some((address) => address.toLowerCase() === unsupportedLegacy.target.toLowerCase()));
+      assert.equal(noticeReadyFor(unsupportedLegacy.target), false);
+      assert.equal(noticeReadyFor(f.env.YIELD_FACTORY_ADDRESS), true);
+      assert.ok(behavior.requests - start <= 50);
+    });
+  }
+  {
     const f = await yieldFixture({ cash: false });
     const job = await stageWithoutBroadcast(f);
     const restored = await runFinalizerCycle(f.env);
@@ -1403,6 +1741,177 @@ try {
       assert.equal(behavior.sends.at(-1).raw, job.tx_raw);
       assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
     });
+  }
+  {
+    const f = await yieldFixture({ cash: false });
+    const oldFactory = f.yieldFactory;
+    const oldAddress = await oldFactory.getAddress();
+    const job = await stageWithoutBroadcast(f);
+    const newFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, await f.morpho.getAddress(), await owner.getAddress(), 1000]);
+    const newFactoryAddress = await newFactory.getAddress();
+    Object.assign(f.env, { YIELD_FACTORY_ADDRESS: newFactoryAddress,
+      LEGACY_YIELD_FACTORY_ADDRESSES: oldAddress });
+    f.env.FINALIZER_DAILY_GAS_CAP_ETH = "0";
+    await configureGasFunding(f.env);
+    const reservations = f.store.faults.reservations;
+    const restored = await runFinalizerCycle(f.env);
+    const stored = f.store.native.prepare("SELECT * FROM finalizer_jobs WHERE state='confirmed'").get();
+    check("factory rotation and daily-cap removal preserve the exact pending WLD legacy transaction and provenance", () => {
+      assert.equal(restored.reason, "finalized", JSON.stringify(restored));
+      assert.equal(behavior.sends.at(-1).raw, job.tx_raw);
+      assert.equal(Transaction.from(behavior.sends.at(-1).raw).to.toLowerCase(), oldAddress.toLowerCase());
+      assert.equal(stored.factory_address.toLowerCase(), oldAddress.toLowerCase());
+      assert.equal(stored.tx_hash, job.tx_hash);
+      assert.equal(f.store.faults.reservations, reservations);
+      assert.notEqual(newFactoryAddress.toLowerCase(), stored.factory_address.toLowerCase());
+    });
+  }
+  {
+    const f = await productionUSDCFixture("shares");
+    const oldAddress = f.env.USDC_YIELD_FACTORY_ADDRESS;
+    const job = await stageWithoutBroadcast(f);
+    const newFactory = await deploy(artifact("InheritanceVaultUSDCFactory"), owner,
+      [f.env.USDC_ADDRESS, f.env.USDC_MORPHO_VAULT_ADDRESS, f.env.WLD_ADDRESS, f.feeRecipient, 1000]);
+    f.env.USDC_YIELD_FACTORY_ADDRESS = await newFactory.getAddress();
+    f.env.LEGACY_USDC_YIELD_FACTORY_ADDRESSES = oldAddress;
+    const reservations = f.store.faults.reservations;
+    const restored = await runFinalizerCycle(f.env);
+    const stored = f.store.native.prepare("SELECT * FROM finalizer_jobs WHERE state='confirmed'").get();
+    check("USDC source rotation rebroadcasts the exact staged legacy signature only after asset and factory checks", () => {
+      assert.equal(restored.reason, "finalized", JSON.stringify(restored));
+      assert.equal(behavior.sends.at(-1).raw, job.tx_raw);
+      assert.equal(Transaction.from(behavior.sends.at(-1).raw).to.toLowerCase(), oldAddress.toLowerCase());
+      assert.equal(stored.factory_address.toLowerCase(), oldAddress.toLowerCase());
+      assert.equal(stored.tx_hash, job.tx_hash);
+      assert.equal(f.store.faults.reservations, reservations);
+      assert.equal(behavior.sends.at(-1).value, 0n);
+    });
+  }
+  {
+    const f = await yieldFixture();
+    const oldFactory = f.yieldFactory;
+    const oldVault = f.yieldVault;
+    const oldAddress = await oldFactory.getAddress();
+    const newFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, await f.morpho.getAddress(), await owner.getAddress(), 1000]);
+    const newAddress = await newFactory.getAddress();
+    const otherOwner = await provider.getSigner(4), otherAddress = await otherOwner.getAddress();
+    await (await newFactory.connect(otherOwner).createVault(heirAddress, 86400)).wait();
+    const newVault = await newFactory.vaultOf(otherAddress);
+    await (await f.token.mint(otherAddress, parseEther("100"))).wait();
+    await (await f.token.connect(otherOwner).approve(newAddress, parseEther("100"))).wait();
+    const newShares = await f.morpho.previewDeposit(parseEther("100"));
+    await (await newFactory.connect(otherOwner).depositWithMinShares(parseEther("100"), newShares * 9950n / 10000n)).wait();
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(newVault);
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await newFactory.connect(heir).fileClaimFor(newVault)).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    Object.assign(f.env, { YIELD_FACTORY_ADDRESS: newAddress, LEGACY_YIELD_FACTORY_ADDRESSES: oldAddress });
+    const sentStart = behavior.sends.length;
+    const cycles = [await runFinalizerCycle(f.env), await runFinalizerCycle(f.env)];
+    const jobs = f.store.native.prepare("SELECT factory_address,tx_raw,state FROM finalizer_jobs ORDER BY vault_address").all();
+    const targets = new Set(jobs.map((job) => Transaction.from(job.tx_raw).to.toLowerCase()));
+    const health = await readFinalizerHealth(f.env);
+    check("WLD scans both primary and legacy source factories and stores each job's immutable origin", () => {
+      assert.ok(cycles.every((cycle) => cycle.finalized === 1), JSON.stringify(cycles));
+      assert.equal(behavior.sends.length - sentStart, 2);
+      assert.equal(jobs.length, 2);
+      assert.ok(jobs.every((job) => job.state === "confirmed"));
+      assert.ok(targets.has(oldAddress.toLowerCase()));
+      assert.ok(targets.has(newAddress.toLowerCase()));
+      assert.deepEqual(new Set(jobs.map((job) => job.factory_address.toLowerCase())), targets);
+      assert.ok(health.factoryAddresses.includes(oldAddress));
+      assert.ok(health.factoryAddresses.includes(newAddress));
+      assert.ok([oldVault, newVault].every((vault) => jobs.some((job) =>
+        Transaction.from(job.tx_raw).data === factoryInterface.encodeFunctionData("executeInheritance", [vault]))));
+    });
+  }
+  {
+    const f = await yieldFixture({ ready: false });
+    const firstLegacy = f.yieldFactory;
+    const secondLegacy = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, f.env.MORPHO_VAULT_ADDRESS, await owner.getAddress(), 1000]);
+    const otherOwner = await provider.getSigner(4);
+    await (await secondLegacy.connect(otherOwner).createVault(heirAddress, 86400)).wait();
+    const second = await secondLegacy.vaultOf(await otherOwner.getAddress());
+    await (await f.token.mint(await otherOwner.getAddress(), parseEther("100"))).wait();
+    await (await f.token.connect(otherOwner).approve(secondLegacy.target, parseEther("100"))).wait();
+    const quote = await f.morpho.previewDeposit(parseEther("100"));
+    await (await secondLegacy.connect(otherOwner).depositWithMinShares(parseEther("100"), quote * 9950n / 10000n)).wait();
+    f.store.native.prepare("INSERT INTO watchers VALUES (?,1)").run(second);
+    const ordered = [f.yieldVault, second].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    const sourceByVault = new Map([[f.yieldVault.toLowerCase(), firstLegacy], [second.toLowerCase(), secondLegacy]]);
+    await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
+    await (await sourceByVault.get(ordered[1].toLowerCase()).connect(heir).fileClaimFor(ordered[1])).wait();
+    await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
+    const primary = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, f.env.MORPHO_VAULT_ADDRESS, await owner.getAddress(), 1000]);
+    Object.assign(f.env, { YIELD_FACTORY_ADDRESS: primary.target,
+      LEGACY_YIELD_FACTORY_ADDRESSES: [firstLegacy.target, secondLegacy.target].join(","),
+      FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001", FINALIZER_DAILY_GAS_CAP_ETH: "0" });
+    await provider.send("anvil_setChainId", [480]);
+    await configureGasFunding(f.env);
+    behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
+    const firstStart = behavior.requests;
+    behavior.requestLimit = firstStart + 50;
+    const first = await runFinalizerCycle(f.env);
+    behavior.requestLimit = null;
+    const firstCount = behavior.requests - firstStart;
+    const secondStart = behavior.requests;
+    behavior.requestLimit = secondStart + 50;
+    const secondCycle = await runFinalizerCycle(f.env);
+    behavior.requestLimit = null;
+    const secondCount = behavior.requests - secondStart;
+    const sentTo = Transaction.from(behavior.sends.at(-1).raw).to.toLowerCase();
+    const expectedSource = sourceByVault.get(ordered[1].toLowerCase()).target.toLowerCase();
+    check("distinct legacy WLD sources and the verified chain480 controller stay bounded across cursor cycles", () => {
+      assert.equal(first.checked, 1, JSON.stringify(first));
+      assert.equal(first.reason, "idle", JSON.stringify(first));
+      assert.equal(secondCycle.checked, 1, JSON.stringify(secondCycle));
+      assert.equal(secondCycle.reason, "finalized", JSON.stringify(secondCycle));
+      assert.ok(firstCount <= 50, `first cycle used ${firstCount} external requests`);
+      assert.ok(secondCount <= 50, `second cycle used ${secondCount} external requests`);
+      assert.equal(sentTo, expectedSource);
+      assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
+    });
+    await provider.send("anvil_setChainId", [31337]);
+    behavior.oracleQuote = null; behavior.receiptExtra = null;
+  }
+  {
+    const f = await usdcFixture({ ready: false });
+    const wldLegacy = [], usdcLegacy = [];
+    for (let i = 0; i < 8; i++) {
+      const wldFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+        [f.env.WLD_ADDRESS, f.wldMorpho.target, await owner.getAddress(), 1000]);
+      wldLegacy.push(wldFactory.target);
+      const usdcFactory = await deploy(artifact("InheritanceVaultUSDCFactory"), owner,
+        [f.env.USDC_ADDRESS, f.morpho.target, f.env.WLD_ADDRESS, await owner.getAddress(), 1000]);
+      usdcLegacy.push(usdcFactory.target);
+    }
+    Object.assign(f.env, { LEGACY_YIELD_FACTORY_ADDRESSES: wldLegacy.join(","),
+      LEGACY_USDC_YIELD_FACTORY_ADDRESSES: usdcLegacy.join(","), FINALIZER_CHAIN_ID: "480",
+      FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001", FINALIZER_DAILY_GAS_CAP_ETH: "0" });
+    await provider.send("anvil_setChainId", [480]);
+    await configureGasFunding(f.env);
+    const requests = behavior.requests;
+    behavior.requestLimit = requests + 50;
+    let health;
+    try { health = await readFinalizerHealth(f.env); }
+    finally { behavior.requestLimit = null; }
+    const count = behavior.requests - requests;
+    check("health verifies the maximum eight legacy factories per asset under chain480's guarded 50-request bound", () => {
+      assert.equal(health.supported, true);
+      assert.equal(health.gasFundingVerified, true);
+      assert.equal(health.dailyBudgetLimited, false);
+      assert.equal(health.dailyCapWei, null);
+      assert.equal(health.factoryAddresses.length, 19);
+      assert.equal(health.factoryStatuses.length, 19);
+      assert.ok(health.factoryStatuses.every((factory) => factory.supported));
+      assert.ok(count <= 50, `used ${count} external requests`);
+      console.log("  maximum configured health HTTP requests: " + count);
+    });
+    await provider.send("anvil_setChainId", [31337]);
   }
   for (const [limit, value] of [
     ["FINALIZER_MAX_GAS", "1"],
@@ -1460,7 +1969,7 @@ try {
       assert.equal(snapshot.hasVaultAssets, true);
       assert.equal(snapshot.vaultBalance, parseEther("110"));
     });
-    await assert.rejects(() => workerTest.getVaultSnapshot({ ...f.env, MORPHO_VAULT_ADDRESS: f.env.WLD_ADDRESS }, f.yieldVault), /configured Morpho strategy/);
+    await assert.rejects(() => workerTest.getVaultSnapshot({ ...f.env, MORPHO_VAULT_ADDRESS: f.env.WLD_ADDRESS }, f.yieldVault), /configured.*Morpho strategy/);
     await (await f.morpho.setBrokenQuote(true)).wait();
     const broken = await workerTest.getVaultSnapshot(f.env, f.yieldVault);
     check("a missing WLD valuation does not hide protected shares from monitoring", () => {
