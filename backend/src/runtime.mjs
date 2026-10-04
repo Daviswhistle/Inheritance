@@ -1,5 +1,5 @@
 import { DurableObject, env } from "cloudflare:workers";
-import { primeFinalizerSigner, runFinalizerCycle } from "./finalizer.mjs";
+import { primeFinalizerSigner, readFinalizerHealth, runFinalizerCycle } from "./finalizer.mjs";
 import worker from "./worker.mjs";
 
 primeFinalizerSigner(env);
@@ -9,6 +9,10 @@ primeFinalizerSigner(env);
 export class InheritanceExecutor extends DurableObject {
   async runCycle() {
     return runFinalizerCycle(this.env);
+  }
+
+  async readHealth() {
+    return readFinalizerHealth(this.env);
   }
 }
 

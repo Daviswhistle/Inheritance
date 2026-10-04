@@ -186,7 +186,10 @@ Runtime schema upgrades preserve old rows, and signed bytes are never returned
 by public health or included in application logs.
 
 `GET /api/automation/health` is a read-only public operational endpoint used by the
-interface. It exposes support, funding, last cycle, pending hash and caps, not the
+interface. The HTTP Worker delegates this read to `InheritanceExecutor.readHealth`
+so live ABI and signer checks use the same CPU allowance as execution. This method
+never calls `runCycle` or changes the D1 journal. Disabled or unconfigured runtimes
+return directly without a financial RPC. It exposes support, funding, last cycle, pending hash and caps, not the
 key or credential-bearing RPC URL. `factoryAddresses` contains only factories
 individually verified on that health read. `factoryStatuses` reports each configured
 primary and legacy factory with its asset, support result and reason; unsupported or

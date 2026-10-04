@@ -1,5 +1,4 @@
 import { DEFAULT_FRONTEND_ORIGIN, takeCooldown, takeRateLimit, verifySession } from "./session.mjs";
-import { readFinalizerHealth } from "./finalizer.mjs";
 
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
 // 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
@@ -990,9 +989,13 @@ const handleRequest = async (request, env) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors.headers });
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/api/automation/health") {
-    const automation = await readFinalizerHealth(env);
+    const namespace = env.FINALIZER_EXECUTOR;
+    const automation = env.FINALIZER_ENABLED !== "true"
+      ? { enabled: false, reason: "disabled" }
+      : namespace
+        ? await namespace.get(namespace.idFromName("executor")).readHealth()
+        : { enabled: true, reason: "not_running" };
     automation.executionRuntime = env.FINALIZER_EXECUTOR ? "durable_object" : "unconfigured";
-    if (automation.enabled && !env.FINALIZER_EXECUTOR) automation.reason = "not_running";
     return jsonResponse(200, { status: "success", automation }, cors.headers);
   }
   if (request.method === "GET" && url.pathname === "/api/health") {

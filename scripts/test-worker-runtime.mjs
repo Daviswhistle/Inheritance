@@ -14,12 +14,16 @@ const DB = { prepare(sql) {
     async first() { return db.prepare(sql).get(...args) ?? null; },
   };
 } };
-let calls = 0, release, failRPC = false;
+let calls = 0, healthCalls = 0, release, failRPC = false;
 const namespace = {
   idFromName(name) { assert.equal(name, "executor"); return "fixture-executor-id"; },
   get(id) {
     assert.equal(id, "fixture-executor-id");
-    return { async runCycle(...args) {
+    return { async readHealth(...args) {
+      assert.equal(args.length, 0);
+      healthCalls++;
+      return { enabled: true, reason: "ready", supported: true, cycleFresh: true };
+    }, async runCycle(...args) {
       assert.equal(args.length, 0, "Caller cannot choose a wallet, vault or transaction");
       calls++;
       if (failRPC) throw new Error("Fixture runtime unavailable");
@@ -90,6 +94,20 @@ try {
     assert.equal(calls, beforeHTTP);
     assert.equal(health.executionRuntime, "durable_object");
     assert.equal(health.reason, "disabled");
+    assert.equal(healthCalls, 0);
+  });
+
+  const changesBeforeRead = db.prepare("SELECT total_changes() AS n").get().n;
+  const liveStatus = await worker.fetch(new Request("https://fixture.invalid/api/automation/health"), env);
+  const liveHealth = (await liveStatus.json()).automation;
+  check("enabled public health delegates only the read RPC and preserves its result", () => {
+    assert.equal(liveHealth.reason, "ready");
+    assert.equal(liveHealth.supported, true);
+    assert.equal(liveHealth.cycleFresh, true);
+    assert.equal(liveHealth.executionRuntime, "durable_object");
+    assert.equal(healthCalls, 1);
+    assert.equal(calls, beforeHTTP);
+    assert.equal(db.prepare("SELECT total_changes() AS n").get().n, changesBeforeRead);
   });
 
   const unconfigured = await worker.fetch(new Request("https://fixture.invalid/api/automation/health"), {
@@ -102,6 +120,7 @@ try {
     assert.equal(unconfiguredHealth.executionRuntime, "unconfigured");
     assert.equal(unconfiguredHealth.reason, "not_running");
     assert.equal(calls, beforeHTTP);
+    assert.equal(healthCalls, 1);
   });
   console.log(`PASS ${checks} scheduled runtime checks`);
 } finally {
