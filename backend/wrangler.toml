@@ -9,9 +9,17 @@ crons = ["* * * * *"]
 name = "FINALIZER_EXECUTOR"
 class_name = "InheritanceExecutor"
 
+[[durable_objects.bindings]]
+name = "WATCHER_TASKS"
+class_name = "InheritanceWatcher"
+
 [[migrations]]
 tag = "inheritance-executor-v1"
 new_sqlite_classes = ["InheritanceExecutor"]
+
+[[migrations]]
+tag = "inheritance-watchers-v1"
+new_sqlite_classes = ["InheritanceWatcher"]
 
 [[d1_databases]]
 binding = "DB"

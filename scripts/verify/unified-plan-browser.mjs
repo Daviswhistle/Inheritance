@@ -140,6 +140,8 @@ async function captureLayout(targetPage, name, width, criticalSelectors = []) {
   assert.equal(metrics.viewport, width);
   assert.ok(metrics.documentWidth <= width, `${name} ${width}px document overflows horizontally: ${JSON.stringify(metrics)}`);
   assert.ok(metrics.bodyWidth <= width, `${name} ${width}px body overflows horizontally: ${JSON.stringify(metrics)}`);
+  const header = JSON.parse(await targetPage.ev("const brand=document.querySelector('.brand').getBoundingClientRect(); const actions=document.querySelector('.landing-header-actions').getBoundingClientRect(); return JSON.stringify({brandRight:brand.right,actionsLeft:actions.left})"));
+  assert.ok(header.brandRight <= header.actionsLeft + 1, `${name} ${width}px header controls overlap the brand`);
   for (const target of metrics.targets) {
     assert.ok(!target.missing && target.height >= 40 && target.width >= 36,
       `${name} ${width}px target is missing or too small: ${JSON.stringify(target)}`);
@@ -781,6 +783,67 @@ try {
     before: Object.fromEntries(Object.entries(beforeIncome).map(([key, value]) => [key, String(value)])),
     after: Object.fromEntries(Object.entries(afterIncome).map(([key, value]) => [key, String(value)])) };
   pass("income-only receipt pays owner net and 10% fee from the personal-vault event", `${gross} gross / ${fee} fee / ${net} net`);
+
+  await provider.send("anvil_mine", ["0x41"]);
+  assert.ok((await provider.getBlock("finalized")).number >= incomeReceipt.blockNumber, "local history fixture must finalize the actual receipt first");
+  await page.ev("document.querySelector('.income-history-disclosure').open = true; return true;");
+  await clickButton(page, "Refresh history");
+  await until(() => page.ev("return document.querySelectorAll('.income-history-list li').length === 1"), "verified received income history");
+  const receivedHistory = await page.ev("return document.querySelector('.income-history-content').innerText");
+  assert.ok(receivedHistory.includes(require("ethers").formatUnits(net, 18)));
+  assert.ok(receivedHistory.includes(require("ethers").formatUnits(fee, 18)));
+  assert.ok(receivedHistory.toLowerCase().includes(owner.toLowerCase()));
+  assert.equal(await page.ev(`return !!document.querySelector('a[href$="${incomeCall[0].hash}"]')`), true);
+  evidence.income.history = { verifiedReceiptCount: 1, gross: String(gross), fee: String(fee), net: String(net) };
+  pass("income history displays the genuine canonical WLD receipt and exact fee and net amounts");
+  await page.ev(`
+    window.__HISTORY_ORIGINAL_FETCH__ = window.fetch;
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input?.url ?? String(input);
+      if (url === window.__E2E_RPC__ && init?.body) {
+        const payload = JSON.parse(typeof init.body === 'string' ? init.body : new TextDecoder().decode(init.body));
+        const requests = Array.isArray(payload) ? payload : [payload];
+        const bad = requests.filter(request => request.method === 'eth_getBlockByNumber' && request.params[0] === 'finalized');
+        if (bad.length) {
+          const response = await window.__HISTORY_ORIGINAL_FETCH__(input, init);
+          const results = await response.json();
+          const values = Array.isArray(results) ? results : [results];
+          const patched = values.map(result => bad.some(request => request.id === result.id)
+            ? { id: result.id, jsonrpc: '2.0', error: { code: -32000, message: 'fixture finality rate limit' } } : result);
+          return Response.json(Array.isArray(results) ? patched : patched[0]);
+        }
+      }
+      return window.__HISTORY_ORIGINAL_FETCH__(input, init);
+    };
+    return true;
+  `);
+  await sleep(300);
+  await clickButton(page, "Refresh history");
+  await until(() => page.ev("return /The network did not provide a finalized block/.test(document.querySelector('.income-history-content')?.innerText || '')"), "temporary finality failure");
+  assert.equal(await page.ev("return [...document.querySelectorAll('.income-history-card button')].some(button => button.textContent.trim() === 'Refresh history' && !button.disabled)"), true);
+  await page.ev("window.fetch = window.__HISTORY_ORIGINAL_FETCH__; return true;");
+  await sleep(300);
+  await clickButton(page, "Refresh history");
+  await until(() => page.ev("return document.querySelectorAll('.income-history-list li').length === 1"), "recovered finalized history");
+  assert.equal(await page.ev(`return !!document.querySelector('a[href$="${incomeCall[0].hash}"]')`), true);
+  pass("temporary finalized-block failure keeps manual retry available and recovers the actual income receipt");
+  await clickMatchingButton(page, text => text === "USDC");
+  assert.equal(await page.ev(`return document.querySelector('.income-history-content')?.innerHTML.includes(${JSON.stringify(incomeCall[0].hash)}) || false`), false);
+  pass("switching history to USDC immediately excludes the previous WLD receipt");
+  await clickMatchingButton(page, text => text === "WLD");
+  await chooseTab(page, "Home");
+  const currentHomeHeir = String(await wldVault.heir());
+  await until(() => page.ev("return document.querySelector('.plan-common-settings')?.innerText.includes('@e2e_')"), "human-readable heir name");
+  assert.equal(await page.ev(`return document.querySelector('.plan-common-settings strong')?.title.toLowerCase() === ${JSON.stringify(currentHomeHeir.toLowerCase())}`), true);
+  pass("Home resolves the heir username while preserving the full canonical recipient address");
+  await page.ev("const select=document.querySelector('.locale-picker select'); select.value='ko'; select.dispatchEvent(new Event('change',{bubbles:true})); return true;");
+  await until(() => page.ev("return document.querySelector('.locale-picker select')?.value === 'ko' && /상속인/.test(document.body.innerText)"), "Korean Home");
+  await captureLayout(page, "home-ko", 320, [".tab-item"]);
+  assert.equal(await page.ev("return localStorage.getItem('inheritance:locale')"), "ko");
+  pass("explicit Korean selection translates Home and persists the preference");
+  await page.ev("const select=document.querySelector('.locale-picker select'); select.value='en'; select.dispatchEvent(new Event('change',{bubbles:true})); return true;");
+  await until(() => page.ev("return /Today, and for their tomorrow/.test(document.body.innerText)"), "restored English Home");
+  pass("switching back restores the existing English navigation and launch copy");
 
   // Separate active vault to prove settings changes wait for explicit UI consent.
   await (await wldStrategy.setRate(parseUnits("1", 18))).wait();
@@ -1890,6 +1953,34 @@ try {
   evidence.legacyIncome.rotatedIncomeCapable = { receipt: rotatedReceipt.hash, originalFactory: wldFactoryAddress,
     net: String(rotatedEvent.args.net), fee: String(rotatedEvent.args.fee), principalAndTimerPreserved: true };
   pass("an income-capable legacy route still pays owner income and the 10% fee without changing principal or timer");
+  await provider.send("anvil_mine", ["0x41"]);
+  assert.ok((await provider.getBlock("finalized")).number >= rotatedReceipt.blockNumber);
+  await page.ev("document.querySelector('.income-history-disclosure').open = true; return true;");
+  await clickButton(page, "Refresh history");
+  await until(() => page.ev(`return !!document.querySelector('.income-history-card a[href$="${rotatedReceipt.hash}"]')`), "income history on a rotated legacy route");
+  const rotatedHistory = await page.ev("return document.querySelector('.income-history-content').innerText");
+  assert.ok(rotatedHistory.includes(require("ethers").formatUnits(rotatedEvent.args.net, 18)));
+  evidence.legacyIncome.rotatedIncomeCapable.historyReceiptVerified = true;
+  pass("a rotated income-capable legacy vault preserves genuine income history through its deployed capability");
+  // Exit the actual receipt shares: earlier rate fixtures intentionally have
+  // limited cash liquidity, which must not be invented to prepare this archive.
+  await (await wldFactory.connect(deployer).withdrawSharesFromMyVault(owner,
+    await wldStrategy.balanceOf(wldVaultAddress))).wait();
+  assert.equal(await wldVault.hasAssets(), false);
+  await provider.send("evm_increaseTime", [Number(await wldVault.heartbeatInterval()) + 1]);
+  await provider.send("evm_mine", []);
+  await (await wldFactory.connect(deployer).releaseMyVault()).wait();
+  assert.equal(await wldFactory.vaultOf(owner), ZeroAddress);
+  await page.send("Page.navigate", { url: `${appUrl}?vault=${wldVaultAddress}` });
+  await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "released-vault session");
+  await chooseTab(page, "Assets");
+  await until(() => page.ev("return !!document.querySelector('.income-history-card')"), "released owner income history");
+  await page.ev("document.querySelector('.income-history-disclosure').open = true; return true;");
+  await clickButton(page, "Refresh history");
+  await until(() => page.ev(`return !!document.querySelector('.income-history-card a[href$="${rotatedReceipt.hash}"]')`), "verified released-vault receipt");
+  assert.equal(await page.ev("return !!document.querySelector('.income-card')"), false);
+  evidence.legacyIncome.rotatedIncomeCapable.releasedHistoryVerified = true;
+  pass("a verified owner can read released-vault income history while active income controls remain hidden");
 
   const pageErrors = [...(page?.logs ?? []), ...(alignmentPage?.logs ?? []), ...(driftPage?.logs ?? []), ...(legacyPage?.logs ?? []), ...(heirPage?.logs ?? []),
     ...regressionPages.flatMap(([, targetPage]) => targetPage.logs)];

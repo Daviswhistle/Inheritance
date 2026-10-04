@@ -7,6 +7,36 @@
 .asset-token-wld::before { content: 'W'; }
 .asset-token-usdc::before { content: '$'; }
 .asset-history, .asset-details, .principal-controls, .income-recipient { min-width: 0; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+.income-history-disclosure { min-width: 0; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+.income-history-disclosure > summary { display: flex; min-height: 48px; align-items: center; justify-content: space-between; padding: 12px 15px; gap: 10px; color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
+.income-history-disclosure > summary::-webkit-details-marker { display: none; }
+.income-history-disclosure > summary::after { content: '+'; color: var(--muted); font-size: 19px; font-weight: 400; }
+.income-history-disclosure[open] > summary::after { content: '−'; }
+.income-history-content { display: grid; gap: 12px; padding: 0 14px 14px; font-size: 12px; line-height: 1.6; }
+.income-history-content > p { margin: 0; }
+.income-history-coverage, .income-history-month-note { color: var(--muted); }
+.income-history-partial { color: #855d12; }
+.income-history-month { border-top: 1px solid var(--line); padding-top: 12px; }
+.income-history-month h3 { margin: 0 0 7px; font-size: 14px; font-weight: 650; }
+.income-history-month h3 span { color: var(--muted); font-size: 10px; font-weight: 500; }
+.income-history-total { margin: 8px 0; padding: 9px; border-radius: 10px; background: #f4f7ef; }
+.income-history-total dt { color: var(--muted); font-size: 10px; }
+.income-history-total dd { margin: 3px 0 0; font-size: 11px; }
+.income-history-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 9px; }
+.income-history-list > li { min-width: 0; border: 1px solid var(--line); border-radius: 11px; padding: 10px; }
+.income-history-list time { color: var(--muted); font-size: 10px; }
+.income-history-list dl { display: grid; gap: 4px; margin: 7px 0; }
+.income-history-list dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.income-history-list dt { color: var(--muted); }
+.income-history-list dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.income-history-list .income-history-recipient { display: block; }
+.income-history-recipient dd { text-align: left; overflow-wrap: anywhere; }
+.income-history-list a { color: #356b46; text-decoration: underline; }
+.income-history-transaction { display: inline-flex; min-height: 32px; align-items: center; font-size: 10px; }
+.income-history-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.landing-header-actions { display: flex; align-items: center; gap: 8px; }
+.locale-picker { display: inline-flex; align-items: center; }
+.locale-picker select { min-height: 44px; max-width: 116px; border: 1px solid var(--line); border-radius: 999px; padding: 0 27px 0 11px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
 .asset-history summary, .asset-details > summary, .principal-controls > summary, .income-recipient > summary { display: flex; min-height: 48px; align-items: center; justify-content: space-between; padding: 12px 15px; gap: 10px; color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
 .asset-history summary::-webkit-details-marker, .asset-details > summary::-webkit-details-marker, .principal-controls > summary::-webkit-details-marker, .income-recipient > summary::-webkit-details-marker { display: none; }
 .asset-history summary::after, .asset-details > summary::after, .principal-controls > summary::after, .income-recipient > summary::after { content: '+'; color: var(--muted); font-size: 19px; font-weight: 400; }
@@ -61,4 +91,11 @@
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; }
+}
+
+.income-history-card .card-title { font-size: 16px; }
+.help-fees-card p { margin: 0; line-height: 1.6; }
+@media (max-width: 400px) {
+  .app-header .network-pill { display: none; }
+  .page-intro h1 { word-break: keep-all; overflow-wrap: anywhere; }
 }

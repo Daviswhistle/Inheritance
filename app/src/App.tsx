@@ -10,6 +10,7 @@ import { Landing } from "@/components/Landing";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { PlanSetup } from "@/components/PlanSetup";
 import { AssetNavigation } from "@/components/AssetNavigation";
+import { IncomeHistoryCard, type IncomeHistoryView } from "@/components/IncomeHistory";
 import { IncomePositionCard, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
 import { MORPHO_ABI, MERKL_DISTRIBUTOR, minimumOutput, formatYieldAmount } from "@/yield";
 import type { YieldPosition, YieldTerms } from "@/yield";
@@ -19,6 +20,8 @@ import { fetchYieldRates } from "@/yield-rates";
 import type { YieldRates } from "@/yield-rates";
 import { HAS_YIELD_ROUTES, PRIMARY_YIELD_ROUTES, YIELD_ROUTES, TRUSTED_FACTORIES, yieldRouteFor } from "@/assets";
 import type { AssetSymbol, YieldRoute } from "@/assets";
+import { FinalityUnavailableError, mergeBlockRanges, mergeIncomeReceipts, readFinalizedBoundary, readIncomeHistoryPage, rangesCover, uncoveredBlockRanges } from "@/income-history";
+import type { BlockRange } from "@/income-history";
 import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetAmount, runRemainingPlanSteps } from "@/plan";
 import type { PlanAssetSymbol, PlanRoute } from "@/plan";
 import { ConfirmedTransactionFailure, confirmTransaction, verifyIncomeWithdrawalReceipt } from "@/transactions";
@@ -44,6 +47,8 @@ import {
 } from "@/config";
 import { signInWithWorldApp, readSessionAddress, clearSession, notificationFetch, fetchRegisteredVaults } from "@/auth";
 import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit, sendWorldChat, pickWorldContacts } from "@/minikit";
+import { LanguagePicker } from "@/i18n";
+import { useLocale } from "@/locale-context";
 
 type AppPlanRoute = PlanRoute<YieldRoute | null>;
 const APP_PLAN_ROUTES: AppPlanRoute[] = buildPlanRoutes(
@@ -133,6 +138,26 @@ function optionalIncomeAbi(base: ethers.InterfaceAbi, optional: ethers.Interface
   const fragments = new ethers.Interface(base).fragments;
   const signatures = new Set(fragments.map(fragment => fragment.format()));
   return [...fragments, ...new ethers.Interface(optional).fragments.filter(fragment => !signatures.has(fragment.format()))];
+}
+
+async function getUsernameFor(addr: string): Promise<string | undefined> {
+  try {
+    const { MiniKit } = await loadMiniKit();
+    const user = await MiniKit.getUserByAddress?.(addr);
+    return user?.username as string | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const INCOME_HISTORY_PAGE_BLOCKS = 3600;
+
+function nextIncomeHistoryRange(coverage: readonly BlockRange[], failed: readonly BlockRange[], startBlock: number, finalizedBlock: number): BlockRange | null {
+  const missing = failed.length ? mergeBlockRanges(failed) : uncoveredBlockRanges(coverage, startBlock, finalizedBlock);
+  if (!missing.length) return null;
+  const target = missing.reduce((latest, range) => range.toBlock > latest.toBlock ? range : latest);
+  const toBlock = target.toBlock;
+  return { fromBlock: Math.max(target.fromBlock, toBlock - INCOME_HISTORY_PAGE_BLOCKS + 1), toBlock };
 }
 
 function readStoredPlan(address: string): StoredPlan | null {
@@ -263,6 +288,7 @@ async function createProvider(): Promise<ethers.JsonRpcProvider> {
 }
 
 export default function App() {
+  const { t, locale } = useLocale();
   // ---- state
   const [provider, setProvider] = useState<ethers.JsonRpcProvider | null>(null);
   const navigationChosenFor = useRef("");
@@ -271,6 +297,7 @@ export default function App() {
   const [account, setAccount] = useState<string>("");
   // Username (World App handle) — used for display; addresses are used on-chain
   const [username, setUsername] = useState<string>("");
+  const [homeHeirUsernameRead, setHomeHeirUsernameRead] = useState<{ account: string; address: string; username: string | null } | null>(null);
 
   /** 로그인 서명을 서버가 실제로 검증했는지. 미검증 로그인은 위험하므로 구분한다. */
   const [serverVerified, setServerVerified] = useState<boolean>(false);
@@ -292,12 +319,12 @@ export default function App() {
   // false 가 되어 "Create vault" 가 영영 켜지지 않는다 — 아무도 금고를 만들 수 없다.
   // 금고가 있으면 아래 시드가 실제 값(예: 90일)으로 덮어쓴다.
   const [periodInput, setPeriodInput] = useState<string>("30");
-  const [periodTouched, setPeriodTouched] = useState<boolean>(false);
+  const periodTouchedRef = useRef(false);
   const onPeriodChange = (raw: string) => {
     // allow only digits; keep empty while editing
     const v = (raw || '').replace(/\D+/g, '');
     setPeriodInput(v);
-      setPeriodTouched(true);
+    periodTouchedRef.current = true;
     if (v === '') return; // don't coerce to 0 while user is clearing
     let n = parseInt(v, 10);
     if (Number.isNaN(n)) return;
@@ -340,6 +367,10 @@ export default function App() {
     scope: string; state: "loading" | "available" | "unavailable" | "error"; gross: bigint; fee: bigint;
     net: bigint; withdrawableNet: bigint; valued: boolean;
   } | null>(null);
+  const incomeHistoryRequest = useRef(0);
+  const [incomeHistoryRead, setIncomeHistoryRead] = useState<IncomeHistoryView | null>(null);
+  const incomeHistoryReadRef = useRef<IncomeHistoryView | null>(null);
+  incomeHistoryReadRef.current = incomeHistoryRead;
   const [incomeTo, setIncomeTo] = useState("");
   const [yieldHoldings, setYieldHoldings] = useState<{ scope: string; idle: bigint; shares: bigint } | null>(null);
   const [receivedRewards, setReceivedRewards] = useState<{ scope: string; amount: bigint } | null>(null);
@@ -585,6 +616,7 @@ export default function App() {
   const selectedRewards = rewardState?.scope === balanceScope ? rewardState : null;
   const selectedReceivedRewards = receivedRewards?.scope === balanceScope ? receivedRewards.amount : null;
   const selectedIncome = incomeRead?.scope === balanceScope ? incomeRead : null;
+  const selectedIncomeHistory = incomeHistoryRead?.scope === balanceScope ? incomeHistoryRead : null;
   const hasRewardAction = Boolean((selectedRewards?.data?.claimable ?? 0n) > 0n
     || (selectedReceivedRewards ?? 0n) > 0n
     || isUsdcVault && heldRewardCash?.scope === balanceScope && heldRewardCash.amount > 0n);
@@ -944,6 +976,26 @@ export default function App() {
   const commonPlanSettings = activeOwnedPlans.length > 0
     && activeOwnedPlans.every(item => item.heir.toLowerCase() === activeOwnedPlans[0].heir.toLowerCase()
       && item.periodSeconds === activeOwnedPlans[0].periodSeconds);
+  const homeHeirAddress = commonPlanSettings ? activeOwnedPlans[0]?.heir ?? "" : "";
+  const homeHeirUsername = homeHeirUsernameRead?.account === account.toLowerCase()
+    && homeHeirUsernameRead.address.toLowerCase() === homeHeirAddress.toLowerCase()
+    ? homeHeirUsernameRead.username : null;
+  useEffect(() => {
+    let cancelled = false;
+    setHomeHeirUsernameRead(null);
+    if (!account || !ethers.isAddress(homeHeirAddress) || homeHeirAddress === ethers.ZeroAddress) return () => { cancelled = true; };
+    const expectedAccount = account.toLowerCase();
+    const expectedAddress = homeHeirAddress.toLowerCase();
+    void getUsernameFor(homeHeirAddress).then(name => {
+      if (cancelled) return;
+      setHomeHeirUsernameRead({
+        account: expectedAccount,
+        address: expectedAddress,
+        username: name?.trim().replace(/^@/, "") || null,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [account, homeHeirAddress]);
   const assetAccounts = ownedVaults.map(item => ({
     ...item,
     symbol: yieldRouteFor(item.factory)?.symbol ?? "WLD" as AssetSymbol,
@@ -1627,15 +1679,6 @@ export default function App() {
   }, [factory, account, linkedVault, provider, ownVault]);
 
   // Username/address resolution helpers — accept @username or 0x… in inputs
-  const getUsernameFor = async (addr: string) => {
-    try {
-      const { MiniKit } = await loadMiniKit();
-      const u = await MiniKit.getUserByAddress?.(addr);
-      return u?.username as string | undefined;
-    } catch {
-      return undefined;
-    }
-  };
   const resolveHeirInput = async (input: string) => {
     const trimmed: string = (input || "").trim();
     if (!trimmed) return null;
@@ -1867,7 +1910,7 @@ export default function App() {
       // 사용자에게는 시드할 값이 없으므로 필드가 빈 채로 남는다. 그러면 periodValid 가
       // false 고 "Create vault" 버튼이 **영영 활성화되지 않는다** — 아무도 금고를 만들
       // 수 없는 상태였다. 로컬 E2E 는 캐스트로 금고를 만들어서 이 경로를 안 밟았다.
-      if (!periodTouched) {
+      if (!periodTouchedRef.current) {
         const days = Math.round(Number(hb) / 86400);
         setPeriodInput(String(days > 0 ? days : 30));
       }
@@ -1888,7 +1931,7 @@ export default function App() {
       setVaultIdentity(null);
       if (linkedVault) setLinkError(errorText(error));
     }
-  }, [vaultCtr, periodTouched, provider, vault, linkedVault]);
+  }, [vaultCtr, provider, vault, linkedVault]);
   useEffect(() => {
     const epoch = vaultDetailsEpoch.current + 1;
     vaultDetailsEpoch.current = epoch;
@@ -2069,6 +2112,131 @@ export default function App() {
       }
     }
   }, [provider, account, vault, vaultFactory, identityMatchesVault, isVaultOwner, isYieldVault, selectedFactoryAbi, selectedVaultAbi, balanceScope]);
+
+  const refreshIncomeHistory = useCallback(async (mode: "refresh" | "older" = "refresh") => {
+    const scope = balanceScope;
+    const request = ++incomeHistoryRequest.current;
+    const existingRead = incomeHistoryReadRef.current;
+    const existing = existingRead?.scope === scope ? existingRead : null;
+    const commit = (next: IncomeHistoryView) => {
+      if (request !== incomeHistoryRequest.current || scope !== balanceScopeRef.current) return;
+      incomeHistoryReadRef.current = next;
+      setIncomeHistoryRead(next);
+    };
+    if (!provider || !account || !vault || !isVaultOwner || !identityMatchesVault) return;
+    const trustedRoute = selectedYieldRoute
+      && TRUSTED_FACTORIES.some(factory => factory.toLowerCase() === selectedYieldRoute.factory.toLowerCase())
+      && selectedYieldRoute.factory.toLowerCase() === vaultFactory.toLowerCase();
+    if (!trustedRoute) {
+      commit({ scope, status: "unsupported", startBlock: selectedYieldRoute?.block ?? FACTORY_DEPLOY_BLOCK ?? 0,
+        finalizedBlock: null, finalizedTimestamp: null, finalizedHash: null, coverage: [], failed: [],
+        entries: [], nextBeforeBlock: null, loadingOlder: false, error: "" });
+      return;
+    }
+    const startBlock = Math.max(0, selectedYieldRoute.block ?? FACTORY_DEPLOY_BLOCK ?? 0);
+    const existingBoundaryIsUsable = Boolean(existing && existing.status === "ready"
+      && existing.finalizedBlock !== null && existing.finalizedTimestamp !== null && existing.finalizedHash);
+    const useOlderPage = mode === "older" && existingBoundaryIsUsable;
+    const loading: IncomeHistoryView = existing
+      ? { ...existing, status: useOlderPage ? existing.status : "loading", loadingOlder: useOlderPage, error: "" }
+      : { scope, status: "loading", startBlock, finalizedBlock: null, finalizedTimestamp: null, finalizedHash: null,
+        coverage: [], failed: [], entries: [], nextBeforeBlock: null, loadingOlder: false, error: "" };
+    commit(loading);
+    try {
+      const code = await provider.getCode(vault);
+      if (scope !== balanceScopeRef.current || request !== incomeHistoryRequest.current) return;
+      if (code === "0x") throw new Error("Income contract is unavailable.");
+      if (!code.toLowerCase().includes(new ethers.Interface(INCOME_VAULT_ABI)
+        .getFunction("incomePosition()")!.selector.slice(2).toLowerCase())) {
+        commit({ ...loading, status: "unsupported", loadingOlder: false, entries: [], coverage: [], failed: [], error: "" });
+        return;
+      }
+      let boundary: { blockNumber: number; timestamp: number; hash: string };
+      let ranges: BlockRange[];
+      let base: IncomeHistoryView | null = existing;
+      if (useOlderPage && existing && existing.finalizedBlock !== null && existing.finalizedTimestamp !== null && existing.finalizedHash) {
+        boundary = { blockNumber: existing.finalizedBlock, timestamp: existing.finalizedTimestamp, hash: existing.finalizedHash };
+        const canonicalBoundary = await provider.getBlock(boundary.blockNumber);
+        if (!canonicalBoundary || canonicalBoundary.hash?.toLowerCase() !== boundary.hash.toLowerCase()) {
+          throw new Error("The saved finalized boundary is no longer canonical.");
+        }
+        if (existing.failed.length) {
+          ranges = existing.failed.slice(0, 1);
+        } else {
+          const nextRange = nextIncomeHistoryRange(existing.coverage, [], startBlock, boundary.blockNumber);
+          ranges = nextRange ? [nextRange] : [];
+        }
+      } else {
+        boundary = await readFinalizedBoundary(provider);
+        const previousBoundary = existing?.finalizedBlock;
+        if (previousBoundary !== null && previousBoundary !== undefined && previousBoundary > boundary.blockNumber) base = null;
+        if (base && existing?.finalizedBlock !== null && existing?.finalizedBlock !== undefined && existing.finalizedHash) {
+          const previousFinalizedBlock = await provider.getBlock(existing.finalizedBlock);
+          if (!previousFinalizedBlock?.hash || previousFinalizedBlock.hash.toLowerCase() !== existing.finalizedHash.toLowerCase()) {
+            base = null;
+          }
+        }
+        const fromBlock = Math.max(startBlock, boundary.blockNumber - INCOME_HISTORY_PAGE_BLOCKS + 1);
+        ranges = fromBlock <= boundary.blockNumber ? [{ fromBlock, toBlock: boundary.blockNumber }] : [];
+      }
+      if (!ranges.length) {
+        commit({ ...loading, status: "ready", finalizedBlock: boundary.blockNumber,
+          finalizedHash: boundary.hash, finalizedTimestamp: boundary.timestamp,
+          coverage: [], failed: [], entries: [], loadingOlder: false, nextBeforeBlock: null, error: "" });
+        return;
+      }
+      const pages = await Promise.all(ranges.map(range => readIncomeHistoryPage(provider, {
+        vault,
+        fromBlock: range.fromBlock,
+        toBlock: range.toBlock,
+      })));
+      const canonicalBoundary = await provider.getBlock(boundary.blockNumber);
+      if (!canonicalBoundary || canonicalBoundary.hash?.toLowerCase() !== boundary.hash.toLowerCase()) {
+        throw new Error("The finalized history boundary failed its canonical block check.");
+      }
+      if (request !== incomeHistoryRequest.current || scope !== balanceScopeRef.current) return;
+      const coverage = mergeBlockRanges([...(base?.coverage ?? []), ...pages.flatMap(page => page.coverage)]);
+      const attemptedFailures = mergeBlockRanges([...(base?.failed ?? []), ...pages.flatMap(page => page.failed)]);
+      const failed = mergeBlockRanges(attemptedFailures.flatMap(range => uncoveredBlockRanges(coverage, range.fromBlock, range.toBlock)));
+      const entries = mergeIncomeReceipts(base?.entries ?? [], ...pages.map(page => page.entries))
+        .filter(entry => entry.blockNumber <= boundary.blockNumber);
+      const complete = failed.length === 0 && rangesCover(coverage, startBlock, boundary.blockNumber);
+      const nextRange = complete ? null : nextIncomeHistoryRange(coverage, failed, startBlock, boundary.blockNumber);
+      const errors = [...new Set(pages.flatMap(page => page.errors))];
+      commit({
+        scope,
+        status: "ready",
+        startBlock,
+        finalizedBlock: boundary.blockNumber,
+        finalizedTimestamp: boundary.timestamp,
+        finalizedHash: boundary.hash,
+        coverage,
+        failed,
+        entries,
+        nextBeforeBlock: nextRange?.toBlock ?? null,
+        loadingOlder: false,
+        error: errors.join(" "),
+      });
+    } catch (error) {
+      if (request !== incomeHistoryRequest.current || scope !== balanceScopeRef.current) return;
+      const message = error instanceof Error ? error.message : "History lookup failed.";
+      if (error instanceof FinalityUnavailableError) {
+        commit({ scope, status: "finality-unavailable", startBlock, finalizedBlock: null, finalizedTimestamp: null,
+          finalizedHash: null, coverage: [], failed: [], entries: [], nextBeforeBlock: null, loadingOlder: false, error: message });
+      } else {
+        commit({ ...(existing ?? loading), scope, status: "error", loadingOlder: false, error: message });
+      }
+    }
+  }, [provider, account, vault, isVaultOwner, identityMatchesVault, selectedYieldRoute, vaultFactory, balanceScope]);
+
+  useEffect(() => {
+    if (!isVaultOwner || !vault || !identityMatchesVault) {
+      incomeHistoryRequest.current++;
+      return;
+    }
+    void refreshIncomeHistory();
+  }, [refreshIncomeHistory, isVaultOwner, vault, identityMatchesVault]);
+
   useEffect(() => {
     if (!isMyVault || !vault) return;
     void refreshIncome();
@@ -3347,7 +3515,7 @@ export default function App() {
       // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
       // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
       void refreshVaultDetails();
-      setPeriodTouched(false);
+      periodTouchedRef.current = false;
       refreshTimer();
     } catch (e: unknown) {
       setStatus("Change period error: " + errorText(e));
@@ -3631,7 +3799,7 @@ export default function App() {
         },
       });
       setStatus("Income collected. Your principal remains in the inheritance vault.");
-      await Promise.all([refreshIncome(), refreshBalances()]);
+      await Promise.all([refreshIncome(), refreshBalances(), refreshIncomeHistory()]);
     } catch (error) {
       setStatus("Income collection error: " + errorText(error));
       pushToast("error", errorText(error));
@@ -3910,7 +4078,7 @@ export default function App() {
     return <Landing installed={miniInstalled} busy={ctaLoading} onConnect={continueWorldApp2} linkedVault={linkedVault} status={status} />;
   }
   return (
-    <div className="app-shell">
+    <div className="app-shell" lang={locale}>
       {/* 환경변수가 잘못되면 흰 화면 대신 복구 방법을 안내한다.
           (config.ts 는 import 시점에 throw 할 수 없다 — 그랬다면 이 화면조차
            렌더링되기 전에 앱이 죽는다) */}
@@ -3934,7 +4102,7 @@ export default function App() {
       <header className="app-header">
         <div className="container-narrow header-content">
           <Brand />
-          <span className="network-pill"><span className="live-dot" />World Chain</span>
+          <div className="landing-header-actions"><span className="network-pill"><span className="live-dot" />World Chain</span><LanguagePicker /></div>
         </div>
       </header>
       {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
@@ -3953,7 +4121,7 @@ export default function App() {
             ) : (
               <>
                 <div className="text-sm font-semibold">WLD Inheritance</div>
-                <div className="text-xs text-gray-500">Connect to get started</div>
+                <div className="text-xs text-gray-500">{t("home.account.connect")}</div>
               </>
             )}
           </div>
@@ -3961,7 +4129,7 @@ export default function App() {
               세션으로는 자금을 다루는 행동을 하지 않도록 배지를 남긴다. */}
           {account && (!REQUIRE_VERIFY || verified) ? (
             <span className="text-xs text-gray-500 shrink-0">
-              {serverVerified ? "World App" : "Not verified"}
+              {serverVerified ? t("home.account.worldApp") : t("home.account.notVerified")}
             </span>
           ) : (
             <Button
@@ -3970,81 +4138,81 @@ export default function App() {
               disabled={pendingAction || ctaLoading}
               className="shrink-0"
             >
-              {ctaLoading ? (<><span className="spinner mr-2"></span>Connecting...</>) : "Connect"}
+              {ctaLoading ? (<><span className="spinner mr-2"></span>{t("home.account.connecting")}</>) : t("home.account.connectButton")}
             </Button>
           )}
         </div>
-        <div className="page-intro"><span className="eyebrow">{tab === "vault" ? "Your overview" : tab === "money" ? "Your assets" : tab === "support" ? "Here to help" : "Your inheritance plan"}</span><h1 tabIndex={-1}>{tab === "vault" ? "Today, and for their tomorrow." : tab === "money" ? "Your money, your choice." : tab === "support" ? "A clearer way forward." : ownVault ? "Your person. Your plan." : "Start with someone you love."}</h1></div>
+        <div className="page-intro"><span className="eyebrow">{t(tab === "vault" ? "home.intro.vault" : tab === "money" ? "home.intro.money" : tab === "support" ? "home.intro.support" : "home.intro.inherit")}</span><h1 tabIndex={-1}>{t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>
         {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
           <CardHeader>
-            <span className="eyebrow">Set aside for your heir</span>
-            <CardTitle>Your inheritance plan</CardTitle>
-            <p className="plan-card-intro">Keep your money in your control, with a plan for someone you love.</p>
+            <span className="eyebrow">{t("home.overview.eyebrow")}</span>
+            <CardTitle>{t("home.overview.title")}</CardTitle>
+            <p className="plan-card-intro">{t("home.overview.description")}</p>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="plan-overview-assets">
               {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
                 const total = ownedPlanTotal(symbol);
                 const decimals = symbol === "USDC" ? 6 : 18;
-                const value = ownedPlanRead.loading ? "Updating…" : total.amount === null ? "Value unavailable"
+                const value = ownedPlanRead.loading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
                   : `${formatYieldAmount(total.amount, decimals)} ${symbol}`;
                 return <div className="plan-overview-asset" key={symbol}>
                   <span>{symbol}</span><strong>{value}</strong>
-                  <small>{ownedPlanRead.loading ? "Checking status…" : total.unavailable ? "Status unavailable"
-                    : total.rows.length ? "Set aside for your heir" : "Not added yet"}</small>
+                  <small>{ownedPlanRead.loading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
+                    : total.rows.length ? t("home.amount.forHeir") : t("home.amount.notAdded")}</small>
                 </div>;
               })}
             </div>
             {activeOwnedPlans.some(item => item.symbol === "USDC" && (item.additionalWld ?? 0n) > 0n)
-              && <p className="text-xs text-gray-600">WLD includes rewards and gifts held alongside your USDC.</p>}
+              && <p className="text-xs text-gray-600">{t("home.additionalWld")}</p>}
             {ownedPlanRead.incomplete
-              ? <p className="plan-settings-differ" role="status">Some vaults could not be refreshed. Totals may be incomplete and plan settings are withheld; combined check-in is disabled until every owned vault is verified.</p>
+              ? <p className="plan-settings-differ" role="status">{t("home.incomplete")}</p>
               : activeOwnedPlans.length > 0 ? commonPlanSettings
-                ? <p className="plan-common-settings">Heir <strong>{short(activeOwnedPlans[0].heir)}</strong><span>·</span> Check in every <strong>{activeOwnedPlans[0].period} days</strong></p>
-                : <p className="plan-settings-differ">Your assets have different inheritance settings. Review them in Plan.</p>
-                : <p className="text-sm text-gray-600">No active inheritance plan. You can manage existing balances in Assets.</p>}
+                ? <p className="plan-common-settings">{t("home.heir")} <strong title={activeOwnedPlans[0].heir}>{homeHeirUsername ? `@${homeHeirUsername}` : short(activeOwnedPlans[0].heir)}</strong><span>·</span> {t("home.checkin.every")} <strong>{activeOwnedPlans[0].period} {t("home.days")}</strong></p>
+                : <p className="plan-settings-differ">{t("home.settingsDiffer")}</p>
+                : <p className="text-sm text-gray-600">{t("home.noActivePlan")}</p>}
             {nextCheckIn !== null && <div className="home-checkin-date">
-              <span>{chainNow > 0 && nextCheckIn <= chainNow ? "Check-in overdue" : "Next check-in"}</span>
-              <strong>{new Date(nextCheckIn * 1000).toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric" })}</strong>
-              {chainNow > 0 && nextCheckIn <= chainNow && <small>Check in before inheritance executes to keep your plan active.</small>}
+              <span>{chainNow > 0 && nextCheckIn <= chainNow ? t("home.checkin.overdue") : t("home.checkin.next")}</span>
+              <strong>{new Date(nextCheckIn * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en", { year: "numeric", month: "short", day: "numeric" })}</strong>
+              {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
             {activeOwnedPlans.length > 0 && !checkinReview && <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
-              onClick={() => setCheckinReview(true)}>Review check-in</Button>}
+              onClick={() => setCheckinReview(true)}>{t("home.checkin.review")}</Button>}
             {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
-              <h3 id="checkin-review-title">Confirm your check-in</h3>
-              <p>Renew the listed inheritance plans. Their timers restart with the same intervals; your money and heirs stay in place.</p>
+              <h3 id="checkin-review-title">{t("home.checkin.title")}</h3>
+              <p>{t("home.checkin.body")}</p>
               <ul>{activeOwnedPlans.map(item => <li key={item.address}>
                 <strong>{item.symbol}</strong> · {formatPlanInterval(item.periodSeconds)}
-                <span>Last check-in {item.lastPing ? new Date(Number(item.lastPing) * 1000).toLocaleDateString() : "not available"}</span>
+                <span>{item.lastPing ? t("home.checkin.last", { date: new Date(Number(item.lastPing) * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en") }) : t("home.checkin.notAvailable")}</span>
               </li>)}</ul>
-              <details className="checkin-addresses"><summary>View accounts included</summary>
+              <details className="checkin-addresses"><summary>{t("home.checkin.accounts")}</summary>
                 {activeOwnedPlans.map(item => <p key={item.address}>{item.symbol} · {short(item.address)}</p>)}
               </details>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
-                  onClick={() => void runWalletAction(checkInAllPlans)}>Confirm check-in</Button>
-                <Button disabled={pendingAction} onClick={() => setCheckinReview(false)}>Cancel</Button>
+                  onClick={() => void runWalletAction(checkInAllPlans)}>{t("home.checkin.confirm")}</Button>
+                <Button disabled={pendingAction} onClick={() => setCheckinReview(false)}>{t("home.checkin.cancel")}</Button>
               </div>
             </section>}
 
             {NOTIFY_BACKEND_ENABLED && activeOwnedPlans.length > 0
               && (["WLD", "USDC"] as AssetSymbol[]).some(symbol => (ownedPlanTotal(symbol).amount ?? 0n) > 0n) && (
               <div className="plan-overview-reminders text-xs text-gray-600" role="status">
-                <span>{notifyPermission === "granted" ? "Notifications are on for this wallet."
-                  : notifyPermission === "denied" ? "Notifications are off." : "Checking notification permission…"}</span>
+                <span>{notifyPermission === "granted" ? t("home.reminders.on")
+                  : notifyPermission === "denied" ? t("home.reminders.off") : t("home.reminders.checking")}</span>
                 <div className="flex gap-2 flex-wrap">
                   {notifyPermission !== "granted" && <Button size="sm" variant="ghost" disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>
-                    {notifyBusy ? "Working…" : "Enable reminders"}
+                    {notifyBusy ? t("home.reminders.working") : t("home.reminders.enable")}
                   </Button>}
                 </div>
-                <details><summary>Reminder preferences</summary><p>Your heir needs their own notification permission.</p>
-                  <Button size="sm" variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("support"); }}>Reminder settings</Button>
+                <details><summary>{t("home.reminders.preferences")}</summary><p>{t("home.reminders.heirPermission")}</p>
+                  <Button size="sm" variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("support"); }}>{t("home.reminders.settings")}</Button>
                 </details>
               </div>
             )}
             <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" disabled={pendingAction} onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("money"); }}>Manage assets and income</Button>
-              <Button variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("inherit"); }}>Update your plan</Button>
+              <Button variant="outline" disabled={pendingAction} onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("money"); }}>{t("home.assetsIncome")}</Button>
+              <Button variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("inherit"); }}>{t("home.updatePlan")}</Button>
             </div>
           </CardContent>
         </Card>}
@@ -4056,7 +4224,7 @@ export default function App() {
           accounts={assetAccounts} selected={vault} busy={pendingAction}
           onSelect={item => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }} />}
         {isYieldVault && vaultIdentity?.released && <p role="status" className="text-xs text-gray-600">
-          This archived vault remains available for its rewards, inheritance and owner recovery. Your current vault stays separate.
+          {t("home.archived.note")}
         </p>}
         {isYieldVault && vaultIdentity?.released && isVaultOwner && vaultHasAssets && ["vault", "money", "inherit"].includes(tab) && <Card>
           <CardHeader><CardTitle>Recover archived assets</CardTitle></CardHeader><CardContent className="grid gap-2">
@@ -4082,12 +4250,19 @@ export default function App() {
             && incomeRecipientValid && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled))}
           busy={pendingAction} onToChange={setIncomeTo} onCollect={() => void runVaultAction(ownerWithdrawIncome)}
           account={account}
-          disabledReason={!miniInstalled ? "Open in World App to collect income."
-            : isSettledClaim ? "Inheritance has completed."
-            : isExpiredOrLater && !inheritanceCancelled ? "Check in from Plan before inheritance executes to collect income."
+          disabledReason={!miniInstalled ? t("income.openWorldApp")
+            : isSettledClaim ? t("income.inheritanceComplete")
+          : isExpiredOrLater && !inheritanceCancelled ? t("income.checkInBeforeCollect")
             : ""}
-          onRefresh={() => void refreshIncome()}
+          onRefresh={() => { void refreshIncome(); void refreshIncomeHistory(); }}
           onUseMyAddress={() => setIncomeTo(account)} />}
+        {isVaultOwner && identityMatchesVault && tab === "money" && <IncomeHistoryCard
+          data={selectedIncomeHistory}
+          symbol={wldSymbol as "WLD" | "USDC"}
+          decimals={wldDecimals}
+          busy={pendingAction}
+          onRefresh={() => void refreshIncomeHistory()}
+          onLoadOlder={() => void refreshIncomeHistory("older")} />}
         {isYieldVault && (tab === "inherit" && !isMyVault || tab === "money" && hasRewardAction) && <YieldRewardsCard
           usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
@@ -4113,10 +4288,7 @@ export default function App() {
             role="status"
             aria-live="polite"
           >
-            Not connected to World Chain right now, so the numbers below may be out of date.
-            Your funds are unaffected on-chain. This screen checks again on its own every few
-            seconds — or reopen the app. Pull-to-refresh is turned off here on purpose, so
-            swiping down will not retry.
+            {t("home.disconnected")}
           </div>
         )}
 
@@ -5225,6 +5397,13 @@ export default function App() {
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && (
         <>
+          <Card className="help-fees-card">
+            <CardHeader><CardTitle>{t("help.feeTitle")}</CardTitle></CardHeader>
+            <CardContent className="grid gap-2 text-sm text-gray-700">
+              <p>{t("help.feeDisclosure")}</p>
+              <a className="text-blue-600 underline text-xs" href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
+            </CardContent>
+          </Card>
           {/* 상속인 카드를 첫 화면에서 뺐으므로 수동 재확인은 여기로 온다.
               자동 스캔이 열 때마다 돌지만, 그 사이에 상속인으로 지정받은 경우를
               확인하려면 필요하고, 그 수단을 통째로 버리면 안 된다. */}
@@ -5359,15 +5538,16 @@ export default function App() {
           가이드라인이 권장하는 "Bottom tab navigation and anchored buttons" 형태다.
           fixed 이지만 safe-area 를 고려해 화면 가장자리와 겹치지 않게 들어 올린다.
           내용이 없는 탭은 아예 보이지 않는다(visibleTabs). */}
-      <nav className="tab-bar" aria-label="Sections" hidden={!account}>
-        {visibleTabs.map((t) => (
+      <nav className="tab-bar" aria-label={t("nav.sections")} hidden={!account}>
+        {visibleTabs.map((navTab) => (
           <button
-            key={t.key}
-            className={`tab-item ${tab === t.key ? "tab-item-active" : ""}`}
-            onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab(t.key); }}
-            aria-current={tab === t.key ? "page" : undefined}
+            key={navTab.key}
+            className={`tab-item ${tab === navTab.key ? "tab-item-active" : ""}`}
+            onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab(navTab.key); }}
+            aria-current={tab === navTab.key ? "page" : undefined}
           >
-            <Icon name={t.key === "money" ? "assets" : t.key === "vault" ? "home" : t.key === "support" ? "help" : t.key} size={21} /><span>{t.label}</span>
+            <Icon name={navTab.key === "money" ? "assets" : navTab.key === "vault" ? "home" : navTab.key === "support" ? "help" : navTab.key} size={21} />
+            <span>{t(navTab.key === "vault" ? "nav.vault" : navTab.key === "money" ? "nav.money" : navTab.key === "inherit" ? "nav.inherit" : "nav.support")}</span>
           </button>
         ))}
       </nav>

@@ -1,0 +1,18 @@
+name = "world-inheritance-operations-watchdog"
+main = "src/watchdog.mjs"
+compatibility_date = "2026-02-26"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[durable_objects.bindings]]
+name = "OPS_MONITOR"
+class_name = "OperationsWatchdog"
+
+[[migrations]]
+tag = "operations-watchdog-v1"
+new_sqlite_classes = ["OperationsWatchdog"]
+
+[vars]
+OPS_MONITOR_ENABLED = "true"
+SERVICE_HEALTH_URL = "https://world-inheritance-notify.rkddkwl725.workers.dev/api/automation/health"

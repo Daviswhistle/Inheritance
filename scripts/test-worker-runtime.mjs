@@ -14,7 +14,7 @@ const DB = { prepare(sql) {
     async first() { return db.prepare(sql).get(...args) ?? null; },
   };
 } };
-let calls = 0, healthCalls = 0, release, failRPC = false;
+let calls = 0, healthCalls = 0, release, failRPC = false, syncCalls = 0, failSync = false;
 const namespace = {
   idFromName(name) { assert.equal(name, "executor"); return "fixture-executor-id"; },
   get(id) {
@@ -29,6 +29,10 @@ const namespace = {
       if (failRPC) throw new Error("Fixture runtime unavailable");
       if (release !== null) await new Promise((resolve) => { release = resolve; });
       return { enabled: true, checked: 0, finalized: 0, submitted: 0, reason: "idle" };
+    }, async synchronize(...args) {
+      assert.equal(args.length, 0); syncCalls++;
+      if (failSync) throw new Error("Fixture scheduling unavailable");
+      return { enabled: true, reason: "ready", scheduled: 0, failed: 0 };
     } };
   },
 };
@@ -80,6 +84,22 @@ try {
   const retry = await schedule();
   await retry.completion;
   check("a later scheduled tick can retry after internal RPC failure", () => assert.equal(calls, 3));
+
+  const scheduledEnv = { WATCHER_TASKS: {} };
+  const currentCalls = calls;
+  for (const minute of [0, 1, 2]) await (await schedule(scheduledEnv, minute)).completion;
+  check("alarm monitoring coordinates and executes on every minute without legacy alternating scans", () => {
+    assert.equal(calls, currentCalls + 3); assert.equal(syncCalls, 3);
+  });
+  failSync = true;
+  const partial = await schedule(scheduledEnv, 3);
+  await assert.rejects(partial.completion, /A scheduled service task is unavailable/);
+  check("a coordinator failure still allows the financial executor to run", () => assert.equal(calls, currentCalls + 4));
+  failSync = false; failRPC = true;
+  const partialExecution = await schedule(scheduledEnv, 4);
+  await assert.rejects(partialExecution.completion, /A scheduled service task is unavailable/);
+  check("a financial executor failure still allows monitoring synchronization", () => assert.equal(syncCalls, 5));
+  failRPC = false;
 
   const beforeHTTP = calls;
   for (const method of ["GET", "POST"]) {

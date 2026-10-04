@@ -1,5 +1,66 @@
 # Release evidence
 
+## October 5, 2026 operations and product candidate
+
+This adds per-vault Durable Object alarms and a derived eligible-claim queue.
+A pending financial transaction no longer stops other funds from being observed
+or notified. The existing D1 signer lease, exact staged signature, gas reserve
+and finalized receipt checks still govern every payout. Healthy distant funds
+wake at most four hours apart and at the earlier existing reminder, expiry or
+challenge boundary. Registration requests a prompt check. An actual 1,000-row
+SQLite test bootstraps schedules in five 200-row coordinator ticks without
+scanning the chain; it does not certify 1,000 live users or an execution SLA.
+
+A separate five-minute watchdog tracks failed checks, stale execution, observed
+pending duration, gas and fee limits. Telegram delivery has persisted attempts,
+retries, incident deduplication and recovery notices. It shares Cloudflare with
+the service and is not a monitor outside that provider. No paid upgrade or new
+onchain transaction has been made for this task.
+
+Income history verifies only canonical finalized `IncomeWithdrawn` receipts,
+keeps exact WLD/USDC units, groups them by UTC month and exposes incomplete
+coverage. It does not count deposits or principal as income. Older bytecode
+without the income API is marked unsupported. Korean/English primary screens
+include persistent language choice, resolved heir names and full recipient
+addresses. Rare errors and advanced legacy/reward screens still use English.
+A delayed identity response can no longer overwrite an edited interval.
+
+Local validation: 148 genuine financial Anvil checks; 27 actual SQLite scheduling
+checks including 1,000-row bootstrap, concurrent payment discovery and database
+outage rearming; 11 runtime-boundary checks; 68 auth, 28 alert and 16 DB checks;
+9 watchdog and 14 fee-report checks; 9 history and 6 translation checks; 75 unified
+browser checks plus 43 WLD and 16 USDC browser checks. Types, lint, production
+build, localized-copy gate, CSS and both Worker packages pass. New native-browser
+coverage verifies genuine collected income, immediate asset isolation, heir name,
+Korean selection and narrow layouts, finality-error recovery and history retained
+after factory rotation and release; the World App bridge remains a fixture. Checks
+and immediate scheduling are serialized per actor, and missing timing fields
+retry within one minute. Public fixture accounts sign locally on the current
+Anvil chain, including deliberate chain switches. Unsupported FIFO
+sources retire, and a vault-specific RPC failure preserves its hint with backoff
+so later claims can proceed. The report checks the actual RPC chain ID, uses
+public-RPC-compatible log pages and rejects events outside the requested page.
+Basic balance-only read failures retain one-minute retries and error visibility;
+recovery delivers the waiting owner warning. Known Morpho receipt existence still
+works without cash valuation. Unfinalized slot releases retry once per minute and
+keep monitoring until finalized or removed.
+
+The read-only report separately records cash fees, WLD rewards, strategy shares,
+execution gas and chain extras. Missing vault coverage, operator fee evidence,
+FX or operating costs stays unknown. Four recorded treasury receipts were read
+without spending gas; their missing operator-fee evidence prevents a complete
+expense or net-profit claim. See [operations instructions](OPERATIONS.md).
+
+Production Worker and independent watchdog activation require the reviewed
+commit and live version/cron readback. Frontend and new income contracts remain
+part of the combined launch gate below; this candidate has not been activated in
+World App or the store. Current treasury and keeper balances are unchanged from
+the values recorded below. The October 5 KST read-only combined activation reserve
+is 0.000045079717486484 ETH including bot funding, leaving a
+0.000021328175246647 ETH treasury shortfall. Keep the keeper reserve available for
+payouts; independent deployment quotes cannot be funded separately from the same
+starting balance.
+
 ## October 4, 2026 candidate — deployment pending
 
 The candidate adds a unified WLD/USDC plan with default Morpho routes, protected
@@ -18,7 +79,7 @@ independent review of the latest launch-interface commit.
 | --- | --- |
 | Combined Solidity suite | 375 passed, 0 failed; 5 opt-in fork tests skipped locally |
 | Genuine World Chain protocol forks | 20 passed; transactions ran on local forks |
-| Automated executor, actual Anvil | 138 passed |
+| Automated executor, actual Anvil | 141 passed |
 | Guarded gas Worker, actual Anvil | 12 passed |
 | Authentication | 68 passed |
 | Alert decisions / database persistence | 28 / 16 passed |
@@ -60,7 +121,7 @@ internal SQLite-backed `InheritanceExecutor` Durable Object, with its
 [30-second default CPU allowance and Free-plan availability](https://developers.cloudflare.com/durable-objects/platform/limits/).
 The existing D1 journal, signer lease, gas reservations and financial checks remain
 authoritative. Public requests cannot start payouts and a missing binding fails
-closed. The 141 genuine local Anvil checks, seven scheduled-runtime checks, 68
+closed. The 141 genuine local Anvil checks, eight scheduled-runtime checks, 68
 auth checks, 28 alert checks and 16 database checks pass.
 
 A hosted public-key fixture exercised signing and signed-transaction identity

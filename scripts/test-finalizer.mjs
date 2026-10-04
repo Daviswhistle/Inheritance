@@ -15,6 +15,7 @@ import {
   ZeroAddress,
 } from "ethers";
 import { primeFinalizerSigner, readFinalizerHealth, runFinalizerCycle } from "../backend/src/finalizer.mjs";
+import { ensureSchedulingSchema } from "../backend/src/scheduling.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const deploymentWorkflow = readFileSync(root + "/.github/workflows/deploy.yml", "utf8");
@@ -93,7 +94,7 @@ let provider;
 let deploymentGas;
 const behavior = { sends: [], requests: 0, hiddenReceipts: false, droppedResponse: false,
   chainId: null, oracleQuote: null, receiptExtra: null, renewedBeforeSimulation: null,
-  rpcErrorMethod: null, historicalReadErrorSelector: null, finalizedBlock: null, requestLimit: null };
+  rpcErrorMethod: null, rpcErrorAddress: null, historicalReadErrorSelector: null, finalizedBlock: null, requestLimit: null };
 try {
   for (let i = 0; ; i++) {
     try {
@@ -119,7 +120,9 @@ try {
       for (const call of calls) {
         const historicalReadError = behavior.historicalReadErrorSelector && call.method === "eth_call" &&
           call.params[1] !== "latest" && call.params[0].data?.startsWith(behavior.historicalReadErrorSelector);
-        if (historicalReadError || call.method === behavior.rpcErrorMethod ||
+        const vaultReadError = call.method === "eth_call" && behavior.rpcErrorAddress &&
+          call.params[0].to?.toLowerCase() === behavior.rpcErrorAddress.toLowerCase();
+        if (historicalReadError || vaultReadError || call.method === behavior.rpcErrorMethod ||
             behavior.requestLimit != null && behavior.requests > behavior.requestLimit) {
           outputs.push({ jsonrpc: "2.0", id: call.id,
             error: { code: -32000, message: "Local fixture RPC unavailable" } });
@@ -184,11 +187,13 @@ try {
   // still pin and independently validate the configured chain on every cycle.
   provider = new JsonRpcProvider(upstream, "any", { cacheTimeout: -1, batchMaxCount: 1 });
   provider.pollingInterval = 100;
-  // Anvil's unlocked-account signer retains its genesis chain ID after a
-  // deliberate chain-ID switch. Sign locally with the public fixture mnemonic
-  // so the480 reorg setup uses actual480 signatures instead.
-  const owner = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/0").connect(provider);
-  const heir = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/1").connect(provider);
+  // Every role signs locally: Anvil unlocked accounts can retain either chain
+  // ID across a deliberate switch. The fixture provider discovers the current
+  // local chain before signing; no real wallet or RPC is used.
+  const fixtureSigner = index =>
+    HDNodeWallet.fromPhrase(mnemonic, undefined, `m/44'/60'/0'/0/${index}`).connect(provider);
+  const owner = fixtureSigner(0);
+  const heir = fixtureSigner(1);
   const keeperAddress = keeper.address;
   const heirAddress = await heir.getAddress();
 
@@ -259,7 +264,7 @@ try {
     const vaults = [];
     const owners = [];
     for (let i = 0; i < count; i++) {
-      const signer = await provider.getSigner(i + 3);
+      const signer = fixtureSigner(i + 3);
       owners.push(signer);
       await (await factory.connect(signer).createVault(heirAddress, 86400)).wait();
       const vault = await factory.vaultOf(await signer.getAddress());
@@ -316,7 +321,7 @@ try {
     const morpho = await deploy(artifact("MockERC4626"), owner, [f.env.WLD_ADDRESS]);
     const yieldFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
       [f.env.WLD_ADDRESS, await morpho.getAddress(), await owner.getAddress(), 1000]);
-    const signer = await provider.getSigner(3);
+    const signer = fixtureSigner(3);
     const signerAddress = await signer.getAddress();
     await (await yieldFactory.connect(signer).createVault(heirAddress, 86400)).wait();
     const vault = await yieldFactory.vaultOf(signerAddress);
@@ -351,7 +356,7 @@ try {
       factoryAsset || await usdc.getAddress(), strategy, factoryReward || f.env.WLD_ADDRESS,
       await owner.getAddress(), 1000,
     ]);
-    const signer = await provider.getSigner(3);
+    const signer = fixtureSigner(3);
     await (await usdcYieldFactory.connect(signer).createVault(heirAddress)).wait();
     const vaultAddress = await usdcYieldFactory.vaultOf(await signer.getAddress());
     const vault = new Contract(vaultAddress, usdcVaultArtifact.abi, owner);
@@ -387,7 +392,7 @@ try {
     const feeRecipient = await owner.getAddress();
     const usdcYieldFactory = await deploy(artifact("InheritanceVaultUSDCFactory"), owner,
       [await usdc.getAddress(), await morpho.getAddress(), f.env.WLD_ADDRESS, feeRecipient, 1000]);
-    const signer = await provider.getSigner(3), signerAddress = await signer.getAddress();
+    const signer = fixtureSigner(3), signerAddress = await signer.getAddress();
     await (await usdcYieldFactory.connect(signer).createVault(heirAddress, 86400)).wait();
     const vaultAddress = await usdcYieldFactory.vaultOf(signerAddress);
     const vault = new Contract(vaultAddress, artifact("InheritanceVaultUSDC").abi, owner);
@@ -1326,7 +1331,7 @@ try {
     const newFactory = await deploy(artifact("InheritanceVaultUSDCFactory"), owner,
       [f.env.USDC_ADDRESS, f.env.USDC_MORPHO_VAULT_ADDRESS, f.env.WLD_ADDRESS, f.feeRecipient, 1000]);
     const newAddress = await newFactory.getAddress();
-    const otherOwner = await provider.getSigner(4), otherAddress = await otherOwner.getAddress();
+    const otherOwner = fixtureSigner(4), otherAddress = await otherOwner.getAddress();
     await (await newFactory.connect(otherOwner).createVault(heirAddress, 86400)).wait();
     const newVault = await newFactory.vaultOf(otherAddress);
     await (await f.usdc.mint(otherAddress, 100_000000n)).wait();
@@ -1873,7 +1878,7 @@ try {
     const newFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
       [f.env.WLD_ADDRESS, await f.morpho.getAddress(), await owner.getAddress(), 1000]);
     const newAddress = await newFactory.getAddress();
-    const otherOwner = await provider.getSigner(4), otherAddress = await otherOwner.getAddress();
+    const otherOwner = fixtureSigner(4), otherAddress = await otherOwner.getAddress();
     await (await newFactory.connect(otherOwner).createVault(heirAddress, 86400)).wait();
     const newVault = await newFactory.vaultOf(otherAddress);
     await (await f.token.mint(otherAddress, parseEther("100"))).wait();
@@ -1909,7 +1914,7 @@ try {
     const firstLegacy = f.yieldFactory;
     const secondLegacy = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
       [f.env.WLD_ADDRESS, f.env.MORPHO_VAULT_ADDRESS, await owner.getAddress(), 1000]);
-    const otherOwner = await provider.getSigner(4);
+    const otherOwner = fixtureSigner(4);
     await (await secondLegacy.connect(otherOwner).createVault(heirAddress, 86400)).wait();
     const second = await secondLegacy.vaultOf(await otherOwner.getAddress());
     await (await f.token.mint(await otherOwner.getAddress(), parseEther("100"))).wait();
@@ -2055,7 +2060,7 @@ try {
   }
   {
     const f = await yieldFixture({ ready: false });
-    const signer = await provider.getSigner(3);
+    const signer = fixtureSigner(3);
     const signerAddress = await signer.getAddress();
     await (await f.yieldFactory.connect(signer).withdrawAllFromMyVault(signerAddress, parseEther("108"))).wait();
     await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
@@ -2091,7 +2096,7 @@ try {
   }
   {
     const f = await yieldFixture({ ready: false });
-    const otherOwner = await provider.getSigner(4);
+    const otherOwner = fixtureSigner(4);
     const otherAddress = await otherOwner.getAddress();
     await (await f.yieldFactory.connect(otherOwner).createVault(heirAddress, 86400)).wait();
     const otherVault = await f.yieldFactory.vaultOf(otherAddress);
@@ -2122,7 +2127,7 @@ try {
   }
   {
     const f = await yieldFixture();
-    const other = await provider.getSigner(4), otherAddress = await other.getAddress();
+    const other = fixtureSigner(4), otherAddress = await other.getAddress();
     await (await f.yieldFactory.connect(other).createVault(heirAddress, 86400)).wait();
     const otherVault = await f.yieldFactory.vaultOf(otherAddress);
     await (await f.token.mint(otherAddress, parseEther("100"))).wait();
@@ -2155,7 +2160,7 @@ try {
   }
   {
     const f = await yieldFixture({ ready: false });
-    const signer = await provider.getSigner(3);
+    const signer = fixtureSigner(3);
     const signerAddress = await signer.getAddress();
     await (await f.morpho.setRate(parseEther("0.8"))).wait();
     await (await f.yieldFactory.connect(signer).withdrawAllFromMyVault(signerAddress, parseEther("80"))).wait();
@@ -2194,6 +2199,110 @@ try {
     assert.equal(await f.morpho.balanceOf(f.yieldVault), 0n);
     assert.equal(await f.morpho.balanceOf(keeperAddress), 0n);
   }
+  {
+    const f = await fixture(2);
+    f.env.WATCHER_TASKS = {};
+    const start = behavior.requests;
+    const idle = await runFinalizerCycle(f.env);
+    check("scheduled mode does not rescan all funded vaults while no verified candidate is queued", () => {
+      assert.equal(idle.checked, 0); assert.equal(behavior.requests, start);
+    });
+    const target = [...f.vaults].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))[1];
+    f.store.native.prepare("INSERT INTO execution_candidates(vault_address,observation_token,observed_at) VALUES (?,?,?)")
+      .run(target, "verified-local-claim", Date.now());
+    const result = await runFinalizerCycle(f.env);
+    check("queued high-address eligible vault executes without scanning earlier funds", () => {
+      assert.equal(result.checked, 1); assert.equal(result.finalized, 1);
+    });
+    assert.equal(await f.token.balanceOf(target), 0n);
+    const untouched = f.vaults.find(value => value !== target);
+    assert.equal(await f.token.balanceOf(untouched), parseEther("100"));
+    const sent = behavior.sends.length;
+    await runFinalizerCycle(f.env);
+    check("a settled queued hint retires without creating a duplicate transaction", () => {
+      assert.equal(behavior.sends.length, sent);
+      assert.equal(f.store.native.prepare("SELECT COUNT(*) AS n FROM execution_candidates").get().n, 0);
+    });
+  }
+
+  {
+    const f = await fixture(2);
+    f.env.WATCHER_TASKS = {}; f.env.FINALIZER_SCAN_LIMIT = "1";
+    await ensureSchedulingSchema(f.env.DB);
+    const add = f.store.native.prepare("INSERT INTO execution_candidates(vault_address,observation_token,observed_at) VALUES (?,?,?)");
+    add.run(f.vaults[0], "first-claim", 1); add.run(f.vaults[1], "second-claim", 2);
+    f.env.FINALIZER_MAX_FEE_GWEI = "0.000000001";
+    assert.equal((await runFinalizerCycle(f.env)).reason, "fee_cap");
+    f.env.FINALIZER_MAX_FEE_GWEI = "10";
+    const result = await runFinalizerCycle(f.env);
+    check("backoff for one queued failure lets another eligible vault execute", () => {
+      assert.equal(result.finalized, 1);
+      assert.ok(f.store.native.prepare("SELECT next_attempt_at FROM execution_candidates WHERE vault_address=?").get(f.vaults[0]).next_attempt_at > Date.now());
+    });
+    assert.equal(await f.token.balanceOf(f.vaults[0]), parseEther("100"));
+    assert.equal(await f.token.balanceOf(f.vaults[1]), 0n);
+  }
+
+  {
+    const f = await yieldFixture({ mixed: true });
+    f.env.WATCHER_TASKS = {}; f.env.FINALIZER_SCAN_LIMIT = "1";
+    const legacyFactory = f.env.YIELD_FACTORY_ADDRESS;
+    const legacyCode = await provider.getCode(legacyFactory);
+    assert.ok(legacyCode.toLowerCase().includes(selector.slice(2).toLowerCase()));
+    // Model an immutable older dispatcher with every getter intact but no
+    // executeInheritance entrypoint; all following reads use the actual EVM.
+    await provider.send("anvil_setCode", [legacyFactory,
+      legacyCode.replaceAll(selector.slice(2).toLowerCase(), "ffffffff")]);
+    const currentFactory = await deploy(artifact("InheritanceVaultMorphoFactory"), owner,
+      [f.env.WLD_ADDRESS, await f.morpho.getAddress(), await owner.getAddress(), 1000]);
+    f.env.YIELD_FACTORY_ADDRESS = await currentFactory.getAddress();
+    f.env.LEGACY_YIELD_FACTORY_ADDRESSES = legacyFactory;
+    await ensureSchedulingSchema(f.env.DB);
+    const add = f.store.native.prepare("INSERT INTO execution_candidates(vault_address,observation_token,observed_at) VALUES (?,?,?)");
+    add.run(f.yieldVault, "unsupported-legacy-claim", 1);
+    const basicVault = f.vaults.find(value => value !== f.yieldVault);
+    add.run(basicVault, "supported-basic-claim", 2);
+    const before = behavior.sends.length;
+    await runFinalizerCycle(f.env);
+    const result = await runFinalizerCycle(f.env);
+    check("an unsupported legacy yield hint retires and the following supported payout advances", () => {
+      assert.equal(f.store.native.prepare("SELECT COUNT(*) AS n FROM execution_candidates WHERE vault_address=?").get(f.yieldVault).n, 0);
+      assert.equal(result.finalized, 1, JSON.stringify(result));
+      assert.equal(behavior.sends.length, before + 1);
+      assert.equal(behavior.sends.at(-1).to.toLowerCase(), f.env.FACTORY_ADDRESS.toLowerCase());
+    });
+    assert.equal(await f.morpho.balanceOf(f.yieldVault), parseEther("100"));
+    assert.equal(await f.token.balanceOf(basicVault), 0n);
+  }
+
+  {
+    const f = await fixture(2);
+    f.env.WATCHER_TASKS = {}; f.env.FINALIZER_SCAN_LIMIT = "1";
+    await ensureSchedulingSchema(f.env.DB);
+    const add = f.store.native.prepare("INSERT INTO execution_candidates(vault_address,observation_token,observed_at) VALUES (?,?,?)");
+    add.run(f.vaults[0], "read-failing-claim", 1);
+    add.run(f.vaults[1], "following-good-claim", 2);
+    behavior.rpcErrorAddress = f.vaults[0];
+    try {
+      const failed = await runFinalizerCycle(f.env);
+      const following = await runFinalizerCycle(f.env);
+      check("a persistent vault RPC error backs off without starving a following payment", () => {
+        assert.equal(failed.reason, "rpc_error", JSON.stringify(failed));
+        assert.equal(following.finalized, 1, JSON.stringify(following));
+        const hint = f.store.native.prepare("SELECT * FROM execution_candidates WHERE vault_address=?").get(f.vaults[0]);
+        assert.equal(hint.observation_token, "read-failing-claim");
+        assert.ok(hint.next_attempt_at > Date.now() + 60_000);
+      });
+    } finally { behavior.rpcErrorAddress = null; }
+    f.store.native.prepare("UPDATE execution_candidates SET next_attempt_at=0 WHERE vault_address=?").run(f.vaults[0]);
+    const recovered = await runFinalizerCycle(f.env);
+    check("the preserved read-failing claim pays after RPC recovery and retry", () => {
+      assert.equal(recovered.finalized, 1, JSON.stringify(recovered));
+    });
+    assert.equal(await f.token.balanceOf(f.vaults[0]), 0n);
+    assert.equal(await f.token.balanceOf(f.vaults[1]), 0n);
+  }
+
   check("USDC execution headroom preserves the production daily ETH spending cap", () => {
     const production = readFileSync(root + "/backend/wrangler.toml", "utf8");
     const value = name => production.match(new RegExp('^' + name + ' = "([^"\\n]+)"', 'm'))[1];

@@ -2,6 +2,7 @@ import {
   Contract, FetchRequest, Interface, JsonRpcProvider, Transaction, Wallet,
   ZeroAddress, getAddress, isError, keccak256, parseEther, parseUnits,
 } from "ethers";
+import { ensureSchedulingSchema, readQueueHealth, recordPendingObservation } from "./scheduling.mjs";
 
 // This signer has no custody rights. It only calls executeInheritance(vault) with value=0.
 const FACTORY_ABI = [
@@ -203,7 +204,10 @@ async function requireInheritanceEntrypoint(factory) {
   } catch (error) {
     let name;
     try { name = FACTORY_INTERFACE.parseError(error.data || "0x")?.name; } catch { /* absent ABI */ }
-    if (!isError(error, "CALL_EXCEPTION") || name !== "NotOurVault") fail("unsupported_factory");
+    // A transport/node error can be wrapped as CALL_EXCEPTION without revert
+    // data. It does not prove that an immutable contract lacks this entrypoint.
+    if (!isError(error, "CALL_EXCEPTION") || typeof error.data !== "string") throw error;
+    if (name !== "NotOurVault") fail("unsupported_factory");
   }
 }
 
@@ -690,6 +694,7 @@ export async function runFinalizerCycle(env) {
   let acquired = false, cursor = null;
   try {
     await ensureSchema(env.DB);
+    if (env.WATCHER_TASKS) await ensureSchedulingSchema(env.DB);
     acquired = await lock(env.DB, cfg, token);
     if (!acquired) return { ...summary, reason: "locked_or_halted" };
     const pending = await env.DB.prepare("SELECT * FROM finalizer_jobs WHERE scope=? AND state='pending' LIMIT 1")
@@ -706,10 +711,14 @@ export async function runFinalizerCycle(env) {
     }
     const lockRow = await env.DB.prepare("SELECT cursor_address FROM finalizer_locks WHERE scope=?")
       .bind(cfg.scope).first();
-    let rows = await env.DB.prepare(
+    let rows = env.WATCHER_TASKS ? await env.DB.prepare(`
+      SELECT c.vault_address,c.observation_token FROM execution_candidates c
+      JOIN watchers w ON w.vault_address=c.vault_address
+      WHERE w.active=1 AND c.next_attempt_at<=? ORDER BY c.observed_at,c.vault_address LIMIT ?`
+    ).bind(Date.now(), cfg.scanLimit).all() : await env.DB.prepare(
       "SELECT vault_address FROM watchers WHERE active=1 AND vault_address>? ORDER BY vault_address LIMIT ?"
     ).bind(lockRow.cursor_address, cfg.scanLimit).all();
-    if (!(rows.results || []).length && lockRow.cursor_address) {
+    if (!env.WATCHER_TASKS && !(rows.results || []).length && lockRow.cursor_address) {
       rows = await env.DB.prepare("SELECT vault_address FROM watchers WHERE active=1 ORDER BY vault_address LIMIT ?")
         .bind(cfg.scanLimit).all();
     }
@@ -724,12 +733,26 @@ export async function runFinalizerCycle(env) {
       try { snapshot = await snapshotVault(cfg, factory, getAddress(row.vault_address)); }
       catch (error) {
         summary.skipped++;
-        if (error.message === "foreign_vault" ||
-            ["CALL_EXCEPTION", "BAD_DATA", "INVALID_ARGUMENT"].some((code) => isError(error, code))) continue;
+        const reverted = isError(error, "CALL_EXCEPTION") && typeof error.data === "string";
+        if (["foreign_vault", "unsupported_factory", "wrong_token"].includes(error.message) ||
+            reverted || ["BAD_DATA", "INVALID_ARGUMENT"].some((code) => isError(error, code))) {
+          if (row.observation_token) await env.DB.prepare("DELETE FROM execution_candidates WHERE vault_address=? AND observation_token=?")
+            .bind(row.vault_address, row.observation_token).run();
+          continue;
+        }
+        // Preserve this claim for retry while letting later candidates advance
+        // on the next tick. A per-vault read failure must not hold the FIFO head.
+        if (row.observation_token) await env.DB.prepare("UPDATE execution_candidates SET next_attempt_at=? WHERE vault_address=? AND observation_token=?")
+          .bind(Date.now() + COOLDOWN_MS, row.vault_address, row.observation_token).run();
         summary.reason = "rpc_error";
         break;
       }
-      if (!snapshot) { summary.skipped++; continue; }
+      if (!snapshot) {
+        summary.skipped++;
+        if (row.observation_token) await env.DB.prepare("DELETE FROM execution_candidates WHERE vault_address=? AND observation_token=?")
+          .bind(row.vault_address, row.observation_token).run();
+        continue;
+      }
       const previous = await env.DB.prepare("SELECT * FROM finalizer_jobs WHERE chain_id=? AND vault_address=? AND claim_filed_at=? AND state='confirmed'")
         .bind(cfg.chainId, snapshot.address, snapshot.filedAt.toString()).first();
       if (previous) {
@@ -741,7 +764,16 @@ export async function runFinalizerCycle(env) {
         if (result.reason === "finalized") summary.finalized++;
         return summary;
       }
-      if (!(await claimJob(env.DB, cfg, token, snapshot))) { summary.skipped++; continue; }
+      if (!(await claimJob(env.DB, cfg, token, snapshot))) {
+        summary.skipped++;
+        if (row.observation_token) {
+          const previous = await env.DB.prepare("SELECT next_attempt_at FROM finalizer_jobs WHERE chain_id=? AND vault_address=? AND claim_filed_at=?")
+            .bind(cfg.chainId, snapshot.address, snapshot.filedAt.toString()).first();
+          await env.DB.prepare("UPDATE execution_candidates SET next_attempt_at=? WHERE vault_address=? AND observation_token=?")
+            .bind(Math.max(Date.now() + 60_000, Number(previous?.next_attempt_at || 0)), row.vault_address, row.observation_token).run();
+        }
+        continue;
+      }
       try {
         const result = await submit(env.DB, cfg, token, snapshot);
         summary.submitted++;
@@ -752,6 +784,8 @@ export async function runFinalizerCycle(env) {
           "insufficient_gas", "daily_cap", "lease_lost", "job_changed"].includes(error.message)
           ? error.message : "rpc_error";
         await failJob(env.DB, cfg, token, snapshot, reason);
+        if (row.observation_token) await env.DB.prepare("UPDATE execution_candidates SET next_attempt_at=? WHERE vault_address=? AND observation_token=?")
+          .bind(Date.now() + COOLDOWN_MS, row.vault_address, row.observation_token).run();
         summary.reason = reason;
         // Caps, lost leases and unavailable RPC apply to the whole signer, not one vault.
         break;
@@ -764,6 +798,10 @@ export async function runFinalizerCycle(env) {
     return summary;
   } finally {
     if (acquired) {
+      if (env.WATCHER_TASKS) {
+        try { await recordPendingObservation(env.DB, cfg.scope); }
+        catch { /* Derived monitoring cannot alter financial recovery outcomes. */ }
+      }
       await env.DB.prepare(
         "UPDATE finalizer_locks SET lease_until=0,cursor_address=COALESCE(?,cursor_address),last_cycle_at=?,last_cycle_reason=? WHERE scope=? AND lease_token=?"
       ).bind(cursor, new Date().toISOString(), summary.reason, cfg.scope, token).run();
@@ -777,6 +815,7 @@ export async function readFinalizerHealth(env) {
   const cfg = settings(env, 10);
   if (!cfg.enabled) return cfg;
   const result = { enabled: true, chainId: cfg.chainId, factoryAddress: cfg.factoryAddress,
+    monitoringRuntime: env.WATCHER_TASKS ? "durable_object_alarms" : "polling",
     factoryAddresses: [], factoryStatuses: [], supportsUSDC: false,
     signerAddress: cfg.wallet.address, maxGas: cfg.maxGas.toString(),
     maxFeeWei: cfg.maxFee.toString(), dailyBudgetLimited: cfg.dailyCap !== null,
@@ -873,5 +912,9 @@ export async function readFinalizerHealth(env) {
       ? error.message : "unavailable";
     result.supported ??= false;
   } finally { cfg.provider.destroy(); }
+  if (env.WATCHER_TASKS) {
+    try { result.queue = await readQueueHealth(env.DB, cfg.scope); }
+    catch { result.queue = { initialized: false, reason: "unavailable" }; }
+  }
   return result;
 }

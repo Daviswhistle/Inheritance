@@ -8,6 +8,7 @@ import { formatYieldAmount } from "@/yield";
 import { formatRate, RATE_MAX_AGE_SECONDS } from "@/yield-rates";
 import type { YieldRates } from "@/yield-rates";
 import type { YieldRoute } from "@/assets";
+import { useLocale } from "@/locale-context";
 
 function YieldRateSummary({ rates, loading, strategy = MORPHO_VAULT_ADDRESS }: { rates: YieldRates | null; loading: boolean; strategy?: string }) {
   const now = Math.floor(Date.now() / 1000);
@@ -130,51 +131,52 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, acco
   onUseMyAddress: () => void;
   onRefresh: () => void;
 }) {
+  const { t } = useLocale();
   const fmt = (amount: bigint) => formatYieldAmount(amount, decimals);
   return <Card className="income-card">
-    <CardHeader><CardTitle>Collect income</CardTitle></CardHeader>
+    <CardHeader><CardTitle>{t("income.title")}</CardTitle></CardHeader>
     <CardContent className="grid gap-3">
-      {state === "loading" && <p role="status">Checking available income…</p>}
-      {state === "unavailable" && <p className="text-sm text-gray-600">Separate income collection is not available for this earlier balance. You can still use Withdraw principal below to manage it.</p>}
-      {state === "error" && <div className="grid gap-2"><p role="alert" className="text-sm text-yellow-800">Income status could not be refreshed. No collection was sent.</p><Button disabled={busy} onClick={onRefresh}>Refresh income</Button></div>}
+      {state === "loading" && <p role="status">{t("income.loading")}</p>}
+      {state === "unavailable" && <p className="text-sm text-gray-600">{t("income.unsupported")}</p>}
+      {state === "error" && <div className="grid gap-2"><p role="alert" className="text-sm text-yellow-800">{t("income.error")}</p><Button disabled={busy} onClick={onRefresh}>{t("income.refresh")}</Button></div>}
       {state === "available" && position && <>
         {position.valued ? <>
           <div className="stat-row">
             <div className="stat income-stat">
-              <div className="stat-label">Available after fee</div>
+              <div className="stat-label">{t("income.available")}</div>
               <div className="stat-value">{fmt(position.withdrawableNet)} {symbol}</div>
             </div>
           </div>
           <dl className="yield-values">
-            <div><dt>Income before fee</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
-            <div><dt>Service fee</dt><dd>{fmt(position.fee)} {symbol}</dd></div>
-            <div><dt>Net income</dt><dd>{fmt(position.net)} {symbol}</dd></div>
+            <div><dt>{t("income.gross")}</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
+            <div><dt>{t("income.fee")}</dt><dd>{fmt(position.fee)} {symbol}</dd></div>
+            <div><dt>{t("income.net")}</dt><dd>{fmt(position.net)} {symbol}</dd></div>
           </dl>
-          <p className="income-explainer">Collect income while your principal stays invested for your plan. This does not reset your check-in timer.</p>
+          <p className="income-explainer">{t("income.explainer")}</p>
           <p className="income-destination">{recipientValid
-            ? to.toLowerCase() === account.toLowerCase() ? "To your World App wallet" : `To ${to.slice(0, 6)}…${to.slice(-4)}`
-            : "Choose a receiving wallet before collecting."}</p>
+            ? to.toLowerCase() === account.toLowerCase() ? t("income.toWallet") : t("income.toAddress", { address: `${to.slice(0, 6)}…${to.slice(-4)}` })
+            : t("income.chooseRecipient")}</p>
           <Button className="income-collect" variant="primary" disabled={busy || !canCollect || position.withdrawableNet <= 0n || !position.valued} onClick={onCollect}>
-            Collect {fmt(position.withdrawableNet)} {symbol}
+            {t("income.collect", { amount: fmt(position.withdrawableNet), symbol })}
           </Button>
           {disabledReason && <p className="income-explainer" role="status">{disabledReason}</p>}
           {!disabledReason && position.withdrawableNet <= 0n && <p className="income-explainer" role="status">{position.net > 0n
-            ? "Income has accrued, but cash is not available to collect right now. Check Yield details below."
-            : "No income is available to collect yet. Returns can change."}</p>}
-          <details className="income-recipient"><summary>Change receiving wallet</summary><div>
+            ? t("income.withdrawable")
+            : t("income.none")}</p>}
+          <details className="income-recipient"><summary>{t("income.changeRecipient")}</summary><div>
           <div className="field-row">
-            <label className="field-row-label" htmlFor="income-to">Send income to</label>
+            <label className="field-row-label" htmlFor="income-to">{t("income.sendTo")}</label>
             <div className="field-row-controls">
               <Input id="income-to" inputMode="text" autoComplete="off" placeholder="0x…" value={to} onChange={event => onToChange(event.target.value)} />
-              <Button onClick={onUseMyAddress}>My address</Button>
+              <Button onClick={onUseMyAddress}>{t("income.myAddress")}</Button>
             </div>
-            {to && !recipientValid && <p role="alert" className="text-xs text-red-700">Enter a valid wallet address.</p>}
+            {to && !recipientValid && <p role="alert" className="text-xs text-red-700">{t("income.invalidAddress")}</p>}
           </div>
           </div></details>
-          <details className="income-recipient"><summary>Fees &amp; collection details</summary><div>
-            <p className="income-explainer">The service fee is 10% of realized positive gains after loss recovery, never principal. Your approval requests at least 99.5% of the quoted available amount; value and liquidity can change before confirmation.</p>
+          <details className="income-recipient"><summary>{t("income.feeDetails")}</summary><div>
+            <p className="income-explainer">{t("income.feeDisclosure")}</p>
           </div></details>
-        </> : <div className="grid gap-2"><p role="status">Income value is unavailable. Refresh before collecting.</p><Button disabled={busy} onClick={onRefresh}>Refresh income</Button></div>}
+        </> : <div className="grid gap-2"><p role="status">{t("income.noValue")}</p><Button disabled={busy} onClick={onRefresh}>{t("income.refresh")}</Button></div>}
       </>}
     </CardContent>
   </Card>;

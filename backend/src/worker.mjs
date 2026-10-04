@@ -1,9 +1,10 @@
 import { DEFAULT_FRONTEND_ORIGIN, takeCooldown, takeRateLimit, verifySession } from "./session.mjs";
+import { ensureSchedulingSchema, recordObservation, requestWatcherSchedule } from "./scheduling.mjs";
 
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
 // 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
 // (한동안 옛 코드가 도는 것 같아 이 필드로 판별했다).
-const CODE_VERSION = "inheritance-usdc-1";
+const CODE_VERSION = "inheritance-scheduled-operations-1";
 const SEND_NOTIFICATION_URL = "https://developer.world.org/api/v2/minikit/send-notification";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -226,9 +227,11 @@ const ensureSchema = async (env) => {
       .then(() => {});
   }
   await schemaReady;
+  if (env.WATCHER_TASKS) await ensureSchedulingSchema(env.DB);
 };
 
 const rpc = async (env, method, params = []) => {
+  if (env.OBSERVATION_RPC) return env.OBSERVATION_RPC(method, params);
   const rpcUrl = (env.RPC_URL || DEFAULT_RPC_URL).trim() || DEFAULT_RPC_URL;
   const res = await fetch(rpcUrl, {
     method: "POST",
@@ -419,6 +422,7 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
   ]);
 
   let vaultBalance = 0n;
+  let vaultBalanceKnown = false;
   let hasVaultAssets;
   if (checked.yieldVault) {
     // The existence of protected receipts is independent of cash liquidity and
@@ -429,6 +433,7 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
     try {
       vaultBalance = decodeUint(await ethCall(env, checked.yieldVault ? vault : tokenAddress,
         checked.yieldVault ? SELECTORS.TOTAL_ASSETS : encodeBalanceOf(vault)));
+      vaultBalanceKnown = true;
     } catch {
       vaultBalance = 0n;
     }
@@ -436,10 +441,12 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
 
   return {
     vaultAddress: vault,
+    factoryAddress: checked.factoryAddress,
     ownerAddress,
     heirAddress,
     tokenAddress,
     vaultBalance,
+    vaultBalanceKnown,
     hasVaultAssets,
     isExpired,
     claimPending,
@@ -525,7 +532,7 @@ const saveWatcher = async (env, watcher) => {
       .run();
 };
 
-const getWatcherByVault = async (env, vaultAddress) => {
+export const getWatcherByVault = async (env, vaultAddress) => {
   const row = await env.DB.prepare(
     `
       SELECT
@@ -625,6 +632,7 @@ const upsertWatcherFromSnapshot = async (env, snapshot) => withWatcherLease(env,
     delete watcher.alerts[ALERT.HEIR_FINALIZABLE];
   }
   await saveWatcher(env, watcher);
+  await recordObservation(env, snapshot);
   return watcher;
 });
 
@@ -860,7 +868,7 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
   return { alerts, reason: alerts.length ? "pending" : "nothing_to_say" };
 };
 
-const checkWatcher = async (env, watcher, caller = null) => {
+export const checkWatcher = async (env, watcher, caller = null) => {
   try {
     return await withWatcherLease(env, watcher.vaultAddress, async () => {
       // The cron list is only navigation. Read the latest row while holding the lease.
@@ -874,6 +882,7 @@ const checkWatcher = async (env, watcher, caller = null) => {
           && (snapshot.claimedAt > 0n || !addrEq(caller, snapshot.heirAddress))) {
           throw new HttpError(403, "Wallet is not the vault owner or heir");
         }
+        await recordObservation(env, snapshot);
         if (snapshot.claimedAt > 0n) {
           const finalized = await terminalFinalized(env, snapshot);
           await saveWatcher(env, {
@@ -1062,6 +1071,7 @@ const handleRequest = async (request, env) => {
     }
     const snapshot = await getVaultSnapshot(env, vault, identity);
     const watcher = await upsertWatcherFromSnapshot(env, snapshot);
+    if (watcher.active) await requestWatcherSchedule(env, vault);
     return jsonResponse(200, { status: "success", watcher }, cors.headers);
   }
   if (url.pathname === "/api/notifications/unregister") {
@@ -1093,7 +1103,10 @@ const handleRequest = async (request, env) => {
     await requireVaultAccess(env, vault, caller);
     await requireCooldown(env, `check:${caller}`);
     const watcher = await getWatcherByVault(env, vault);
-    const result = watcher ? await checkWatcher(env, watcher, caller) : { notified: false, reason: "not_registered" };
+    const result = !watcher ? { notified: false, reason: "not_registered" }
+      : env.WATCHER_TASKS
+        ? await env.WATCHER_TASKS.get(env.WATCHER_TASKS.idFromName(vault)).checkNow(vault, caller)
+        : await checkWatcher(env, watcher, caller);
     return jsonResponse(200, {
       status: "success", summary: { checked: watcher?.active ? 1 : 0, notified: result.notified ? 1 : 0 }, result,
     }, cors.headers);
@@ -1132,6 +1145,19 @@ export default {
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(
       (async () => {
+        if (env.WATCHER_TASKS) {
+          await ensureSchema(env);
+          if (!env.FINALIZER_EXECUTOR) throw new Error("Scheduled execution runtime is not configured");
+          const results = await Promise.allSettled([
+            env.FINALIZER_EXECUTOR.get(env.FINALIZER_EXECUTOR.idFromName("executor")).synchronize(),
+            runScheduledFinalizer(env),
+          ]);
+          if (results.some(result => result.status === "rejected")) throw new Error("A scheduled service task is unavailable");
+          const [monitoring, finalizer] = results.map(result => result.value);
+          console.log(`[scheduler] scheduled=${monitoring.scheduled || 0} failed=${monitoring.failed || 0}`);
+          console.log(`[finalizer] checked=${finalizer.checked || 0} finalized=${finalizer.finalized || 0} reason=${finalizer.reason}`);
+          return;
+        }
         // Alternate the two tasks to respect existing Free-plan subrequest limits.
         // Bounded batches advance persisted cursors; each task runs every two minutes.
         if (Math.floor(controller.scheduledTime / 60_000) % 2 === 0) {
