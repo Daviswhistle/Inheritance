@@ -124,8 +124,35 @@ Every job stores its source factory. Recovery checks that the signed destination
 stored source and vault's immutable factory still agree with the configured asset
 list and canonical factory membership.
 
+The Worker entry primes a single in-memory signer when an isolate starts and the
+executor is enabled with a key. Priming performs no network calls and logs no key
+material. An invalid key does not prevent Worker startup; each execution and health
+invocation still validates the configured key and reports `invalid_configuration`.
+Invocation settings also detect key rotation and replace the cached signer.
+
 The Worker alternates monitoring and execution on successive minute ticks so each
-task runs every two minutes. Each monitoring tick checks the two least-recently
+task runs every two minutes. Execution uses the internal `InheritanceExecutor`
+Durable Object RPC, with the SQLite-backed class available on Workers Free. Its
+default CPU allowance is 30 seconds per call, rather than the scheduled Worker's
+10 ms Free allowance. No public HTTP route invokes this RPC. A missing binding
+fails closed and public automation health reports `not_running`. All signer
+leases, transactions and fee reservations remain in the existing D1 database;
+no money or job records are moved to the object's own storage. Eviction or a
+restart uses the existing durable recovery path. No subscription upgrade is
+required. The current 720 executor calls/day fit within the 100,000/day Free
+request allocation; account-wide duration and other service quotas still apply.
+See [runtime limits](https://developers.cloudflare.com/durable-objects/platform/limits/)
+and [Free allocations](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+
+If there are no active monitoring rows and no pending transaction for the signer,
+the executor records a completed idle cycle without chain RPCs. A pending
+transaction is reconciled even when all monitoring rows are inactive. Every
+nonempty execution and recovery cycle still verifies the chain, trusted factories
+and gas controller before any submission. Health independently performs these
+live checks even after an idle cycle. Shared ABI interfaces reuse parsed contract
+definitions, without caching chain state across calls.
+
+Each monitoring tick checks the two least-recently
 checked active rows. The execution cursor scans up to its configured three rows
 and submits at most one transaction per tick. Yield source validation can reduce
 that scan to two rows for one WLD source or one row for multiple WLD sources or

@@ -47,17 +47,31 @@ canonical bytecode verification, address
 and legacy configuration, portal allowlisting, exact-commit CI/deploy receipts and
 live health checks remain release gates. No production gas swap is claimed.
 
-The current notification Worker also has a separate runtime release blocker.
-A live Cron trace at 2026-10-03 19:18:48 UTC on version
+The previous notification Worker has an intermittent CPU failure. A live Cron
+trace at 2026-10-03 19:18:48 UTC on version
 `6a3ceebe-3b12-4633-964f-09212acbc49e` ended with `exceededCpu` and
-31 ms CPU time. Its automatic-transfer completion timestamp was stale despite
-the read-only health endpoint responding. The [Workers Free CPU limit is 10 ms
-per Cron invocation](https://developers.cloudflare.com/workers/platform/limits/).
-Local Anvil tests do not establish hosted CPU readiness. Resolve this limit and
-verify advancing successful cycles before treating automatic payout as available.
-Workers Paid is an operational option with a [$5 monthly base subscription and
-usage-based overage](https://developers.cloudflare.com/workers/platform/pricing/);
-changing billing requires approval. No plan upgrade has been performed.
+31 ms CPU time and a stale completion timestamp. The same version completed
+empty cycles at 37–41 ms on October 4; these successes do not establish operation
+within the [10 ms Free Cron CPU budget](https://developers.cloudflare.com/workers/platform/limits/).
+
+The CPU fix reuses parsed ABI definitions, prepares the signer at startup and
+records empty cycles without chain RPCs. Actual execution now runs through the
+internal SQLite-backed `InheritanceExecutor` Durable Object, with its
+[30-second default CPU allowance and Free-plan availability](https://developers.cloudflare.com/durable-objects/platform/limits/).
+The existing D1 journal, signer lease, gas reservations and financial checks remain
+authoritative. Public requests cannot start payouts and a missing binding fails
+closed. The 141 genuine local Anvil checks, seven scheduled-runtime checks, 68
+auth checks, 28 alert checks and 16 database checks pass.
+
+A hosted public-key fixture exercised signing and signed-transaction identity
+recovery without broadcasting any transaction. Its Durable Object reached 51 ms
+CPU while the calling Worker used 0–1 ms; all 14 observed invocation traces
+completed successfully. This establishes runtime isolation, not a real inheritance
+payout. Production acceptance still requires the exact deployed version,
+`executionRuntime: "durable_object"` and advancing successful cron completions.
+This path requires no subscription upgrade; shared account
+[Free request and duration allocations](https://developers.cloudflare.com/durable-objects/platform/pricing/)
+still apply. No billing change has been made.
 
 A local browser bridge and internal commit review do not verify native World App
 approval sheets or recipient push arrival and do not constitute an external audit.

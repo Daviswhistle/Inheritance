@@ -29,7 +29,7 @@ Use current evidence, not checked boxes copied from a previous release. Local re
 ## Remote checks
 
 - Factory deployment receipt and runtime bytecode match the reviewed artifact, WLD address and chain480.
-- Hosted cron runtime: inspect invocation outcome and CPU time, then confirm advancing successful automation cycles. An HTTP 200 and local executor tests do not clear an `exceededCpu` failure; verify the actual account resource limits before release.
+- Hosted cron runtime: verify the SQLite-backed `FINALIZER_EXECUTOR` binding and exported class, `executionRuntime: "durable_object"`, invocation outcomes/CPU and advancing successful cycles. A missing binding must fail closed; public HTTP requests must never start payouts. An HTTP 200 and local executor tests do not clear an `exceededCpu` failure. Inspect both the calling Worker and Durable Object traces and shared account quotas.
 - Current and legacy factory addresses/block numbers agree across frontend, Worker, GitHub variables and portal allowlist.
 - Shared D1 migration and shared session secret applied; deployed nonce and replay behavior match local checks.
 - Exact pushed commit has successful CI and Pages/Worker deploy runs; public pages and assets resolve.

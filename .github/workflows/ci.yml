@@ -155,7 +155,15 @@ jobs:
           node scripts/test-rewards.mjs
 
       - name: Syntax check worker
-        run: node --check src/worker.mjs
+        run: |
+          node --check src/worker.mjs
+          node --check src/runtime.mjs
+
+      - name: Verify scheduled execution boundary and package Worker runtime
+        working-directory: .
+        run: |
+          node scripts/test-worker-runtime.mjs
+          npx wrangler deploy --dry-run --config backend/wrangler.toml
 
       - name: Test notification decision logic
         run: node ../scripts/test-notify-alerts.mjs

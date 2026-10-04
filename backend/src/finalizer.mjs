@@ -36,17 +36,44 @@ const ORACLE_ABI = [
   "function getL1Fee(bytes) view returns (uint256)",
   "function getOperatorFee(uint256) view returns (uint256)",
 ];
+const ORACLE_INTERFACE = new Interface(ORACLE_ABI);
 const GAS_FUNDING_ABI = [
   "function keeper() view returns (address)",
   "function treasury() view returns (address)",
   "function bot() view returns (address)",
 ];
+const GAS_FUNDING_INTERFACE = new Interface(GAS_FUNDING_ABI);
+const STRATEGY_INTERFACE = new Interface(["function asset() view returns (address)"]);
+const TOKEN_INTERFACE = new Interface(["function balanceOf(address) view returns (uint256)"]);
 const GAS_FUNDING_TREASURY = "0x93bC44B8296977Feb479F95855D9b9E051C17dA2";
 const GAS_FUNDING_BOT = "0x20A85A9e929C69A440938eb650d70619b7562eD5";
 const LEASE_MS = 120_000;
 const COOLDOWN_MS = 15 * 60_000;
 const CYCLE_FRESH_MS = 6 * 60_000;
 let cachedWallet;
+
+function signerForKey(privateKey) {
+  if (cachedWallet?.privateKey !== privateKey) cachedWallet = new Wallet(privateKey);
+  return cachedWallet;
+}
+
+/** Prime the single cached executor signer during Worker startup when configured. */
+export function primeFinalizerSigner(env) {
+  if (env?.FINALIZER_ENABLED !== "true") return false;
+  const privateKey = env.FINALIZER_PRIVATE_KEY;
+  if (typeof privateKey !== "string" || privateKey.length !== 66 || !/^0x[\da-fA-F]{64}$/.test(privateKey)) {
+    return false;
+  }
+  try {
+    signerForKey(privateKey);
+    return true;
+  } catch {
+    // An invalid secret must not prevent Worker startup. settings() reports it
+    // as invalid_configuration on each invocation, as it did before priming.
+    return false;
+  }
+}
+
 const sql = {
   locks: "CREATE TABLE IF NOT EXISTS finalizer_locks (scope TEXT PRIMARY KEY, lease_token TEXT NOT NULL, lease_until INTEGER NOT NULL, halted INTEGER NOT NULL DEFAULT 0, cursor_address TEXT NOT NULL DEFAULT '', last_error TEXT, last_cycle_at TEXT, last_cycle_reason TEXT)",
   jobs: "CREATE TABLE IF NOT EXISTS finalizer_jobs (chain_id INTEGER NOT NULL, scope TEXT NOT NULL, vault_address TEXT NOT NULL, claim_filed_at TEXT NOT NULL, recipient_address TEXT NOT NULL, factory_address TEXT NOT NULL DEFAULT '', lease_token TEXT NOT NULL, lease_until INTEGER NOT NULL, next_attempt_at INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'ready', tx_hash TEXT, budget_day TEXT, reserved_wei TEXT, last_error TEXT, tx_raw TEXT, PRIMARY KEY (chain_id, vault_address, claim_filed_at))",
@@ -95,8 +122,7 @@ function settings(env, batchMaxCount = 1) {
           ["localhost", "127.0.0.1", "[::1]"].includes(rpc.hostname)))) {
       return { enabled: false, reason: "invalid_configuration" };
     }
-    if (cachedWallet?.privateKey !== env.FINALIZER_PRIVATE_KEY) cachedWallet = new Wallet(env.FINALIZER_PRIVATE_KEY);
-    const wallet = cachedWallet;
+    const wallet = signerForKey(env.FINALIZER_PRIVATE_KEY);
     const factoryAddress = getAddress(env.FACTORY_ADDRESS);
     const wldAddress = getAddress(env.WLD_ADDRESS);
     const yieldFactoryAddress = env.YIELD_FACTORY_ADDRESS ? getAddress(env.YIELD_FACTORY_ADDRESS) : null;
@@ -185,20 +211,20 @@ async function validateYieldFactory(cfg, address, usdc) {
   const cacheKey = `${usdc ? "USDC" : "WLD"}:${address.toLowerCase()}`;
   const cached = cfg.verifiedYieldFactories?.get(cacheKey);
   if (cached) return cached;
-  const source = new Contract(address, FACTORY_ABI, cfg.provider);
+  const source = new Contract(address, FACTORY_INTERFACE, cfg.provider);
   if (usdc) {
     const [asset, rewardToken, strategy] = await Promise.all([
       source.asset(), source.rewardToken(), source.strategy(),
     ]);
     if (!addrEq(asset, cfg.usdcAddress) || !addrEq(rewardToken, cfg.wldAddress) ||
         !addrEq(strategy, cfg.usdcMorphoVaultAddress) ||
-        !addrEq(await new Contract(strategy, ["function asset() view returns (address)"], cfg.provider).asset(), cfg.usdcAddress)) {
+        !addrEq(await new Contract(strategy, STRATEGY_INTERFACE, cfg.provider).asset(), cfg.usdcAddress)) {
       fail("wrong_token");
     }
   } else {
     const [wld, strategy] = await Promise.all([source.WLD(), source.strategy()]);
     if (!addrEq(wld, cfg.wldAddress) || !addrEq(strategy, cfg.morphoVaultAddress) ||
-        !addrEq(await new Contract(strategy, ["function asset() view returns (address)"], cfg.provider).asset(), cfg.wldAddress)) {
+        !addrEq(await new Contract(strategy, STRATEGY_INTERFACE, cfg.provider).asset(), cfg.wldAddress)) {
       fail("wrong_token");
     }
   }
@@ -216,7 +242,7 @@ async function validateGasFundingController(cfg) {
   try {
     const code = await cfg.provider.getCode(cfg.gasFundingAddress);
     if (code === "0x" || keccak256(code).toLowerCase() !== cfg.gasFundingCodeHash) fail("gas_funding_unverified");
-    const controller = new Contract(cfg.gasFundingAddress, GAS_FUNDING_ABI, cfg.provider);
+    const controller = new Contract(cfg.gasFundingAddress, GAS_FUNDING_INTERFACE, cfg.provider);
     const [keeper, treasury, bot] = await Promise.all([controller.keeper(), controller.treasury(), controller.bot()]);
     if (!addrEq(keeper, cfg.wallet.address) || addrEq(treasury, ZeroAddress) || addrEq(bot, ZeroAddress) ||
         addrEq(treasury, bot) || !addrEq(treasury, GAS_FUNDING_TREASURY) || !addrEq(bot, GAS_FUNDING_BOT)) {
@@ -230,7 +256,7 @@ async function validateGasFundingController(cfg) {
 
 async function validateNetwork(cfg) {
   if (Number(BigInt(await cfg.provider.send("eth_chainId", []))) !== cfg.chainId) fail("wrong_chain");
-  const factory = new Contract(cfg.factoryAddress, FACTORY_ABI, cfg.provider);
+  const factory = new Contract(cfg.factoryAddress, FACTORY_INTERFACE, cfg.provider);
   if (!addrEq(await factory.WLD(), cfg.wldAddress)) fail("wrong_token");
   await requireInheritanceEntrypoint(factory);
   if (cfg.yieldFactoryAddress) {
@@ -300,7 +326,7 @@ async function failJob(db, cfg, token, snapshot, reason) {
 }
 
 async function snapshotVault(cfg, factory, address) {
-  const vault = new Contract(address, VAULT_ABI, cfg.provider);
+  const vault = new Contract(address, VAULT_INTERFACE, cfg.provider);
   const [originFactory, owner, heir, claimedAt, filedAt, claimable] = await Promise.all([
     vault.factory(), vault.owner(), vault.heir(),
     vault.claimedAt(), vault.claimFiledAt(), vault.claimableNow(),
@@ -334,14 +360,14 @@ async function snapshotVault(cfg, factory, address) {
     if (!addrEq(await vault.strategy(), expectedStrategy)) fail("foreign_vault");
   }
   if (claimedAt !== 0n || filedAt === 0n || !claimable || heir === ZeroAddress) return null;
-  const wld = new Contract(cfg.wldAddress, ["function balanceOf(address) view returns (uint256)"], cfg.provider);
+  const wld = new Contract(cfg.wldAddress, TOKEN_INTERFACE, cfg.provider);
   if (yieldVault ? !await vault.hasAssets() : await wld.balanceOf(address) === 0n) return null;
   return { address, filedAt, heir, factoryAddress: originFactory };
 }
 
 async function extraFee(cfg, tx) {
   if (cfg.chainId !== 480) return 0n; // Local Anvil test chains have no OP data fee.
-  const oracle = new Contract(ORACLE_ADDRESS, ORACLE_ABI, cfg.provider);
+  const oracle = new Contract(ORACLE_ADDRESS, ORACLE_INTERFACE, cfg.provider);
   // OP L1 fees are outside maxFeePerGas. Reserve a configured allowance and fail closed
   // if its current estimate is larger. The receipt can still exceed the quote at inclusion.
   const l1 = await oracle.getL1Fee(Transaction.from(tx).unsignedSerialized);
@@ -358,7 +384,7 @@ async function receiptCost(cfg, receipt) {
   if (BigInt(receipt.operatorFeeScalar || 0) !== 0n || BigInt(receipt.operatorFeeConstant || 0) !== 0n) {
     // Use the chain's fee formula, at the receipt's block, rather than duplicating a
     // formula that can change with OP upgrades.
-    const oracle = new Contract(ORACLE_ADDRESS, ORACLE_ABI, cfg.provider);
+    const oracle = new Contract(ORACLE_ADDRESS, ORACLE_INTERFACE, cfg.provider);
     cost += await oracle.getOperatorFee(BigInt(receipt.gasUsed), { blockTag: receipt.blockNumber });
   }
   return cost;
@@ -489,7 +515,7 @@ async function reconcile(db, cfg, job, factory, token, recover = false) {
     let originFactory = null;
     if (cfg.usdcYieldFactoryAddresses.length || cfg.wldYieldFactoryAddresses.length) {
       try {
-        originFactory = await new Contract(job.vault_address, VAULT_ABI, cfg.provider)
+        originFactory = await new Contract(job.vault_address, VAULT_INTERFACE, cfg.provider)
           .factory({ blockTag: receipt.blockNumber });
       } catch {
         // A historical RPC read can be unavailable even after a successful
@@ -508,7 +534,7 @@ async function reconcile(db, cfg, job, factory, token, recover = false) {
     let usdcClaimedAt = null;
     if (usdcVaultSource && usdcSettlementRequest && requestMatchesVaultSource) {
       try {
-        usdcClaimedAt = await new Contract(job.vault_address, VAULT_ABI, cfg.provider)
+        usdcClaimedAt = await new Contract(job.vault_address, VAULT_INTERFACE, cfg.provider)
           .claimedAt({ blockTag: receipt.blockNumber });
       } catch { return { reason: "rpc_error", submitted: 0 }; }
     }
@@ -666,10 +692,10 @@ export async function runFinalizerCycle(env) {
     await ensureSchema(env.DB);
     acquired = await lock(env.DB, cfg, token);
     if (!acquired) return { ...summary, reason: "locked_or_halted" };
-    const factory = await validateNetwork(cfg);
     const pending = await env.DB.prepare("SELECT * FROM finalizer_jobs WHERE scope=? AND state='pending' LIMIT 1")
       .bind(cfg.scope).first();
     if (pending) {
+      const factory = await validateNetwork(cfg);
       const result = await reconcile(env.DB, cfg, pending, factory, token, true);
       summary.reason = result.reason;
       summary.submitted = result.submitted;
@@ -687,6 +713,8 @@ export async function runFinalizerCycle(env) {
       rows = await env.DB.prepare("SELECT vault_address FROM watchers WHERE active=1 ORDER BY vault_address LIMIT ?")
         .bind(cfg.scanLimit).all();
     }
+    if (!(rows.results || []).length) return summary;
+    const factory = await validateNetwork(cfg);
     for (const row of rows.results || []) {
       if (summary.submitted >= cfg.batchSize) break;
       cursor = row.vault_address;

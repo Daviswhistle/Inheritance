@@ -1,5 +1,5 @@
 import { DEFAULT_FRONTEND_ORIGIN, takeCooldown, takeRateLimit, verifySession } from "./session.mjs";
-import { runFinalizerCycle, readFinalizerHealth } from "./finalizer.mjs";
+import { readFinalizerHealth } from "./finalizer.mjs";
 
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
 // 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
@@ -990,7 +990,10 @@ const handleRequest = async (request, env) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors.headers });
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/api/automation/health") {
-    return jsonResponse(200, { status: "success", automation: await readFinalizerHealth(env) }, cors.headers);
+    const automation = await readFinalizerHealth(env);
+    automation.executionRuntime = env.FINALIZER_EXECUTOR ? "durable_object" : "unconfigured";
+    if (automation.enabled && !env.FINALIZER_EXECUTOR) automation.reason = "not_running";
+    return jsonResponse(200, { status: "success", automation }, cors.headers);
   }
   if (request.method === "GET" && url.pathname === "/api/health") {
     await ensureSchema(env);
@@ -1105,6 +1108,13 @@ const handleRequest = async (request, env) => {
  */
 export const __test = { saveWatcher, getWatcherByVault, listWatchers, rowToWatcher, getVaultSnapshot, upsertWatcherFromSnapshot, checkWatcher, runCheckCycle };
 
+const runScheduledFinalizer = async (env) => {
+  if (env.FINALIZER_ENABLED !== "true") return { enabled: false, reason: "disabled" };
+  const namespace = env.FINALIZER_EXECUTOR;
+  if (!namespace) throw new Error("Scheduled execution runtime is not configured");
+  return namespace.get(namespace.idFromName("executor")).runCycle();
+};
+
 export default {
   async fetch(request, env) {
     try {
@@ -1123,7 +1133,7 @@ export default {
         // Bounded batches advance persisted cursors; each task runs every two minutes.
         if (Math.floor(controller.scheduledTime / 60_000) % 2 === 0) {
           await ensureSchema(env);
-          const result = await runFinalizerCycle(env);
+          const result = await runScheduledFinalizer(env);
           console.log(`[finalizer] checked=${result.checked || 0} finalized=${result.finalized || 0} reason=${result.reason}`);
           return;
         }

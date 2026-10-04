@@ -14,7 +14,7 @@ import {
   AbiCoder, Contract, ContractFactory, HDNodeWallet, Interface, JsonRpcProvider, Transaction, formatEther, parseEther, parseUnits, keccak256,
   ZeroAddress,
 } from "ethers";
-import { readFinalizerHealth, runFinalizerCycle } from "../backend/src/finalizer.mjs";
+import { primeFinalizerSigner, readFinalizerHealth, runFinalizerCycle } from "../backend/src/finalizer.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const deploymentWorkflow = readFileSync(root + "/.github/workflows/deploy.yml", "utf8");
@@ -430,6 +430,38 @@ try {
 
   {
     const f = await fixture(0, false);
+    const invalidKey = "0x" + "00".repeat(32);
+    const alternate = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/16");
+    let invalidPrime, disabledPrime;
+    assert.doesNotThrow(() => { invalidPrime = primeFinalizerSigner({ FINALIZER_ENABLED: "true", FINALIZER_PRIVATE_KEY: invalidKey }); });
+    assert.doesNotThrow(() => { disabledPrime = primeFinalizerSigner({ FINALIZER_ENABLED: "false", FINALIZER_PRIVATE_KEY: keeper.privateKey }); });
+    const primaryPrime = primeFinalizerSigner(f.env);
+    const alternatePrime = primeFinalizerSigner({ ...f.env, FINALIZER_PRIVATE_KEY: alternate.privateKey });
+    const requestsBeforeCycles = behavior.requests;
+    const invalid = await runFinalizerCycle({ ...f.env, FINALIZER_PRIVATE_KEY: invalidKey });
+    const disabled = await runFinalizerCycle({ ...f.env, FINALIZER_ENABLED: "false", FINALIZER_PRIVATE_KEY: invalidKey });
+    const primaryCycle = await runFinalizerCycle(f.env);
+    const rotatedCycle = await runFinalizerCycle({ ...f.env, FINALIZER_PRIVATE_KEY: alternate.privateKey });
+    const scopes = f.store.native.prepare("SELECT scope FROM finalizer_locks ORDER BY scope").all().map((row) => row.scope);
+    check("startup signer priming is bounded, non-throwing and preserves invocation configuration and key rotation", () => {
+      assert.equal(invalidPrime, false);
+      assert.equal(disabledPrime, false);
+      assert.equal(primaryPrime, true);
+      assert.equal(alternatePrime, true);
+      assert.equal(invalid.reason, "invalid_configuration", JSON.stringify(invalid));
+      assert.deepEqual(disabled, { enabled: false, reason: "disabled" });
+      assert.equal(primaryCycle.reason, "idle", JSON.stringify(primaryCycle));
+      assert.equal(rotatedCycle.reason, "idle", JSON.stringify(rotatedCycle));
+      assert.deepEqual(scopes, [
+        "31337:" + keeper.address.toLowerCase(),
+        "31337:" + alternate.address.toLowerCase(),
+      ].sort());
+      assert.equal(behavior.requests, requestsBeforeCycles);
+    });
+  }
+
+  {
+    const f = await fixture(0, false);
     const tooMany = Array.from({ length: 9 }, (_, index) => "0x" + (index + 1).toString(16).padStart(40, "0")).join(",");
     for (const [label, value] of [
       ["malformed", "0x1234"],
@@ -494,12 +526,27 @@ try {
       assert.equal(f.store.native.prepare("SELECT total_changes() AS n").get().n, before);
       assert.equal(f.store.native.prepare("SELECT name FROM sqlite_master WHERE name='finalizer_locks'").get(), undefined);
     });
-    await runFinalizerCycle(f.env);
+    const beforeIdleRequests = behavior.requests;
+    const idleCycle = await runFinalizerCycle(f.env);
+    const idleCycleRequests = behavior.requests - beforeIdleRequests;
     const healthy = await readFinalizerHealth(f.env);
     check("completed idle cycle supplies timestamp and outcome evidence", () => {
+      assert.equal(idleCycle.reason, "idle", JSON.stringify(idleCycle));
+      assert.equal(idleCycle.checked, 0);
+      assert.equal(idleCycleRequests, 0);
       assert.equal(healthy.reason, "ready", JSON.stringify(healthy));
       assert.equal(healthy.lastCycleReason, "idle");
       assert.ok(Date.now() - Date.parse(healthy.lastCycleAt) < 60_000);
+      assert.equal(healthy.cycleFresh, true);
+    });
+    behavior.rpcErrorMethod = "eth_call";
+    const offlineIdle = await runFinalizerCycle(f.env);
+    const offlineHealth = await readFinalizerHealth(f.env);
+    behavior.rpcErrorMethod = null;
+    check("an empty idle heartbeat does not hide unavailable chain health", () => {
+      assert.equal(offlineIdle.reason, "idle");
+      assert.equal(offlineHealth.reason, "unavailable");
+      assert.equal(offlineHealth.supported, false);
     });
     f.store.native.prepare("UPDATE finalizer_locks SET last_cycle_at=NULL,last_cycle_reason='running'").run();
     const interruptedFirst = await readFinalizerHealth(f.env);
@@ -557,7 +604,7 @@ try {
       ["runtime hash", { keeper: keeper.address }],
       ["keeper identity", { keeper: HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/16").address }],
     ]) {
-      const f = await fixture(0, false);
+      const f = await fixture(1);
       f.env.FINALIZER_DAILY_GAS_CAP_ETH = "0";
       await configureGasFunding(f.env, guard);
       if (label === "runtime hash") f.env.GAS_FUNDING_CODE_HASH = keccak256("0x60006000fd");
@@ -630,7 +677,7 @@ try {
   }
 
   {
-    const f = await fixture(0, false);
+    const f = await fixture(1, false);
     behavior.rpcErrorMethod = "eth_call";
     const failed = await runFinalizerCycle(f.env);
     behavior.rpcErrorMethod = null;
@@ -793,6 +840,36 @@ try {
     const retried = await runFinalizerCycle(f.env);
     assert.equal(retried.finalized, 1, JSON.stringify(retried));
     assertions++;
+  }
+
+  {
+    const f = await fixture(1);
+    const start = behavior.sends.length;
+    behavior.hiddenReceipts = true;
+    const first = await runFinalizerCycle(f.env);
+    const job = f.store.native.prepare("SELECT * FROM finalizer_jobs WHERE state='pending'").get();
+    const reserved = job?.reserved_wei;
+    const spent = f.store.native.prepare("SELECT CAST(spent_wei AS TEXT) AS spent FROM finalizer_budget").get().spent;
+    f.store.native.prepare("UPDATE watchers SET active=0").run();
+    const requestsBeforeRecovery = behavior.requests;
+    const again = await runFinalizerCycle(f.env);
+    const stillPendingSpent = f.store.native.prepare("SELECT CAST(spent_wei AS TEXT) AS spent FROM finalizer_budget").get().spent;
+    behavior.hiddenReceipts = false;
+    const recovered = await runFinalizerCycle(f.env);
+    const confirmed = f.store.native.prepare("SELECT * FROM finalizer_jobs").all();
+    check("pending recovery runs with every watcher inactive and retains one reservation and broadcast", () => {
+      assert.equal(first.reason, "pending", JSON.stringify(first));
+      assert.equal(again.reason, "pending", JSON.stringify(again));
+      assert.equal(again.checked, 0);
+      assert.ok(behavior.requests > requestsBeforeRecovery);
+      assert.equal(stillPendingSpent, spent);
+      assert.equal(recovered.reason, "finalized", JSON.stringify(recovered));
+      assert.equal(confirmed.length, 1);
+      assert.equal(confirmed[0].state, "confirmed");
+      assert.equal(confirmed[0].reserved_wei, reserved);
+      assert.equal(f.store.faults.reservations, 1);
+      assert.equal(behavior.sends.length - start, 1);
+    });
   }
 
   {
