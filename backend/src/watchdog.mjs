@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import {
   ALERT_REPEAT_MS,
   DELIVERY_RETRY_MS,
+  SAMPLE_INTERVAL_MS,
   PUBLIC_SERVICE_URL,
   fetchServiceSample,
   formatAlertMessage,
@@ -11,6 +12,7 @@ import {
 const BOT_API = "https://api.telegram.org/bot";
 const BOT_METHOD = "/sendMessage";
 const singletonName = "inheritance-operations-watchdog";
+const INITIAL_ALARM_DELAY_MS = 5_000;
 
 const DEFAULT_STATE = Object.freeze({
   lastSampleAt: null,
@@ -56,7 +58,7 @@ export class OperationsWatchdog extends DurableObject {
     super(ctx, env);
     this.ctx = ctx;
     this.env = env;
-    this.fetchImpl = dependencies.fetch || globalThis.fetch;
+    this.fetchImpl = dependencies.fetch || globalThis.fetch.bind(globalThis);
     this.now = dependencies.now || Date.now;
     this.tail = Promise.resolve();
     this.ready = Promise.resolve().then(() => {
@@ -93,16 +95,68 @@ export class OperationsWatchdog extends DurableObject {
     })();
   }
 
+  enabled() {
+    return this.env.OPS_MONITOR_ENABLED === "true" &&
+      isAllowedServiceHealthUrl(this.env.SERVICE_HEALTH_URL);
+  }
+
+  async armAt(next) {
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing === null || existing <= this.now() || next < existing) {
+      await this.ctx.storage.setAlarm(next);
+      return next;
+    }
+    return existing;
+  }
+
+  // Internal RPC bootstrap; the public HTTP health endpoint never starts work.
+  async initialize() {
+    return this.exclusive(async () => {
+      if (!this.enabled()) {
+        await this.ctx.storage.deleteAlarm();
+        return { enabled: false, nextCheckAt: null };
+      }
+      let next = await this.ctx.storage.getAlarm();
+      if (next === null) {
+        next = this.now() + INITIAL_ALARM_DELAY_MS;
+        await this.ctx.storage.setAlarm(next);
+      }
+      return { enabled: true, nextCheckAt: nowIso(next) };
+    });
+  }
+
+  async runScheduled() {
+    return this.exclusive(async () => {
+      if (!this.enabled()) {
+        await this.ctx.storage.deleteAlarm();
+        return { status: "disabled" };
+      }
+      // Persist the next wake before SQL or network work can fail. Cron is a
+      // recovery path, while the alarm keeps sampling without Cron delivery.
+      await this.armAt(this.now() + SAMPLE_INTERVAL_MS);
+      const result = await this.checkUnlocked();
+      await this.armAt(Math.max(this.now() + INITIAL_ALARM_DELAY_MS,
+        Date.parse(result.sampledAt) + SAMPLE_INTERVAL_MS));
+      return result;
+    });
+  }
+
+  async alarm() {
+    return this.runScheduled();
+  }
+
   async publicStatus() {
     await this.ready;
     try {
       const state = this.readState();
       const sinkConfigured = hasConfiguredSink(this.env);
+      const nextCheckAt = await this.ctx.storage.getAlarm();
       return {
         lastSampleAt: state.lastSampleAt,
         lastSampleStatus: state.lastSampleStatus,
         sinkConfigured,
         lastDeliveryStatus: sinkConfigured ? state.lastDeliveryStatus : "not_configured",
+        nextCheckAt: nextCheckAt === null ? null : nowIso(nextCheckAt),
       };
     } catch {
       return {
@@ -110,62 +164,74 @@ export class OperationsWatchdog extends DurableObject {
         lastSampleStatus: "unavailable",
         sinkConfigured: hasConfiguredSink(this.env),
         lastDeliveryStatus: "unavailable",
+        nextCheckAt: null,
       };
     }
   }
 
   async check() {
-    return this.exclusive(async () => {
-      await this.ready;
-      const sampledAt = this.now();
-      const sample = await fetchServiceSample(this.env, this.fetchImpl, sampledAt);
-      const state = this.readState();
-      state.lastSampleAt = nowIso(sampledAt);
-      state.lastSampleStatus = sample.status;
-      state.lastIssueCount = sample.issueCount;
-      state.queueStatus = sample.queueStatus;
+    return this.exclusive(() => this.checkUnlocked());
+  }
 
-      if (sample.status === "unhealthy") {
-        state.consecutiveBadSamples = Math.min(2, state.consecutiveBadSamples + 1);
-        state.consecutiveHealthySamples = 0;
-        if (!state.incidentActive && state.consecutiveBadSamples >= 2) {
-          state.incidentActive = true;
-          state.incidentId = `incident:${sampledAt}`;
-          state.lastAlertSentAt = null;
-          state.repeatSequence = 0;
-          this.enqueue(state.incidentId, state.incidentId, "alert", sampledAt, formatAlertMessage("alert", sample));
-        }
-        if (state.incidentActive && state.lastAlertSentAt !== null &&
-            sampledAt - state.lastAlertSentAt >= ALERT_REPEAT_MS &&
-            !this.hasPendingRepeat(state.incidentId)) {
-          state.repeatSequence++;
-          const eventId = `repeat:${state.incidentId}:${state.repeatSequence}`;
-          this.enqueue(eventId, state.incidentId, "repeat", sampledAt, formatAlertMessage("repeat", sample));
-        }
-      } else {
-        state.consecutiveHealthySamples = Math.min(2, state.consecutiveHealthySamples + 1);
-        state.consecutiveBadSamples = 0;
-        if (state.incidentActive && state.consecutiveHealthySamples >= 2) {
-          const recoveryId = `recovery:${state.incidentId}`;
-          this.enqueue(recoveryId, state.incidentId, "recovery", sampledAt, formatAlertMessage("recovery", sample));
-          state.incidentActive = false;
-          state.incidentId = null;
-          state.lastAlertSentAt = null;
-          state.repeatSequence = 0;
-        }
+  async checkUnlocked() {
+    await this.ready;
+    const sampledAt = this.now();
+    const state = this.readState();
+    const previousSampleAt = Date.parse(state.lastSampleAt);
+    if (Number.isFinite(previousSampleAt) && sampledAt >= previousSampleAt &&
+        sampledAt - previousSampleAt < SAMPLE_INTERVAL_MS) {
+      return this.sampleSummary(state);
+    }
+    const sample = await fetchServiceSample(this.env, this.fetchImpl, sampledAt);
+    state.lastSampleAt = nowIso(sampledAt);
+    state.lastSampleStatus = sample.status;
+    state.lastIssueCount = sample.issueCount;
+    state.queueStatus = sample.queueStatus;
+
+    if (sample.status === "unhealthy") {
+      state.consecutiveBadSamples = Math.min(2, state.consecutiveBadSamples + 1);
+      state.consecutiveHealthySamples = 0;
+      if (!state.incidentActive && state.consecutiveBadSamples >= 2) {
+        state.incidentActive = true;
+        state.incidentId = `incident:${sampledAt}`;
+        state.lastAlertSentAt = null;
+        state.repeatSequence = 0;
+        this.enqueue(state.incidentId, state.incidentId, "alert", sampledAt, formatAlertMessage("alert", sample));
       }
+      if (state.incidentActive && state.lastAlertSentAt !== null &&
+          sampledAt - state.lastAlertSentAt >= ALERT_REPEAT_MS &&
+          !this.hasPendingRepeat(state.incidentId)) {
+        state.repeatSequence++;
+        const eventId = `repeat:${state.incidentId}:${state.repeatSequence}`;
+        this.enqueue(eventId, state.incidentId, "repeat", sampledAt, formatAlertMessage("repeat", sample));
+      }
+    } else if (sample.status === "healthy") {
+      state.consecutiveHealthySamples = Math.min(2, state.consecutiveHealthySamples + 1);
+      state.consecutiveBadSamples = 0;
+      if (state.incidentActive && state.consecutiveHealthySamples >= 2) {
+        const recoveryId = `recovery:${state.incidentId}`;
+        this.enqueue(recoveryId, state.incidentId, "recovery", sampledAt, formatAlertMessage("recovery", sample));
+        state.incidentActive = false;
+        state.incidentId = null;
+        state.lastAlertSentAt = null;
+        state.repeatSequence = 0;
+      }
+    }
 
-      this.saveState(state);
-      this.sql("DELETE FROM operations_watchdog_outbox WHERE status = 'sent' AND sent_at < ?", sampledAt - 90 * 24 * 60 * 60_000);
-      await this.deliverOne(state, sampledAt);
-      return {
-        sampledAt: state.lastSampleAt,
-        status: state.lastSampleStatus,
-        issueCount: state.lastIssueCount,
-        queueStatus: state.queueStatus,
-        deliveryStatus: state.lastDeliveryStatus,
-      };
-    });
+    this.saveState(state);
+    this.sql("DELETE FROM operations_watchdog_outbox WHERE status = 'sent' AND sent_at < ?", sampledAt - 90 * 24 * 60 * 60_000);
+    await this.deliverOne(state, sampledAt);
+    return this.sampleSummary(state);
+  }
+
+  sampleSummary(state) {
+    return {
+      sampledAt: state.lastSampleAt,
+      status: state.lastSampleStatus,
+      issueCount: state.lastIssueCount,
+      queueStatus: state.queueStatus,
+      deliveryStatus: state.lastDeliveryStatus,
+    };
   }
 
   enqueue(eventId, incidentId, kind, createdAt, message) {
@@ -238,7 +304,7 @@ const worker = {
     if (env.OPS_MONITOR_ENABLED !== "true" || !env.OPS_MONITOR) return;
     try {
       const id = env.OPS_MONITOR.idFromName(singletonName);
-      context.waitUntil(env.OPS_MONITOR.get(id).check());
+      context.waitUntil(env.OPS_MONITOR.get(id).runScheduled());
     } catch {
       // Scheduled failures intentionally omit exception text and credentials.
     }
@@ -255,6 +321,7 @@ const worker = {
       lastSampleStatus: "not-sampled",
       sinkConfigured,
       lastDeliveryStatus: sinkConfigured ? "never" : "not_configured",
+      nextCheckAt: null,
     };
     if (env.OPS_MONITOR) {
       try {

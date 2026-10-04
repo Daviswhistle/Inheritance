@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   SERVICE_HEALTH_URL,
   evaluateServiceSample,
+  fetchServiceSample,
   isAllowedServiceHealthUrl,
 } from "../backend/src/operations.mjs";
 
@@ -14,6 +15,7 @@ const { OperationsWatchdog, default: worker } = await import("../backend/src/wat
 class SqliteStorage {
   constructor(database = new DatabaseSync(":memory:")) {
     this.database = database;
+    this.database.exec("CREATE TABLE IF NOT EXISTS test_alarm (id INTEGER PRIMARY KEY CHECK (id = 1), time INTEGER NOT NULL)");
     this.sql = {
       exec: (query, ...bindings) => {
         const statement = this.database.prepare(query);
@@ -26,6 +28,9 @@ class SqliteStorage {
       },
     };
   }
+  async getAlarm() { return this.database.prepare("SELECT time FROM test_alarm WHERE id = 1").get()?.time ?? null; }
+  async setAlarm(time) { this.database.prepare("INSERT INTO test_alarm(id, time) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET time = excluded.time").run(time); }
+  async deleteAlarm() { this.database.prepare("DELETE FROM test_alarm").run(); }
 }
 
 const passed = [];
@@ -127,8 +132,8 @@ await check("two bad samples persist one incident before send; restart and concu
   const concurrent = await Promise.all([harness.watchdog.check(), harness.watchdog.check()]);
   assert.equal(harness.sends.length, 1);
   assert.ok(concurrent.every((item) => item.deliveryStatus === "sent"));
-  assert.equal(harness.serviceCalls.length, 3);
-  assert.ok(harness.serviceCalls.every((call) => call.url === SERVICE_HEALTH_URL && call.options.redirect === "error"));
+  assert.equal(harness.serviceCalls.length, 2);
+  assert.ok(harness.serviceCalls.every((call) => call.url === SERVICE_HEALTH_URL && call.options.redirect === "manual"));
   assert.equal(new URL(harness.sends[0].url).hostname, "api.telegram.org");
   assert.match(new URL(harness.sends[0].url).pathname, /^\/bot\d+:[A-Za-z0-9_-]+\/sendMessage$/);
   assert.match(harness.sends[0].options.body, /Service: https:\/\/inheritance\.pages\.dev/);
@@ -245,7 +250,7 @@ await check("missing alert secrets are visible as not-configured and never claim
   assert.equal(harness.storage.database.prepare("SELECT status FROM operations_watchdog_outbox WHERE kind='alert'").get().status, "pending");
 });
 
-await check("wrong service URL is never fetched; health is read-only and schedule calls check without arguments", async () => {
+await check("wrong service URL is never fetched; health is read-only and schedule calls runScheduled without arguments", async () => {
   let now = Date.parse("2026-10-05T10:00:00.000Z");
   const harness = newHarness({ now, serviceUrl: "https://attacker.invalid/api/automation/health" });
   await harness.watchdog.check();
@@ -257,7 +262,7 @@ await check("wrong service URL is never fetched; health is read-only and schedul
     idFromName(name) { assert.equal(name, "inheritance-operations-watchdog"); return name; },
     get() { return {
       async publicStatus() { return { lastSampleAt: null, lastSampleStatus: "not-sampled", sinkConfigured: false, lastDeliveryStatus: "not_configured" }; },
-      async check(...args) { checkCalls++; checkArguments = args; },
+      async runScheduled(...args) { checkCalls++; checkArguments = args; },
     }; },
   };
   const publicResponse = await worker.fetch(new Request("https://monitor.invalid/api/health"), {
@@ -274,6 +279,237 @@ await check("wrong service URL is never fetched; health is read-only and schedul
   await scheduled;
   assert.equal(checkCalls, 1);
   assert.deepEqual(checkArguments, []);
+});
+
+await check("internal bootstrap persists one prompt alarm and leaves an existing alarm unchanged", async () => {
+  const now = Date.parse("2026-10-05T12:00:00.000Z");
+  const harness = newHarness({ now });
+  assert.equal((await harness.watchdog.publicStatus()).nextCheckAt, null);
+  assert.equal(await harness.storage.getAlarm(), null);
+  const started = await harness.watchdog.initialize();
+  assert.equal(started.nextCheckAt, new Date(now + 5_000).toISOString());
+  harness.setNow(now + 2_000);
+  assert.deepEqual(await harness.watchdog.initialize(), started);
+  assert.equal(harness.serviceCalls.length, 0);
+  assert.equal(harness.sends.length, 0);
+});
+
+await check("alarm sampling survives an actor restart and rearms the next five-minute check", async () => {
+  let now = Date.parse("2026-10-05T13:00:00.000Z");
+  const database = new DatabaseSync(":memory:");
+  const first = newHarness({ database, now, service: () => Response.json(healthPayload("success", "ready", now)) });
+  await first.watchdog.initialize();
+  now += 5_000;
+  first.setNow(now);
+  // Cloudflare consumes the due alarm before invoking its handler.
+  await first.storage.deleteAlarm();
+  await first.watchdog.alarm();
+  assert.equal(first.serviceCalls.length, 1);
+  assert.equal(await first.storage.getAlarm(), now + 5 * 60_000);
+  const restarted = newHarness({ database, now, service: () => Response.json(healthPayload("success", "ready", now)) });
+  assert.equal((await restarted.watchdog.publicStatus()).lastSampleAt, new Date(now).toISOString());
+  assert.equal(await restarted.storage.getAlarm(), now + 5 * 60_000);
+  now += 5 * 60_000;
+  restarted.setNow(now);
+  await restarted.storage.deleteAlarm();
+  await restarted.watchdog.alarm();
+  assert.equal(restarted.serviceCalls.length, 1);
+  assert.equal(restarted.watchdog.readState().consecutiveHealthySamples, 2);
+  assert.equal(await restarted.storage.getAlarm(), now + 5 * 60_000);
+});
+
+await check("Cron, duplicate alarm delivery and restart do not count the same bad sample twice", async () => {
+  let now = Date.parse("2026-10-05T14:00:00.000Z");
+  const harness = newHarness({ now });
+  await harness.watchdog.initialize();
+  await harness.storage.deleteAlarm();
+  await Promise.all([harness.watchdog.alarm(), harness.watchdog.runScheduled(), harness.watchdog.alarm()]);
+  assert.equal(harness.serviceCalls.length, 1);
+  assert.equal(harness.watchdog.readState().consecutiveBadSamples, 1);
+  assert.equal(harness.sends.length, 0);
+  now += 5 * 60_000;
+  harness.setNow(now);
+  await harness.storage.deleteAlarm();
+  await Promise.all([harness.watchdog.runScheduled(), harness.watchdog.alarm()]);
+  assert.equal(harness.serviceCalls.length, 2);
+  assert.equal(harness.watchdog.readState().consecutiveBadSamples, 2);
+  assert.equal(harness.sends.length, 1);
+  const restarted = newHarness({ database: harness.storage.database, now });
+  await restarted.watchdog.runScheduled();
+  assert.equal(restarted.serviceCalls.length, 0);
+  assert.equal(restarted.sends.length, 0);
+});
+
+await check("Cron preserves an earlier alarm and cached samples retain their original cadence", async () => {
+  const now = Date.parse("2026-10-05T15:00:00.000Z");
+  const harness = newHarness({ now });
+  await harness.watchdog.runScheduled();
+  assert.equal(await harness.storage.getAlarm(), now + 5 * 60_000);
+  harness.setNow(now + 4 * 60_000);
+  await harness.watchdog.runScheduled();
+  assert.equal(harness.serviceCalls.length, 1);
+  assert.equal(await harness.storage.getAlarm(), now + 5 * 60_000);
+  await harness.storage.deleteAlarm();
+  await harness.watchdog.runScheduled();
+  assert.equal(await harness.storage.getAlarm(), now + 5 * 60_000);
+});
+
+await check("SQL failure leaves a persistent retry and disabled or invalid configurations stop alarms", async () => {
+  const now = Date.parse("2026-10-05T16:00:00.000Z");
+  const harness = newHarness({ now });
+  await harness.watchdog.ready;
+  harness.storage.database.exec("DROP TABLE operations_watchdog_state");
+  await assert.rejects(harness.watchdog.alarm(), /operations_watchdog_state/);
+  assert.equal(await harness.storage.getAlarm(), now + 5 * 60_000);
+  assert.equal(harness.serviceCalls.length, 0);
+  harness.env.OPS_MONITOR_ENABLED = "false";
+  assert.deepEqual(await harness.watchdog.runScheduled(), { status: "disabled" });
+  assert.equal(await harness.storage.getAlarm(), null);
+  harness.env.OPS_MONITOR_ENABLED = "true";
+  harness.env.SERVICE_HEALTH_URL = "https://attacker.invalid/api/automation/health";
+  await harness.storage.setAlarm(now + 5_000);
+  assert.deepEqual(await harness.watchdog.initialize(), { enabled: false, nextCheckAt: null });
+  assert.equal(await harness.storage.getAlarm(), null);
+  assert.equal(harness.serviceCalls.length, 0);
+  assert.equal(harness.sends.length, 0);
+});
+
+await check("platform global fetch keeps its required receiver for health reads and Telegram delivery", async () => {
+  const originalFetch = globalThis.fetch;
+  let now = Date.parse("2026-10-05T17:00:00.000Z");
+  let healthReads = 0;
+  let telegramSends = 0;
+  globalThis.fetch = function (url) {
+    assert.equal(this, globalThis, "workerd requires the global receiver for native fetch");
+    if (url === SERVICE_HEALTH_URL) {
+      healthReads++;
+      return Promise.resolve(Response.json(healthPayload("success", "rpc_error", now)));
+    }
+    assert.equal(new URL(url).hostname, "api.telegram.org");
+    telegramSends++;
+    return Promise.resolve(Response.json({ ok: true }));
+  };
+  try {
+    const harness = newHarness({ now });
+    const watchdog = new OperationsWatchdog(harness.state, harness.env, { now: () => now });
+    const helperSample = await fetchServiceSample(harness.env, undefined, now);
+    assert.deepEqual(helperSample.issues, ["automation_unavailable"]);
+    await watchdog.runScheduled();
+    now += 5 * 60_000;
+    await watchdog.runScheduled();
+    assert.equal(healthReads, 3);
+    assert.equal(telegramSends, 1);
+    assert.equal((await watchdog.publicStatus()).lastDeliveryStatus, "sent");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+await check("fresh running cycles stay checking; overdue or unfunded running cycles and redirects remain unhealthy", async () => {
+  const now = Date.parse("2026-10-05T18:00:00.000Z");
+  const current = healthPayload("success", "running", now);
+  assert.equal(evaluateServiceSample(current, now).status, "checking");
+  current.automation.lastCycleAt = new Date(now - 7 * 60_000).toISOString();
+  assert.ok(evaluateServiceSample(current, now).issues.includes("executor_stale"));
+  current.automation.lastCycleAt = new Date(now).toISOString();
+  current.automation.funded = false;
+  assert.ok(evaluateServiceSample(current, now).issues.includes("insufficient_gas"));
+  let calls = 0;
+  const redirected = await fetchServiceSample({ SERVICE_HEALTH_URL }, async (url, options) => {
+    assert.equal(url, SERVICE_HEALTH_URL);
+    assert.equal(options.redirect, "manual");
+    calls++;
+    return new Response(null, { status: 302, headers: { Location: "https://attacker.invalid" } });
+  }, now);
+  assert.deepEqual(redirected.issues, ["service_unavailable"]);
+  assert.equal(calls, 1);
+});
+
+await check("running caps cannot recover an incident; pending reservations and unlimited budgets retain their meaning", async () => {
+  let now = Date.parse("2026-10-05T19:00:00.000Z");
+  let mode = "daily";
+  const reserve = "90071992547409931234567890";
+  const snapshot = () => ({
+    ...automation("running", now),
+    executionGasPriceWei: mode === "fees" ? "10000001" : "1500000",
+    maxFeeWei: "10000000", dailyBudgetLimited: true,
+    requiredReserveWei: reserve, dailyRemainingWei: mode === "daily" ? "1" : reserve,
+    pendingTxHash: null,
+  });
+  const harness = newHarness({ now, service: () => Response.json({ status: "success", automation: snapshot() }) });
+  await harness.watchdog.runScheduled();
+  now += 5 * 60_000; harness.setNow(now);
+  await harness.watchdog.runScheduled();
+  assert.equal(harness.sends.length, 1);
+  assert.match(harness.sends[0].options.body, /Daily gas budget exhausted/);
+  mode = "fees";
+  for (let i = 0; i < 2; i++) {
+    now += 5 * 60_000; harness.setNow(now);
+    await harness.watchdog.runScheduled();
+  }
+  assert.equal(harness.watchdog.readState().incidentActive, true);
+  assert.equal(harness.watchdog.readState().consecutiveHealthySamples, 0);
+  assert.equal(harness.storage.database.prepare("SELECT COUNT(*) AS n FROM operations_watchdog_outbox WHERE kind='recovery'").get().n, 0);
+  mode = "healthy";
+  const pending = { ...snapshot(), pendingTxHash: "0x" + "ab".repeat(32), dailyRemainingWei: "0",
+    dailyReservedWei: reserve, dailyCapWei: reserve };
+  assert.equal(evaluateServiceSample({ status: "success", automation: pending }, now).status, "checking");
+  pending.dailyCapWei = "1";
+  assert.ok(evaluateServiceSample({ status: "success", automation: pending }, now).issues.includes("daily_cap"));
+  pending.executionGasPriceWei = "10000001";
+  assert.ok(evaluateServiceSample({ status: "success", automation: pending }, now).issues.includes("fee_cap"));
+  const unlimited = { ...snapshot(), dailyBudgetLimited: false, dailyRemainingWei: "0", dailyReservedWei: reserve, dailyCapWei: "1" };
+  assert.equal(evaluateServiceSample({ status: "success", automation: unlimited }, now).status, "checking");
+  const service = harness.watchdog.fetchImpl;
+  harness.watchdog.fetchImpl = (url, options) => url === SERVICE_HEALTH_URL
+    ? Promise.resolve(Response.json(healthPayload("success", "ready", now))) : service(url, options);
+  for (let i = 0; i < 2; i++) {
+    now += 5 * 60_000; harness.setNow(now);
+    await harness.watchdog.runScheduled();
+  }
+  assert.equal(harness.sends.length, 2);
+  assert.match(harness.sends[1].options.body, /RECOVERED/);
+});
+
+await check("active signer failures remain visible during running; a vault simulation failure stays diagnostic", async () => {
+  let now = Date.parse("2026-10-05T20:00:00.000Z");
+  let failure = "gas_cap";
+  const snapshot = () => ({ ...automation("running", now), recentFailure: failure,
+    executionGasPriceWei: "1500000", maxFeeWei: "10000000", dailyBudgetLimited: false });
+  const harness = newHarness({ now, service: () => Response.json({ status: "success", automation: snapshot() }) });
+  for (let i = 0; i < 4; i++) {
+    harness.setNow(now);
+    await harness.watchdog.runScheduled();
+    now += 5 * 60_000;
+  }
+  assert.equal(harness.watchdog.readState().incidentActive, true);
+  assert.equal(harness.sends.length, 1);
+  assert.match(harness.sends[0].options.body, /Execution needs more gas/);
+  assert.doesNotMatch(harness.sends[0].options.body, /Network fee exceeds/);
+  assert.equal(harness.storage.database.prepare("SELECT COUNT(*) AS n FROM operations_watchdog_outbox WHERE kind='recovery'").get().n, 0);
+  for (const code of ["fee_cap", "daily_cap", "insufficient_gas", "rpc_error", "wrong_chain", "gas_funding_unverified"]) {
+    failure = code;
+    assert.equal(evaluateServiceSample({ status: "success", automation: snapshot() }, now).status, "unhealthy", code);
+  }
+  failure = "simulation_failed";
+  assert.equal(evaluateServiceSample({ status: "success", automation: snapshot() }, now).status, "checking");
+  for (let i = 0; i < 2; i++) {
+    harness.setNow(now);
+    await harness.watchdog.runScheduled();
+    now += 5 * 60_000;
+  }
+  assert.equal(harness.sends.length, 1);
+  assert.equal(harness.watchdog.readState().incidentActive, true);
+  const service = harness.watchdog.fetchImpl;
+  harness.watchdog.fetchImpl = (url, options) => url === SERVICE_HEALTH_URL
+    ? Promise.resolve(Response.json(healthPayload("success", "ready", now))) : service(url, options);
+  for (let i = 0; i < 2; i++) {
+    harness.setNow(now);
+    await harness.watchdog.runScheduled();
+    now += 5 * 60_000;
+  }
+  assert.equal(harness.sends.length, 2);
+  assert.match(harness.sends[1].options.body, /RECOVERED/);
 });
 
 process.stdout.write(`\n${passed.length} monitor checks passed\n`);

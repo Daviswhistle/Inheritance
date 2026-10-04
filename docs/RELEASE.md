@@ -11,7 +11,8 @@ challenge boundary. Registration requests a prompt check. An actual 1,000-row
 SQLite test bootstraps schedules in five 200-row coordinator ticks without
 scanning the chain; it does not certify 1,000 live users or an execution SLA.
 
-A separate five-minute watchdog tracks failed checks, stale execution, observed
+A separate five-minute watchdog uses persisted Durable Object alarms and a Cron
+recovery path to track failed checks, stale execution, observed
 pending duration, gas and fee limits. Telegram delivery has persisted attempts,
 retries, incident deduplication and recovery notices. It shares Cloudflare with
 the service and is not a monitor outside that provider. No paid upgrade or new
@@ -25,10 +26,10 @@ include persistent language choice, resolved heir names and full recipient
 addresses. Rare errors and advanced legacy/reward screens still use English.
 A delayed identity response can no longer overwrite an edited interval.
 
-Local validation: 148 genuine financial Anvil checks; 27 actual SQLite scheduling
+Local validation: 151 genuine financial Anvil checks; 27 actual SQLite scheduling
 checks including 1,000-row bootstrap, concurrent payment discovery and database
 outage rearming; 11 runtime-boundary checks; 68 auth, 28 alert and 16 DB checks;
-9 watchdog and 14 fee-report checks; 9 history and 6 translation checks; 75 unified
+18 watchdog and 14 fee-report checks; 9 history and 6 translation checks; 75 unified
 browser checks plus 43 WLD and 16 USDC browser checks. Types, lint, production
 build, localized-copy gate, CSS and both Worker packages pass. New native-browser
 coverage verifies genuine collected income, immediate asset isolation, heir name,
@@ -51,8 +52,18 @@ FX or operating costs stays unknown. Four recorded treasury receipts were read
 without spending gas; their missing operator-fee evidence prevents a complete
 expense or net-profit claim. See [operations instructions](OPERATIONS.md).
 
-Production Worker and independent watchdog activation require the reviewed
-commit and live version/cron readback. Frontend and new income contracts remain
+The reviewed `9200fe0` operations commit is live in the primary Worker as version
+`4083bf78-05d0-4d14-92ec-a25377438b54`. Migration `0004_scheduling` is applied,
+the existing database and signer bindings are retained, and ten consecutive
+observed Cron cycles completed successfully at 3–4 ms caller CPU time. The live
+queue was initialized with no active watchers or pending payouts at verification;
+this is not a live payout test. Both exact-commit CI runs and the completed native
+review passed. The separate watchdog's original Cron did not produce a sample
+for more than 25 minutes, then started with timed-out health fetches. The corrected
+public Worker-to-Worker fetch configuration and added independent alarm path still
+require their own reviewed deployment and two advancing healthy live samples.
+
+Frontend and new income contracts remain
 part of the combined launch gate below; this candidate has not been activated in
 World App or the store. Current treasury and keeper balances are unchanged from
 the values recorded below. The October 5 KST read-only combined activation reserve

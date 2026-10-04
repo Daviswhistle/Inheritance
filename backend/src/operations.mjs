@@ -69,15 +69,20 @@ function queueMetrics(automation) {
 
 function own(value, key) { return Object.prototype.hasOwnProperty.call(value, key); }
 
+function weiAmount(value) {
+  return typeof value === "string" && /^\d{1,78}$/.test(value) ? BigInt(value) : null;
+}
+
 function issueForReason(reason) {
   switch (reason) {
     case "halted": return "halted";
     case "insufficient_gas": return "insufficient_gas";
-    case "fee_cap":
-    case "gas_cap": return "fee_cap";
+    case "fee_cap": return "fee_cap";
+    case "gas_cap": return "gas_cap";
     case "daily_cap": return "daily_cap";
     case "stale": return "executor_stale";
     case "ready":
+    case "running":
     case "pending": return null;
     default: return "automation_unavailable";
   }
@@ -99,6 +104,29 @@ export function evaluateServiceSample(payload, nowMs = Date.now()) {
     const reasonIssue = issueForReason(typeof automation.reason === "string" ? automation.reason : "");
     if (reasonIssue) issues.add(reasonIssue);
 
+    // The health reader gives an in-flight cycle priority over limits. Check
+    // limits independently, preserving an existing pending tx's reservation
+    // instead of requiring a second new-work reserve for that same tx.
+    const hasPending = typeof automation.pendingTxHash === "string" && /^0x[0-9a-f]{64}$/i.test(automation.pendingTxHash);
+    if (automation.reason === "running") {
+      if (typeof automation.recentFailure === "string" && automation.recentFailure &&
+          automation.recentFailure !== "simulation_failed") {
+        const activeFailure = issueForReason(automation.recentFailure);
+        if (activeFailure) issues.add(activeFailure);
+      }
+      const price = weiAmount(automation.executionGasPriceWei);
+      const ceiling = weiAmount(automation.maxFeeWei);
+      if (price !== null && ceiling !== null && (price === 0n || price > ceiling)) issues.add("fee_cap");
+      const remaining = weiAmount(automation.dailyRemainingWei);
+      const reserve = weiAmount(automation.requiredReserveWei);
+      if (automation.dailyBudgetLimited !== false) {
+        const spent = weiAmount(automation.dailyReservedWei);
+        const cap = weiAmount(automation.dailyCapWei);
+        if ((!hasPending && remaining !== null && reserve !== null && remaining < reserve) ||
+            (spent !== null && cap !== null && spent > cap)) issues.add("daily_cap");
+      }
+    }
+
     const lastCycleMs = typeof automation.lastCycleAt === "string" ? Date.parse(automation.lastCycleAt) : NaN;
     if (!Number.isFinite(lastCycleMs) || lastCycleMs > nowMs + 60_000 ||
         nowMs - lastCycleMs > EXECUTOR_STALE_MS || automation.cycleFresh === false) {
@@ -119,7 +147,7 @@ export function evaluateServiceSample(payload, nowMs = Date.now()) {
     }
   }
   return {
-    status: issues.size ? "unhealthy" : "healthy",
+    status: issues.size ? "unhealthy" : automation?.reason === "running" ? "checking" : "healthy",
     issueCount: issues.size,
     issues: [...issues],
     counts,
@@ -136,6 +164,7 @@ export function formatAlertMessage(kind, sample) {
     halted: "Financial execution halted; review required",
     insufficient_gas: "Keeper gas balance too low",
     fee_cap: "Network fee exceeds configured safety limit",
+    gas_cap: "Execution needs more gas than the configured per-transfer limit",
     daily_cap: "Daily gas budget exhausted",
     executor_stale: "Executor heartbeat overdue",
     pending_transaction_stale: "Pending transaction observed for over 30 minutes",
@@ -160,7 +189,7 @@ export function parseServiceHealthText(text) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
-export async function fetchServiceSample(env, fetchImpl = globalThis.fetch, nowMs = Date.now()) {
+export async function fetchServiceSample(env, fetchImpl = globalThis.fetch.bind(globalThis), nowMs = Date.now()) {
   if (!isAllowedServiceHealthUrl(env?.SERVICE_HEALTH_URL)) {
     return {
       status: "unhealthy", issueCount: 1, issues: ["service_unavailable"],
@@ -171,7 +200,7 @@ export async function fetchServiceSample(env, fetchImpl = globalThis.fetch, nowM
     const response = await fetchImpl(SERVICE_HEALTH_URL, {
       method: "GET",
       headers: { Accept: "application/json" },
-      redirect: "error",
+      redirect: "manual",
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new Error("health_fetch_failed");

@@ -16,6 +16,7 @@ import {
 } from "ethers";
 import { primeFinalizerSigner, readFinalizerHealth, runFinalizerCycle } from "../backend/src/finalizer.mjs";
 import { ensureSchedulingSchema } from "../backend/src/scheduling.mjs";
+import { evaluateServiceSample } from "../backend/src/operations.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const deploymentWorkflow = readFileSync(root + "/.github/workflows/deploy.yml", "utf8");
@@ -518,6 +519,39 @@ try {
       assert.equal(capped.funded, true);
       assert.ok(BigInt(capped.requiredReserveWei) > BigInt(capped.dailyRemainingWei));
       assert.equal(restored.reason, "ready");
+    });
+    f.store.native.prepare("UPDATE finalizer_locks SET last_cycle_reason='running',lease_until=?").run(Date.now() + 120_000);
+    f.env.FINALIZER_DAILY_GAS_CAP_ETH = formatEther(extra + 1n);
+    const runningBudget = await readFinalizerHealth(f.env);
+    check("monitor sees the actual exhausted budget hidden by a running health reason", () => {
+      assert.equal(runningBudget.reason, "running");
+      assert.equal(runningBudget.funded, true);
+      assert.ok(BigInt(runningBudget.dailyRemainingWei) < BigInt(runningBudget.requiredReserveWei));
+      assert.ok(evaluateServiceSample({ status: "success", automation: runningBudget }).issues.includes("daily_cap"));
+    });
+    f.env.FINALIZER_DAILY_GAS_CAP_ETH = "0.1";
+    f.env.FINALIZER_MAX_FEE_GWEI = "0.000000001";
+    const runningFees = await readFinalizerHealth(f.env);
+    check("monitor sees the actual excessive fee hidden by a running health reason", () => {
+      assert.equal(runningFees.reason, "running");
+      assert.equal(runningFees.funded, true);
+      assert.ok(BigInt(runningFees.executionGasPriceWei) > BigInt(runningFees.maxFeeWei));
+      assert.ok(evaluateServiceSample({ status: "success", automation: runningFees }).issues.includes("fee_cap"));
+    });
+  }
+
+  {
+    const f = await fixture();
+    f.env.FINALIZER_MAX_GAS = "50000";
+    const blocked = await runFinalizerCycle(f.env);
+    f.store.native.prepare("UPDATE finalizer_locks SET last_cycle_reason='running',lease_until=?").run(Date.now() + 120_000);
+    const running = await readFinalizerHealth(f.env);
+    check("monitor preserves an actual active gas-limit failure while the next cycle is running", () => {
+      assert.equal(blocked.reason, "gas_cap");
+      assert.equal(blocked.submitted, 0);
+      assert.equal(running.reason, "running");
+      assert.equal(running.recentFailure, "gas_cap");
+      assert.ok(evaluateServiceSample({ status: "success", automation: running }).issues.includes("gas_cap"));
     });
   }
 

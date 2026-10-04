@@ -4,6 +4,25 @@
 
 `backend/watchdog.wrangler.toml`은 기존 Inheritance Worker와 분리된 Worker 설정입니다. `OPS_MONITOR` SQLite Durable Object 하나가 5분마다 고정된 production `/api/automation/health` endpoint를 읽습니다. URL은 코드의 allowlist와 완전히 일치해야 하며, HTTPS 외 URL, 사용자 정보, query, fragment, 다른 host/path는 거부됩니다. HTTP 공개 경로는 읽기 전용 `GET /api/health`뿐입니다. 이 경로는 저장된 monitor 상태만 반환하고 체크를 실행하지 않습니다.
 
+`global_fetch_strictly_public` compatibility flag는 같은 계정의 `workers.dev` endpoint를 실제 공개 HTTP 경로로 조회하도록 합니다. 이 flag 없이 같은 zone의 global fetch는 Worker를 우회해 origin으로 향할 수 있습니다. 설정 근거는 [Cloudflare 공식 fetch 규칙](https://developers.cloudflare.com/workers/runtime-apis/fetch/)과 [compatibility flag 설명](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public)입니다. Service binding으로 금융 서비스 내부 기능을 연결하지 않습니다.
+
+기본 fetch adapter는 Worker의 global receiver를 유지합니다. Native `fetch`를 객체 필드나 일반 callback으로 전달하면서 receiver를 잃으면 workerd가 `Illegal invocation`으로 조회나 전송을 거절합니다. Node의 기본 fetch에서는 발생하지 않는 차이이므로 상태 조회와 Telegram 전송을 모두 검증합니다.
+
+상태 조회는 검증한 workerd에서 지원되는 `redirect="manual"`을 사용하고 모든 3xx 응답을 실패로 판정해 다른 주소를 따라가지 않습니다. 정상적인 executor cycle 중의 `running` 상태는 최근 heartbeat·funding·queue 조건이 정상일 때 `checking`으로 표시합니다. 이는 정상·이상 횟수를 바꾸거나 recovery를 발생시키지 않는 중간 상태입니다. 완료된 정상 상태를 두 번 확인해야 복구 알림을 보냅니다. 오래 지속되는 실행이나 부족한 가스는 그대로 경보 대상입니다.
+
+`running`이 한도 초과를 가리지 않도록 수수료 상한과 유한한 일일 예산을 BigInt로 별도 평가합니다. 활성 `recentFailure`도 보존하되, 기존 정책에서 개별 자산의 진단으로 취급하는 `simulation_failed`는 전역 장애로 바꾸지 않습니다. 대기 중인 기존 거래에는 이미 예약한 금액을 다시 새 거래의 예산으로 요구하지 않으며, 예약 합계가 실제 한도를 넘은 경우는 경보를 유지합니다. 실제 `readFinalizerHealth()`가 `running`을 우선 반환하는 세 가지 한도 초과 사례와, 한도 초과·중간 상태가 계속되는 동안 recovery 알림이 발생하지 않는 경우를 검사합니다.
+
+실행은 저장된 Durable Object alarm이 이어가고, 5분 Cron은 추가 복구 경로입니다. 각 실행은 SQL 조회나 외부 호출 전에 다음 alarm부터 저장합니다. Cron·alarm·재시도 호출이 겹쳐도 마지막 샘플 이후 5분이 지나기 전에는 새로운 샘플이나 incident 횟수를 만들지 않습니다. 더 이른 alarm은 늦추지 않으며 `OPS_MONITOR_ENABLED=false` 또는 잘못된 service URL은 alarm을 해제합니다. 같은 Cloudflare 제공자 안의 두 실행 경로이므로 제공자 전체 장애까지 감시하지는 않습니다.
+
+최초 배포 후에는 내부 RPC `initialize()`를 한 번 호출해 alarm을 시작합니다. 호출자가 소유한 임시 Worker에 `OPS_MONITOR` binding을 두고 `class_name="OperationsWatchdog"`, `script_name="world-inheritance-operations-watchdog"`를 지정합니다. 인증된 운영 요청에서 아래 고정 호출만 실행하며, 키·지갑·D1 binding은 넣지 않습니다. 임시 Worker는 시작 응답을 확인한 뒤 삭제합니다. 반복 초기화는 이미 저장된 alarm을 변경하지 않습니다. Cron이 실제 호출되면 `runScheduled()`도 누락된 alarm을 복구하지만, Cron 등록 성공만으로 최초 실행을 확인했다고 간주하지 않습니다.
+
+```js
+const id = env.OPS_MONITOR.idFromName("inheritance-operations-watchdog");
+const started = await env.OPS_MONITOR.get(id).initialize();
+```
+
+배포 확인에는 공개 health의 `nextCheckAt`뿐 아니라 실제로 5분 이상 떨어진 두 개의 `lastSampleAt`과 그 사이의 정상 alarm trace가 필요합니다. HTTP health 조회는 샘플을 만들거나 alarm을 설정하지 않습니다. 중지하려면 비활성 설정을 배포하고 다음 alarm/Cron 실행에서 해제되는지 확인합니다. 재시작은 같은 내부 초기화 절차를 사용합니다.
+
 운영 health 계약은 기존 `automation` 상태와 `automation.queue` 집계값입니다. 6분 넘은 executor cycle, 자동화 비활성/미지원, gas 부족, fee/daily cap, halt, 30분 넘은 pending transaction, 15분 넘은 due-check 지연과 연속 chain-read 오류를 감시합니다. Pending age는 최초 관측 이후 경과 시간이며 제출 시각을 추정하지 않습니다. Pending/queue age는 관련 집계 필드가 실제 응답에 있을 때만 판단합니다. 이전 runtime처럼 queue 값이 없으면 `not-yet-available`로 남기고 0으로 해석하지 않습니다.
 
 첫 번째 연속 이상 샘플은 저장만 하고, 두 번째 연속 이상 샘플에서 incident를 만듭니다. 정상 응답도 두 번 연속 확인한 뒤 recovery를 보냅니다. SQLite outbox는 발송 의도와 시도 시각을 Telegram 호출 전에 저장합니다. 실패는 5분 뒤부터 재시도하며, 성공한 incident 알림의 반복 발송 간격은 최소 1시간입니다. 수락은 Telegram HTTP 성공과 응답의 `ok: true`를 모두 확인한 경우입니다. 이 방식은 프로세스 재시작과 동시 체크에서 로컬 중복을 막지만, Telegram이 메시지를 수락한 직후 응답이 유실된 경우 외부 API의 idempotency 지원 없이는 재전송 가능성을 없애지 못합니다.

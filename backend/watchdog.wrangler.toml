@@ -1,6 +1,7 @@
 name = "world-inheritance-operations-watchdog"
 main = "src/watchdog.mjs"
 compatibility_date = "2026-02-26"
+compatibility_flags = ["global_fetch_strictly_public"]
 
 [triggers]
 crons = ["*/5 * * * *"]
