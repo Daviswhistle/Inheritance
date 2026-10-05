@@ -1,5 +1,49 @@
 # Release evidence
 
+## October 5, 2026 production deployment and store submission
+
+Reviewed task commit `09b9c0e` completed a fresh native commit review against its
+fixed `ff4b3e7` parent with no actionable findings. The first launch-review attempt
+failed on model capacity; the same model, Max effort and non-Fast profile succeeded
+on retry. Both exact-task CI runs passed. Production merge `f1e94c5` has the same
+source tree and its CI, Pages/backend deployment and gas-refill deployment all
+passed (runs `37280207795`, `37280207855`, `37280207875`).
+
+Pages deployment `18fc5c62-06e1-4aa6-a174-6cc96a1a1c3a` serves the merge commit.
+Primary Worker version `e2c50404-7a31-4da2-b9eb-c5d19b0e1e8a` and refill Worker
+version `8b92fe85-6f33-4ce5-a5c8-2256268feb4d` each receive 100% of traffic.
+Live bindings preserve shared D1 and all existing secrets; both new income
+factories, earlier factories, the pinned gas controller and a zero cumulative
+payout gas cap were read back. Automation reports ready, funded, verified gas
+funding and no halt. Refill runs in its Durable Object and awaits sufficient
+operator fee assets; this is not proof of continuous self-funding or a live swap.
+Six observed postdeployment Cron events per Worker completed successfully;
+primary caller CPU was 2 ms in the latest samples and refill caller CPU was 0 ms.
+Two advancing watchdog samples at 07:55:43 and 08:05:43 UTC were healthy.
+
+The served browser was checked without a fixture bridge or signer: 320/390px
+layouts, English/Korean selection and persistence, World App entry and zero
+runtime exceptions passed. A genuine ephemeral, unfunded EOA signed the deployed
+nonce flow; session issuance, nonce replay rejection, unauthenticated API
+rejection, shared Pages/Worker session acceptance and foreign-origin rejection
+passed. No blockchain transaction or existing watcher change was made by those
+production checks. All seven served store PNGs matched reviewed source hashes.
+
+The portal readback confirms `awaiting_review` for
+`app_28c40a2a42b7f6c95789c2d5231b1314`. Ten allowed contract entries, the four
+Permit2 tokens, updated descriptions and seven images were verified. Submission
+initially rejected the long annotation; it accepted the corrected 35-character
+annotation, now reflected in `MORPHO_STORE_METADATA.json`. This documentation
+update does not change the deployed application or Worker code.
+
+Final balances: treasury 0.000017483552679017 ETH, refill bot 0.00001 ETH and
+keeper 0.00002 ETH. Actual new World Chain network fees total
+0.000027944596220571 ETH. The Bags source wallet's 0.00089088 SOL was fully used
+as recorded below. Native phone wallet/contact acceptance, World App store
+approval, an actual future seven-day payout, third-party security audit and
+public adoption remain unverified; the production auth check establishes the
+server path and does not replace native-device acceptance.
+
 ## October 5, 2026 final launch candidate and onchain receipts
 
 The final interface combines WLD and USDC into one plan, defaults new balances to
