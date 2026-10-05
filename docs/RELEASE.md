@@ -1,5 +1,52 @@
 # Release evidence
 
+## October 6, 2026 KST shared owner plan and heir journey release
+
+Owner recipient and interval settings now cover every unsettled configured asset.
+Interval changes include an atomic check-in. Check-in from Plan takes one tap and
+one wallet request, keeps the live interval and preserves an unsaved interval draft.
+Interrupted settings recover the original canonical receipt without resending,
+including after a basic slot or every current slot has been released. Remaining
+USDC settings stay accessible after WLD pays out. Withdrawals, income collection
+and wallet-share redemption remain available during settings recovery.
+
+Heirs see WLD/USDC grouped by owner, can open either currency after discovery,
+claim eligible assets together and reopen verified cash/share receipts. Invitations
+show the last authenticated heir visit and reported notification permission.
+Completion alerts and API access use the immutable finalized yield recipient.
+
+Reviewed task `85ad587` against fixed parent `d7e442d` passed the final complete
+native commit review (`gpt-6.1-sol`, max, default tier) with no remaining findings.
+Local Anvil/Chrome checks passed: shared plan 29, unified plan 83, WLD 43, USDC 16
+and identity recovery 5. Contracts: 375 passed, five opt-in fork skips. Finalizer
+151, auth 76 and scheduling 28 passed, as did types, lint, production build,
+translations and CSS definitions. The old recovery harness now follows the current
+check-in route while preserving actual timer and receipt assertions.
+
+[PR 3](https://github.com/Daviswhistle/Inheritance/pull/3) merged as `e095435`,
+whose tree matches the reviewed task. Exact-task CI `37337633133`, production CI
+`37339156934` and [deployment `37339156924`](https://github.com/Daviswhistle/Inheritance/actions/runs/37339156924)
+passed. Authenticated Cloudflare readback confirms canonical Pages deployment
+`5cbc6c73-9767-4ed4-9a6e-d9a245f1d4e2` serves `e095435` and notification Worker
+version `f38bf9e5-747f-4cc1-9b3a-f806dac086e4` serves 100% of traffic; the Worker
+version matches the deployment job receipt.
+
+The ordinary production browser rendered English/Korean at 320/390px, retained
+the language choice and provided World App entry without runtime errors. A genuine
+unfunded ephemeral EOA signature verified production one-use nonce/session
+issuance, rejected replay and foreign-origin access, and accessed only its empty
+Worker records. Live automation health is ready, supports USDC and shows an
+advancing fresh cycle. These checks sent no production chain transactions or
+external test notifications; no contracts were redeployed.
+
+Live Portal readback remains `awaiting_review`; all ten configured wallet-call
+addresses and required Permit2 tokens are registered. Store approval and real
+iOS/Android approval sheets, contacts and push arrival remain external evidence.
+Current contracts support one heir across the plan. The proposed future design
+uses percentages totaling 100%, one recipient by default and a ten-recipient target
+subject to contract/wallet benchmarks; multiple recipients are not a shipped feature.
+Private execution evidence is under `/tmp/inheritance-plan-experience-20261005`.
+
 ## October 5, 2026 simplified setup and check-in release
 
 New WLD + USDC setup creates missing positions, grants exact approvals and
