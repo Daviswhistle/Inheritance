@@ -42,6 +42,11 @@ exact-output swap, allowance reset, WETH withdrawal, fixed ETH payments and unus
 input refund occur in **one transaction**. Failure reverses all asset movements.
 The router retains no allowance. Existing unrelated contract deposits are preserved.
 
+The minute Cron delegates signing, planning and health reads to a SQLite-backed
+`GAS_REFILL_EXECUTOR` Durable Object. Public HTTP health calls cannot start funding.
+This gives financial execution its separate CPU budget on the existing free plan;
+the existing D1 journal and fenced signer lease still protect overlapping calls.
+
 Private `gas_funding_*` D1 records contain an exact signed transaction before
 broadcast. A signer-wide fenced lease and one-pending-job index prevent competing
 jobs even across controller deployments. A controller change pauses with
@@ -65,6 +70,13 @@ Setup uses local `.env.deploy` and `.env.gas-refill` keys and a 0600, ignored
 addresses, budgets and required native reserve. Activation deploys the guard,
 removes any treasury-to-bot allowances, approves only the guard for the four fixed
 fee assets and seeds the bot up to 0.00001 ETH. Resume exactly the same journal:
+
+Setup stages each bounded transaction once its receipt is canonical, recording
+its exact signature, block hash and cost. It requires all setup receipts to be
+finalized before reporting activation. A finality delay resumes the same journal
+without repeating approvals or funding; a changed receipt stops further signing.
+Before every signature and retry it revalidates the included prefix and uses
+the journal's fixed next nonce. A mid-setup reorg cannot reuse a deployment nonce.
 
 ```sh
 node scripts/setup-gas-refill.mjs --activate --broadcast

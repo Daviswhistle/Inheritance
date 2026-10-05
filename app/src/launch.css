@@ -99,3 +99,5 @@
   .app-header .network-pill { display: none; }
   .page-intro h1 { word-break: keep-all; overflow-wrap: anywhere; }
 }
+
+.asset-money-card .stat-label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.5; min-height: 2.5em; }

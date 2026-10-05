@@ -3,8 +3,14 @@
 New plans ask for WLD and USDC amounts first, then an heir and a check-in
 interval. Users do not choose or create individual vaults. The configured primary
 Morpho routes are the default. The user reviews
-the 10% positive-gain service fee and the lending/liquidity risks before any
-deposit. “Review plan” is a local step with exact token amounts and the full
+the 10% positive-gain service fee, the separately verified Re7 strategy fee
+and the lending/liquidity risks before any deposit. Strategy fees are already
+reflected in Morpho share value before the service fee; the two percentages
+are not added as a flat fee. A changed verified strategy fee invalidates
+the prior review. Fresh reads before each new wallet request are compared with
+the exact reviewed or explicitly consented rates, including between creation and
+deposit; a mismatch clears consent and blocks the next request. Home and Assets
+label yield value before the service fee. “Review plan” is a local step with exact token amounts and the full
 resolved recipient address; it sends no wallet request. “Confirm and deposit”
 then starts the existing durable transaction flow. Editing values invalidates
 that review, and the fee/risk consent starts unchecked. The app creates missing

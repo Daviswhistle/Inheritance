@@ -28,6 +28,11 @@ contract MockERC4626 is MockERC20 {
         rate = next;
     }
 
+    function setFee(uint256 next) external {
+        require(next <= 1 ether, "fee");
+        fee = next;
+    }
+
     function setLiquidity(uint256 next) external {
         liquidityLimit = next;
     }

@@ -250,11 +250,11 @@ log("\n[3] 상속인에게 피상속인 목소리가 나오지 않는가 (P1-6, 
   const heirOwn = await vaultOf(A.a7.a);
   const ownOverview = await b.ev('return document.querySelector(".plan-overview-card")?.innerText || "";');
   const ownPlanHeir = cast(["call", heirOwn, "heir()(address)", "--rpc-url", RPC]);
-  const shortAddress = (address) => `${address.slice(0, 6)}...${address.slice(-4)}`;
+  const displayedHeir = await b.ev('return document.querySelector(".plan-common-settings strong[title]")?.title || "";');
   check("Vault 탭은 상속 중인 링크가 아니라 자기 계획을 보여준다",
     /Your inheritance plan/.test(ownOverview)
-      && ownOverview.includes(shortAddress(ownPlanHeir))
-      && !ownOverview.includes(shortAddress(heirOfA6)),
+      && displayedHeir.toLowerCase() === ownPlanHeir.toLowerCase()
+      && displayedHeir.toLowerCase() !== heirOfA6.toLowerCase(),
     ownOverview.split("\n").filter((line) => /Heir|active assets/i.test(line)).join(" / ") || "자기 계획 요약 없음");
   await clickTab(b, "plan");
   const tv = await text(b);

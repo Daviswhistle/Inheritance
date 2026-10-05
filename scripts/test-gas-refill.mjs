@@ -31,7 +31,7 @@ guard.unref();
 let provider,proxy;
 const stores=[];
 const treasury=Wallet.createRandom(),bot=Wallet.createRandom(),keeper=Wallet.createRandom().address;
-const behavior={sends:[],dropAck:false,hideReceipt:false,rpcError:null,finality:false,reorgOnFinality:false,reorgNext:false,operatorFee:0n};
+const behavior={sends:[],dropAck:false,hideReceipt:false,rpcError:null,finality:false,reorgOnFinality:false,reorgNext:false,operatorFee:0n,setupReorgSnapshot:null,setupDeploySent:false};
 let checks=0, funding, testCfg, env;
 async function rpc(method,params=[]) {
  const result=await (await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})})).json();
@@ -86,6 +86,7 @@ try {
   try{let body="";for await(const part of request)body+=part;const call=JSON.parse(body);
    if(call.method===behavior.rpcError){response.statusCode=503;response.end("{}");return;}
    if(call.method==="eth_sendRawTransaction")behavior.sends.push(keccak256(call.params[0]));
+   if(call.method==="eth_sendRawTransaction"&&behavior.setupReorgSnapshot&&Transaction.from(call.params[0]).to===null)behavior.setupDeploySent=true;
    let result;
    if(!fork&&call.method==="eth_call"&&String(call.params[0].to).toLowerCase()==="0x420000000000000000000000000000000000000f"){
     const operatorSelector=new Contract("0x420000000000000000000000000000000000000F",["function getOperatorFee(uint256) view returns(uint256)"],provider).interface.getFunction("getOperatorFee").selector;
@@ -102,6 +103,9 @@ try {
     if(call.method==="eth_getBlockByNumber"&&behavior.reorgNext){result={...result,hash:"0x"+"a".repeat(64)};behavior.reorgNext=false;}
    }
    if(call.method==="eth_getTransactionReceipt"&&result&&behavior.operatorFee>0n){result.operatorFeeScalar="0x0";result.operatorFeeConstant=toBeHex(behavior.operatorFee);}
+   if(call.method==="eth_estimateGas"&&call.params[0].to&&behavior.setupDeploySent&&behavior.setupReorgSnapshot){
+    await rpc("evm_revert",[behavior.setupReorgSnapshot]);behavior.setupReorgSnapshot=null;behavior.setupDeploySent=false;
+   }
    if(call.method==="eth_sendRawTransaction"&&behavior.dropAck){behavior.dropAck=false;response.destroy();return;}
    response.setHeader("Content-Type","application/json");response.end(JSON.stringify({jsonrpc:"2.0",id:call.id,result}));
   }catch{response.statusCode=500;response.end("{}");}
@@ -205,15 +209,36 @@ try {
    behavior.operatorFee=100_000_000_000n;
    await tx(usdc.approve(bot.address,1n,{gasPrice:1500000n}));await rpc("anvil_setBalance",[bot.address,"0x0"]);
    const dry=await execute(["--check"]);assert.equal(dry.code,0,dry.output);assert.equal(await usdc.allowance(treasury.address,bot.address),1n);
+   const originalNonce=await provider.getTransactionCount(treasury.address);
+   behavior.setupReorgSnapshot=await rpc("evm_snapshot",[]);
+   const reorg=await execute(["--activate","--broadcast"]);assert.equal(reorg.code,1);assert.match(reorg.output,/Previously included setup changed/);
+   const orphaned=JSON.parse(readFileSync(join(temp,".env.gas-funding-activation.json"),"utf8"));
+   assert.equal(orphaned.steps.length,1,"a reorg must stop before another signature uses the deployment nonce");
+   assert.equal(Transaction.from(orphaned.steps[0].raw).nonce,originalNonce);
+   assert.equal(await provider.getTransactionCount(treasury.address),originalNonce);
+   // Only the disposable fixture is reset. Production retains the exact journal
+   // for operator reconciliation instead of replacing an orphaned signature.
+   rmSync(join(temp,".env.gas-funding-activation.json"));
    behavior.finality=true;const first=await execute(["--activate","--broadcast"]);assert.equal(first.code,1);assert.match(first.output,/canonical finality/);
+   const staged=JSON.parse(readFileSync(join(temp,".env.gas-funding-activation.json"),"utf8"));
+   assert.ok(staged.steps.length>=6 && staged.steps.every(step=>step.included && !step.confirmed),"setup must stage every canonical approval but cannot claim activation before finality");
+   const stagedNonce=await provider.getTransactionCount(treasury.address);
+   const stillPending=await execute(["--activate","--broadcast"]);assert.equal(stillPending.code,1);assert.match(stillPending.output,/canonical finality/);
+   assert.equal(await provider.getTransactionCount(treasury.address),stagedNonce,"finality polling must never send duplicate funding or approvals");
+   behavior.reorgOnFinality=true;
+   const changedReceipt=await execute(["--activate","--broadcast"]);assert.equal(changedReceipt.code,1);assert.match(changedReceipt.output,/receipt changed before activation/);
+   assert.equal(await provider.getTransactionCount(treasury.address),stagedNonce);
+   assert.ok(JSON.parse(readFileSync(join(temp,".env.gas-funding-activation.json"),"utf8")).steps.every(step=>!step.confirmed));
+   behavior.reorgOnFinality=false;
    behavior.finality=false;const resumed=await execute(["--activate","--broadcast"]);assert.equal(resumed.code,0,resumed.output);assert.match(resumed.output,/"activated":true/);
    assert.equal(await usdc.allowance(treasury.address,bot.address),0n);assert.equal(await provider.getBalance(bot.address),parseEther("0.00001"));
    const journal=JSON.parse(readFileSync(join(temp,".env.gas-funding-activation.json"),"utf8"));assert.ok(journal.steps.every(step=>step.confirmed));const nonce=await provider.getTransactionCount(treasury.address);
+   assert.equal(nonce,stagedNonce,"finalizing the setup must not consume any new nonce");
    let l2Only=0n;
    for(const step of journal.steps){const receipt=await rpc("eth_getTransactionReceipt",[step.hash]);l2Only+=BigInt(receipt.gasUsed)*BigInt(receipt.effectiveGasPrice);}
    assert.equal(BigInt(journal.spent),l2Only+BigInt(journal.steps.length)*behavior.operatorFee,"operatorFeeConstant must be included in every settled setup receipt");
    const repeated=await execute(["--activate","--broadcast"]);assert.equal(repeated.code,0,repeated.output);assert.equal(await provider.getTransactionCount(treasury.address),nonce);
-  }finally{behavior.finality=false;behavior.operatorFee=0n;rmSync(temp,{recursive:true,force:true});}
+  }finally{behavior.finality=false;behavior.reorgOnFinality=false;behavior.reorgNext=false;behavior.operatorFee=0n;behavior.setupReorgSnapshot=null;behavior.setupDeploySent=false;rmSync(temp,{recursive:true,force:true});}
  });
  console.log(JSON.stringify({status:"passed",checks,protocol:fork?"real World Chain fork":"local Anvil protocol fixtures",forkBlock:fork?forkBlock:null,transactionsPerFunding:1,productionBroadcast:false}));
 } finally {

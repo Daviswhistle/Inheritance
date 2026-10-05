@@ -165,6 +165,7 @@ jobs:
         working-directory: .
         run: |
           node scripts/test-worker-runtime.mjs
+          node scripts/test-gas-refill-runtime.mjs
           node scripts/test-scheduling.mjs
           node scripts/test-ops-monitor.mjs
           node scripts/test-ops-report.mjs

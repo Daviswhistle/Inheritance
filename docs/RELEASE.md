@@ -1,6 +1,55 @@
 # Release evidence
 
-## October 5, 2026 operations and product candidate
+## October 5, 2026 final launch candidate and onchain receipts
+
+The final interface combines WLD and USDC into one plan, defaults new balances to
+Morpho, and separates available income from principal withdrawals. The exact
+deposit review displays our 10% realized-positive-net-gain fee and the strategy's
+separate current performance fee. A changed strategy fee invalidates that review
+before another wallet request. The initial internal review found a setup nonce
+recovery issue and a stale reviewed-fee comparison; both were corrected and the
+full amended candidate `39a9978` passed a fresh independent native review.
+
+Fresh verification: 375 Solidity tests passed with five opt-in skips; 16 genuine
+World Chain fork checks passed without skips; 151 actual Anvil finalizer checks,
+12 gas-funding/recovery checks and 10 real-protocol local-fork gas checks passed.
+The final unified browser suite passed 76 checks. The complete legacy browser
+suite also passed all transaction, layout, notification, cancellation, role,
+recovery, selection, discovery and outage stages. Types, lint, localized copy,
+production build and Worker packaging passed. These browser tests use a local
+World App bridge and do not establish actual phone wallet/contact acceptance.
+
+The user-authorized Bags wallet funding used 0.00089088 SOL in total: 0.00088088
+SOL bridge input and 0.00001 SOL network fee. Relay delivered
+0.000031676606659751 ETH to the existing operator treasury. Its zero SOL residual
+was checked on the finalized Solana chain. Private keys and signed journals remain
+outside Git.
+
+| Verified World Chain deployment | Address | Block | Total network fee (ETH) |
+| --- | --- | --- | --- |
+| WLD owner-income factory | `0x1a856aE8c3abd8a3746F542688a1846Bc6208435` | 35923975 | 0.000011616631101057 |
+| USDC owner-income factory | `0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2` | 35923985 | 0.000012124908459366 |
+| Protected operator gas setup, six transactions | `0x7544804412033CBd0Eaf47eC5e356C161298F9e9` | 35923997–35924016 | 0.000004203056660148 |
+
+The compiled factory/helper runtimes, fixed assets, strategies, fee recipient and
+10% service fee were read back from chain. The gas contract's exact immutable
+runtime hash is pinned in both worker configurations. Setup approvals target that
+contract, never the bot EOA; bot funding of 0.00001 ETH remains operator property.
+The existing keeper's 0.00002 ETH payout reserve was retained. All six setup
+receipts passed aggregate canonical finality and final allowance/identity readback
+before software activation. This source
+receipt records the included deployments, not an already completed frontend
+deployment or World App store approval.
+
+Gas exchange execution now runs in a SQLite Durable Object while Cron only
+dispatches the work. Existing WLD/USDC factories and their deployment-block ranges
+remain configured for discovery and management. No paid provider upgrade was
+purchased. Final software deployment, production health and store submission
+must be verified separately from these onchain receipts. Real native World App
+acceptance, future seven-day live payouts, public adoption and external security
+audit remain separate evidence surfaces.
+
+## October 5, 2026 earlier operations and product candidate
 
 This adds per-vault Durable Object alarms and a derived eligible-claim queue.
 A pending financial transaction no longer stops other funds from being observed
@@ -15,8 +64,8 @@ A separate five-minute watchdog uses persisted Durable Object alarms and a Cron
 recovery path to track failed checks, stale execution, observed
 pending duration, gas and fee limits. Telegram delivery has persisted attempts,
 retries, incident deduplication and recovery notices. It shares Cloudflare with
-the service and is not a monitor outside that provider. No paid upgrade or new
-onchain transaction has been made for this task.
+the service and is not a monitor outside that provider. At this earlier
+preparation stage, no paid upgrade or new onchain transaction had been made.
 
 Income history verifies only canonical finalized `IncomeWithdrawn` receipts,
 keeps exact WLD/USDC units, groups them by UTC month and exposes incomplete
@@ -63,9 +112,9 @@ for more than 25 minutes, then started with timed-out health fetches. The correc
 public Worker-to-Worker fetch configuration and added independent alarm path still
 require their own reviewed deployment and two advancing healthy live samples.
 
-Frontend and new income contracts remain
-part of the combined launch gate below; this candidate has not been activated in
-World App or the store. Current treasury and keeper balances are unchanged from
+At that preparation check, frontend and new income contracts remained
+part of the combined launch gate below; the candidate had not been activated in
+World App or the store. Treasury and keeper balances then matched
 the values recorded below. The October 5 KST read-only combined activation reserve
 is 0.000045079717486484 ETH including bot funding, leaving a
 0.000021328175246647 ETH treasury shortfall. Keep the keeper reserve available for

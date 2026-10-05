@@ -17,6 +17,7 @@ import {
 import { primeFinalizerSigner, readFinalizerHealth, runFinalizerCycle } from "../backend/src/finalizer.mjs";
 import { ensureSchedulingSchema } from "../backend/src/scheduling.mjs";
 import { evaluateServiceSample } from "../backend/src/operations.mjs";
+import { FUNDING_DEPLOYMENT } from "../gas-refill/src/deployment.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const deploymentWorkflow = readFileSync(root + "/.github/workflows/deploy.yml", "utf8");
@@ -37,6 +38,27 @@ const mnemonic = "test test test test test test test test test test test junk"; 
 const keeper = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/2");
 let assertions = 0;
 const check = (name, callback) => { callback(); assertions++; console.log("PASS " + name); };
+function assertDeploymentGasReserve(gas) {
+  const production = readFileSync(root + "/backend/wrangler.toml", "utf8");
+  const value = name => production.match(new RegExp('^' + name + ' = "([^"\\n]+)"', 'm'))[1];
+  assert.ok(BigInt(gas) <= BigInt(value("FINALIZER_MAX_GAS")));
+  const worstReserve = BigInt(gas) * parseUnits(value("FINALIZER_MAX_FEE_GWEI"), "gwei")
+    + parseEther(value("FINALIZER_EXTRA_FEE_RESERVE_ETH"));
+  const dailyCap = parseEther(value("FINALIZER_DAILY_GAS_CAP_ETH"));
+  if (dailyCap === 0n) {
+    // Zero removes the cumulative stop only when both workers pin the same
+    // deployed purpose-constrained controller. Runtime validation is covered
+    // by the genuine signing and wrong-controller cases below.
+    assert.match(FUNDING_DEPLOYMENT.address || "", /^0x[0-9a-fA-F]{40}$/);
+    assert.notEqual(BigInt(FUNDING_DEPLOYMENT.address), 0n);
+    assert.match(FUNDING_DEPLOYMENT.codeHash || "", /^0x[0-9a-fA-F]{64}$/);
+    assert.notEqual(BigInt(FUNDING_DEPLOYMENT.codeHash), 0n);
+    assert.equal(value("GAS_FUNDING_CONTRACT_ADDRESS"), FUNDING_DEPLOYMENT.address);
+    assert.equal(value("GAS_FUNDING_CODE_HASH"), FUNDING_DEPLOYMENT.codeHash);
+  } else {
+    assert.ok(worstReserve <= dailyCap);
+  }
+}
 const gasFundingInterface = new Interface([
   "function keeper() view returns (address)",
   "function treasury() view returns (address)",
@@ -2221,11 +2243,7 @@ try {
       const job = f.store.native.prepare("SELECT * FROM finalizer_jobs WHERE state='confirmed'").get();
       const signed = Transaction.from(job.tx_raw);
       assert.ok(signed.gasLimit > 750000n && signed.gasLimit <= BigInt(yieldDeploymentGas));
-      const production = readFileSync(root + "/backend/wrangler.toml", "utf8");
-      const value = name => production.match(new RegExp('^' + name + ' = "([^"\\n]+)"', 'm'))[1];
-      const worstReserve = BigInt(yieldDeploymentGas) * parseUnits(value("FINALIZER_MAX_FEE_GWEI"), "gwei")
-        + parseEther(value("FINALIZER_EXTRA_FEE_RESERVE_ETH"));
-      assert.ok(worstReserve <= parseEther(value("FINALIZER_DAILY_GAS_CAP_ETH")));
+      assertDeploymentGasReserve(yieldDeploymentGas);
     });
     assert.equal(await f.morpho.balanceOf(heirAddress), parseEther("125"));
     assert.equal(await f.token.balanceOf(heirAddress), parseEther("34"));
@@ -2337,12 +2355,8 @@ try {
     assert.equal(await f.token.balanceOf(f.vaults[1]), 0n);
   }
 
-  check("USDC execution headroom preserves the production daily ETH spending cap", () => {
-    const production = readFileSync(root + "/backend/wrangler.toml", "utf8");
-    const value = name => production.match(new RegExp('^' + name + ' = "([^"\\n]+)"', 'm'))[1];
-    const worstReserve = BigInt(usdcDeploymentGas) * parseUnits(value("FINALIZER_MAX_FEE_GWEI"), "gwei")
-      + parseEther(value("FINALIZER_EXTRA_FEE_RESERVE_ETH"));
-    assert.ok(worstReserve <= parseEther(value("FINALIZER_DAILY_GAS_CAP_ETH")));
+  check("USDC execution headroom matches the configured guarded gas policy", () => {
+    assertDeploymentGasReserve(usdcDeploymentGas);
   });
   console.log("\n" + assertions + " focused finalizer checks passed; all transactions used local Anvil.");
   console.log("Factory deployment gas (local estimate): " + deploymentGas.toString());

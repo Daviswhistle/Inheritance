@@ -57,6 +57,8 @@ jobs:
         run: |
           node --check gas-refill/src/funding.mjs
           node --check gas-refill/src/worker.mjs
+          node --check gas-refill/src/runtime.mjs
+          node scripts/test-gas-refill-runtime.mjs
       - name: Deploy gas refill Worker
         run: |
           set -euo pipefail

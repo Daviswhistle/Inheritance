@@ -80,6 +80,18 @@ await test("Korean fee disclosures keep the 10 percent fee off principal", () =>
     assert.equal(i18n.translate("ko", "plan.interval.daysSeconds", { days: 30, seconds: 3600 }), "30일 + 3600초");
 });
 
+await test("completed transaction messages reproject when language changes without losing diagnostics", () => {
+    const completed = "Income collected. Your principal remains in the inheritance vault.";
+    assert.equal(i18n.localizeAppMessage("en", completed), completed);
+    assert.match(i18n.localizeAppMessage("ko", completed), /이자를 수령.*원금/);
+    assert.match(i18n.localizeAppMessage("ko", "Checked in to all 3 active vaults."), /3개/);
+    assert.match(i18n.localizeAppMessage("ko", "Pending… verifying USDC deposit"), /USDC 예치/);
+    assert.equal(i18n.localizeAppMessage("ko", "Deposit error: RPC diagnostic 0x1234"), "예치 오류: RPC diagnostic 0x1234");
+    assert.equal(i18n.localizeAppMessage("ko", "unrecognized provider diagnostic"), "unrecognized provider diagnostic");
+    assert.match(i18n.translate("ko", "automation.ready"), /직접 수령/);
+    assert.match(i18n.translate("en", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 }), /USDC.*12%.*before our service fee/);
+});
+
 await test("locale provider uses React context without mutating the document", () => {
     const source = readFileSync(new URL("../app/src/i18n.tsx", import.meta.url), "utf8");
     const context = readFileSync(new URL("../app/src/locale-context.ts", import.meta.url), "utf8");

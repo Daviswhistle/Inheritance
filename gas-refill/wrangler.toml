@@ -1,9 +1,17 @@
 name = "world-inheritance-gas-refill"
-main = "src/worker.mjs"
+main = "src/runtime.mjs"
 compatibility_date = "2026-02-26"
 
 [triggers]
 crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "GAS_REFILL_EXECUTOR"
+class_name = "GasRefillExecutor"
+
+[[migrations]]
+tag = "gas-refill-executor-v1"
+new_sqlite_classes = ["GasRefillExecutor"]
 
 [[d1_databases]]
 binding = "DB"

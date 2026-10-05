@@ -343,7 +343,8 @@ try {
   }
   const exampleNames = process.env.UNIFIED_STORE_IMAGES === "1"
     ? `window.__E2E_USERNAMES__ = ${JSON.stringify({ [ACCOUNTS.a0.a.toLowerCase()]: "amy", [ACCOUNTS.a1.a.toLowerCase()]: "alex" })};` : "";
-  const preload = `${exampleNames}window.__E2E_EXTERNAL_FETCHES__ = []; window.__E2E_RPC__ = ${JSON.stringify(rpc)}; window.__E2E_BATCH_WALLET__ = ${JSON.stringify(batchWallet.target)}; window.__E2E_STRATEGIES__ = ${JSON.stringify(rateStrategies)}; window.__MONITOR_FACTORIES__ = ${JSON.stringify([await plainFactory.getAddress(), await wldFactory.getAddress(), await usdcFactory.getAddress()])}; window.__E2E_WLD__ = ${JSON.stringify(await wld.getAddress())}; (${localPublicFixtures.toString()})(); (function(){${HELPERS}})();`;
+  const pauseTermsPoll = `const originalInterval = window.setInterval; window.setInterval = (work,delay,...args) => originalInterval.call(window,delay === 30000 ? (...values) => { if(!window.__E2E_PAUSE_TERM_POLL__)work(...values); } : work,delay,...args);`;
+  const preload = `${exampleNames}${pauseTermsPoll}window.__E2E_EXTERNAL_FETCHES__ = []; window.__E2E_RPC__ = ${JSON.stringify(rpc)}; window.__E2E_BATCH_WALLET__ = ${JSON.stringify(batchWallet.target)}; window.__E2E_STRATEGIES__ = ${JSON.stringify(rateStrategies)}; window.__MONITOR_FACTORIES__ = ${JSON.stringify([await plainFactory.getAddress(), await wldFactory.getAddress(), await usdcFactory.getAddress()])}; window.__E2E_WLD__ = ${JSON.stringify(await wld.getAddress())}; (${localPublicFixtures.toString()})(); (function(){${HELPERS}})();`;
   const pendingKey = `inheritance:pending-plan:${ACCOUNTS.a0.a.toLowerCase()}`;
   const wldFactoryAddress = (await wldFactory.getAddress()).toLowerCase();
   // Exercise the real confirmation component without background App refreshes.
@@ -422,10 +423,28 @@ try {
   await until(() => page.ev("return !!document.querySelector('.plan-final-review')"), "local plan review");
   assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), /2\.5 WLD[\s\S]*12\.123456 USDC/);
   assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), new RegExp(ACCOUNTS.a1.a, 'i'));
+  const feeReview = await page.ev("return document.querySelector('.plan-final-review').innerText");
+  assert.match(feeReview, /Service fee: 10%/);
+  assert.match(feeReview, /WLD: Re7 currently takes 10%/);
+  assert.match(feeReview, /USDC: Re7 currently takes 10%/);
   assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length, 0, "review opened the wallet");
   assert.equal(await page.ev("return document.activeElement?.id"), 'plan-review-title');
   await captureLayout(page, "review", 320, [".plan-submit", ".plan-step-actions button"]);
   await captureLayout(page, "review", 390, [".plan-submit", ".plan-step-actions button"]);
+  await page.ev("window.__E2E_PAUSE_TERM_POLL__=true;return true;");
+  for(const percent of [12,10]){
+    await (await wldStrategy.setFee(parseUnits(String(percent/100),18))).wait();
+    assert.equal(await page.ev("return !!document.querySelector('.plan-final-review')"),true,"cached review should remain until fresh preflight observes the fee");
+    await clickButton(page,"Confirm and deposit");
+    await until(() => page.ev(`return /strategy fee changed/.test(document.body.innerText) && !document.querySelector('.plan-final-review') && !document.getElementById('yield-consent').checked && /WLD: Re7 currently takes ${percent}%/.test(document.querySelector('.plan-risk')?.innerText || '')`),"fresh fee drift stops before the wallet");
+    assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length,0);
+    assert.equal(await wldFactory.vaultOf(ACCOUNTS.a0.a),ZeroAddress);
+    assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a),ZeroAddress);
+    await acceptYieldTerms(page);
+    await clickButton(page,"Review plan");
+  }
+  await page.ev("window.__E2E_PAUSE_TERM_POLL__=false;return true;");
+  pass("service and strategy fees are shown separately; a real strategy-fee change invalidates approval before wallet submission");
   await clickButton(page, "Edit plan");
   assert.equal(await page.ev("return document.activeElement?.id"), 'plan-wld');
   await page.ev("return __q.setInput('plan-wld', '2.500000000000000001')");
@@ -833,11 +852,19 @@ try {
   await clickMatchingButton(page, text => text === "WLD");
   await chooseTab(page, "Home");
   const currentHomeHeir = String(await wldVault.heir());
-  await until(() => page.ev("return document.querySelector('.plan-common-settings')?.innerText.includes('@e2e_')"), "human-readable heir name");
+  const expectedHomeHeirName = await page.ev(`return window.__E2E_USERNAMES__?.[${JSON.stringify(currentHomeHeir.toLowerCase())}] || ${JSON.stringify(`e2e_${currentHomeHeir.slice(2, 8).toLowerCase()}`)};`);
+  await until(() => page.ev(`return document.querySelector('.plan-common-settings')?.innerText.includes(${JSON.stringify(`@${expectedHomeHeirName}`)})`), "human-readable heir name");
   assert.equal(await page.ev(`return document.querySelector('.plan-common-settings strong')?.title.toLowerCase() === ${JSON.stringify(currentHomeHeir.toLowerCase())}`), true);
   pass("Home resolves the heir username while preserving the full canonical recipient address");
   await page.ev("const select=document.querySelector('.locale-picker select'); select.value='ko'; select.dispatchEvent(new Event('change',{bubbles:true})); return true;");
   await until(() => page.ev("return document.querySelector('.locale-picker select')?.value === 'ko' && /상속인/.test(document.body.innerText)"), "Korean Home");
+  assert.equal(await page.ev("return [...document.querySelectorAll('.plan-overview-asset small')].every(element => element.innerText.includes('서비스 수수료 차감 전'))"), true);
+  await chooseTab(page, "자산");
+  assert.match(await page.ev("return document.querySelector('.asset-money-card').innerText"), /서비스 수수료 차감 전 운용 가치/);
+  const feeLabelFits = JSON.parse(await page.ev("const label=document.querySelectorAll('.asset-money-card .stat-label')[1]; return JSON.stringify({full:label.scrollWidth <= label.clientWidth, wraps:getComputedStyle(label).whiteSpace});"));
+  assert.equal(feeLabelFits.full, true);
+  assert.equal(feeLabelFits.wraps, "normal");
+  await chooseTab(page, "홈");
   await captureLayout(page, "home-ko", 320, [".tab-item"]);
   assert.equal(await page.ev("return localStorage.getItem('inheritance:locale')"), "ko");
   pass("explicit Korean selection translates Home and persists the preference");

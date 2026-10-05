@@ -4,6 +4,7 @@ import { USDC_ENABLED } from "@/config";
 import { HAS_YIELD_ROUTES } from "@/assets";
 import { LanguagePicker } from "@/i18n";
 import { useLocale } from "@/locale-context";
+import { localizeAppMessage } from "@/locale";
 
 export function Landing({ installed, busy, onConnect, linkedVault, status }: { installed: boolean; busy: boolean; onConnect: () => void; linkedVault: string; status: string }) {
   const { t, locale } = useLocale();
@@ -31,7 +32,7 @@ export function Landing({ installed, busy, onConnect, linkedVault, status }: { i
         {installed ? <Button variant="primary" size="lg" onClick={onConnect} disabled={busy}>{busy ? <><span className="spinner" />{t("landing.connect.busy")}</> : <>{t("landing.connect.continue")}<Icon name="arrow" size={19} /></>}</Button> : <a className="btn btn-primary btn-lg" href={worldLink}>{t("landing.connect.open")}<Icon name="arrow" size={19} /></a>}
         <p>{t("landing.connect.signin")}</p>
       </div>
-      {status && !/Open in World App.*bridge unavailable/i.test(status) && <p className="landing-feedback" role="status" aria-live="polite">{status}</p>}
+      {status && !/Open in World App.*bridge unavailable/i.test(status) && <p className="landing-feedback" role="status" aria-live="polite">{localizeAppMessage(locale, status)}</p>}
       <div className="landing-trust"><span><Icon name="check" size={15} />{t("landing.trust.plan")}</span><span><Icon name="check" size={15} />{t(HAS_YIELD_ROUTES ? "landing.trust.fee" : "landing.trust.noFee")}</span><span><Icon name="check" size={15} />{t("landing.trust.keys")}</span></div>
       <section className="landing-how" aria-labelledby="landing-how-title"><div className="landing-section-heading"><span className="eyebrow">{t("landing.steps.eyebrow")}</span><h2 id="landing-how-title">{t("landing.steps.title")}</h2></div><ol className="landing-steps">
         <li><span>01</span><div><h3>{t("landing.steps.one.title")}</h3><p>{t("landing.steps.one.body", { assets: amounts })}</p></div></li>

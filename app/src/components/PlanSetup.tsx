@@ -7,12 +7,12 @@ import { useLocale } from "@/locale-context";
 import "./PlanSetup.css";
 
 type PlanAsset = "WLD" | "USDC";
-type PlanRouteRow = { symbol: PlanAsset; decimals: number; mode: "morpho" | "plain"; amount: string; walletBalance: bigint | null };
+type PlanRouteRow = { symbol: PlanAsset; decimals: number; mode: "morpho" | "plain"; amount: string; walletBalance: bigint | null; underlyingFeePercent?: number };
 type PlanAssetProgress = { symbol: PlanAsset; amount: string; decimals: number; mode: "morpho" | "plain"; depositState: "ready" | "submitting" | "submitted" | "complete" };
 type PlanProgress = { heir: string; periodDays: number; createState: "ready" | "submitting" | "submitted" | "complete"; assets: PlanAssetProgress[];
   alignment?: { state: "submitting" | "submitted" } };
 type AlignmentConflict = { symbol: PlanAsset; address: string; currentHeir: string; currentPeriodSeconds: bigint; requestedHeir: string; requestedPeriod: number };
-type ReviewAsset = { symbol: PlanAsset; amount: string; decimals: number; mode: "morpho" | "plain" };
+type ReviewAsset = { symbol: PlanAsset; amount: string; decimals: number; mode: "morpho" | "plain"; underlyingFeePercent?: number };
 type ReviewSnapshot = {
   fingerprint: string;
   assets: ReviewAsset[];
@@ -61,7 +61,7 @@ export function PlanSetup({
   alignmentConflicts: AlignmentConflict[];
   onConfirmAlignment: () => void;
   onCancelAlignment: () => void;
-  onCreate: () => void;
+  onCreate: (reviewedFees: Partial<Record<PlanAsset, number>>) => void;
   onResume: () => void;
   canEditRemaining: boolean;
   onEditRemaining: () => void;
@@ -114,7 +114,7 @@ export function PlanSetup({
   const formValid = !invalidAmountRow && hasSelectedAsset && balancesValid && recipientValid && intervalValid && consentValid;
 
   const currentFingerprint = JSON.stringify({
-    amounts: rows.map(row => [row.symbol, row.amount, row.decimals, row.mode]),
+    amounts: rows.map(row => [row.symbol, row.amount, row.decimals, row.mode, row.underlyingFeePercent]),
     heir,
     heirResolved,
     heirUsername,
@@ -172,6 +172,7 @@ export function PlanSetup({
       amount: (item.amount as bigint).toString(),
       decimals: item.row.decimals,
       mode: item.row.mode,
+      underlyingFeePercent: item.row.underlyingFeePercent,
     }));
     setReviewSnapshot({
       fingerprint: currentFingerprint,
@@ -191,7 +192,9 @@ export function PlanSetup({
     if (!reviewSnapshot || !showReview || !formValid || busy || pendingPlan || createDisabled || alignmentConflicts.length > 0 || createClickLocked.current) return;
     createClickLocked.current = true;
     try {
-      onCreate();
+      const reviewedFees: Partial<Record<PlanAsset, number>> = {};
+      for(const asset of reviewSnapshot.assets)if(asset.mode === "morpho" && typeof asset.underlyingFeePercent === "number")reviewedFees[asset.symbol] = asset.underlyingFeePercent;
+      onCreate(reviewedFees);
     } catch (error) {
       createClickLocked.current = false;
       throw error;
@@ -227,12 +230,20 @@ export function PlanSetup({
     })}
   </fieldset>;
 
+  const strategyFeeText = (asset: Pick<ReviewAsset, "symbol" | "underlyingFeePercent">) => {
+    const fee = asset.underlyingFeePercent;
+    return typeof fee === "number" && Number.isFinite(fee) && fee >= 0 && fee <= 100
+      ? t("plan.risk.strategyFee", { symbol: asset.symbol, percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(fee) })
+      : t("plan.risk.strategyFeeChecking", { symbol: asset.symbol });
+  };
+  const disclosedYieldRows = (selectedRows.length ? selectedRows.map(item => item.row) : rows).filter(row => row.mode === "morpho");
   const riskDisclosure = <section className="plan-risk" aria-labelledby="plan-risk-title">
     <h3 id="plan-risk-title">{t("plan.risk.title")}</h3>
     <ul className="plan-risk-points">
-      <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>
+      {!showReview && <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>}
+      {!showReview && disclosedYieldRows.map(row => <li key={row.symbol}>{strategyFeeText(row)}</li>)}
       {hasYieldRoute && <li>{t("plan.risk.value")}</li>}
-      <li>{t("plan.risk.inheritance")}</li>
+      {!showReview && <li>{t("plan.risk.inheritance")}</li>}
     </ul>
     {hasYieldRoute && <label className="yield-consent"><input id="yield-consent" type="checkbox" checked={yieldConsent} disabled={busy}
       onChange={event => { setReviewSnapshot(null); onYieldConsent(event.target.checked); }} />
@@ -357,6 +368,10 @@ export function PlanSetup({
                 : t("plan.review.basicFee")}
             </dd>
           </div>
+          {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <div>
+            <dt>{t("plan.review.strategyFee")}</dt>
+            <dd>{reviewSnapshot.assets.filter(asset => asset.mode === "morpho").map(asset => <span className="plan-review-amount" key={asset.symbol}>{strategyFeeText(asset)}</span>)}</dd>
+          </div>}
           <div><dt>{t("plan.review.missedTitle")}</dt><dd>{t("plan.review.missedBody")}</dd></div>
         </dl>
       </section>}

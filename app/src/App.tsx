@@ -49,6 +49,7 @@ import { signInWithWorldApp, readSessionAddress, clearSession, notificationFetch
 import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit, sendWorldChat, pickWorldContacts } from "@/minikit";
 import { LanguagePicker } from "@/i18n";
 import { useLocale } from "@/locale-context";
+import { localizeAppMessage } from "@/locale";
 
 type AppPlanRoute = PlanRoute<YieldRoute | null>;
 const APP_PLAN_ROUTES: AppPlanRoute[] = buildPlanRoutes(
@@ -357,6 +358,7 @@ export default function App() {
   const [planWldAmount, setPlanWldAmount] = useState("");
   const [planUsdcAmount, setPlanUsdcAmount] = useState("");
   const [yieldConsent, setYieldConsent] = useState(false);
+  const consentedStrategyFees = useRef<Partial<Record<AssetSymbol, number>>>({});
   const [yieldTermsByFactory, setYieldTermsByFactory] = useState<Record<string, YieldTerms | null>>({});
   const yieldTerms = selectedYieldRoute ? yieldTermsByFactory[selectedYieldRoute.factory] ?? null : null;
   const [yieldRatesByFactory, setYieldRatesByFactory] = useState<Record<string, YieldRates | null>>({});
@@ -1007,6 +1009,7 @@ export default function App() {
     symbol: route.symbol, decimals: route.decimals, mode: route.mode,
     amount: route.symbol === "WLD" ? planWldAmount : planUsdcAmount,
     walletBalance: planWalletBalances[route.symbol] ?? null,
+    underlyingFeePercent: yieldTermsByFactory[route.factory]?.underlyingFeePercent,
   }));
   const parsedDraftAmounts = draftPlanRows.map(row => ({
     row,
@@ -2619,12 +2622,22 @@ export default function App() {
     });
   };
 
-  const continuePlan = async (confirmAlignment = false) => {
+  const continuePlan = async (confirmAlignment = false, reviewedStrategyFees?: Partial<Record<AssetSymbol, number>>) => {
     if (creating) return;
     if (!account || !factory) { setStatus("Connect first"); return; }
     if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast("error", "Open in World App"); return; }
     if (!provider) { setStatus("World Chain is still connecting. Try again shortly."); return; }
     setCreating(true);
+    const acceptedStrategyFees = { ...(reviewedStrategyFees ?? consentedStrategyFees.current) };
+    const verifyAcceptedStrategyFee = async (route: AppPlanRoute) => {
+      const fresh = await verifyPlanYieldRoute(route);
+      if(acceptedStrategyFees[route.symbol] !== fresh.underlyingFeePercent) {
+        setYieldTermsByFactory(current => ({ ...current, [route.factory]: fresh }));
+        setYieldConsent(false);
+        consentedStrategyFees.current = {};
+        throw new Error(`${route.symbol} strategy fee changed. Review the current fees and accept them again before continuing. No new wallet request was sent.`);
+      }
+    };
     let workingPlan: StoredPlan | null = null;
     const watcherRequests: Promise<void>[] = [];
     let watcherFailed = false;
@@ -2755,7 +2768,7 @@ export default function App() {
         const [decimals, balance] = await Promise.all([token.decimals(), token.balanceOf(plan.account)]);
         if (Number(decimals) !== route.decimals) throw new Error(`${route.symbol} token precision does not match its configured route.`);
         if (BigInt(balance) < BigInt(asset.amount)) throw new Error(`Not enough ${route.symbol} in your wallet. Adjust the remaining amount before continuing.`);
-        if (asset.mode === "morpho") await verifyPlanYieldRoute(route);
+        if (asset.mode === "morpho") await verifyAcceptedStrategyFee(route);
       }
       const assetByFactory = new Map(workingPlan.assets.map(asset => [asset.factory.toLowerCase(), asset]));
       const currentIdentities = new Map<string, PlanVaultIdentity | null>();
@@ -2847,7 +2860,7 @@ export default function App() {
 
       for (const asset of workingPlan.assets.filter(item => item.depositState === "ready" && item.mode === "morpho")) {
         const route = routeForStep(asset);
-        await verifyPlanYieldRoute(route);
+        await verifyAcceptedStrategyFee(route);
       }
 
       const missingRoutes: AppPlanRoute[] = [];
@@ -2937,6 +2950,7 @@ export default function App() {
           const [decimals, walletBalance] = await Promise.all([token.decimals(), token.balanceOf(plan.account)]);
           if (Number(decimals) !== route.decimals) throw new Error(`${route.symbol} token precision does not match its configured route.`);
           if (BigInt(walletBalance) < amount) throw new Error(`Not enough ${route.symbol} in your wallet to finish this plan.`);
+          if(route.mode === "morpho")await verifyAcceptedStrategyFee(route);
           // Save a resumable ready step before quote/read RPCs. A failure here is
           // provably before any wallet request, so it must never look ambiguous.
           persist(current => ({ ...current }));
@@ -3034,8 +3048,8 @@ export default function App() {
     }
   };
 
-  const createPlan = (confirmAlignment = false) => continuePlan(confirmAlignment);
 
+  const createPlan = () => continuePlan(false, { ...consentedStrategyFees.current });
   const editRemainingPlan = () => {
     if (actionInFlight.current || !account || !pendingPlan) return;
     const saved = readStoredPlan(account) ?? pendingPlan;
@@ -4159,7 +4173,7 @@ export default function App() {
                 return <div className="plan-overview-asset" key={symbol}>
                   <span>{symbol}</span><strong>{value}</strong>
                   <small>{ownedPlanRead.loading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
-                    : total.rows.length ? t("home.amount.forHeir") : t("home.amount.notAdded")}</small>
+                    : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
                 </div>;
               })}
             </div>
@@ -4296,7 +4310,7 @@ export default function App() {
             스크린 리더 사용자에게 읽히도록 live region 이 필요하다. */}
         {status && (
           <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
-            {status}
+            {localizeAppMessage(locale, status)}
           </div>
         )}
 
@@ -4345,11 +4359,11 @@ export default function App() {
                     답하지 않았다. 두 숫자를 카드로 올려 화면이 답하게 한다. */}
                 <div className="stat-row">
                   <div className="stat">
-                    <div className="stat-label">In your wallet</div>
+                    <div className="stat-label">{t("assets.wallet")}</div>
                     <div className="stat-value">{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : "Updating…"}</div>
                   </div>
                   <div className="stat">
-                    <div className="stat-label">{isYieldVault ? "Invested value before fee" : "In your plan"}</div>
+                    <div className="stat-label">{t(isYieldVault ? "assets.valueBeforeFee" : "assets.plan")}</div>
                     <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld, wldDecimals)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
                   </div>
                 </div>
@@ -5299,12 +5313,18 @@ export default function App() {
             onPreset={days => onPeriodChange(String(days))}
             onAmountChange={(symbol, value) => symbol === "WLD" ? setPlanWldAmount(value) : setPlanUsdcAmount(value)}
             yieldConsent={yieldConsent}
-            onYieldConsent={setYieldConsent}
+            onYieldConsent={value => {
+              consentedStrategyFees.current = value ? Object.fromEntries(draftPlanRows.map(row => [row.symbol, row.underlyingFeePercent])) : {};
+              setYieldConsent(value);
+            }}
             pendingPlan={pendingPlan}
             alignmentConflicts={alignmentConflicts}
             onConfirmAlignment={() => void runWalletAction(() => continuePlan(true))}
             onCancelAlignment={() => { setAlignmentReview(""); setAlignmentConflicts([]); }}
-            onCreate={() => void runVaultAction(createPlan)}
+            onCreate={fees => {
+              consentedStrategyFees.current = { ...fees };
+              void runVaultAction(createPlan);
+            }}
             onResume={() => void runWalletAction(() => continuePlan(false))}
             canEditRemaining={Boolean(pendingPlan && canEditStoredPlan(pendingPlan))}
             onEditRemaining={editRemainingPlan}
@@ -5555,7 +5575,7 @@ export default function App() {
       </main>
       <div className="toast-container" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
+          <div key={t.id} className={`toast toast-${t.type}`}>{localizeAppMessage(locale, t.msg)}</div>
         ))}
       </div>
       {showReleaseConfirm && (
