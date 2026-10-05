@@ -3,24 +3,34 @@
 New plans ask for WLD and USDC amounts first, then an heir and a check-in
 interval. Users do not choose or create individual vaults. The configured primary
 Morpho routes are the default. The user reviews
-the 10% positive-gain service fee, the separately verified Re7 strategy fee
+the 10% positive-gain service fee, the separately verified Morpho strategy fee
 and the lending/liquidity risks before any deposit. Strategy fees are already
 reflected in Morpho share value before the service fee; the two percentages
 are not added as a flat fee. A changed verified strategy fee invalidates
 the prior review. Fresh reads before each new wallet request are compared with
-the exact reviewed or explicitly consented rates, including between creation and
-deposit; a mismatch clears consent and blocks the next request. Home and Assets
+the exact reviewed or explicitly consented rates; a mismatch clears consent and
+blocks the next request. Home and Assets
 label yield value before the service fee. “Review plan” is a local step with exact token amounts and the full
 resolved recipient address; it sends no wallet request. “Confirm and deposit”
-then starts the existing durable transaction flow. Editing values invalidates
-that review, and the fee/risk consent starts unchecked. The app creates missing
-asset contracts and manages them internally;
+then starts the durable transaction flow. Inputs contain only amounts, recipient
+and interval; fee/risk consent appears once in this final review and starts
+unchecked. Editing values or verified fees invalidates the review.
+Missing asset contracts, exact approvals and selected deposits execute atomically
+in one World App wallet request. A new two-asset plan contains six calls in one
+chain transaction; if any call reverts, neither asset is created or deposited.
+Balance, terms and quote reads happen before handoff. A failed read leaves the
+draft editable without recording an unresolved wallet request.
+The app manages the separate asset contracts internally;
 it does not convert between WLD and USDC.
 
 Progress is saved per authenticated wallet in the tab. A completed asset is
 never deposited again during resume. An interrupted request without a verified
-result stays unresolved. Receipt logs must match the token, asset amount and
-original personal contract before completion is shown. Yield vaults must remain
+result stays unresolved. New setup journals keep every original creation and
+deposit target as one request. All targets must match the same successful canonical
+receipt before any included asset is marked complete. Identified and ID-less
+receipts are recoverable without another wallet request; legacy journals with
+separately completed assets remain supported. Receipt logs must match the token,
+asset amount and original personal contract before completion is shown. Yield vaults must remain
 registered by their original trusted factory, even if their slot was released.
 Submitted targets are never repointed at a replacement vault. Completed assets
 are excluded from creation and deposit preflight; current balances may differ
@@ -78,7 +88,11 @@ moving funds. A shared balance identifies its owner before hidden account detail
 The overview totals assets in their own units, includes held WLD rewards and gifts
 inside USDC positions in the WLD total, and offers a combined check-in. Its asset
 management action opens the owner's position even when a shared heir link was
-previously selected.
+previously selected. Ordinary check-in goes directly to wallet approval. If a
+claim is pending, the app first explains that checking in cancels it and requires
+explicit confirmation. A fresh claim/recipient/interval/target change invalidates
+that confirmation before any wallet request. Optional notification permission
+appears on the funded Home overview and in Help, after initial setup.
 Asset management contains income collection and a separate principal withdrawal.
 Switching assets shows exactly one income card and resets the optional receiving
 wallet to the signed-in wallet. The default destination is stated before collection;

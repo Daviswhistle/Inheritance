@@ -99,13 +99,18 @@ async function rpcProvider() {
 /** E2E-only: emulate an atomic smart-account batch with real local receipts. */
 export async function __sendAtomicBatch(transactions: { to: string; data?: string; value?: string }[]) {
   const { Wallet, JsonRpcProvider, Interface } = await import("ethers");
-  const local = window as unknown as { __E2E_RPC__: string; __E2E_BATCH_WALLET__: string };
-  const provider = new JsonRpcProvider(local.__E2E_RPC__, 480, { staticNetwork: true, cacheTimeout: -1, batchMaxCount: 1 });
+  const local = window as unknown as { __E2E_RPC__?: string; __E2E_BATCH_WALLET__: string; __E2E_BATCH_WALLET_CODE__?: string };
+  const rpc = local.__E2E_RPC__ || (import.meta as any).env?.VITE_RPC;
+  if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(rpc).hostname)) throw new Error("Atomic fixtures require a local test chain.");
+  const provider = new JsonRpcProvider(rpc, undefined, { cacheTimeout: -1, batchMaxCount: 1 });
   try {
+    const chainId = Number(await provider.send("eth_chainId", []));
+    if (chainId !== 480 && chainId !== 31337) throw new Error("Unsupported local fixture chain.");
+    if (local.__E2E_BATCH_WALLET_CODE__) await provider.send("anvil_setCode", [local.__E2E_BATCH_WALLET__, local.__E2E_BATCH_WALLET_CODE__]);
     const signer = new Wallet(window.__E2E_SIGNER__!.privateKey!, provider);
     const nonce = await signer.getNonce("pending");
     const code = await provider.getCode(signer.address);
-    const authorization = code === "0x" ? await signer.authorize({ address: local.__E2E_BATCH_WALLET__, chainId: 480, nonce: nonce + 1 }) : null;
+    const authorization = code === "0x" ? await signer.authorize({ address: local.__E2E_BATCH_WALLET__, chainId, nonce: nonce + 1 }) : null;
     const abi = new Interface(["function execute((address to,bytes data,uint256 value)[] calls)"]);
     const calls = transactions.map(tx => ({ to: tx.to, data: tx.data || "0x", value: BigInt(tx.value || 0) }));
     const tx = await signer.sendTransaction({ to: signer.address, data: abi.encodeFunctionData("execute", [calls]), nonce,
@@ -113,6 +118,11 @@ export async function __sendAtomicBatch(transactions: { to: string; data?: strin
     const receipt = await tx.wait();
     return { executedWith: "minikit", data: { status: "success", transaction_hash: receipt!.hash, from: signer.address } };
   } catch (error: any) {
+    if (error.receipt?.status === 0 && /^0x[0-9a-fA-F]{64}$/.test(error.receipt.hash)) {
+      // A mined revert is an accepted request with a failed canonical receipt,
+      // not a provably pre-submission wallet rejection.
+      return { executedWith: "minikit", data: { status: "success", transaction_hash: error.receipt.hash } };
+    }
     return { executedWith: "minikit", data: { status: "fail", error: error.shortMessage || error.message } };
   } finally { provider.destroy(); }
 }
@@ -214,6 +224,7 @@ export const MiniKit = {
       state.failNextTx = false;
       return fail({ status: "fail", error: "E2E forced failure" });
     }
+    if (transactions.length > 1 && (window as any).__E2E_BATCH_WALLET__) return __sendAtomicBatch(transactions);
     try {
       const signer = await getSigner();
       const from = await signer.getAddress();

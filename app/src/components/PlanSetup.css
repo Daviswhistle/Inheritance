@@ -47,6 +47,7 @@
 
 .plan-setup-card .plan-review { border-color: #d5bd7d; background: #fff9e9; }
 .plan-setup-card .plan-final-review { border-color: #b7cbb3; background: #f1f6ed; }
+.plan-final-review > .plan-risk { margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px solid #dfe6d8; background: transparent; }
 .plan-setup-card .plan-alignment-review { border-color: #d5bd7d; background: #fff9e9; }
 .plan-review h3:focus { outline: 2px solid #86a97f; outline-offset: 4px; border-radius: 2px; }
 .plan-review-list { display: grid; margin: 8px 0 0; }
@@ -58,7 +59,7 @@
 .plan-action-row, .plan-step-actions { display: grid; gap: 8px; }
 .plan-setup-card .plan-action-row .btn, .plan-setup-card .plan-step-actions .btn { min-height: 46px; }
 .plan-setup-card .plan-submit { width: 100%; min-height: 54px; }
-.plan-validation-message { margin: -3px 0 0; padding: 9px 11px; border: 1px solid #ead6c9; border-radius: 11px; background: #fff5ef; color: #823d2d; font-size: 12px; line-height: 1.5; }
+.plan-validation-message { margin: -3px 0 0; color: #5b6e60; font-size: 12px; line-height: 1.5; }
 .plan-legal-copy { margin: 0; color: #5b6e60; font-size: 11px; line-height: 1.5; }
 
 .plan-setup-card .plan-resume { display: grid; gap: 9px; border-color: #b9cdb8; background: #f1f6ed; }

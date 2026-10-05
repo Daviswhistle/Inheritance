@@ -335,13 +335,19 @@ log("\n[6] 자기 행동 뒤 화면이 갱신되는가 (P1-3)");
   await sleep(900);
   const shownBefore = ((await text(b)).match(/Last ping[^\n]*/) || ["(표시 없음)"])[0];
   await clickTab(b, "home");
-  const review = await click(b, "Review check-in");
-  log(`    검토 열기: ${review}`);
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if ((await buttons(b)).some(button => button.t === "Check in" && !button.d)) break;
+    await sleep(250);
+  }
+  const review = await b.ev(`return (() => { const button = [...document.querySelectorAll('button')]
+    .find(item => item.textContent.trim() === 'Check in' && !item.disabled);
+    if (!button) return 'NOTFOUND: ' + document.body.innerText; button.click(); return 'OK'; })();`);
+  log(`    체크인 실행: ${review}`);
   await sleep(500);
-  const reviewText = await text(b);
-  check("검토 단계에서 체크인 대상을 확인한다", review === "OK" && /Confirm your check-in/i.test(reviewText),
-    reviewText.split("\n").find((line) => /Confirm your check-in/.test(line)) || "검토 화면 없음");
-  const r = await click(b, "Confirm check-in");
+  const duplicateReview = await b.ev("return !!document.querySelector('.checkin-review')");
+  check("진행 중인 상속 신청이 없으면 중복 확인 없이 체크인한다", review === "OK" && !duplicateReview,
+    review === "OK" ? "추가 앱 확인 없음" : review);
+  const r = review;
   log(`    체크인 확인: ${r}`);
   await sleep(6000);
   const chainAfter = await readPing();

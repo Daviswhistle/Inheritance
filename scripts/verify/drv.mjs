@@ -36,6 +36,11 @@ export const OUT = path.join(RUNDIR, "shots");
 mkdirSync(OUT, { recursive: true });
 
 export async function launch({ pk, url, profile, preload = "" } = {}) {
+  const walletArtifactPath = path.resolve(HERE, "../../out/MockWorldAppWallet.sol/MockWorldAppWallet.json");
+  const atomicFixture = !preload.includes("__E2E_BATCH_WALLET__") && existsSync(walletArtifactPath)
+    ? `window.__E2E_BATCH_WALLET__ = '0x0000000000000000000000000000000000e2e770';
+       window.__E2E_BATCH_WALLET_CODE__ = ${JSON.stringify(JSON.parse(readFileSync(walletArtifactPath)).deployedBytecode.object)};`
+    : "";
   const PROFILE = profile || mkdtempSync(path.join(RUNDIR, "prof-"));
   if (profile) rmSync(PROFILE, { recursive: true, force: true });
   const chrome = spawn("google-chrome", [
@@ -114,6 +119,7 @@ export async function launch({ pk, url, profile, preload = "" } = {}) {
     console.error = (...a) => { window.__E2E_ERRS__.push("console.error: " + a.map(x => (x && x.stack) || String(x)).join(" ")); oe(...a); };
     addEventListener("error", e => window.__E2E_ERRS__.push("error: " + ((e.error && e.error.stack) || e.message)));
     addEventListener("unhandledrejection", e => window.__E2E_ERRS__.push("rejection: " + ((e.reason && e.reason.stack) || String(e.reason))));
+    ${atomicFixture}
     ${preload}
   })();`;
   await send("Page.addScriptToEvaluateOnNewDocument", { source: src });
