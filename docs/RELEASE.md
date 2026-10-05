@@ -1,5 +1,43 @@
 # Release evidence
 
+## October 5, 2026 simplified setup and check-in release
+
+New WLD + USDC setup creates missing positions, grants exact approvals and
+deposits atomically in one wallet request instead of three. The initial screen
+asks only for amounts, recipient and interval. Fee/risk consent appears once in
+the final review; reminders are optional after funding. Ordinary check-in opens
+wallet approval directly. Pending claims require explicit cancellation review,
+and changed claims or targets invalidate that approval before submission.
+
+Reviewed task `ea89a92` passed a full native commit review against fixed parent
+`eef40ff` with no remaining findings. The prior review's stale consent selectors
+in the two yield browser suites were corrected. Actual Anvil/Chrome checks passed:
+82 unified flow checks, 43 WLD yield checks and 16 USDC yield checks, including
+atomic rollback, response-loss recovery without duplicate deposits, legacy partial
+plans, income/reward exits and inheritance. Existing basic, notification, role,
+recovery, shared-link and discovery browser suites also passed. Both exact-task
+CI runs passed, including 375 contract tests (five opt-in skips) and 68 auth checks.
+
+[PR 2](https://github.com/Daviswhistle/Inheritance/pull/2) merged as `bc236a1`,
+whose tree matches the reviewed task. Production CI `37296536962` and deploy
+`37296536877` passed. Cloudflare's canonical Pages deployment
+`56180aaf-b54e-40cf-b9fe-91562e398785` serves that commit. The actual served bundle
+contains the atomic journal and claim review, retains both income factories and
+excludes the test bridge. Notification Worker `f1281db2-856f-4539-8853-f49b3f84940d`
+receives 100% of traffic. Refill Worker remains
+`8b92fe85-6f33-4ce5-a5c8-2256268feb4d` at 100%. Public automation is enabled,
+supported, funded and ready, with no halt.
+
+Fresh production Chrome checks passed at 320/390px in English and Korean, with
+persistent language choice, the World App entry link and no runtime exceptions.
+An unfunded ephemeral EOA passed genuine SIWE sign-in, nonce replay rejection,
+Pages/Worker session acceptance and foreign-origin/anonymous rejection. These
+checks sent no blockchain transaction and changed no existing watcher. This UI
+release deployed no contract and transferred no funds. Portal readback remains
+`awaiting_review`, with ten allowed contracts and four Permit2 tokens. Native
+phone wallet/contact acceptance and store approval remain separate unverified
+surfaces. This documentation update does not redeploy the application.
+
 ## October 5, 2026 production deployment and store submission
 
 Reviewed task commit `09b9c0e` completed a fresh native commit review against its
