@@ -9,6 +9,9 @@ import { Brand, Icon } from "@/components/Icon";
 import { Landing } from "@/components/Landing";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { PlanSetup } from "@/components/PlanSetup";
+import { HeirPlans, OwnerPlanSettings, InviteHeir } from "@/components/PlanExperience";
+import { readInheritancePosition, ownerInheritancePositions, inheritanceStage, rememberedInheritances, rememberInheritances, readSettingsRequest, saveSettingsRequest, clearSettingsRequest, settingsFingerprint, verifySettingsReceipt, SETTING_EVENTS } from "@/inheritance";
+import type { InheritancePosition, HeirReadiness, SettingsTarget, SettingsRequest } from "@/inheritance";
 import { AssetNavigation } from "@/components/AssetNavigation";
 import { IncomeHistoryCard, type IncomeHistoryView } from "@/components/IncomeHistory";
 import { IncomePositionCard, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
@@ -421,7 +424,7 @@ export default function App() {
   const [ownedPlanRead, setOwnedPlanRead] = useState<{
     account: string; loading: boolean; incomplete: boolean;
     unavailableSymbols: AssetSymbol[];
-    items: Array<{ address: string; factory: string; symbol: AssetSymbol; balance: bigint | null; additionalWld: bigint | null; heir: string; period: number; periodSeconds: bigint; lastPing: bigint; active: boolean | null }>;
+    items: Array<{ address: string; factory: string; symbol: AssetSymbol; balance: bigint | null; additionalWld: bigint | null; heir: string; period: number; periodSeconds: bigint; lastPing: bigint; settled: boolean | null; active: boolean | null }>;
   }>({ account: "", loading: false, incomplete: false, unavailableSymbols: [], items: [] });
   const ownedPlanRequest = useRef(0);
   type OwnedVault = { address: string; factory: string };
@@ -577,7 +580,7 @@ export default function App() {
    * 계약 테스트(test_CancelledVaultControlMatrixAfterExpiry)가 이 차이를 고정한다.
    */
   const [cancelledFlag, setCancelledFlag] = useState<boolean>(false);
-  const [challengeEndsAt, setChallengeEndsAt] = useState<number>(0);
+  const [, setChallengeEndsAt] = useState<number>(0);
   /** 최종 수령이 지금 가능한 상태인지 (= 이의제기 기간이 지났고 신청이 들어옴). */
   const canClaim = vaultPhase === "claimable";
   /** 상속인이 신청만 하고 아직 이의제기 기간이 남은 상태. */
@@ -615,9 +618,8 @@ export default function App() {
    * 버린다. "7일 남았다" 고 표시하는데 실제로는 2일 남은 상황이 가능하다. 상대 시간은
    * 체인에서 온 값만 쓴다.
    */
-  const challengeRemaining = Math.max(0, challengeEndsAt - (chainNow > 0 ? chainNow : Math.floor(Date.now() / 1000)));
   /** 이의제기 기간(일). 컨트랙트 상수를 읽되 실패하면 기본값으로 버틴다. */
-  const [challengeDays, setChallengeDays] = useState(7);
+  const [, setChallengeDays] = useState(7);
 
   const wldSymbol = selectedYieldRoute?.symbol ?? "WLD";
   const wldDecimals = selectedYieldRoute?.decimals ?? 18;
@@ -680,15 +682,6 @@ export default function App() {
    * 찍으면 눈에는 이미 끝난 단계와 똑같이 보이고, 카운트다운이 끝난 뒤엔 다시 미완료로
    * 돌아가 첫 단계가 아직 시작 안 된 것처럼 보인다 — 양쪽 방향으로 틀린다.
    */
-  const inheritanceSteps = [
-    { k: "Counting down", done: vaultPhase !== "active" },
-    { k: "Countdown ended", done: awaitingClaim || challengeRunning || canClaim || isSettledClaim },
-    { k: "Heir files a claim", done: challengeRunning || canClaim || isSettledClaim },
-    { k: `${challengeDays}-day review window`, done: canClaim || isSettledClaim },
-    { k: "Heir withdraws", done: isSettledClaim },
-  ];
-  /** 아직 지나지 않은 첫 단계의 인덱스. 전부 지나면 -1 (= 절차를 다 쓴 상태). */
-  const inheritanceNowStep = inheritanceSteps.findIndex((s) => !s.done);
   /**
    * "How this works" 를 펼쳐 둘 것인가.
    *
@@ -708,8 +701,17 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [pendingAction, setPendingAction] = useState(false);
   const actionInFlight = useRef(false);
-  const runWalletAction = async (action: () => Promise<void>) => {
+  const runWalletAction = async (action: () => Promise<void>, needsResolvedSettings = false) => {
     if (actionInFlight.current) return;
+    try {
+      // An unresolved recipient/timer request must not be overwritten by another
+      // plan mutation. It does not lock withdrawals, income, or wallet shares.
+      if (needsResolvedSettings && account && readSettingsRequest(account)) {
+        setSettingsPending(true);
+        setStatus(t("journey.owner.pending"));
+        return;
+      }
+    } catch (error) { setSettingsPending(true); setStatus(errorText(error)); return; }
     actionInFlight.current = true;
     setPendingAction(true);
     try { await action(); }
@@ -743,7 +745,7 @@ export default function App() {
       try { sessionStorage.removeItem(storedPlanKey(account)); } catch { /* session storage may be unavailable */ }
     }
   }, [account]);
-  const runVaultAction = async (action: () => Promise<void>) => {
+  const runVaultAction = async (action: () => Promise<void>, needsResolvedSettings = false) => {
     if (actionInFlight.current) return;
     if (action !== createPlan && !identityMatchesVault) {
       setStatus("Wait for this vault to be verified before continuing.");
@@ -753,14 +755,30 @@ export default function App() {
       setStatus("This vault is archived. Its remaining rewards and inheritance can still reach the named recipient.");
       return;
     }
-    await runWalletAction(action);
+    await runWalletAction(action, needsResolvedSettings);
   };
+  const [showPlanSetup, setShowPlanSetup] = useState(false);
+  const [justCreatedPlan, setJustCreatedPlan] = useState(false);
+  const [settingsReview, setSettingsReview] = useState<{ kind: "period" | "heir" | "cancel"; value: string; targets: SettingsTarget[] } | null>(null);
+  const [singleCheckinReview, setSingleCheckinReview] = useState<string>("");
+  const [settingsPending, setSettingsPending] = useState(false);
+  const [settingsRecoveryError, setSettingsRecoveryError] = useState("");
+  useEffect(() => {
+    setSettingsReview(null);
+    setShowPlanSetup(false);
+    setJustCreatedPlan(false);
+    try { setSettingsPending(Boolean(account && readSettingsRequest(account))); setSettingsRecoveryError(""); }
+    catch (error) { setSettingsPending(true); setSettingsRecoveryError(errorText(error)); }
+  }, [account]);
+  const inheritedRequest = useRef(0);
+  const [inheritedRead, setInheritedRead] = useState<{ account: string; loading: boolean; loaded: boolean; incomplete: boolean; positions: InheritancePosition[] }>({ account: "", loading: false, loaded: false, incomplete: false, positions: [] });
+  const [heirReadiness, setHeirReadiness] = useState<{ key: string; value: HeirReadiness | null } | null>(null);
   const [heirFoundVaults, setHeirFoundVaults] = useState<string[]>([]);
-  const [heirSearchNote, setHeirSearchNote] = useState("");
+  const [, setHeirSearchNote] = useState("");
   const [heirScanIncomplete, setHeirScanIncomplete] = useState(false);
   const [findingHeirVaults, setFindingHeirVaults] = useState<boolean>(false);
   /** 상속인의 월드챗 유저네임 — 월드챗으로 직접 보내려면 필요하다. */
-  const [heirVaultUsername, setHeirVaultUsername] = useState<string | null>(null);
+  const [, setHeirVaultUsername] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState<boolean>(false);
   /**
    * 상속인 스캔을 이미 시도했는가.
@@ -863,23 +881,6 @@ export default function App() {
    * 잔액이 0 이면 보낼 알림이 없다(백엔드가 그러게 되어 있다). 그때 경고하면
    * "알림이 안 되는데 아무 일도 안 일어나는" 노이즈가 된다.
    */
-  const notifyNeedsAttention =
-    NOTIFY_BACKEND_ENABLED &&
-    vaultWld > 0n &&
-    (notifyHealth.level === "broken" || notifyHealth.level === "off");
-  /**
-   * 알림 경고를 **올릴** 시점.
-   *
-   * 알림이 꺼져 있다는 사실만으로 박자를 칠하면 노이즈가 된다 — 사용자가 고칠 수 있는
-   * 일이 없을 수도 있기 때문이다(카운트다운이 며칠 남았으면 굳이 급하지 않다).
-   * 진짜 급한 건 "마감이 임박했는데 아무도 통보받지 못하는 상태" 다. 그때만 올린다.
-   * 경과 25% 이내(또는 이미 지났으면) + 알림이 안 되고 있을 때.
-   */
-  // 둘 다 number 다. `4n` 으로 나누면 "Cannot mix BigInt and other types" 로 앱이 죽는다 —
-  // tsc 는 이걸 잡지 못하고 브라우저에서만 터진다(실제로 그랬다).
-  const notifyEscalate =
-    notifyNeedsAttention &&
-    (isExpiredOrLater || (vaultPhase === "active" && vaultHeartbeat > 0 && timeRemaining < vaultHeartbeat / 4));
   const pushToast = (type: ToastType, msg: string) => {
     // Date.now() 는 같은 밀리초에 여러 토스트가 올라오면 id 가 겹칠 수 있다.
     const id = ++toastSeqRef.current;
@@ -989,6 +990,8 @@ export default function App() {
   const planRouteFor = (symbol: PlanAssetSymbol) => APP_PLAN_ROUTES.find(route => route.symbol === symbol) ?? null;
   const activeOwnedPlans = ownedPlanRead.account === account.toLowerCase()
     ? ownedPlanRead.items.filter(item => item.active === true) : [];
+  const unsettledOwnedPlans = ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items.filter(item => item.settled === false) : [];
+  const showOwnerPlanSettings = isMyVault && unsettledOwnedPlans.length > 0;
   const ownedPlanTotal = (symbol: AssetSymbol) => {
     const rows = activeOwnedPlans.filter(item => item.symbol === symbol
       || symbol === "WLD" && item.symbol === "USDC" && item.additionalWld !== 0n);
@@ -1002,6 +1005,9 @@ export default function App() {
   const commonPlanSettings = activeOwnedPlans.length > 0
     && activeOwnedPlans.every(item => item.heir.toLowerCase() === activeOwnedPlans[0].heir.toLowerCase()
       && item.periodSeconds === activeOwnedPlans[0].periodSeconds);
+  const commonManagedSettings = unsettledOwnedPlans.length > 0 && unsettledOwnedPlans.every(p => p.heir.toLowerCase() === unsettledOwnedPlans[0].heir.toLowerCase() && p.periodSeconds === unsettledOwnedPlans[0].periodSeconds);
+  const ownerSettingsPeriod = !periodTouchedRef.current && commonManagedSettings
+    ? String(Math.max(1, Math.round(Number(unsettledOwnedPlans[0].periodSeconds) / 86400))) : periodInput;
   const homeHeirAddress = commonPlanSettings ? activeOwnedPlans[0]?.heir ?? "" : "";
   const homeHeirUsername = homeHeirUsernameRead?.account === account.toLowerCase()
     && homeHeirUsernameRead.address.toLowerCase() === homeHeirAddress.toLowerCase()
@@ -1109,24 +1115,6 @@ export default function App() {
     // account 가 비어 있을 때 `boolean | ""` 를 반환하지 않도록 명시적으로 비교한다.
     return c === ethers.ZeroAddress || (!!account && c === ethers.getAddress(account));
   };
-  const fmt = (s: number) => {
-    const d = Math.floor(s / 86400);
-    const h = Math.floor((s % 86400) / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    return `${d}d ${h}h ${m}m ${sec}s`;
-  };
-  // Expiry timestamp & display (uses device locale/timezone)
-  const deviceTimeZone = useMemo(() => {
-    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time'; } catch { return 'local time'; }
-  }, []);
-  const expiryTs = useMemo(() => {
-    if (vaultLastPing && vaultHeartbeat) return vaultLastPing + vaultHeartbeat;
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (timeRemaining && timeRemaining > 0) return nowSec + timeRemaining;
-    return 0;
-  }, [vaultLastPing, vaultHeartbeat, timeRemaining]);
-  const expiryLocal = useMemo(() => (expiryTs ? new Date(expiryTs * 1000).toLocaleString() : '-'), [expiryTs]);
   const short = (a: string) => a ? (a.slice(0, 6) + "..." + a.slice(-4)) : "-";
   const badge = (text: string, color: "blue" | "purple" | "yellow" | "green" | "gray") => {
     const clsMap: Record<string, string> = {
@@ -1274,6 +1262,12 @@ export default function App() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.status === "success") {
         update(data?.watcher?.active ? "registered" : "not_registered");
+        if (request === notifyWatchRequest.current && notifyWatchScope.current === notifyWatchKey) {
+          const value = data?.watcher?.alerts?.heirReadiness;
+          const valid = value && typeof value.address === "string" && typeof value.openedAt === "string"
+            && Number.isFinite(Date.parse(value.openedAt)) && ["granted", "denied", "unknown"].includes(value.notificationPermission);
+          setHeirReadiness({ key: notifyWatchKey, value: valid ? value as HeirReadiness : null });
+        }
         return;
       }
       update("unknown");
@@ -1476,7 +1470,7 @@ export default function App() {
   useEffect(() => {
     // 자기 금고를 갖고 있어도 남의 상속인이 될 수 있다. 예전엔 `|| vault` 로 막혀서
     // 자기 금고가 있는 사람은 상속인으로서 아무것도 발견할 수 없었다.
-    if (!account) return;
+    if (!account || !provider) return;
     const key = account.toLowerCase();
     if (heirScannedFor.current === key) return;
     heirScannedFor.current = key;
@@ -1485,7 +1479,7 @@ export default function App() {
     // findHeirVaults 는 매 렌더 새로 만들어지므로 넣으면 effect 가 계속 돌아간다.
     // 중복 실행은 위 ref 가 막는다 — 계정당 한 번.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account, vault]);
+  }, [account, provider]);
 
   useEffect(() => {
     refreshNotifyPermission();
@@ -1810,7 +1804,7 @@ export default function App() {
         ]);
         if (String(canonical).toLowerCase() !== item.address.toLowerCase()) {
           return { address: item.address, factory: item.factory, symbol, balance: null, heir: String(heirAddress),
-            additionalWld: 0n, period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), active: false };
+            additionalWld: 0n, period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), settled: BigInt(claimedAt) > 0n, active: false };
         }
         if (String(owner).toLowerCase() !== key || String(sourceFactory).toLowerCase() !== item.factory.toLowerCase()
           || String(tokenAddress).toLowerCase() !== asset.toLowerCase()) throw new Error("Owner or asset identity mismatch");
@@ -1835,13 +1829,13 @@ export default function App() {
         const heir = String(heirAddress);
         const activePlan = BigInt(claimedAt) === 0n && heir !== ethers.ZeroAddress && heir.toLowerCase() !== key;
         return { address: item.address, factory: item.factory, symbol, balance, additionalWld, heir,
-          period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), active: activePlan };
+          period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), settled: BigInt(claimedAt) > 0n, active: activePlan };
       }));
       if (!active || request !== ownedPlanRequest.current || key !== account.toLowerCase()) return;
       const items = results.map((result, index) => result.status === "fulfilled" ? result.value : {
         address: sources[index].address, factory: sources[index].factory,
         symbol: yieldRouteFor(sources[index].factory)?.symbol ?? "WLD" as AssetSymbol,
-        balance: null, additionalWld: null, heir: "", period: 0, periodSeconds: 0n, lastPing: 0n, active: null,
+        balance: null, additionalWld: null, heir: "", period: 0, periodSeconds: 0n, lastPing: 0n, settled: null, active: null,
       });
       const unavailableSymbols = new Set<AssetSymbol>();
       const markUnavailable = (factoryAddress: string) => {
@@ -2440,14 +2434,16 @@ export default function App() {
     return { feeBps: Number(fee), recipient: String(recipient), underlyingFeePercent: Number(underlyingFee) / 1e16 };
   };
 
-  const readPlanVaultIdentity = async (route: AppPlanRoute, ownerAddress: string, originalVault?: string): Promise<PlanVaultIdentity | null> => {
+  const readPlanVaultIdentity = async (route: AppPlanRoute, ownerAddress: string, originalVault?: string, registeredAtBlock?: number): Promise<PlanVaultIdentity | null> => {
     if (!provider) throw new Error("Connect to World Chain before continuing.");
     const source = new ethers.Contract(route.factory, planFactoryAbi(route), provider);
-    const canonical = String(await source.vaultOf(ownerAddress));
+    const canonical = String(await source.vaultOf(ownerAddress, route.mode === "plain" && registeredAtBlock !== undefined
+      ? { blockTag: registeredAtBlock } : {}));
     const address = originalVault ?? canonical;
     if (!ethers.isAddress(address) || address === ethers.ZeroAddress) return null;
-    // Yield registries retain knownVaults after release. Basic factories do not,
-    // so a historical basic target must still occupy its canonical slot.
+    // New requests require the current slot. Receipt recovery can prove the
+    // original basic slot at its saved pre-submission block, even after release.
+    // Yield registries retain knownVaults after release.
     if (originalVault && route.mode === "plain" && address.toLowerCase() !== canonical.toLowerCase()) {
       throw new Error("The original basic vault was released or replaced. Its saved request is preserved and was not repeated.");
     }
@@ -3061,6 +3057,8 @@ export default function App() {
       setVault(primaryIdentity?.address ?? "");
       setLinkedVault("");
       setTab("vault");
+      setJustCreatedPlan(true);
+      setShowPlanSetup(false);
       setStatus(allPositionsUnchanged ? "Your inheritance plan is ready. Deposits and vaults are verified on World Chain."
         : "Remaining setup is complete. Earlier deposits were verified; current assets and settings appear below.");
       void loadVault();
@@ -3117,6 +3115,7 @@ export default function App() {
     }
     try {
       clearPendingPlan(account);
+      setShowPlanSetup(true);
       setAlignmentReview("");
       setAlignmentConflicts([]);
       onHeirInput(saved.heir);
@@ -3143,31 +3142,33 @@ export default function App() {
   // `APP_ORIGIN` = 배포 시 명시한 공개 주소. World App 안에서 `window.location.origin` 은
   // 래퍼일 수 있고, 그 링크를 받은 상속인은 앱으로 못 갈 수 있다. 상속 절차의 유일한
   // 전달 수단이 이 링크이므로 배포 설정을 우선한다(config.ts 의 APP_ORIGIN 참고).
-  const heirLink = vault ? `${APP_ORIGIN}/?vault=${vault}` : "";
-  const heirMessage = vault && vaultHeir
-    ? [
-        `You are named as the heir of a ${wldSymbol} vault.`,
-        ``,
-        `Open this link in World App to see it: ${heirLink}`,
-        ``,
-        `What it means: if the person who named you stops renewing it, the countdown ends and nothing`,
-        `moves before you file a claim. They then have a 7-day review window to renew and stop it.`,
-        `After that, a new vault can transfer automatically; you can also finish in World App.`,
-        `They can renew until the transfer executes. If you have not been contacted before that`,
-        `point, nothing is owed to you yet.`,
-        ``,
-        `Vault: ${vault}`,
-      ].join("\n")
-    : "";
-
-  /**
-   * 상속인의 월드챗 유저네임.
-   *
-   * 컨트랙트에는 지갑 주소만 저장되므로 유저네임은(chain 에서) 되돌려야 한다.
-   * 이게 있어야 월드챗으로 직접 보낼 수 있다 — 유저네임이 없으면 월드챗은
-   * 주소로는 닿지 못하고 링크를 쓰는 방법밖에 없다.
-   */
-  const heirUsername = heirVaultUsername;
+  const inviteVault = commonPlanSettings ? activeOwnedPlans[0]?.address ?? "" : "";
+  const heirLink = inviteVault ? `${APP_ORIGIN}/?vault=${inviteVault}` : "";
+  const heirMessage = heirLink ? t("journey.invite.message", { link: heirLink }) : "";
+  const heirUsername = homeHeirUsername;
+  const readinessKey = inviteVault && account ? `${account.toLowerCase()}:${inviteVault.toLowerCase()}` : "";
+  const observedHeirReadiness = heirReadiness?.key === readinessKey && heirReadiness.value?.address.toLowerCase() === homeHeirAddress.toLowerCase()
+    ? heirReadiness.value : null;
+  const refreshInvite = useCallback(async () => {
+    if (!inviteVault || !account || !NOTIFY_BACKEND_ENABLED) return;
+    try {
+      const response = await notificationFetch(`${NOTIFY_BACKEND_URL}/api/notifications/status?vaultAddress=${inviteVault}`);
+      const data = await response.json(); const value = data?.watcher?.alerts?.heirReadiness;
+      if (response.ok) setHeirReadiness({ key: readinessKey, value: value && typeof value.address === "string"
+        && value.address.toLowerCase() === homeHeirAddress.toLowerCase() && typeof value.openedAt === "string"
+        && Number.isFinite(Date.parse(value.openedAt)) && ["granted", "denied", "unknown"].includes(value.notificationPermission) ? value : null });
+    } catch { /* Unknown readiness stays unknown. */ }
+  }, [inviteVault, account, readinessKey, homeHeirAddress]);
+  useEffect(() => {
+    if (!inviteVault || !["vault", "inherit"].includes(tab)) return;
+    void refreshInvite();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void refreshInvite(); }, 30_000);
+    return () => clearInterval(timer);
+  }, [inviteVault, tab, refreshInvite]);
+  const inviteCard = heirLink && <InviteHeir ready={justCreatedPlan} name={heirUsername ?? ""} link={heirLink}
+    busy={pendingAction || shareBusy} readiness={observedHeirReadiness}
+    onChat={() => void tellHeirInChat()} onLink={() => void copyHeirLink()} onMessage={() => void copyHeirMessage()}
+    onRefresh={() => void refreshInvite()} />;
 
   const tellHeirInChat = async () => {
     if (!heirMessage) return;
@@ -3233,7 +3234,7 @@ export default function App() {
       const sig = ethers.id("VaultCreated(address,address,address,uint256)");
       const heirTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
       const sources = [{ address: FACTORY_ADDRESS, block: FACTORY_DEPLOY_BLOCK }, ...(LEGACY_FACTORY_ADDRESS ? [{ address: LEGACY_FACTORY_ADDRESS, block: LEGACY_FACTORY_DEPLOY_BLOCK }] : []), ...YIELD_ROUTES.map(route => ({ address: route.factory, block: route.block }))];
-      const indexed: string[] = [];
+      const indexed: string[] = rememberedInheritances(account);
       let indexIncomplete = false;
       if (NOTIFY_BACKEND_ENABLED) {
         try {
@@ -3264,21 +3265,13 @@ export default function App() {
       }
       const vaults = (await Promise.all([...candidates].map(async candidate => {
         try {
-          const ctr = new ethers.Contract(candidate, [...VAULT_ABI, "function asset() view returns (address)", "function rewardToken() view returns (address)", "function strategy() view returns (address)"], p);
-          const [currentHeir, currentFactory, owner] = await Promise.all([ctr.heir(), ctr.factory(), ctr.owner()]);
-          const route = yieldRouteFor(currentFactory);
-          if (currentHeir.toLowerCase() !== account.toLowerCase() || !sources.some(s => s.address.toLowerCase() === currentFactory.toLowerCase())) return null;
-          const token = await ctr[route?.tokenGetter ?? "WLD"]();
-          if (token.toLowerCase() !== (route?.asset ?? WLD_ADDRESS).toLowerCase()) return null;
-          if (route) {
-            if (String(await ctr.strategy()).toLowerCase() !== route.strategy.toLowerCase()
-              || route.symbol === "USDC" && String(await ctr.rewardToken()).toLowerCase() !== WLD_ADDRESS.toLowerCase()) return null;
-            return await new ethers.Contract(currentFactory, route.factoryAbi, p).knownVaults(candidate) ? candidate : null;
-          }
-          const canonical = await new ethers.Contract(currentFactory, FACTORY_ABI, p).vaultOf(owner);
-          return canonical.toLowerCase() === candidate.toLowerCase() ? candidate : null;
+          const position = await readInheritancePosition(p as ethers.JsonRpcProvider, candidate);
+          const beneficiary = position.claimedAt > 0n ? position.recipient : position.heir;
+          return beneficiary.toLowerCase() === account.toLowerCase() && position.owner.toLowerCase() !== account.toLowerCase()
+            ? candidate : null;
         } catch { indexIncomplete = true; return null; }
       }))).filter((v): v is string => v !== null);
+      rememberInheritances(account, vaults);
       setHeirFoundVaults(vaults);
       setHeirScanIncomplete(indexIncomplete);
       setHeirSearchNote(`${indexIncomplete ? "This vault search is incomplete. Please check again. " : NOTIFY_BACKEND_ENABLED ? "Checked registered vaults. " : "Checked recent vaults. "}For an older or unregistered vault, ask its owner for the vault link.`);
@@ -3286,16 +3279,7 @@ export default function App() {
       // 뜻하고, 여기서 오염시키면 (1) Create 버튼이 영구히 비활성화되고
       // (2) "You already have a vault" 라고 표시된다. 상속인 금고는 별도 상태로만
       // 보관하고, 상세 보기로는 vault 를 건드리지 않는다.
-      if (vaults.length > 0) {
-        pushToast(
-          'success',
-          vaults.length === 1
-            ? 'Detected a vault where you are heir.'
-            : `Detected ${vaults.length} vaults where you are heir.`,
-        );
-      } else {
-        // The empty result remains visible in Help; automatic scans are quiet.
-      }
+      // The grouped result is visible in Plan; automatic discovery is quiet.
     } catch (e: unknown) {
       setHeirScanIncomplete(true);
       setHeirSearchNote("This vault search is incomplete. Please check again, or open the vault link from its owner.");
@@ -3331,51 +3315,55 @@ export default function App() {
    */
   const notifyHeirWorthShowing = findingHeirVaults || heirScanIncomplete || heirFoundVaults.length > 0 || !heirScanAttempted;
 
-  const heirStatusCard = gate2(
-    <Card>
-      <CardHeader><CardTitle>Are you named as someone&apos;s heir?</CardTitle></CardHeader>
-      <CardContent className="grid gap-2">
-        <div className="text-xs text-gray-600">
-          We check registered vaults and recent chain events when you sign in. A shared
-          vault link opens a vault directly.
-        </div>
-        {findingHeirVaults ? (
-          <div className="text-xs text-gray-600">Checking the chain for vaults that name you…</div>
-        ) : heirScanAttempted ? (
-          heirFoundVaults.length > 0 ? (
-            <>
-              <div className="text-sm font-medium">
-                You are the heir of {heirFoundVaults.length} vault{heirFoundVaults.length > 1 ? "s" : ""}.
-              </div>
-              <div className="text-xs text-gray-600">
-                Open one to see whether the countdown has ended and whether you can file a claim.
-                Nothing is owed to you until the countdown runs out and you file — see the Plan tab.
-              </div>
-              <div className="grid gap-2 text-xs">
-                {heirFoundVaults.map((v) => (
-                  <div key={v} className="flex items-center justify-between gap-2">
-                    <span className="break-all">{short(v)}</span>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={() => { setVault(v); setLinkedVault(v); }}>Open in app</Button>
-                      <a className="text-blue-600 underline" href={`${EXPLORER}/address/${v}`} target="_blank" rel="noreferrer">Explorer</a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="text-sm font-medium">{heirScanIncomplete ? "Some vaults could not be checked. Please try again." : "No vaults found in this check."}</div>
-          )
-        ) : null}
-        {heirSearchNote && <div className="text-xs text-gray-600">{heirSearchNote}</div>}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={findHeirVaults} disabled={pendingAction || findingHeirVaults}>
-            {findingHeirVaults ? "Searching..." : "Check again"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const refreshInheritedPositions = useCallback(async () => {
+    if (!provider || !account) return;
+    const key = account.toLowerCase(), request = ++inheritedRequest.current;
+    setInheritedRead(current => ({ account: key, loading: true, loaded: current.account === key && current.loaded,
+      incomplete: false, positions: current.account === key ? current.positions : [] }));
+    let incomplete = false;
+    const isRecipient = (p: InheritancePosition) => p.owner.toLowerCase() !== key
+      && (p.claimedAt > 0n ? p.recipient : p.heir).toLowerCase() === key;
+    const candidates = [...new Set([...heirFoundVaults, ...rememberedInheritances(account), ...(linkedVault ? [linkedVault] : [])].map(v => v.toLowerCase()))];
+    const first = (await Promise.all(candidates.map(async address => {
+      try { const p = await readInheritancePosition(provider, address); return isRecipient(p) ? p : null; }
+      catch { incomplete = true; return null; }
+    }))).filter((p): p is InheritancePosition => Boolean(p));
+    const expanded = await Promise.all([...new Set(first.map(p => p.owner.toLowerCase()))].map(async owner => {
+      try { return (await ownerInheritancePositions(provider, owner)).filter(isRecipient); }
+      catch { incomplete = true; return []; }
+    }));
+    const positions = [...new Map([...first, ...expanded.flat()].map(p => [p.address.toLowerCase(), p])).values()];
+    const names = new Map(await Promise.all([...new Set(positions.map(p => p.owner.toLowerCase()))].map(async owner => [owner, await getUsernameFor(owner)] as const)));
+    if (request !== inheritedRequest.current) return;
+    rememberInheritances(account, positions.map(p => p.address));
+    setInheritedRead({ account: key, loading: false, loaded: true, incomplete, positions: positions.map(p => ({ ...p, ownerName: names.get(p.owner.toLowerCase()) })) });
+  }, [provider, account, heirFoundVaults, linkedVault]);
+  useEffect(() => {
+    void refreshInheritedPositions();
+    const timer = setInterval(() => { if (!actionInFlight.current && document.visibilityState === "visible") void refreshInheritedPositions(); }, 30_000);
+    const epoch = inheritedRequest.current;
+    return () => { inheritedRequest.current = Math.max(inheritedRequest.current, epoch) + 1; clearInterval(timer); };
+  }, [refreshInheritedPositions]);
+  const inheritedPositions = inheritedRead.account === account.toLowerCase() ? inheritedRead.positions : [];
+  const heirStatusCard = <HeirPlans positions={inheritedPositions} selectedOwner={isMyVault ? "" : vaultOwner}
+    loading={inheritedRead.loading || findingHeirVaults} incomplete={inheritedRead.incomplete || heirScanIncomplete}
+    busy={pendingAction || !miniInstalled} permission={notifyPermission} onEnableNotifications={() => void requestNotifyPermission()}
+    onOpen={(address, assetDetails) => { navigationChosenFor.current = account.toLowerCase(); setVault(address); setLinkedVault(address); setShowPlanSetup(false); if (assetDetails) setTab("money"); }}
+    onRefresh={() => { void findHeirVaults(); void refreshInheritedPositions(); }}
+    onAction={(kind, positions) => void runWalletAction(() => actOnInheritance(kind, positions))} />;
+
+  // Only plans actually displayed to their signed-in beneficiary report readiness.
+  const openedHeirTargets = tab === "inherit" ? inheritedPositions.filter(p => p.claimedAt === 0n && p.heir.toLowerCase() === account.toLowerCase()).map(p => p.address.toLowerCase()).sort().join(",") : "";
+  useEffect(() => {
+    if (!NOTIFY_BACKEND_ENABLED || !serverVerified || !openedHeirTargets) return;
+    const controller = new AbortController();
+    for (const vaultAddress of openedHeirTargets.split(",")) {
+      void notificationFetch(`${NOTIFY_BACKEND_URL}/api/notifications/open`, { method: "POST", signal: controller.signal,
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ vaultAddress,
+          notificationPermission: notifyPermission === "granted" || notifyPermission === "denied" ? notifyPermission : "unknown" }) }).catch(() => {});
+    }
+    return () => controller.abort();
+  }, [openedHeirTargets, serverVerified, notifyPermission]);
 
   // ---- deposit WLD
   const deposit = async () => {
@@ -3453,45 +3441,12 @@ export default function App() {
   };
 
   // ---- life signals
-  const extendTime = async () => {
-    if (!vaultCtr) return;
-    try {
-      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "pingMyVault", args: []  }]);
-      if (!sent.ok) {
-        setStatus(sent.error);
-        if (sent.userFacing) pushToast("error", sent.error);
-        return;
-      }
-      setStatus("Pending… awaiting confirmation");
-      const prevLp = vaultLastPing;
-      const prov = getRwProvider();
-      const txh = sent.tx.hash;
-      await waitForTxOrEvent(prov, {
-        txHash: txh,
-        hashType: sent.tx.hashType,
-        check: async () => {
-          const lp: bigint = await vaultCtr.lastPing();
-          return Number(lp) > (prevLp || 0);
-        },
-      });
-      setStatus("Timer reset (full period restored)");
-      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
-      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
-      void refreshVaultDetails();
-      refreshTimer();
-    } catch (e: unknown) {
-      setStatus("Reset error: " + errorText(e));
-      pushToast('error', errorText(e));
-    }
-  };
-
   const checkInAllPlans = async (confirmClaimCancellation = false) => {
     if (!provider || !account || !miniInstalled) { setStatus("Open in World App and connect before checking in."); return; }
     if (ownedPlanRead.loading || ownedPlanRead.incomplete) { setStatus("Refresh every owned vault before checking in. No check-in was sent."); return; }
-    if (activeOwnedPlans.length === 0) { setStatus("There are no active inheritance vaults to check in to."); return; }
+    if (unsettledOwnedPlans.length === 0) { setStatus("There are no active inheritance vaults to check in to."); return; }
     try {
-      const targets = await Promise.all(activeOwnedPlans.map(async item => {
+      const targets = await Promise.all(unsettledOwnedPlans.map(async item => {
         const route = yieldRouteFor(item.factory);
         const identityRoute: AppPlanRoute = route ? {
           symbol: route.symbol, asset: route.asset, decimals: route.decimals, factory: route.factory,
@@ -3507,7 +3462,7 @@ export default function App() {
           || identity.owner.toLowerCase() !== account.toLowerCase()
           || identity.heir.toLowerCase() !== item.heir.toLowerCase()
           || identity.periodSeconds !== item.periodSeconds || identity.claimedAt > 0n
-          || identity.heir.toLowerCase() === account.toLowerCase() || identity.heir === ethers.ZeroAddress) {
+          || identity.heir === ethers.ZeroAddress) {
           throw new Error(`${item.symbol} vault changed. Refresh the plan before checking in.`);
         }
         const claimFiledAt = BigInt(await new ethers.Contract(identity.address, vaultAbi, provider).claimFiledAt());
@@ -3568,125 +3523,176 @@ export default function App() {
     }
   };
 
+  // During a partial registry outage, a verified selected asset remains manageable.
+  // The label explicitly excludes the other assets; pending-claim cancellation is reviewed.
+  const renewSelectedAsset = async (confirmCancellation = false) => {
+    if (!provider || !vault || !isMyVault) return;
+    try {
+      const position = await readInheritancePosition(provider, vault);
+      if (position.owner.toLowerCase() !== account.toLowerCase() || position.claimedAt > 0n) throw new Error(t("journey.owner.changed"));
+      const fingerprint = [account, position.address, position.heir, position.period, position.lastPing, position.claimFiledAt].join(":").toLowerCase();
+      if (position.claimFiledAt > 0n && (!confirmCancellation || singleCheckinReview !== fingerprint)) { setSingleCheckinReview(fingerprint); return; }
+      const sent = await sendWorldChainTx([{ address: position.factory, abi: yieldRouteFor(position.factory)?.factoryAbi ?? FACTORY_ABI, functionName: "pingMyVault", args: [] }]);
+      if (!sent.ok) { setStatus(sent.error); return; }
+      await waitForTxOrEvent(provider, { txHash: sent.tx.hash, hashType: sent.tx.hashType, verifyReceipt: receipt => receipt.logs.some(log => {
+        if (log.address.toLowerCase() !== position.address.toLowerCase()) return false;
+        try { const event = SETTING_EVENTS.parseLog({ topics: [...log.topics], data: log.data }); return event?.name === "Ping" && BigInt(event.args.timestamp) >= position.lastPing; } catch { return false; }
+      }), check: async () => true });
+      setSingleCheckinReview(""); await Promise.all([refreshVaultDetails(), refreshTimer()]); await loadVault();
+      setStatus(t("journey.owner.singleRenewed", { symbol: position.symbol }));
+    } catch (error) { setStatus(errorText(error)); pushToast("error", errorText(error)); }
+  };
+
+  const readSettingsTargets = async (kind: "period" | "heir" | "cancel", value: string): Promise<SettingsTarget[]> => {
+    if (!provider || !account) throw new Error(t("journey.loading"));
+    const rows = (await ownerInheritancePositions(provider, account)).filter(p => p.claimedAt === 0n);
+    if (!rows.length) throw new Error(t("journey.owner.noActive"));
+    if (rows.some(p => p.claimFiledAt > 0n || p.now >= p.deadline)) throw new Error(t("journey.owner.checkInFirst"));
+    return rows.map(p => ({ factory: p.factory, vault: p.address, symbol: p.symbol,
+      heir: p.heir, period: p.period.toString(), lastPing: p.lastPing.toString(),
+      nextHeir: kind === "cancel" ? account : kind === "heir" ? value : p.heir,
+      nextPeriod: kind === "period" ? (BigInt(value) * 86400n).toString() : p.period.toString(),
+      checkIn: kind === "period" && p.period !== BigInt(value) * 86400n }));
+  };
+  const reviewPlanSettings = async (kind: "period" | "heir" | "cancel", value: string) => {
+    try {
+      if (pendingPlan || readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
+      const targets = await readSettingsTargets(kind, value);
+      if (targets.every(t => t.heir.toLowerCase() === t.nextHeir.toLowerCase() && t.period === t.nextPeriod)) {
+        setStatus(t("journey.owner.unchanged")); return;
+      }
+      setSettingsReview({ kind, value, targets });
+      requestAnimationFrame(() => document.getElementById("settings-review-title")?.focus());
+    } catch (error) { setStatus(errorText(error)); pushToast("error", errorText(error)); }
+  };
   const changePeriod = async () => {
-    if (!vaultCtr) return;
-    if (!periodValid) { setStatus('Period must be between 1 and 365 days.'); return; }
-    const seconds = BigInt(periodNum) * 24n * 60n * 60n;
-    try {
-      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "changeMyPeriod", args: [seconds.toString()]  }]);
-      if (!sent.ok) {
-        setStatus(sent.error);
-        if (sent.userFacing) pushToast("error", sent.error);
-        return;
-      }
-      setStatus("Pending… awaiting confirmation");
-      const prov = getRwProvider();
-      const txh = sent.tx.hash;
-      await waitForTxOrEvent(prov, {
-        txHash: txh,
-        hashType: sent.tx.hashType,
-        check: async () => {
-          const hb: bigint = await vaultCtr.heartbeatInterval();
-          return Number(hb) === Number(seconds);
-        },
-      });
-      setStatus("Period updated");
-      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
-      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
-      void refreshVaultDetails();
-      periodTouchedRef.current = false;
-      refreshTimer();
-    } catch (e: unknown) {
-      setStatus("Change period error: " + errorText(e));
-      pushToast('error', errorText(e));
+    if (/^\d+$/.test(ownerSettingsPeriod) && Number(ownerSettingsPeriod) >= 1 && Number(ownerSettingsPeriod) <= 365) {
+      await reviewPlanSettings("period", ownerSettingsPeriod);
     }
   };
-  const cancelInheritance = async () => {
-    if (!vaultCtr) return;
-    try {
-      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "cancelMyInheritance", args: []  }]);
-      if (!sent.ok) {
-        setStatus(sent.error);
-        if (sent.userFacing) pushToast("error", sent.error);
-        return;
-      }
-      setStatus("Pending… awaiting confirmation");
-      const prov = getRwProvider();
-      const txh = sent.tx.hash;
-      await waitForTxOrEvent(prov, {
-        txHash: txh,
-        hashType: sent.tx.hashType,
-        check: async () => {
-          const h = await vaultCtr.heir();
-          return h && h.toLowerCase() === vaultOwner.toLowerCase();
-        },
-      });
-      setStatus("Inheritance cancelled (heir=owner)");
-      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
-      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
-      void refreshVaultDetails();
-      refreshTimer();
-    } catch (e: unknown) {
-      setStatus("Cancel error: " + errorText(e));
-      pushToast('error', errorText(e));
-
-    }
-  };
-
+  const cancelInheritance = async () => { await reviewPlanSettings("cancel", account); };
   const updateHeir = async () => {
-    if (!vaultCtr) return;
-    const resolved = newHeirResolved || await resolveHeirInput(newHeir);
-    if (!resolved?.address) { setStatus("Enter a valid heir username or address"); return; }
-    // 0x0 은 계약의 InvalidAddress 로 거절된다. `createVault` 에는 이 가드가 있는데
-    // `updateHeir` 에는 없었고 — 버튼이 비활성이라 실제로는 닿기 어려운 경로지만,
-    // 렌더가 한 박자 뒤처진 상황에서 0x0 이 들어가면 gas 를 태우고 실패한다.
-    // 경고만 띄우고 진행하면 반드시 실패하는 트랜잭션이 만들어지므로 여기서 막는다.
-    if (resolved.address === ethers.ZeroAddress) {
-      setStatus("Heir cannot be the zero address");
-      pushToast("error", "Heir cannot be the zero address");
-      return;
+    const resolved = await resolveHeirInput(newHeir);
+    if (!resolved?.address || resolved.address === ethers.ZeroAddress || resolved.address.toLowerCase() === account.toLowerCase()) {
+      setStatus(t("plan.recipient.notFound")); return;
     }
-    try {
-      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "updateMyHeir", args: [resolved.address]  }]);
-      if (!sent.ok) {
-        setStatus(sent.error);
-        if (sent.userFacing) pushToast("error", sent.error);
-        return;
-      }
-      setStatus("Pending… awaiting confirmation");
-      const prov = getRwProvider();
-      const txh = sent.tx.hash;
-      const target = resolved.address;
-      await waitForTxOrEvent(prov, {
-        txHash: txh,
-        hashType: sent.tx.hashType,
-        check: async () => {
-          const h = await vaultCtr.heir();
-          return h && h.toLowerCase() === target.toLowerCase();
-        },
-      });
-      setStatus("Heir updated");
-      // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
-      // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
-      void refreshVaultDetails();
-      setNewHeir("");
-      setNewHeirResolved(null);
-      if (NOTIFY_BACKEND_ENABLED && account && vault) {
-        try {
-          await registerWatcher(vault, account, resolved.address, true);
-        } catch {
-          // Notification watcher registration is optional.
-          void 0;
+    await reviewPlanSettings("heir", resolved.address);
+  };
+  const confirmPlanSettingsReceipt = async (request: SettingsRequest) => {
+    if (!provider) throw new Error(t("journey.loading"));
+    if (!request.txHash) {
+      const receipt = await findUniquePlanReceipt(request.beforeBlock, async () => Number(BigInt(await provider.send("eth_blockNumber", []))),
+        (fromBlock, toBlock) => provider.getLogs({ address: request.targets.map(t => t.vault),
+          topics: [["HeirUpdated", "HeartbeatUpdated"].map(name => SETTING_EVENTS.getEvent(name)!.topicHash)], fromBlock, toBlock }),
+        hash => provider.getTransactionReceipt(hash), () => true, receipt => receipt.status === 1 && verifySettingsReceipt(receipt, request.targets));
+      if (!receipt) throw new Error(t("journey.owner.pending"));
+      request = { ...request, txHash: receipt.hash, hashType: "transaction" };
+      saveSettingsRequest(request);
+    }
+    await waitForTxOrEvent(provider, { txHash: request.txHash, hashType: request.hashType,
+      verifyReceipt: async receipt => {
+        if (receipt.blockNumber < request.beforeBlock || !verifySettingsReceipt(receipt, request.targets)) return false;
+        const block = await provider.getBlock(receipt.blockNumber);
+        if (!block?.hash || block.hash !== receipt.blockHash) return false;
+        for (const target of request.targets) {
+          const route = trustedPlanRoute(target.factory);
+          if (!route || !await readPlanVaultIdentity(route, request.account, target.vault, request.beforeBlock)) return false;
         }
+        return true;
+      }, check: async () => true });
+    clearSettingsRequest(request.account);
+    setSettingsPending(false); setSettingsReview(null); setSettingsRecoveryError("");
+    periodTouchedRef.current = false;
+    setNewHeir(""); setNewHeirResolved(null);
+    // Force a new registry snapshot so Home is fresh before its next check-in.
+    await loadVault();
+    await Promise.all([refreshVaultDetails(), refreshTimer(), refreshBalances()]);
+    for (const target of request.targets) {
+      if (target.nextHeir.toLowerCase() !== request.account.toLowerCase() && NOTIFY_BACKEND_ENABLED) {
+        void registerWatcher(target.vault, request.account, target.nextHeir, true).catch(() => {});
       }
-      refreshVaultDetails();
-    } catch (e: unknown) {
-      setStatus("Update heir error: " + errorText(e));
-      pushToast('error', errorText(e));
     }
+    setStatus(t("journey.owner.updated"));
+  };
+  const resumePlanSettings = async () => {
+    let request: SettingsRequest | null = null;
+    try { request = readSettingsRequest(account); if (request) await confirmPlanSettingsReceipt(request); }
+    catch (error) {
+      if (error instanceof ConfirmedTransactionFailure && request?.txHash?.toLowerCase() === error.txHash.toLowerCase()) {
+        clearSettingsRequest(account); setSettingsPending(false); setSettingsReview(null);
+      }
+      setStatus(errorText(error)); pushToast("error", errorText(error));
+    }
+  };
+  const confirmPlanSettings = async () => {
+    if (!provider || !settingsReview) return;
+    let saved = false;
+    try {
+      if (pendingPlan || readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
+      const targets = await readSettingsTargets(settingsReview.kind, settingsReview.value);
+      if (settingsFingerprint(targets) !== settingsFingerprint(settingsReview.targets)) {
+        setSettingsReview({ ...settingsReview, targets }); throw new Error(t("journey.owner.changed"));
+      }
+      const calls = targets.flatMap(target => {
+        const abi = yieldRouteFor(target.factory)?.factoryAbi ?? FACTORY_ABI;
+        const calls: Array<{ address: string; abi: ethers.InterfaceAbi; functionName: string; args: string[] }> = [];
+        if (target.heir.toLowerCase() !== target.nextHeir.toLowerCase()) calls.push({ address: target.factory, abi, functionName: "updateMyHeir", args: [target.nextHeir] });
+        if (target.period !== target.nextPeriod) calls.push({ address: target.factory, abi, functionName: "changeMyPeriod", args: [target.nextPeriod] });
+        if (target.checkIn) calls.push({ address: target.factory, abi, functionName: "pingMyVault", args: [] });
+        return calls;
+      });
+      const request: SettingsRequest = { version: 1, account,
+        beforeBlock: Number(BigInt(await provider.send("eth_blockNumber", []))), targets };
+      saveSettingsRequest(request); saved = true; setSettingsPending(true);
+      const sent = await sendWorldChainTx(calls);
+      if (!sent.ok) {
+        if (sent.definitelyNotSubmitted) { clearSettingsRequest(account); setSettingsPending(false); }
+        setStatus(sent.error); return;
+      }
+      const submitted = { ...request, txHash: sent.tx.hash, hashType: sent.tx.hashType };
+      saveSettingsRequest(submitted);
+      await confirmPlanSettingsReceipt(submitted);
+    } catch (error) {
+      if (error instanceof ConfirmedTransactionFailure && saved) {
+        clearSettingsRequest(account); setSettingsPending(false); setSettingsReview(null);
+      }
+      setStatus(errorText(error)); pushToast("error", errorText(error));
+    }
+  };
+
+  const actOnInheritance = async (kind: "file" | "finish", original: InheritancePosition[]) => {
+    if (!provider || !account || !miniInstalled || !original.length) return;
+    try {
+      const fresh = await Promise.all(original.map(p => readInheritancePosition(provider, p.address)));
+      const stage = kind === "file" ? "expired" : "ready";
+      if (fresh.some((p, i) => p.heir.toLowerCase() !== account.toLowerCase() || p.owner.toLowerCase() !== original[i].owner.toLowerCase()
+        || p.factory.toLowerCase() !== original[i].factory.toLowerCase() || inheritanceStage(p) !== stage || !p.hasAssets
+        || p.claimFiledAt !== original[i].claimFiledAt || p.deadline !== original[i].deadline)) {
+        await refreshInheritedPositions(); throw new Error(t("journey.heir.changed"));
+      }
+      const sent = await sendWorldChainTx(fresh.map(p => ({ address: p.factory, abi: yieldRouteFor(p.factory)?.factoryAbi ?? FACTORY_ABI,
+        functionName: kind === "file" ? "fileClaimFor" : "finalizeClaimFor", args: [p.address] })));
+      if (!sent.ok) { setStatus(sent.error); return; }
+      const eventName = kind === "file" ? "ClaimFiled" : "InheritanceFinalized";
+      const eventInterface = new ethers.Interface(["event ClaimFiled(address indexed by, uint256 filedAt, uint256 challengeEndsAt)",
+        "event InheritanceFinalized(address indexed recipient, uint256 amount, uint256 claimedAt)"]);
+      await waitForTxOrEvent(provider, { txHash: sent.tx.hash, hashType: sent.tx.hashType,
+        verifyReceipt: receipt => fresh.every(p => receipt.logs.some(l => {
+          if (l.address.toLowerCase() !== p.address.toLowerCase()) return false;
+          try { const e = eventInterface.parseLog({ topics: [...l.topics], data: l.data });
+            if (e?.name !== eventName) return false;
+            // Factory commands emit ClaimFiled with the factory as `by`.
+            return kind === "file" ? String(e.args.by).toLowerCase() === p.factory.toLowerCase()
+              && BigInt(e.args.filedAt) >= p.now && BigInt(e.args.filedAt) >= p.deadline
+              && BigInt(e.args.challengeEndsAt) === BigInt(e.args.filedAt) + 7n * 86400n
+              : String(e.args.recipient).toLowerCase() === account.toLowerCase(); }
+          catch { return false; }
+        })), check: async () => true });
+      rememberInheritances(account, fresh.map(p => p.address));
+      for (const p of fresh) if (kind === "file" && NOTIFY_BACKEND_ENABLED) void registerWatcher(p.address, p.owner, p.heir, true).catch(() => {});
+      await Promise.all([refreshInheritedPositions(), refreshVaultDetails(), refreshBalances(), refreshTimer()]);
+      setStatus(t(kind === "file" ? "journey.heir.filed" : "journey.heir.received"));
+    } catch (error) { setStatus(errorText(error)); pushToast("error", errorText(error)); await refreshInheritedPositions(); }
   };
 
   // ---- 1단계: 상속인이 상속을 신청한다. 자금은 아직 움직이지 않는다.
@@ -4222,7 +4228,9 @@ export default function App() {
             </Button>
           )}
         </div>
-        <div className="page-intro"><span className="eyebrow">{t(tab === "vault" ? "home.intro.vault" : tab === "money" ? "home.intro.money" : tab === "support" ? "home.intro.support" : "home.intro.inherit")}</span><h1 tabIndex={-1}>{t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>
+        <div className="page-intro"><span className="eyebrow">{t(tab === "vault" ? "home.intro.vault" : tab === "money" ? "home.intro.money" : tab === "support" ? "home.intro.support" : "home.intro.inherit")}</span><h1 tabIndex={-1}>{tab === "inherit" && (iAmHeir || receivedYieldInheritance || !ownVault && inheritedPositions.length > 0) ? t("journey.heir.heading") : t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>
+        {tab === "inherit" && account && (notifyHeirWorthShowing || inheritedPositions.length > 0) && heirStatusCard}
+        {account && tab === "vault" && justCreatedPlan && inviteCard}
         {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
           <CardHeader>
             <span className="eyebrow">{t("home.overview.eyebrow")}</span>
@@ -4256,8 +4264,8 @@ export default function App() {
               <strong>{new Date(nextCheckIn * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en", { year: "numeric", month: "short", day: "numeric" })}</strong>
               {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
-            {activeOwnedPlans.length > 0 && !checkinReview && <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
-              onClick={() => void runWalletAction(() => checkInAllPlans())}>{t("home.checkin.direct")}</Button>}
+            {unsettledOwnedPlans.length > 0 && !checkinReview && <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
+              onClick={() => void runWalletAction(() => checkInAllPlans(), true)}>{t("home.checkin.direct")}</Button>}
             {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
               <h3 id="checkin-review-title">{t("home.checkin.title")}</h3>
               <p>{t("home.checkin.claimBody", { count: checkinReview.claimCount })}</p>
@@ -4270,7 +4278,7 @@ export default function App() {
               </details>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
-                  onClick={() => void runWalletAction(() => checkInAllPlans(true))}>{t("home.checkin.cancelClaims")}</Button>
+                  onClick={() => void runWalletAction(() => checkInAllPlans(true), true)}>{t("home.checkin.cancelClaims")}</Button>
                 <Button disabled={pendingAction} onClick={() => setCheckinReview(null)}>{t("home.checkin.cancel")}</Button>
               </div>
             </section>}
@@ -4292,7 +4300,7 @@ export default function App() {
             )}
             <div className="flex gap-2 flex-wrap">
               <Button variant="outline" disabled={pendingAction} onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("money"); }}>{t("home.assetsIncome")}</Button>
-              <Button variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab("inherit"); }}>{t("home.updatePlan")}</Button>
+              <Button variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("inherit"); }}>{t("home.updatePlan")}</Button>
             </div>
           </CardContent>
         </Card>}
@@ -4300,7 +4308,7 @@ export default function App() {
           Some vault registries could not be refreshed. Previously found vaults stay visible; their availability may be out of date. We will retry automatically.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>Retry vault lookup</Button>
         </div>}
-        {account && ownedVaults.length > 0 && ["money", "inherit"].includes(tab) && <AssetNavigation
+        {account && ownedVaults.length > 0 && tab === "money" && <AssetNavigation
           accounts={assetAccounts} selected={vault} busy={pendingAction}
           onSelect={item => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }} />}
         {isYieldVault && vaultIdentity?.released && <p role="status" className="text-xs text-gray-600">
@@ -4318,10 +4326,13 @@ export default function App() {
           Some Morpho balances could not be refreshed. The last available values may be out of date.
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh yield balances</Button>
         </div>}
-        {isYieldVault && (!isSettledClaim || vaultHasAssets) && (tab === "inherit" && !isMyVault) && <YieldPositionCard
-          route={selectedYieldRoute} rates={yieldRates} ratesLoading={yieldRatesLoading}
-          position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
-          busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
+        {isMyVault && tab === "money" && !isSettledClaim && (vaultLookupIncomplete || ownedPlanRead.incomplete) && <Card>
+          <CardHeader><CardTitle>{t("journey.owner.recoveryTitle", { symbol: wldSymbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
+            <p>{t("journey.owner.recoveryBody", { symbol: wldSymbol })}</p>
+            {singleCheckinReview && <p>{t("journey.owner.singleCancel", { symbol: wldSymbol })}</p>}
+            <Button disabled={pendingAction} onClick={() => void runVaultAction(() => renewSelectedAsset(Boolean(singleCheckinReview)), true)}>{t(singleCheckinReview ? "journey.owner.singleConfirm" : "journey.owner.singleRenew", { symbol: wldSymbol })}</Button>
+            {singleCheckinReview && <Button disabled={pendingAction} onClick={() => setSingleCheckinReview("")}>{t("home.checkin.cancel")}</Button>}
+          </CardContent></Card>}
         {isMyVault && tab === "money" && <IncomePositionCard key={`income:${balanceScope}`}
           state={selectedIncome?.state ?? "loading"}
           position={selectedIncome?.state === "available" ? selectedIncome : null}
@@ -4343,7 +4354,7 @@ export default function App() {
           busy={pendingAction}
           onRefresh={() => void refreshIncomeHistory()}
           onLoadOlder={() => void refreshIncomeHistory("older")} />}
-        {isYieldVault && (tab === "inherit" && !isMyVault || tab === "money" && hasRewardAction) && <YieldRewardsCard
+        {isYieldVault && (tab === "inherit" && !isMyVault && hasRewardAction || tab === "money" && hasRewardAction) && <YieldRewardsCard
           usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
@@ -4351,12 +4362,12 @@ export default function App() {
           settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
           busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
           onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
-        {PRIMARY_YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n).map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
-          <CardHeader><CardTitle>Receipt shares in your wallet · {route.symbol}</CardTitle></CardHeader><CardContent className="grid gap-2">
-            <p>{formatYieldAmount(walletYieldShares(route))} Re7 {route.symbol} shares</p>
-            <p className="text-xs text-gray-600">These shares belong to your wallet. Redeem as much as current Morpho cash liquidity allows. Inheritance and vault exits have already paid their service fee; this redemption charges no additional service fee.</p>
-            <Button disabled={pendingAction || !miniInstalled} onClick={() => void runWalletAction(() => redeemYieldShares(route))}>Redeem available shares to {route.symbol}</Button>
-            <Button disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh receipt shares</Button>
+        {YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n).filter((route, index, routes) => routes.findIndex(other => other.strategy.toLowerCase() === route.strategy.toLowerCase()) === index).map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
+          <CardHeader><CardTitle>{t("walletShares.title", { symbol: route.symbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
+            <p>{t("walletShares.amount", { amount: formatYieldAmount(walletYieldShares(route)), symbol: route.symbol })}</p>
+            <p className="text-xs text-gray-600">{t("walletShares.body")}</p>
+            <Button disabled={pendingAction || !miniInstalled} onClick={() => void runWalletAction(() => redeemYieldShares(route))}>{t("walletShares.redeem", { symbol: route.symbol })}</Button>
+            <Button disabled={pendingAction} onClick={() => void refreshBalances()}>{t("walletShares.refresh")}</Button>
           </CardContent></Card>)}
 
         {/* 연결이 끊기면 화면이 멈춘다. 예전에는 여기에 아무 표시가 없어서 사용자가
@@ -4385,7 +4396,7 @@ export default function App() {
           <Card className="asset-money-card">
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle>{wldSymbol} balance</CardTitle>
+                <CardTitle>{t("assets.balanceTitle", { symbol: wldSymbol })}</CardTitle>
                 <div className="flex items-center gap-2">
                   {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && badge("Owner", "blue")}
                   {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
@@ -4426,29 +4437,29 @@ export default function App() {
                 <div className="stat-row">
                   <div className="stat">
                     <div className="stat-label">{t("assets.wallet")}</div>
-                    <div className="stat-value">{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : "Updating…"}</div>
+                    <div className="stat-value">{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : t("home.value.updating")}</div>
                   </div>
                   <div className="stat">
                     <div className="stat-label">{t(isYieldVault ? "assets.valueBeforeFee" : "assets.plan")}</div>
-                    <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld, wldDecimals)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
+                    <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld, wldDecimals)} ${wldSymbol}` : t("home.value.unavailable") : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
                   </div>
                 </div>
               {isMyVault && (
                 <>
                   <div className="field-row">
-                    <label className="field-row-label" htmlFor="deposit-amount">Amount to deposit ({wldSymbol})</label>
+                    <label className="field-row-label" htmlFor="deposit-amount">{t("assets.depositAmount", { symbol: wldSymbol })}</label>
                     <div className="field-row-controls">
                       <Input id="deposit-amount" inputMode="decimal" placeholder="0.0"
                         value={amountStr} onChange={e => setAmountStr(e.target.value)} />
                     </div>
                   </div>
                   <div className="deposit-actions">
-                    <p className="deposit-availability">{walletBalanceKnown ? `Available: ${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : "Checking wallet balance…"}</p>
+                    <p className="deposit-availability">{walletBalanceKnown ? t("plan.balance.available", { amount: formatYieldAmount(walletWld, wldDecimals), symbol: wldSymbol }) : t("plan.balance.loading")}</p>
                     <div className="deposit-percentages">
                     <Button variant="ghost" onClick={() => setPct(25)}>25%</Button>
                     <Button variant="ghost" onClick={() => setPct(50)}>50%</Button>
                     <Button variant="ghost" onClick={() => setPct(75)}>75%</Button>
-                    <Button variant="ghost" onClick={setMax}>Max</Button>
+                    <Button variant="ghost" onClick={setMax}>{t("assets.action.max")}</Button>
                     </div>
                     <Button
                       variant="primary"
@@ -4456,14 +4467,14 @@ export default function App() {
                       onClick={() => void runVaultAction(deposit)}
                       disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || !depositEntryValid}
                     >
-                      Deposit
+                      {t("assets.action.deposit")}
                     </Button>
-                    <Button variant="ghost" onClick={refreshBalances}>Refresh balance</Button>
+                    <Button variant="ghost" onClick={refreshBalances}>{t("assets.action.refresh")}</Button>
                   </div>
-                  {depositAmount === null && <p className="text-xs text-red-700" role="alert">Enter a valid {wldSymbol} amount with up to {wldDecimals} decimal places.</p>}
-                  {walletBalanceKnown && depositAmount !== null && depositAmount > walletWld && <p className="text-xs text-red-700" role="alert">This amount is above your available {wldSymbol} balance.</p>}
+                  {depositAmount === null && <p className="text-xs text-red-700" role="alert">{t("assets.amountInvalid", { symbol: wldSymbol, decimals: wldDecimals })}</p>}
+                  {walletBalanceKnown && depositAmount !== null && depositAmount > walletWld && <p className="text-xs text-red-700" role="alert">{t("assets.amountAbove", { symbol: wldSymbol })}</p>}
                   {pendingDeposit && <p className="text-xs text-gray-600" role="status">
-                    Resume your saved setup in Plan before adding more to this asset.
+                    {t("assets.resumeSetup")}
                   </p>}
                 </>
               )}
@@ -4504,7 +4515,7 @@ export default function App() {
 
               {isMyVault && (
                 <>
-                <details className="principal-controls"><summary>Withdraw principal</summary><div className="space-y-2">
+                <details className="principal-controls"><summary>{t("assets.action.withdrawPrincipal")}</summary><div className="space-y-2">
                   <div className="text-xs text-gray-500">
                     {/* 제목이 지시하는 조건이 두 개다. 계약의 `ownerMayWithdraw` 는
                         `!ownerStillActive() && !inheritanceCancelled()` 일 때만 막으므로
@@ -4540,18 +4551,18 @@ export default function App() {
                           이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
                       <Button onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || isExpiredOrLater && !inheritanceCancelled}>
                         {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
-                          ? "Withdraw to myself"
+                          ? t("assets.action.withdrawMyself")
                           : withdrawTo
-                            ? `Withdraw to ${short(withdrawTo)}`
-                            : "Withdraw"}
+                            ? t("assets.action.withdrawTo", { address: short(withdrawTo) })
+                            : t("assets.action.withdraw")}
                       </Button>
                     </div>
                   </div>
-                  {isYieldVault && <p className="text-xs text-gray-600">This changes principal. A Morpho exit charges 10% on realized positive income; cash withdrawals depend on liquidity, and receipt shares can be moved instead.{isUsdcVault && " A full exit also sends held WLD to this recipient after the separate WLD reward fee."}</p>}
+                  {isYieldVault && <p className="text-xs text-gray-600">{t("assets.principalBody")}{isUsdcVault && <> {t("assets.fullExitWld")}</>}</p>}
                   </div></details>
                 </>
               )}
-              <details className="money-metadata"><summary>Account details &amp; activity</summary><div className="text-sm grid gap-1">
+              <details className="money-metadata"><summary>{t("assets.metadata")}</summary><div className="text-sm grid gap-1">
                 <div className="flex items-center gap-2">
                   <div>Owner:</div>
                   <div>
@@ -4689,8 +4700,8 @@ export default function App() {
         )}
 
         {isYieldVault && tab === "money" && <details className="asset-details" key={`yield:${balanceScope}`}>
-          <summary>Yield details &amp; WLD rewards</summary>
-          <p>Morpho holds your invested asset. Rates and rewards can change; withdrawals depend on cash liquidity.</p>
+          <summary>{t("assets.yieldDetails")}</summary>
+          <p>{t("assets.yieldBody")}</p>
           <div className="asset-details-content">
             {(!isSettledClaim || vaultHasAssets) && <YieldPositionCard
           route={selectedYieldRoute} rates={yieldRates} ratesLoading={yieldRatesLoading}
@@ -4707,662 +4718,48 @@ export default function App() {
           </div>
         </details>}
 
-        {/* ===== Inherit 탭: 상속 파이프라인을 그대로 보여준다 ===== */}
-        {tab === "inherit" && vault && gate2(
-          <Card>
-            <CardHeader><CardTitle>Inheritance Status</CardTitle></CardHeader>
-            <CardContent className="grid gap-3">
-              {/* 주인이도 상속인도 아닌 지갑. `?vault=` 링크는 공개 주소다 — 블록
-                  탐색기 페이지에도 있으므로 아무나 열 수 있다. 예전에는 이 경우를
-                  "소유자가 아닌 사람" 으로만 묶어 상속인 문구를 보여줬고, 그래서
-                  주체도 아니고 권한도 없는 사람에게 "You can now file a claim" 이라고
-                  말했다. 할 수 있는 일이 하나도 없는데 할 수 있다고 읽히는 문장이라
-                  사실을 거짓말로 바꾼다. 여기서 분명히 밝힌다. */}
-              {!iAmInvolved && !receivedYieldInheritance && (
-                <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded py-2 px-3">
-                  You are neither the owner nor the heir of this vault, so there is nothing for
-                  you to do here. You can watch its status, but only those two wallets can act.
-                </div>
-              )}
-              <div className="text-sm text-gray-700">
-                {/* 이 문장을 피상속인과 상속인에게 다르게 말한다. 예전에는 항상
-                    피상속인 목소리("your heir", "You can renew") 로 적혀 있었는데,
-                    상속인이 이 탭을 열면 자기 상속 절차가 자기 아닌 사람에게
-                    달라고 ajax 되는 것처럼 읽혔다. */}
-                {receivedYieldInheritance ? "Your inheritance completed. You can redeem any receipt shares in your wallet when Morpho cash liquidity is available." : isVaultOwner && vaultIdentity?.released ? isSettledClaim
-                  ? "This is your archived vault. Inheritance completed; late campaign rewards follow its fixed recipient. Other assets received here can be recovered without affecting your current vault."
-                  : "This is your archived vault. You can recover remaining assets here and cancel a claim until inheritance completes; your current vault stays separate." : isMyVault ? (
-                  /* 카운트다운이 **한계** 가 아니라는 사실이 이 앱에서 가장 중요하고,
-                     가장 자주 오독되는 부분이다. "7일 지나면 내 돈이 사라진다" 고
-                     읽히면 사용자는 카운트다운 끝나기 직전에 패닉하게 된다. 실제 규칙은
-                     "상속인이 **실제로 인출할 때까지** 멈출 수 없다" 다. 한 문장에 담는다. */
-                  <>
-                    Your heir must file a claim and wait {challengeDays} days before a transfer
-                    is eligible. You can renew at any time until the transfer actually executes
-                    to cancel the claim. After the review window, renew promptly if you want to keep the funds.
-                  </>
-                ) : iAmHeir ? (
-                  <>
-                    Funds move only after the countdown runs out <b>and</b> you file a claim,
-                    then wait {challengeDays} more days. The owner can renew at any point to
-                    cancel your claim — including after those {challengeDays} days — until the
-                    transfer actually executes.
-                  </>
-                ) : (
-                  /* 주인이도 상속인도 아닌 지갑. 이 단계들은 그 사람이 하는 일이 아니다.
-                     앞에서 "You can now file a claim" 라고 말하는 버그가 있었고, 여기서도
-                     같은 구조로 "you" 가 나왔다. 공개 링크를 열었을 뿐인 사람에게
-                     자기 절차처럼 보이는 문장을 보여주면 안 된다. */
-                  <>
-                    Funds move only after the countdown runs out, the named heir files a claim,
-                    and {challengeDays} more days pass. You can watch that here, but only the
-                    heir and the owner can act on this vault.
-                  </>
-                )}
-              </div>
+        {tab === "inherit" && identityMatchesVault && !isSettledClaim && !inheritanceCancelled && (isMyVault || iAmHeir) && <details className="plan-service-details"><summary>{t("journey.heir.service")}</summary><AutomationNotice
+          factoryAddress={vaultFactory} legacy={Boolean(LEGACY_FACTORY_ADDRESS && vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase())}
+          registered={notifyWatchState === "registered"} canEnable={NOTIFY_BACKEND_ENABLED && (isMyVault || iAmHeir)} busy={watchBusy || pendingAction} onEnable={registerHeirAlert} />
+        </details>}
+        {tab === "inherit" && linkError && <p role="alert">{localizeAppMessage(locale, linkError)}</p>}
+        {tab === "inherit" && linkedVault && ownVault && ownVault.toLowerCase() !== linkedVault.toLowerCase() && <Button variant="ghost" disabled={pendingAction}
+          onClick={() => { setVault(ownVault); setLinkedVault(""); setTab("vault"); }}>{t("journey.owner.return")}</Button>}
+        {tab === "inherit" && isVaultOwner && vaultIdentity?.released && <Card><CardHeader><CardTitle>{t("journey.owner.archived")}</CardTitle></CardHeader>
+          <CardContent><p>{t("journey.owner.archivedBody")}</p></CardContent></Card>}
+        {tab === "inherit" && isMyVault && !vaultIdentity?.released && inviteCard}
+        {tab === "inherit" && showOwnerPlanSettings && <OwnerPlanSettings
+          heirLabel={commonManagedSettings ? unsettledOwnedPlans[0].heir.toLowerCase() === account.toLowerCase() ? t("journey.stage.cancelled") : homeHeirUsername ? `@${homeHeirUsername}` : unsettledOwnedPlans[0].heir : ""}
+          period={ownerSettingsPeriod} onPeriod={onPeriodChange} heir={newHeir} onHeir={onNewHeirInput}
+          resolvedHeir={newHeirResolved?.address ?? ""} resolving={resolvingNewHeir}
+          busy={pendingAction} disabled={ownedPlanRead.loading || ownedPlanRead.incomplete || unsettledOwnedPlans.some(p => BigInt(chainNow || Math.floor(Date.now() / 1000)) >= p.lastPing + p.periodSeconds)}
+          onPeriodReview={() => void runWalletAction(changePeriod)} onHeirReview={() => void runWalletAction(updateHeir)}
+          onCancel={() => void runWalletAction(cancelInheritance)} review={settingsReview?.targets ?? null}
+          onConfirm={() => void runWalletAction(confirmPlanSettings, true)} onDismiss={() => setSettingsReview(null)}
+          pending={settingsPending} onResume={() => void runWalletAction(resumePlanSettings)}
+          onCheckIn={() => { navigationChosenFor.current = account.toLowerCase(); setTab("vault"); void runWalletAction(() => checkInAllPlans(), true); }} inconsistent={!commonManagedSettings} />}
+        {tab === "inherit" && settingsPending && !showOwnerPlanSettings && <Card><CardHeader><CardTitle>{t("journey.owner.settings")}</CardTitle></CardHeader>
+          <CardContent className="grid gap-2"><p role="status">{t("journey.owner.pending")}</p>
+            <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("journey.action.resume")}</Button>
+          </CardContent></Card>}
+        {settingsRecoveryError && <p role="alert">{settingsRecoveryError}</p>}
+        {tab === "inherit" && isMyVault && !vaultIdentity?.released && isSettledClaim && <Card><CardHeader><CardTitle>{t("journey.owner.completed", { symbol: wldSymbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
+          <p>{t("journey.owner.completedBody")}</p>
+          {vaultHasAssets && <Button disabled={pendingAction || !miniInstalled || sweeping} onClick={() => void runVaultAction(sweepSettled)}>{t("journey.owner.sweep")}</Button>}
+        </CardContent></Card>}
+        {tab === "inherit" && isMyVault && !vaultIdentity?.released && supportsRelease && !vaultHasAssets && (isSettledClaim || isExpiredOrLater) && <details className="plan-service-details">
+          <summary>{t("journey.owner.release")}</summary><p>{t("journey.owner.emptyClose")}</p>
+          <Button disabled={pendingAction || !miniInstalled || releasing} onClick={() => { setReleaseAcknowledge(false); setShowReleaseConfirm(true); }}>{t("journey.owner.release")}</Button>
+        </details>}
+        {tab === "inherit" && linkedVault && identityMatchesVault && !iAmInvolved && !receivedYieldInheritance && !inheritedPositions.some(p => p.address.toLowerCase() === linkedVault.toLowerCase())
+          && <p role="status">{t("journey.heir.notRecipient")}</p>}
+        {tab === "inherit" && account && !pendingPlan && (ownVault || inheritedPositions.length > 0 || linkedVault) && !showPlanSetup && <Button variant="ghost" disabled={pendingAction}
+          onClick={() => {
+            setShowPlanSetup(true);
+            if (commonPlanSettings) { setHeir(homeHeirAddress); void onHeirInput(homeHeirAddress); setPeriodInput(String(activeOwnedPlans[0].period)); }
+          }}>{t(ownVault ? "journey.owner.addAssets" : "journey.owner.createOwn")}</Button>}
 
-              {identityMatchesVault && !isSettledClaim && !inheritanceCancelled && <AutomationNotice
-                factoryAddress={isYieldVault ? vaultFactory : undefined}
-                legacy={Boolean(LEGACY_FACTORY_ADDRESS && vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase())}
-                registered={notifyWatchState === "registered"}
-                canEnable={NOTIFY_BACKEND_ENABLED && (isMyVault || iAmHeir)}
-                busy={watchBusy || pendingAction}
-                onEnable={registerHeirAlert}
-              />}
-
-              {/* 파이프라인을 단계로 보여준다. 어느 단계에 있는지가 한눈에 들어가야
-                  "내 돈이 언제 이동하는가"를 머릿속에서 계산할 필요가 없어진다.
-
-                  `done` 만으로는 다섯 줄이 전부 회색이거나 전부 파랑이라 "지금 어디까지
-                  왔는가" 를 눈이 읽지 못한다. 파이프라인은 읽는 사람이 자기 돈이 언제
-                  움직이는지 계산하게 하는 장치인데, 지금 여기 가 없으면 단계 목록이
-                  뿐이다. 그래서 세 번째 상태를 넣었다 — 지나감 / 지금 / 앞날. */}
-              {inheritanceCancelled ? (
-                /* 상속이 취소된 금고에 5단계 상속 파이프라인을 보여주면 안 된다.
-                   "상속인이 신청한다 → 7일 → 상속인이 인출한다" 는 여기서 일어나지
-                   않는다. 예전에는 이 상태가 파이프라인에서 `expired` 와 구분되지
-                   않아, 취소된 금고에 "Countdown ended" 가 **미완료** 로 남아
-                   "아직 신청 전" 처럼 읽혔다. 상속이 없으므로 절차도 없다. */
-                <ol className="pipeline">
-                  {[
-                    { k: "Inheritance cancelled", done: true },
-                    { k: "No one can claim this vault", done: true },
-                    { k: "Withdraw it back to yourself", done: vaultWld === 0n },
-                  ].map((s, i) => {
-                    // 여기서 "아직 안 됨" 은 남은 일이 있다는 뜻이 아니라, 사용자가
-                    // **할 수 있는 조작이 하나 남았다는 뜻** 이다. 그래서 같은 표시를 쓴다.
-                    const isNow = !s.done;
-                    return (
-                      <li key={i} className={isNow ? "pipeline-now" : "pipeline-done"}>
-                        <span className="pipeline-dot" aria-hidden="true" />
-                        {s.k}
-                        <span className="sr-only">
-                          {isNow ? " (current step)" : " (completed)"}
-                        </span>
-                        {isNow && <span className="pipeline-badge" aria-hidden="true">now</span>}
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : (
-              <ol className="pipeline">
-                {inheritanceSteps.map((s, i) => {
-                  // 지금 단계 = 아직 지나지 않은 첫 단계. 전부 지나면(-1) 절차를 다 쓴 상태.
-                  const isNow = i === inheritanceNowStep;
-                  return (
-                    <li key={i} className={isNow ? "pipeline-now" : s.done ? "pipeline-done" : ""}>
-                      <span className="pipeline-dot" aria-hidden="true" />
-                      {s.k}
-                      {/* 스크린 리더에게는 상태를 글로 말한다. 색과 굵기만으로는 전달되지
-                          않고, 스크린 리더 전용 CSS(.sr-only) 가 그 텍스트를 숨긴다. */}
-                      <span className="sr-only">
-                        {isNow ? " (current step)" : s.done ? " (completed)" : " (not yet)"}
-                      </span>
-                      {isNow && <span className="pipeline-badge" aria-hidden="true">now</span>}
-                    </li>
-                  );
-                })}
-              </ol>
-              )}
-
-              {challengeRunning && (
-                <div className="text-sm">
-                  {/* "Your heir has filed a claim ... renew to keep the funds" 를
-                      상속인에게 그대로 보여주면 자기 상속 신청이 남의 것으로 읽히고
-                      "당신이 갱신하라" 는 지시처럼 보인다. 상속인에게는 자기 절차의
-                      다음 단계와 남은 시간을 알려야 한다. */}
-                  {/* 이 문장은 같은 카드의 첫 문단("You can renew at any point to
-                      withdraw that claim, including after those 7 days — until they
-                      actually take it") 과 정반대였다. 계약상 소유자의 거부는 무제한이다.
-                      ownerMayStillAct() 는 claimedAt 이 0 이 아닐 때만 막는다 — 즉
-                      소유자가 **실제로 수령하기 전까지는** 언제든 갱신해서 청산을 철회시킬
-                      수 있다. 7일이 지나도 같다.
-                      그래서 "After that the claim cannot be stopped" 는 거짓이고,
-                      계약을 모르는 사람에게는 기한이 보장된 것처럼 읽힌다. 상속인에게
-                      "그 날짜가 지나면 반드시 받는다" 라고 말하는 셈이다.
-                      정직한 문장: 기한은 **아무도** 보장하지 않는다. 상속인이 언제든
-                      다시 신청할 수 있고, 소유자가 갱신할 때마다 그 수령 시점이 한 주기
-                      밀린다. */}
-                  {isMyVault ? (
-                    <>
-                      Your heir has filed a claim. Renew before{" "}
-                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>{" "}
-                      to withdraw it. You can still renew after that date — as many times as you
-                      like, until the transfer executes. Automatic execution may happen soon after the review ends.
-                    </>
-                  ) : isVaultOwner && vaultIdentity?.released ? (
-                    <>The heir of your archived vault has filed a claim. Recovering its remaining assets cancels this claim until inheritance actually completes. Your current vault stays separate.</>
-                  ) : iAmHeir ? (
-                    <>
-                      You filed a claim. The owner can withdraw it until{" "}
-                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>
-                      , and can renew again after that. Each time they do, the wait starts over.
-                      You can withdraw the balance whenever you are able to — but no date is
-                      guaranteed to you.
-                    </>
-                  ) : (
-                    /* `?vault=` 는 공개 주소라 주인이도 상속인도 아닌 지갑이 열 수 있다.
-                       예전에는 이 분기가 "상속인" 몫이라 타인에게 **자기 청산**을
-                       말하고 있었다 — 세 줄 앞에 "여기서는 아무것도 할 수 없습니다" 라고
-                       말해 놓고 세 줄 뒤에 "당신이 신청했습니다"라고 하는 모순이
-                       실제로 렌더링됐다. */
-                    <>
-                      The heir of this vault has filed a claim. The owner can withdraw it until{" "}
-                      <b>{challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"}</b>
-                      , and can renew again after that. You are neither of them, so there is
-                      nothing here for you to do.
-                    </>
-                  )}
-                  {isMyVault && (
-                    <div className="mt-2">
-                      <Button variant="primary" onClick={() => void runVaultAction(extendTime)} disabled={pendingAction || !miniInstalled || !account}>
-                        Renew and withdraw the claim
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {awaitingClaim && account && vaultHeir &&
-                account.toLowerCase() === vaultHeir.toLowerCase() && (
-                  <div className="grid gap-2">
-                    <div className="text-sm">
-                      {/* 잔액이 0 인 금고에도 청산 절차를 밟게 뒀다. 계약은 막지 않고
-                          상속인 입장에서 절차는 동일하므로 막을 이유가 없다. 다만
-                          "the balance is now available to you" 라고 말하면 없는 돈을
-                          약속하는 셈이라 실제 잔액에 따라 문장을 바꾼다. */}
-                      {isYieldVault ? `The countdown has ended. File a claim to start the ${challengeDays}-day review window. Inheritance can pay ${wldSymbol} or receipt shares, depending on liquidity.${isUsdcVault ? " Held WLD rewards go to the same heir." : ""}` : vaultWld > 0n
-                        ? `The countdown has ended, so the ${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} balance is now available to you. File a claim to start the ${challengeDays}-day review window.`
-                        : `The countdown has ended. This vault currently holds nothing, so a claim would move no funds — file one only if WLD arrives before the review window ends.`}
-                    </div>
-                    <Button variant="primary" onClick={() => void runVaultAction(fileClaim)} disabled={pendingAction || !miniInstalled}>
-                      File claim
-                    </Button>
-                  </div>
-                )}
-
-              {canClaim && account && vaultHeir &&
-                account.toLowerCase() === vaultHeir.toLowerCase() && (
-                  <div className="grid gap-2">
-                    <div className="text-sm">
-                      {/* 여기서 주어는 상속인(당신)이다. "their claim" 이면 자기
-                          청산을 남의 것으로 읽힌다. 소유자용 변형은 따로 있다. */}
-                      The review window has passed, so you can withdraw. Renewing would still cancel your claim until you do.
-                    </div>
-                    <Button variant="primary" onClick={() => void runVaultAction(claim)} disabled={pendingAction || !miniInstalled || !vaultHasAssets}>
-                      {isYieldVault ? "Complete inheritance" : `Withdraw ${fmtUnits(vaultWld)} ${wldSymbol}`}
-                    </Button>
-                  </div>
-                )}
-
-              {/* 정산 이후 늦게 들어온 잔액 회수.
-                  이게 없으면 돈이 금고에 갇힌 채 화면에는 "비어 있다" 고 표시된다.
-                  계약에 회수 함수가 붙어 있는데 앱에서 부를 수 없으면 의미가 없다. */}
-              {isSettledClaim && isMyVault && vaultHasAssets && (
-                <div className="field-row" style={{ width: "100%" }}>
-                  <label className="field-row-label" htmlFor="settled-sweep">
-                    Leftover balance in the closed vault
-                  </label>
-                  <div className="field-row-controls">
-                    <Button
-                      variant="primary"
-                      onClick={() => void runVaultAction(sweepSettled)}
-                      disabled={pendingAction || !miniInstalled || !account || sweeping}
-                    >
-                      {sweeping
-                        ? "Sweeping…"
-                        : isYieldVault ? "Sweep remaining assets to me" : `Sweep ${fmtUnits(vaultWld, wldDecimals)} WLD to me`}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {isSettledClaim && (
-                <div className="text-sm text-gray-600">
-                  {isYieldVault ? vaultIdentity?.released
-                    ? "Inheritance completed. Claimable campaign rewards go to its fixed inheritance recipient after the net-gain fee. The original owner can recover other assets sent directly here using archived recovery."
-                    : "Inheritance completed. Claimable campaign rewards go to its fixed inheritance recipient after the net-gain fee. The owner can sweep other assets received afterwards." : vaultWld > 0n ? (
-                    <>
-                      The inheritance completed and the heir was paid. This vault is closed, but{" "}
-                      <b>{fmtUnits(vaultWld, wldDecimals)} WLD</b> arrived afterwards and is still
-                      in the contract. You can sweep it to your own address.
-                    </>
-                  ) : (
-                    "The inheritance completed. This vault is closed and holds nothing."
-                  )}
-                </div>
-              )}
-
-              {inheritanceCancelled && (
-                <div className="text-sm text-gray-600">
-                  {/*
-                    취소는 **갱신 기한 전에는 되돌릴 수 있다** — 계약의
-                    `updateHeir` 가 `ownerStillActiveOnly` 이고 heir 를 다시 지정하면
-                    상속이 재개된다(forge: test_CancelCanBeUndoneBeforeExpiry).
-                    "되돌릴 수 없다" 고 말하면 사용자가 확인도 하지 않고 포기한다.
-                    기한이 지나면 되돌릴 수 없으므로 그때는 분명히 말해야 한다. */}
-                  Inheritance was cancelled, so no one inherits this vault. The balance is
-                  yours and you can withdraw it whenever you want.
-                  {vaultPhase === "cancelled"
-                    ? " The countdown has also ended, so the cancellation can no longer be undone — release your slot below to make a different vault."
-                    : " You can still undo this by setting a heir again before the countdown ends."}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ===== Vault 탭: 타이머와 갱신 ===== */}
-        {tab === "inherit" && vault && gate2(
-          <Card>
-            <CardHeader><CardTitle>Your plan settings</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              <div className="section-label">Status</div>
-              {/* **금액을 카운트다운보다 먼저** 보여준다.
-                  이 탭의 목적은 "얼마를 지키고 있고 언제까지 지키는지" 를 한 눈에 넣는
-                  것이다. 그런데 카운트다운만 크고 금액은 다른 탭(Send) 에만 있었다. 앱은
-                  이미 잔액을 갖고 있으면서 — 알림 판단도 잔액 기준이다 — 정작 보호 대상인
-                  금액을 이 화면에서 감췄다. "얼마가 걸려 있는지" 를 모르고 기한을 지키라는
-                  지시를 받는 것은 순서가 뒤집힌 안내다. */}
-              <div className="text-sm">
-                At stake in this vault:{" "}
-                <b className={vaultHasAssets ? "text-base" : ""}>
-                  {isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(selectedYieldPosition.net, wldDecimals)} ${wldSymbol}` : "Value unavailable" : `${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol}`}
-                </b>{" "}
-                <span className="text-xs text-gray-600">
-                  {/* 이 줄은 **역할마다 다른 문장**이어야 한다. 예전에는 소유자 문장
-                      ("your heir receives") 하나뿐이어서, `?vault=` 링크로 들어온 상속인에게는
-                      "상속인이 받는다" 고 자기 상속에 대해 말했고, 주인이도 상속인도 아닌
-                      타인에게는 "당신은 갱신하라" 는 지시처럼 읽혔다. 3단계 × 2역할 × 2탭
-                      = 24건이 전부 이 한 줄에서 새어나왔다. */}
-                  {vaultHasAssets
-                    ? isSettledClaim
-                      ? "— the inheritance already completed, so this is only what is left behind."
-                      : inheritanceCancelled
-                        /* 상속인이 없다(heir == owner). "상속인이 받는다" 는 명제 자체가
-                           성립하지 않는다. */
-                        ? "— no one inherits this vault, so it stays with the owner."
-                        : isMyVault
-                          ? "— this is what your heir receives if you stop renewing."
-                          : iAmHeir
-                            ? "— this is what you receive once the review window passes."
-                            : "— held here for the owner's named heir."
-                    : inheritanceCancelled
-                      ? "— nothing left in this vault."
-                      : isExpiredOrLater
-                        /* 여기는 Deposit 이 비활성인 상태다(settled / expired / 이의제기
-                           / 수령 가능). "Deposit WLD to start protecting it" 은 바로 아래
-                           비활성 버튼을 가리키는 지시라 그대로 두면 사용자는 거짓말
-                           안내를 받는다. */
-                        ? "— nothing left in this vault, and deposits are turned off at this stage."
-                        : isMyVault
-                          ? `— nothing yet. Deposit ${wldSymbol} to start protecting it.`
-                          : "— nothing here yet."}
-                </span>
-              </div>
-              {/* 이 앱의 존재 이유가 "타이머가 다 되지 않았는가" 다. 그래서 카드의 맨 위에
-                  크고 눈에 띄게 두고, 남은 시간에 따라 색을 바꾼다. */}
-              <div className={`timer-block ${timerUrgency}`}>
-                {vaultPhase === "cancelled" ? (
-                  /* 취소 + 만료. 이 앱에서 가장 어긋나기 쉬운 자리였다.
-                     예전에는 이 상태가 `active` 가 아니라서 아래의 "Time left to renew" /
-                     "0d 0h 0m 0s" / 어제 날짜짜로 떨어졌다. "갱신하라" 고 말하면서
-                     갱신 버튼은 없었고, 실제로 갱신하면 슬롯 해제만 한 주기 막힌다.
-                     여기서 말해야 할 것은 하나다: 상속은 끝났고, 돈은 내 것이며,
-                     자리를 되돌려받으려면 잔액을 비우고 해제하면 된다. */
-                  <>
-                    <div className="timer-label">Inheritance cancelled</div>
-                    <div className="timer-value">Nobody will inherit this vault</div>
-                    <div className="timer-sub">
-                      {vaultWld > 0n
-                        ? `The ${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} is yours — withdraw it, or release your slot to keep it.`
-                        : "The balance is yours. Release your slot below to make a different vault — this one is over."}
-                    </div>
-                  </>
-                ) : canClaim || isSettledClaim ? (
-                  <>
-                    <div className="timer-label">
-                      {isSettledClaim ? "Inheritance completed" : "Review window passed"}
-                    </div>
-                    <div className="timer-value">
-                      {isSettledClaim
-                        ? // 잔액이 남을 수 있다 — 상속인이 가져간 뒤 늦게 들어온 WLD.
-                          // 예전에는 Inherit 탭만 고치고 이 자리는 그대로 둬서, 앱이
-                          // "비어 있다" 고 말하는 동안 실제로 2 WLD 가 금고에 있는
-                          // 화면이 남았다. 같은 정보를 두 탭이 다르게 말하는 건
-                          // 어느 쪽도 믿을 수 없게 만든다.
-                          (vaultWld > 0n
-                            ? `${fmtUnits(vaultWld, wldDecimals)} ${wldSymbol} left in this closed vault.`
-                            : "This vault is closed and holds nothing.")
-                        /* 주어가 세 갈래다. 소유자에게는 "상속인이", 상속인에게는
-                           "당신이", 주인이도 상속인도 아닌 타인에게는 "상속인이" 다.
-                           예전에는 소유자/상속인 구분 없이 "The heir…" 고정이라
-                           상속인이 자기 금고 화면에서 남을 3인칭으로 읽었다. */
-                        : isMyVault
-                          ? "The heir can withdraw the vault balance."
-                          : iAmHeir
-                            ? "You can withdraw the vault balance."
-                            : "The heir can withdraw the vault balance."}
-                    </div>
-                  </>
-                ) : challengeRunning ? (
-                  /* 주어가 세 갈래다. "you can still stop it" 는 **소유자에게만**
-                     사실이다 — 청산을 철회할 수 있는 사람은 소유자뿐이다(갱신).
-                     상속인에게 이 문장은 자신이 가진 적 없는 거부권을 주는 셈이고,
-                     같은 탭의 "The owner can withdraw it until …" 과 정면으로 모순된다.
-                     (3인칭으로 상속인을 부르던 버그의 거울상.) 타인에게는 아무것도
-                     할 수 없으므로 그 사실을 말해야지 거부권이 있다는 듯이 말하면 안 된다. */
-                  <>
-                    <div className="timer-label text-gray-600">
-                      {isMyVault
-                        ? "Claim filed — you can still stop it"
-                        : iAmHeir
-                          ? "Claim filed — waiting for the review window"
-                          : "Claim filed — review window running"}
-                    </div>
-                    <div className="timer-value">{fmt(challengeRemaining)}</div>
-                    <div className="timer-sub">
-                      {isMyVault
-                        ? "left in the review window. Renewing withdraws the claim."
-                        : iAmHeir
-                          ? "left in the review window. The owner can still withdraw the claim, even after it ends."
-                          : "left in the review window. Only the owner and the heir can act on this."}
-                    </div>
-                  </>
-                ) : awaitingClaim ? (
-                  <>
-                    <div className="timer-label text-gray-600">
-                      Countdown ended
-                    </div>
-                    <div className="timer-value">Waiting for a claim</div>
-                    <div className="timer-sub">
-                      {/* 여기서도 주어가 갈린다. "Your heir can now file a claim" 을
-                          상속인에게 보여주면 남이 대신 신청해야 한다는 뜻으로 읽힌다.
-                          그리고 세 번째 사람이 있다 — `?vault=` 링크는 공개 주소라 아무나
-                          열 수 있다. 주인이도 상속인도 아닌 지갑에게 "You can now file a
-                          claim" 이라고 말하면 **수익자라는 사실relation을 없는 사실로**
-                          말하는 셈이다. 계약상 그 지갑은 아무것도 할 수 없다. */}
-                      {isMyVault
-                        ? `Your heir can now file a claim. You would then have ${challengeDays} days to renew.`
-                        : iAmHeir
-                          ? `You can now file a claim. The owner would then have ${challengeDays} days to renew.`
-                          : `The countdown has ended. Only the heir named on this vault can file a claim on it.`}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="timer-label text-gray-600">
-                      {timerUrgency === "timer-urgent" || timerUrgency === "timer-critical"
-                        ? "Renew soon"
-                        : "Time left to renew"}
-                    </div>
-                    <div className="timer-value">{fmt(timeRemaining)}</div>
-                    <div className="timer-sub">
-                      Expires {expiryLocal} <span className="text-gray-500">({deviceTimeZone})</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* 알림 상태를 카운트다운 바로 아래에 한 줄로 둔다.
-                  이 앱에서 알림은 부가 기능이 아니라 핵심 경로다: 카운트다운이 끝나기
-                  전에 알림이 없으면 피상속인은 갱신을 잊고, 상속인은 신청 시점을 놓친다.
-                  그런데 이 정보는 Help 탭 깊숙이, 내부 상태값("unknown" / "not_registered")
-                  으로만 있었다.
-
-                  형태를 고르는 기준: **카운트다운이 주인공**이어야 한다. 처음엔 노란
-                  상자 + 큰 버튼으로 넣었더니 알림 박스가 카운트다운보다 눈을 끌었다 —
-                  알림은 중요하지만 이 화면에서 사용자가 해야 할 일은 "갱신"이다.
-                  그래서 평소에는 회색 한 줄 + 작은 ghost 버튼으로 낮추고, Really 급할
-                  때(카운트다운이 임박했는데 알림이 꺼짐)만 상자를 칠해 올린다.
-
-                  잔액이 0 이면 보낼 알림이 없으므로 아예 표시하지 않는다. */}
-              {NOTIFY_BACKEND_ENABLED && vaultWld > 0n && notifyHealth.level !== "checking" && (
-                <div
-                  className={
-                    notifyEscalate
-                      ? "text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3"
-                      : "text-xs text-gray-600"
-                  }
-                  role={notifyEscalate ? "alert" : "status"}
-                  aria-live="polite"
-                >
-                  {/* 이 한 줄의 **결과 절("nobody will be told…")** 이 바로 아래
-                      "If you stop renewing, your heir can file a claim and take the
-                      balance…" 와 같은 사실을 두 번 말한다. 두 번 말하는 줄은 하나가
-                      거짓말처럼 읽힌다. 그래서 `notifyHealth.text` 를 **무엇이 되고
-                      있지 않은가** 만 말하게 줄였고(453행), **결과는 아래 문장 한 곳에
-                      만** 남겼다.
-
-                      "Notifications are off" 라는 문구는 그대로 둔다 — 하네스가 이
-                      상태를 문자열로 판정한다. 문구를 바꾸면 검사는 그대로 통과하지만
-                      사용자에게 "무엇을 고쳐야 하는지" 를 말하지 않게 된다. */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span>
-                      {notifyEscalate ? "⚠ " : ""}{notifyHealth.text}
-                    </span>
-                    {notifyHealth.level !== "ok" && notifyPermission !== "granted" && (
-                      <Button size="sm" variant="ghost" onClick={requestNotifyPermission}
-                        disabled={pendingAction || !miniInstalled || notifyBusy}>
-                        {notifyBusy ? "Working…" : "Turn on"}
-                      </Button>
-                    )}
-                    {notifyHealth.level !== "ok" && isMyVault && notifyPermission === "granted" && (
-                      <Button size="sm" variant="ghost" onClick={registerHeirAlert}
-                        disabled={pendingAction || !miniInstalled || watchBusy}>
-                        {watchBusy ? "Working…" : "Watch this vault"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-              {isMyVault &&
-                // 정산·취소된 금고에는 "갱신" 이 존재하지 않는다. 계약상 `ping` 도
-                // `changeMyPeriod` 도 `Expired()` 로 막힌다. 그런데 여기는 여전히
-                // "Reset before the countdown ends. If you stop, your heir can claim…"
-                // 라고 instructing 하고 있었다 — 이미 끝난 카운트다운에 대한 지시다.
-                // 상속인은 이미 돈을 받았거나, 상속 자체가 취소되었는데 화면은 그렇다고
-                // 전혀 말하지 않는다. 버튼만 비활성이고 문구는 살아 있다.
-                !isSettledClaim && vaultPhase !== "cancelled" && (
-                <>
-                  <div className="text-sm text-gray-700">
-                    {/* 취소됐지만 아직 만료 전이면 이 카드의 문구가 거짓말이 된다.
-                        `cancelledFlag` 를 단계에서 분리했으므로 그 상태는 `active` 로
-                        표시되고, 아래 "If you stop, your heir can claim the balance" 는
-                        존재하지 않는 상속인을 말하며 같은 화면의 "At stake … no one
-                        inherits this vault" 와 정면으로 어긋난다. 상속인이 없으므로
-                        "갱신하라"는 의미가 없다 — 다만 기한 전에는 상속인을 다시 지정해
-                        **취소를 되돌릴 수 있으므로** 그 길을 안내하는 게 맞다. */}
-                    {inheritanceCancelled
-                      ? "You cancelled this vault's inheritance, so no one will inherit it and the balance stays yours. Set a heir again below to undo the cancellation — after the countdown ends that stops being possible."
-                      : challengeRunning
-                        ? `Your heir filed a claim. Renew before ${challengeEndsAt ? new Date(challengeEndsAt * 1000).toLocaleString() : "—"} to withdraw it.`
-                        : canClaim
-                          ? "The review window has passed, so the heir can take the balance. You can still renew to withdraw the claim, until they actually do."
-                          : awaitingClaim
-                              ? "The countdown has ended. Your heir can file a claim now; keep renewing to cancel it until they actually take the balance."
-                            : `If you stop renewing, your heir can file a claim and take the balance after a ${challengeDays}-day review window.`}
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {/* canClaim 로 비활성화하지 않는다. 계약은 상속인이 실제로 수령하기
-                        전까지 갱신을 허용하는데, 여기가 옛 규칙("7일이 지나면 못 되돌린다")을
-                        그대로 구현하고 있었다. 계약만 고치고 UI 를 안 고치면 화면이
-                        블록체인과 모순된다. */}
-                    <Button variant="primary" onClick={() => void runVaultAction(extendTime)} disabled={pendingAction || !miniInstalled || !account || isSettledClaim}>
-                      {challengeRunning || canClaim ? "Renew and withdraw claim" : "Reset timer"}
-                    </Button>
-                  </div>
-                </>
-              )}
-                <div className="section-label">Settings</div>
-              <div className="flex gap-2 flex-wrap">
-                {isMyVault && (
-                  <>
-                    <div className="field-row" style={{ width: "100%" }}>
-                      <label className="field-row-label" htmlFor="period-change">
-                        Change renewal period (1–365 days)
-                      </label>
-                      <div className="field-row-controls">
-                        <Input
-                          id="period-change"
-                          type="text"
-                          inputMode="numeric"
-                          className="w-28"
-                          value={periodInput}
-                          placeholder="30"
-                          onChange={e => onPeriodChange(e.target.value)}
-                        />
-                        <Button onClick={() => void runVaultAction(changePeriod)} disabled={pendingAction || !miniInstalled || !account || !periodValid || isExpiredOrLater}>
-                          Change period
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="field-row" style={{ width: "100%" }}>
-                      <label className="field-row-label" htmlFor="new-heir-input">
-                        Change heir
-                      </label>
-                      <div className="field-row-controls">
-                        <Input id="new-heir-input" placeholder="@username or 0x..." value={newHeir} onChange={e => onNewHeirInput(e.target.value)} />
-                      </div>
-                    </div>
-                    {newHeir && (
-                      resolvingNewHeir ? (
-                        <div className="text-xs text-gray-600">Resolving…</div>
-                      ) : newHeirResolved?.address ? (
-                        <div className="text-xs text-gray-600">
-                          Resolved: {newHeirResolved.username ? <b>@{newHeirResolved.username}</b> : 'Address'} → <b>{short(newHeirResolved.address)}</b>
-                          <button className="ml-2 underline" onClick={() => copyText(newHeirResolved!.address!, 'heir')}>Copy</button>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-red-600">No match found. Enter a valid @username or WorldChain wallet address.</div>
-                      )
-                    )}
-                    <Button onClick={() => void runVaultAction(updateHeir)} disabled={pendingAction || !miniInstalled || !account || !newHeirResolved?.address || isExpiredOrLater}>Update heir</Button>
-                    {/* cancelInheritance 는 컨트랙트에서 만기 후 Expired 로 거부한다.
-                        형제 버튼인 withdraw 처럼 만료 이후에는 항상 실패하므로
-                        클릭을 사용자에게 노출하지 않는다. */}
-                    {/* 상속 취소. ghost(무채색) 였는데 그 옆의 "Change period" 와 같은
-                        무게로 보여 파괴적 조작인지 설정 변경인지 알 수 없었다. 취소하면
-                        상속인이 사라지고 되돌리려면 기한 전이어야 하므로 danger 로 구분한다. */}
-                    <Button
-                      variant="danger"
-                      onClick={() => void runVaultAction(cancelInheritance)}
-                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater}
-                    >
-                      Cancel (set heir to me)
-                    </Button>
-                    {supportsRelease && !vaultHasAssets && isExpiredOrLater && (!isYieldVault || selectedYieldHoldings !== null) && (
-                      <div className="flex items-center gap-2">
-                        {/* 모달을 **여는** 순간 동의 상태를 초기화한다. 예전에는 성공한
-                          releaseSlot 의 finally 안에서만 초기화했으므로, Cancel 이나 Escape 로
-                          닫고 다시 열면 이전 동의가 남아 Confirm 이 살아 있었다. 확인란의 문구는
-                          "다시 한번 동의해야 한다" 는 뜻인데 앱이 그걸 지키지 않았다. */}
-                      <Button onClick={() => { setReleaseAcknowledge(false); setShowReleaseConfirm(true); }} disabled={pendingAction || !miniInstalled || !account}>Release slot</Button>
-                        <span className="text-xs text-gray-500">* Available only after expiry and when vault balance is 0. The contract remains on-chain; only the factory mapping is cleared.</span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {/* 상속 액션은 Inherit 탭의 파이프라인 카드가 단일 진입점으로 삼는다.
-                    여기도 남겨두면 같은 행위가 두 곳에 생겨 어느 쪽이 맞는지 헷갈리고,
-                    탭을 오갈 때마다 상태가 달라 보인다. */}
-                {!account || (!vaultOwner && !vaultHeir) ? (
-                  <Button onClick={loadVault}>Check again</Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* 금고가 이미 있으면 이 카드를 숨긴다. 그대로 두면 비활성 primary 버튼과
-            "You already have a vault" 문구가 함께 보여 혼란을 부르며, heir/period 조정은
-            아래 "Timer & Controls" 카드에서 할 수 있어 기능 손실이 없다. */}
-        {/* ===== 상속인 확인 =====
-            금고가 없는 사람이 이 앱을 여는 이유의 절반은 "상속인이 Somebody" 다.
-            그런데 이 카드를 맨 아래에 두면 그 위에 "How this works" 와
-            "Create My Vault" 이 있어서, 상속인이 자기 것인지를 확인하려면 스크롤을
-            내려야 했다. 스캔 결과가 있는 경우 카드를 맨 앞으로 올린다. */}
-
-        {/* ===== 깨진 링크 =====
-            조용히 무시하면 안 된다. 사용자는 자기 금고도 없는 빈 화면을 보며 이유를
-            알 수 없다. 틀린 입력인지 앱이 고장인지부터 구분되게 해야 한다. */}
-        {tab === "inherit" && linkError && (
-          <Card>
-            <CardHeader><CardTitle>This link could not be opened</CardTitle></CardHeader>
-            <CardContent className="grid gap-2">
-              <div className="text-sm text-gray-700">{linkError}</div>
-              <div className="text-xs text-gray-600">
-                A link looks like <code>…?vault=0x…</code>. If the person who sent it made a
-                mistake, ask them to send it again.
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ===== 링크로 받은 금고 안내 =====
-            상속인에게 보내는 링크는 이 앱이 상속인을 도달시키는 유일한 확실한 경로다.
-            그런데 받는 사람이 자기 금고를 갖고 있으면 예전에는 자기 금고만 보여주고 링크가
-            가리키는 상속 대상을 조용히 버렸다. 지금 보고 있는 것이 누구의 금고인지 말하고,
-            자기 금고로 돌아갈 수 있게 한다. */}
-        {tab === "inherit" && linkedVault && ownVault && ownVault.toLowerCase() !== linkedVault.toLowerCase() && account && gate2(
-          <Card>
-            <CardHeader><CardTitle>You are viewing a vault you were sent</CardTitle></CardHeader>
-            <CardContent className="grid gap-2">
-              <div className="text-xs text-gray-600">
-                This is the vault from the link you opened, and it is the one your actions apply
-                to. Your own vault is <b>{short(ownVault)}</b>.
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button onClick={() => { setVault(linkedVault); setLinkedVault(""); }} variant="primary">
-                  Keep viewing the linked vault
-                </Button>
-                <Button onClick={() => { setVault(ownVault); setLinkedVault(""); }}>
-                  Back to your own vault
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* "내가 상속인으로 지정됐나" 카드.
-            자기 금고가 없는 사람에게는 첫 화면이어야 하고(상속인이 이 앱을 여는 이유다),
-            자기 금고가 있는 사람에게도 보여야 한다 — 자기 금고가 있어도 남의 상속인이 될 수
-            있으므로. 예전처럼 `!isMyVault` 로 숨기면 그 사람은 자기 금고만 관리하다가
-            평생 "누군가가 나를 상속인으로 지명했나" 를 알 방법이 없었다. 상속인 링크를
-            받아도 (a) 링크가 자기 금고로 덮이면 (b) 여기 카드가 없으므로 신청 수단이
-            사라진다. 두 곳에서 쓰이므로 변수로 뺀다. */}
-        {/* 상속인 카드는 **스캔 결과가 있을 때만** 맨 위에 둔다.
-            앞선 커밋에서 "상속인이 이 앱을 여는 이유니까" 라고 올렸는데, 그건 스캔 결과가
-            있을 때만 성립하는 이야기다. 결과가 없으면 화면에 "No vault names you as heir"
-            라는 카드가 남고, 아무것도 안 한 사람에게 "당신이 상속인일 수 있습니다" 라고
-            말한 뒤 "아니오" 라고 대답하는 셈이다. 답이 없는 질문은 질문하지 말아야 한다.
-            첫 화면에서 진짜 중요한 건 "금고 만들기" 다.
-
-            "Check again" 도 함께 사라지는데, 자동 스캔이 열 때마다 도는 중이고
-            수동 재확인이 필요한 경우는 거의 없다. 필요하면 Help 탭에 남긴다. */}
-        {tab === "inherit" && account && notifyHeirWorthShowing && heirStatusCard}
-
-        {tab === "inherit" && account && gate2(
+        {tab === "inherit" && account && (pendingPlan || showPlanSetup || !ownVault && !linkedVault && inheritedPositions.length === 0 && !findingHeirVaults && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded) && gate2(
           <PlanSetup
             rows={draftPlanRows.map(row => ({ ...row, walletBalance: planWalletBalances[row.symbol] ?? null }))}
             heir={heir}
@@ -5385,13 +4782,13 @@ export default function App() {
             }}
             pendingPlan={pendingPlan}
             alignmentConflicts={alignmentConflicts}
-            onConfirmAlignment={() => void runWalletAction(() => continuePlan(true))}
+            onConfirmAlignment={() => void runWalletAction(() => continuePlan(true), true)}
             onCancelAlignment={() => { setAlignmentReview(""); setAlignmentConflicts([]); }}
             onCreate={fees => {
               consentedStrategyFees.current = { ...fees };
-              void runVaultAction(createPlan);
+              void runVaultAction(createPlan, true);
             }}
-            onResume={() => void runWalletAction(() => continuePlan(false))}
+            onResume={() => void runWalletAction(() => continuePlan(false), true)}
             canEditRemaining={Boolean(pendingPlan && canEditStoredPlan(pendingPlan))}
             onEditRemaining={editRemainingPlan}
             busy={pendingAction || creating}
@@ -5402,202 +4799,36 @@ export default function App() {
         )}
 
 
-        {/*
-          상속인 경로를 주인 폼에서 분리한다.
-        
-          "내 금고 만들기" 폼 아래에 "상속인 찾기" 버튼이 붙어 있으면 서로 다른 두 가지
-          일을 하는 것처럼 보인다. 상속인은 자기 금고가 없으므로 이 화면이 상속인
-          입장에서 유일한 진입점이기도 하다.
-        */}
-
-        {/* ===== 주인이 상속인에게 보낼 수 있는 링크 =====
-            월드앱 알림은 이 미니앱을 깔지 않은 지갑에 닿지 않는다("User not found").
-            상속인 단말에 뭐가 깔려 있든 통하는 유일한 채널은 주인이 직접 보내는 링크다.
-            이게 없으면 "상속인으로 지정된 사실" 자체가 상속인에게 전달되지 않는다. */}
-        {tab === "inherit" && isMyVault && vault && vaultHeir &&
-          /* 정산이 끝나면 계약이 heir 를 0x0 으로 지운다(InheritanceVaultWLD.sol).
-             그런데 `vaultHeir` 가 "0x0000…0000" 도 참이라 이 카드가 살아 있었고,
-             소유자는 0x0 에 World Chat 을 보내라는 안내를 받았다. 상속 자체가
-             취소된 금고(heir == owner)에서는 **자기 자신에게** 보내라는 안내가 된다.
-             사람이 있는 상속인일 때만 이 카드를 띄운다. */
-          vaultHeir !== ethers.ZeroAddress && vaultHeir.toLowerCase() !== (vaultOwner ?? "").toLowerCase() && gate2(
-          <Card>
-            <CardHeader><CardTitle>Tell your heir</CardTitle></CardHeader>
-            <CardContent className="grid gap-2">
-              {/* 이 카드의 일은 "상속인에게 직접 알려라" 다. 규칙 설명이 아니다.
-                  그런데 여기가 7줄짜리 장문이었다 — 그중 "7일이 지나도 취소할 수 있다" 는
-                  위 Inheritance Status 카드가 이미 말하고, "알림은 이미 켠 지갑에만 닿는다" 는
-                  알림 상자가 이미 말한다. **같은 화면에서 두 번 말하면 한쪽이 거짓말처럼
-                  읽힌다.** 여기에는 이 카드가 Adding 해야 할 것만 남긴다.
-
-                  상속은 "피상속인이 갱신을 멈춘다" 는 사실 위에 성립한다. 갱신은 살아있다는
-                  신호이지 실패가 아니다 — 그래서 주인은 상속인이 실제로 받기 전까지 언제든
-                  갱신할 수 있고, 상속인은 그 신호가 끊기길 기다린다. 시간표를 약속하지
-                  않지만, 주인이 멈추면 반드시 진행된다는 사실이 보장된다. */}
-              <div className="text-xs text-gray-600">
-                Your heir only finds out if you tell them. Keep resetting the timer and they will
-                keep waiting — nobody inherits while you are still renewing.
-              </div>
-              {heirUsername ? (
-                <>
-                  <div className="text-sm font-medium">Send in World Chat</div>
-                  <div className="text-xs text-gray-600">
-                    Reaches @{heirUsername} inside World App, whether or not they have ever opened
-                    this app. Tapping the message opens this vault.
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Button variant="primary" onClick={tellHeirInChat} disabled={pendingAction || shareBusy}>
-                      {shareBusy ? "Sending..." : "Send in World Chat"}
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div className="text-xs text-gray-600">
-                  This heir is a bare address with no World Chat username, so World Chat cannot
-                  address them. Use the link below — it works whatever they have installed.
-                </div>
-              )}
-              <div className="text-xs text-gray-600">
-                Or send it any other way you already talk to them:
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button onClick={copyHeirLink}>Copy link</Button>
-                <Button onClick={copyHeirMessage}>Copy message</Button>
-              </div>
-              <div className="text-xs text-gray-600 break-all">{heirLink}</div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* ===== Help 탭: 신뢰성 근거와 법적 고지 =====
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
-        {tab === "support" && (
-        <>
-          <Card className="help-fees-card">
-            <CardHeader><CardTitle>{t("help.feeTitle")}</CardTitle></CardHeader>
-            <CardContent className="grid gap-2 text-sm text-gray-700">
-              <p>{t("help.feeDisclosure")}</p>
-              <a className="text-blue-600 underline text-xs" href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
-            </CardContent>
-          </Card>
-          {/* 상속인 카드를 첫 화면에서 뺐으므로 수동 재확인은 여기로 온다.
-              자동 스캔이 열 때마다 돌지만, 그 사이에 상속인으로 지정받은 경우를
-              확인하려면 필요하고, 그 수단을 통째로 버리면 안 된다. */}
-          {account && (
-            <Card>
-              <CardHeader><CardTitle>Named as an heir?</CardTitle></CardHeader>
-              <CardContent className="grid gap-2">
-                <div className="text-xs text-gray-600">
-                  {findingHeirVaults
-                    ? "Checking the chain for vaults that name you…"
-                    : heirScanAttempted
-                      ? heirFoundVaults.length > 0
-                        ? `You are the heir of ${heirFoundVaults.length} vault${heirFoundVaults.length > 1 ? "s" : ""}. Open Plan to see them.`
-                        : heirScanIncomplete
-                          ? "Some vaults could not be checked. Please try again."
-                          : "No registered or recent vaults found in this check."
-                      : "This app checks the chain for you as soon as you open it."}
-                </div>
-                {heirSearchNote && <p className="text-xs text-gray-600">{heirSearchNote}</p>}
-                <div>
-                  <Button size="sm" onClick={findHeirVaults} disabled={pendingAction || findingHeirVaults}>
-                    {findingHeirVaults ? "Searching..." : "Check again"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        <Card>
-          <CardHeader><CardTitle>Custody & Safety</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm text-gray-700">
-            <div>
-              Your wallet keys stay in World App. One plan covers the WLD and/or USDC amounts you choose; the app manages a separate on-chain vault contract for each selected asset with the same heir and check-in interval. We cannot redirect inheritance or withdraw an active owner’s funds.
-            </div>
-            <ul className="list-disc pl-5 space-y-1 text-xs text-gray-600">
-              <li>Your setup and management transactions require World App approval. After an heir’s claim and seven-day review, a new vault may transfer automatically without a second signature.</li>
-              <li>Each selected amount goes to its asset-specific vault contract; WLD and USDC are never converted. Yield deposits supply that asset to the disclosed Morpho vault. Eligible inheritance transfers can only pay its named heir; active-owner withdrawals require your approval.</li>
-              <li>World App provides your address and asks you to approve wallet sign-in and management transactions.</li>
-              <li>We store sign-in security records and registered vault addresses, monitoring state and delivery or execution records. See Privacy for details. We never collect your wallet keys.</li>
-            </ul>
-          </CardContent>
-        </Card>
-
-        {NOTIFY_BACKEND_ENABLED && (
-          <Card>
-            <CardHeader><CardTitle>World App Notifications</CardTitle></CardHeader>
-            <CardContent className="space-y-3 text-sm text-gray-700">
-              <div className="text-xs text-gray-600">
-                Register this vault and World App notifies you and your heir at each point where a decision is
-                actually open: the countdown is close to ending, your heir has filed a claim, or the 7-day review
-                window has passed. Nothing is sent while the vault holds no funds.
-              </div>
-              {/* 상태값("unknown" / "not registered") 을 그대로 보여주지 않는다.
-                  사용자는 그것으로 무엇을 해야 하는지 알 수 없다. 대신 무엇이 되고 있지
-                  않은지와 그 대처를 함께 말하고, 카운트다운 탭에도 같은 내용을 둔다. */}
-              <div className="text-xs text-gray-700">{notifyHealth.text}</div>
-              {notifyDeliveryNote && (
-                <div className="text-xs text-yellow-800">
-                  Last attempt was not delivered: <b>{notifyDeliveryNote}</b>
-                  {notifyDeliveryNote === "User has disabled notifications" &&
-                    " — turn it on in World App → Settings → Notifications."}
-                </div>
-              )}
-              {/* 다섯 버튼이 전부 같은 크기였고, 그중 하나만 실제 조작이고 나머지는
-                  진단용이었다. "Register vault alerts" (primary) 가 눈에 띄어야 하는데,
-                  "Refresh permission" 이 바로 위에 같은 크기로 있어서 어느 쪽이
-                  할 일인지 애매했다. 주 조작 하나만 md·primary, 진단은 sm 으로 내린다.
-
-                  "Refresh permission" 과 "Refresh watcher" 가 **한 고유 그룹**이 중복된다 —
-                  두 RPC 하나를 새로 읽는 같은 동작. 하나로 합친다. */}
-              <div className="flex gap-2 flex-wrap">
-                <Button onClick={requestNotifyPermission} disabled={pendingAction || !miniInstalled || notifyBusy}>
-                  {notifyBusy ? "Working..." : "Enable notifications"}
-                </Button>
-                {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && vault && vaultHeir && (
-                  <Button
-                    variant="primary"
-                    onClick={registerHeirAlert}
-                    disabled={pendingAction || !miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}
-                  >
-                    Register vault alerts
-                  </Button>
-                )}
-              </div>
-              <div className="section-label">Diagnostics</div>
-              <div className="flex gap-2 flex-wrap">
-                {account && (
-                  <Button size="sm" onClick={sendNotifyTestToMe} disabled={pendingAction || !miniInstalled || !NOTIFY_BACKEND_ENABLED || watchBusy}>
-                    Send a test to me
-                  </Button>
-                )}
-                <Button size="sm" onClick={refreshNotifyState} disabled={pendingAction || !miniInstalled || notifyBusy || watchBusy}>
-                  Refresh status
-                </Button>
-              </div>
-              <div className="text-xs text-gray-500">
-                Important: the heir wallet must also open this mini app at least once and enable notifications.
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader><CardTitle>Help & Legal</CardTitle></CardHeader>
-          <CardContent className="text-xs text-gray-600 space-y-2">
-            <div>
-              This tool is non-custodial and for informational purposes only. It does not constitute legal, tax, or investment advice.
-            </div>
-            <div>
-              <a className="text-blue-600 underline" href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>
-              <span className="mx-2">•</span>
-              <a className="text-blue-600 underline" href="/terms.html" target="_blank" rel="noreferrer">Terms</a>
-              <span className="mx-2">•</span>
-              <a className="text-blue-600 underline" href="mailto:daviswhistle@naver.com">Support</a>
-            </div>
-          </CardContent>
-        </Card>
-        </>
-        )}
+        {tab === "support" && <>
+          <Card className="help-fees-card"><CardHeader><CardTitle>{t("help.feeTitle")}</CardTitle></CardHeader><CardContent className="grid gap-2">
+            <p>{t("help.feeDisclosure")}</p><a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
+          </CardContent></Card>
+          <Card><CardHeader><CardTitle>{t("help.journey.title")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+            <p>{t("help.journey.custody")}</p>
+            {(["income", "heir", "receiving", "shares"] as const).map(subject => <details key={subject}>
+              <summary>{t(`help.journey.${subject}Title`)}</summary><p>{t(`help.journey.${subject}`)}</p>
+            </details>)}
+          </CardContent></Card>
+          {account && <Card><CardHeader><CardTitle>{t("help.journey.find")}</CardTitle></CardHeader><CardContent className="grid gap-2">
+            <p>{t("help.journey.findBody")}</p><Button disabled={pendingAction || findingHeirVaults} onClick={() => { void findHeirVaults(); setTab("inherit"); }}>{t("help.journey.checkAgain")}</Button>
+          </CardContent></Card>}
+          {NOTIFY_BACKEND_ENABLED && <Card><CardHeader><CardTitle>{t("help.journey.notifications")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+            <p>{t("help.journey.notificationsBody")}</p><p>{localizeAppMessage(locale, notifyHealth.text)}</p>
+            <div className="flex gap-2 flex-wrap"><Button disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>{t("home.reminders.enable")}</Button>
+              {(isMyVault || iAmHeir) && !isSettledClaim && <Button disabled={pendingAction || watchBusy} onClick={registerHeirAlert}>{t("help.journey.register")}</Button>}</div>
+            <details><summary>{t("help.journey.diagnostics")}</summary><div className="grid gap-2">
+              {notifyDeliveryNote && <p>{notifyDeliveryNote}</p>}
+              <Button size="sm" disabled={pendingAction || watchBusy} onClick={sendNotifyTestToMe}>{t("help.journey.test")}</Button>
+              <Button size="sm" disabled={pendingAction || notifyBusy || watchBusy} onClick={refreshNotifyState}>{t("help.journey.refresh")}</Button>
+            </div></details>
+          </CardContent></Card>}
+          <Card><CardHeader><CardTitle>{t("help.journey.legal")}</CardTitle></CardHeader><CardContent className="grid gap-2 text-xs">
+            <p>{t("help.journey.legalBody")}</p><div className="flex gap-3 flex-wrap"><a href="/privacy.html" target="_blank" rel="noreferrer">{t("help.journey.privacy")}</a>
+              <a href="/terms.html" target="_blank" rel="noreferrer">{t("help.journey.terms")}</a><a href="mailto:daviswhistle@naver.com">{t("help.journey.support")}</a></div>
+          </CardContent></Card>
+        </>}
 
       {/* 탭이 보이는데 그 탭의 카드가 하나도 렌더되지 않은 경우의 안전망.
           조건문이 겹치면서 특정 조합에서 빈 탭이 생길 수 있고, 그 상태로 나가면
@@ -5701,7 +4932,7 @@ export default function App() {
             </label>
             <div className="flex justify-end gap-2">
               <Button onClick={() => setShowReleaseConfirm(false)} disabled={pendingAction || releasing}>Cancel</Button>
-              <Button variant="primary" onClick={() => void runVaultAction(releaseSlot)} disabled={pendingAction || !miniInstalled || releasing || !releaseAcknowledge}>Confirm</Button>
+              <Button variant="primary" onClick={() => void runVaultAction(releaseSlot, true)} disabled={pendingAction || !miniInstalled || releasing || !releaseAcknowledge}>Confirm</Button>
             </div>
           </div>
         </div>

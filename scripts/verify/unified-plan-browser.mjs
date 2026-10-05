@@ -99,6 +99,8 @@ async function clickButton(targetPage, label) {
 
 async function clickMatchingButton(targetPage, matcher) {
   const source = matcher.toString();
+  const isAssetSelection = matcher("WLD") || matcher("USDC");
+  if (isAssetSelection && !await targetPage.ev(`return [...document.querySelectorAll('button')].some(b=>b.offsetParent!==null&&(${source})(b.textContent.trim()))`)) await chooseTab(targetPage, "Assets");
   await until(() => targetPage.ev(`return [...document.querySelectorAll('button')].some(button => button.offsetParent !== null && !button.disabled && (${source})(button.textContent.trim()))`), `enabled button matching ${source}`);
   const result = await targetPage.ev(`const fn = (${source}); const button = [...document.querySelectorAll('button')].find(item => item.offsetParent !== null && !item.disabled && fn(item.textContent.trim())); if (!button) return 'missing'; button.click(); return button.textContent.trim();`);
   assert.notEqual(result, "missing");
@@ -112,9 +114,16 @@ async function signIn(targetPage) {
 }
 
 async function chooseTab(targetPage, label) {
-  await until(() => targetPage.ev(`return __q.tabs().includes(${JSON.stringify(label)})`), `available ${label} tab`);
+  await until(() => targetPage.ev(`return [...document.querySelectorAll('.tab-item')].some(b => b.textContent.trim() === ${JSON.stringify(label)} && !b.disabled)`), `available ${label} tab`);
   assert.match(await targetPage.ev(`return __q.tab(${JSON.stringify(label)})`), /^ok$/);
   await sleep(180);
+  if (label === "Plan" && !await targetPage.ev("return !!document.getElementById('plan-wld')")) {
+    const add = await targetPage.ev("return [...document.querySelectorAll('button')].some(b=>b.offsetParent!==null&&b.textContent.trim()==='Add to my plan')");
+    if (add) {
+      await until(() => targetPage.ev("const tab=[...document.querySelectorAll('.tab-item')].find(b=>b.textContent.trim()==='Plan');if(tab?.getAttribute('aria-current')!=='page'){tab?.click();return false;}const b=[...document.querySelectorAll('button')].find(b=>b.offsetParent!==null&&b.textContent.trim()==='Add to my plan'&&!b.disabled);if(!b)return false;b.click();return true;"), "available add-to-plan action");
+      await until(() => targetPage.ev("return !!document.getElementById('plan-wld')"), "explicit add-to-plan form");
+    }
+  }
 }
 
 async function acceptYieldTerms(targetPage) {
@@ -983,7 +992,7 @@ try {
   pass("Home resolves the heir username while preserving the full canonical recipient address");
   await page.ev("const select=document.querySelector('.locale-picker select'); select.value='ko'; select.dispatchEvent(new Event('change',{bubbles:true})); return true;");
   await until(() => page.ev("return document.querySelector('.locale-picker select')?.value === 'ko' && /상속인/.test(document.body.innerText)"), "Korean Home");
-  assert.equal(await page.ev("return [...document.querySelectorAll('.plan-overview-asset small')].every(element => element.innerText.includes('서비스 수수료 차감 전'))"), true);
+  await until(() => page.ev("const labels=[...document.querySelectorAll('.plan-overview-asset small')];return labels.length===2 && labels.every(element => element.innerText.includes('서비스 수수료 차감 전'))"), "localized refreshed yield valuation labels");
   await chooseTab(page, "자산");
   assert.match(await page.ev("return document.querySelector('.asset-money-card').innerText"), /서비스 수수료 차감 전 운용 가치/);
   const feeLabelFits = JSON.parse(await page.ev("const label=document.querySelectorAll('.asset-money-card .stat-label')[1]; return JSON.stringify({full:label.scrollWidth <= label.clientWidth, wraps:getComputedStyle(label).whiteSpace});"));
@@ -1368,10 +1377,13 @@ try {
   };
   const preparePlanForm = async (targetPage, heirAddress, days, symbol, amount) => {
     await chooseTab(targetPage, "Plan");
+    await until(() => targetPage.ev("if(document.getElementById('plan-wld'))return true;const b=[...document.querySelectorAll('button')].find(b=>b.offsetParent!==null&&!b.disabled&&b.textContent.trim()==='Create my own plan');b?.click();return false;"), "classified account with an explicit owner setup form");
     await installBridgeRecorder(targetPage);
     await targetPage.ev(`return __q.setInput('heir-input', ${JSON.stringify(heirAddress)})`);
     await targetPage.ev(`return __q.setInput('period-input', ${JSON.stringify(String(days))})`);
-    await targetPage.ev(`return __q.setInput('plan-${symbol.toLowerCase()}', ${JSON.stringify(amount)})`);
+    const entered = await targetPage.ev(`return __q.setInput('plan-${symbol.toLowerCase()}', ${JSON.stringify(amount)})`);
+    assert.match(entered, /^set /, 'plan amount field must be present');
+    await until(() => targetPage.ev(`return document.getElementById('plan-${symbol.toLowerCase()}')?.value === ${JSON.stringify(amount)}`), 'entered plan amount is retained');
   };
   async function restorePlan(targetPage, saved) {
     const key = `inheritance:pending-plan:${saved.account.toLowerCase()}`;
@@ -1680,6 +1692,10 @@ try {
   pass("an amount above wallet balance stays editable and cannot create an empty vault");
   await balancePage.ev("return __q.setInput('plan-wld', '0.9')");
   await until(() => balancePage.ev("return !document.querySelector('.plan-submit').disabled"), "affordable cached draft");
+  await clickButton(balancePage, "Review plan");
+  await sleep(31_000);
+  assert.equal(await balancePage.ev("return !!document.querySelector('.plan-final-review') && /0.9 WLD/.test(document.querySelector('.plan-final-review').innerText)"), true);
+  pass("background heir refresh preserves a fresh owner's reviewed draft");
   await (await wld.connect(await provider.getSigner(4)).transfer(ACCOUNTS.a2.a, parseUnits("0.8", 18))).wait();
   await clickButton(balancePage, "Create plan and deposit");
   await until(() => balancePage.ev("return /Not enough WLD/.test(document.body.innerText)"), "fresh insufficient-balance preflight");
@@ -2041,7 +2057,7 @@ try {
   heirPage = await launch({ pk: ACCOUNTS.a1.pk, url: `${appUrl}?vault=${wldVaultAddress}`, preload });
   await signIn(heirPage);
   await chooseTab(heirPage, "Plan");
-  await until(() => heirPage.ev("return document.querySelector('.timer-block') !== null && /Inheritance Status/.test(document.body.innerText)"), "linked heir status and timer");
+  await until(() => heirPage.ev("return document.querySelector('.heir-plan-card') !== null && document.querySelector('.inheritance-next') !== null"), "linked heir status and timer");
   const heirTabs = JSON.parse(await heirPage.ev("return JSON.stringify(__q.tabs())"));
   assert.equal(heirTabs.includes("Home"), false, "owner-only Vault tab stayed visible for an heir without an owned vault");
   assert.equal(await heirPage.ev("return document.querySelector('.tab-item-active')?.textContent.trim()"), "Plan");
@@ -2174,7 +2190,7 @@ try {
   }
   evidence.failureContexts = {};
   for (const [label, targetPage] of [["alignment", alignmentPage], ["drift", driftPage], ["legacy", legacyPage], ["heir", heirPage], ...regressionPages]) {
-    if (targetPage) try { evidence.failureContexts[label] = await targetPage.ev("return document.body.innerText"); } catch {}
+    if (targetPage) try { evidence.failureContexts[label] = await targetPage.ev("return document.body.innerText + String.fromCharCode(10) + 'FIELDS ' + JSON.stringify([...document.querySelectorAll('input')].map(i=>({id:i.id,value:i.value,disabled:i.disabled})))"); } catch {}
   }
   console.error(error?.stack || error);
 } finally {

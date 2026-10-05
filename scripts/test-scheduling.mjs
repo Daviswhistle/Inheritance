@@ -133,6 +133,10 @@ try {
   });
   const future = { claimedAt: 0n, isExpired: false, claimPending: false, claimableNow: false, cancelled: false,
     timeRemaining: 3601n, heartbeatInterval: 72000n, challengeEndsAt: null, vaultBalanceKnown: true };
+  check("settlement polls for finality, then waits one day for completion notification retry", () => {
+    assert.equal(nextObservationAt({ ...future, claimedAt: 1n }, 1_000_000), 1_060_000);
+    assert.equal(nextObservationAt({ ...future, claimedAt: 1n, settled: true }, 1_000_000), 87_400_000);
+  });
   check("owner reminder boundary uses the existing five-percent warning policy", () => {
     assert.equal(nextObservationAt(future, 1_000_000), 1_005_000);
     assert.equal(nextObservationAt({ ...future, timeRemaining: 1n }, 1_000_000), 1_005_000);
