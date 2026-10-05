@@ -11,19 +11,17 @@ import type { YieldRoute } from "@/assets";
 import { useLocale } from "@/locale-context";
 
 function YieldRateSummary({ rates, loading, strategy = MORPHO_VAULT_ADDRESS }: { rates: YieldRates | null; loading: boolean; strategy?: string }) {
+  const { t, locale } = useLocale();
   const now = Math.floor(Date.now() / 1000);
   const fresh = rates && now - rates.reportedAt <= RATE_MAX_AGE_SECONDS && rates.campaignEndsAt > now;
-  return <div className="yield-rate-summary">
-    <strong>Indicative annual rates</strong>
-    {fresh ? <>
-      <dl className="yield-values">
-        <div><dt>Lending APR</dt><dd>{formatRate(rates.lendingApr)}</dd></div>
-        <div><dt>General WLD rewards APR</dt><dd>{formatRate(rates.rewardApr)}</dd></div>
-      </dl>
-      <p className="text-xs text-gray-600">Reported {new Date(rates.reportedAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} (UTC). Rewards currently scheduled through {new Date(rates.campaignEndsAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}.</p>
-    </> : <p role="status">{loading ? "Checking current rates…" : "Current rates are unavailable. Rewards and returns can change."}</p>}
-    <p className="text-xs text-gray-600">Shown before our exit fee. Campaign eligibility varies; World App’s verified-human boost is excluded. These are reported rates, not a forecast of your earnings.</p>
-    <a className="text-blue-600 underline text-xs" href={`https://app.merkl.xyz/opportunities/world-chain/MORPHOVAULT/${strategy}`} target="_blank" rel="noreferrer">View rate and reward source ↗</a>
+  const date = (stamp: number) => new Date(stamp * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  return <div className="yield-rate-summary"><strong>{t("yield.rates.title")}</strong>
+    {fresh ? <><dl className="yield-values"><div><dt>{t("yield.rates.lending")}</dt><dd>{formatRate(rates.lendingApr)}</dd></div>
+      <div><dt>{t("yield.rates.rewards")}</dt><dd>{formatRate(rates.rewardApr)}</dd></div></dl>
+      <p className="text-xs text-gray-600">{t("yield.rates.reported", { date: date(rates.reportedAt), end: date(rates.campaignEndsAt) })}</p>
+    </> : <p role="status">{t(loading ? "yield.rates.loading" : "yield.rates.unavailable")}</p>}
+    <p className="text-xs text-gray-600">{t("yield.rates.disclosure")}</p>
+    <a className="text-blue-600 underline text-xs" href={`https://app.merkl.xyz/opportunities/world-chain/MORPHOVAULT/${strategy}`} target="_blank" rel="noreferrer">{t("yield.rates.source")}</a>
   </div>;
 }
 
@@ -62,28 +60,20 @@ export function YieldRewardsCard({ data, error, loading, settled, recipient, rec
   received: bigint | null; busy: boolean; canClaim: boolean; onClaim: () => void; onProcess: () => void; onRefresh: () => void;
   usdc?: boolean; canWithdraw?: boolean; onWithdraw?: () => void; held?: bigint | null;
 }) {
-  return <Card><CardHeader><CardTitle>WLD campaign rewards</CardTitle></CardHeader>
-    <CardContent className="grid gap-3">
-      {loading && <p role="status">Checking rewards for this vault…</p>}
-      {error && <p role="status" className="text-xs text-yellow-800">{error} Your vault withdrawals and inheritance remain available.</p>}
-      {data && <dl className="yield-values">
-        <div><dt>Ready to claim</dt><dd>{formatYieldAmount(data.claimable)} WLD</dd></div>
-        <div><dt>Awaiting reward publication</dt><dd>{formatYieldAmount(data.pending)} WLD</dd></div>
-      </dl>}
-      {received !== null && <dl className="yield-values"><div><dt>{usdc ? "Claimed WLD held before fee" : "Received WLD awaiting processing"}</dt><dd>{formatYieldAmount(received)} WLD</dd></div></dl>}
-      {settled ? <p className="text-xs text-gray-600">Late rewards go to the fixed inheritance recipient after the {usdc ? "10% WLD reward fee. USDC losses are accounted separately." : "net-gain fee, including loss recovery."} Anyone can relay the claim; the caller cannot change its recipient.</p>
-        : <p className="text-xs text-gray-600">{usdc ? "Claimed WLD is held separately until withdrawal or inheritance. The fee is 10% of claimed WLD when paid; gifts are excluded. USDC gains and losses are accounted in USDC, without cross-currency offsets." : "Claimed WLD is reinvested without increasing your deposited principal or resetting your timer. Its net gain is included in the exit fee."} Pending rewards cannot be claimed yet.</p>}
-      {settled && recipient && <a className="text-blue-600 underline text-xs" href={`${EXPLORER}/address/${recipient}`} target="_blank" rel="noreferrer">View inheritance recipient ↗</a>}
-      <p className="text-xs text-gray-600">Eligibility and rewards vary by campaign. World App’s verified-human boost is not automatic for this vault.</p>
-      {data && data.claimable > 0n && <Button disabled={busy || loading || Boolean(error) || !canClaim} onClick={onClaim}>
-        {settled ? "Claim remaining inheritance rewards" : usdc ? "Claim WLD rewards to vault" : "Claim and reinvest WLD rewards"}
-      </Button>}
-      {received !== null && received > 0n && (!usdc || settled) && <Button disabled={busy || !canClaim} onClick={onProcess}>
-        {settled ? "Receive remaining WLD rewards" : "Reinvest received WLD rewards"}
-      </Button>}
-      {usdc && canWithdraw && held !== null && held !== undefined && held > 0n && <Button disabled={busy || !canClaim} onClick={onWithdraw}>Withdraw held WLD to my wallet</Button>}
-      <Button disabled={busy || loading} onClick={onRefresh}>Refresh rewards</Button>
-    </CardContent></Card>;
+  const { t } = useLocale();
+  return <Card><CardHeader><CardTitle>{t("yield.rewards.title")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+    {loading && <p role="status">{t("yield.rewards.loading")}</p>}
+    {error && <p role="status" className="text-xs text-yellow-800">{error} {t("yield.rewards.error")}</p>}
+    {data && <dl className="yield-values"><div><dt>{t("yield.rewards.ready")}</dt><dd>{formatYieldAmount(data.claimable)} WLD</dd></div><div><dt>{t("yield.rewards.pending")}</dt><dd>{formatYieldAmount(data.pending)} WLD</dd></div></dl>}
+    {received !== null && <dl className="yield-values"><div><dt>{t(usdc ? "yield.rewards.held" : "yield.rewards.received")}</dt><dd>{formatYieldAmount(received)} WLD</dd></div></dl>}
+    <p className="text-xs text-gray-600">{t(settled ? usdc ? "yield.rewards.lateUsdc" : "yield.rewards.lateWld" : usdc ? "yield.rewards.activeUsdc" : "yield.rewards.activeWld")}</p>
+    {settled && recipient && <a className="text-blue-600 underline text-xs" href={`${EXPLORER}/address/${recipient}`} target="_blank" rel="noreferrer">{t("yield.rewards.recipient")}</a>}
+    <p className="text-xs text-gray-600">{t("yield.rewards.eligibility")}</p>
+    {data && data.claimable > 0n && <Button disabled={busy || loading || Boolean(error) || !canClaim} onClick={onClaim}>{t(settled ? "yield.rewards.claimLate" : usdc ? "yield.rewards.claimUsdc" : "yield.rewards.claimWld")}</Button>}
+    {received !== null && received > 0n && (!usdc || settled) && <Button disabled={busy || !canClaim} onClick={onProcess}>{t(settled ? "yield.rewards.receiveLate" : "yield.rewards.reinvest")}</Button>}
+    {usdc && canWithdraw && held !== null && held !== undefined && held > 0n && <Button disabled={busy || !canClaim} onClick={onWithdraw}>{t("yield.rewards.withdraw")}</Button>}
+    <Button disabled={busy || loading} onClick={onRefresh}>{t("yield.rewards.refresh")}</Button>
+  </CardContent></Card>;
 }
 
 export function YieldPositionCard({ position, holdings, terms, rates, ratesLoading, canExit, busy, onExit, route }: {
@@ -92,27 +82,23 @@ export function YieldPositionCard({ position, holdings, terms, rates, ratesLoadi
   rates: YieldRates | null; ratesLoading: boolean;
   route?: YieldRoute;
 }) {
+  const { t } = useLocale();
   const symbol = route?.symbol ?? "WLD";
   const fmt = (amount: bigint) => formatYieldAmount(amount, route?.decimals ?? 18);
-  return <Card><CardHeader><CardTitle>Morpho yield position</CardTitle></CardHeader>
-    <CardContent className="grid gap-3">
-      <YieldRateSummary rates={rates} loading={ratesLoading} strategy={route?.strategy} />
-      {!position ? <p role="status">Value and cash liquidity are unavailable. Receipt shares can still be moved without a valuation.</p> : <>
-        <div className="stat-row"><div className="stat yield-stat"><div className="stat-label">Estimated {symbol} after service fee</div><div className="stat-value">{position.valued ? `${fmt(position.net)} ${symbol}` : "Value unavailable"}</div></div></div>
-        <dl className="yield-values">
-          <div><dt>Cash liquidity before service fee</dt><dd>{fmt(position.liquid)} {symbol}</dd></div>
-          <div><dt>Estimated service fee for full exit</dt><dd>{position.valued ? `${fmt(position.fee)} ${symbol}` : "Quote unavailable"}</dd></div>
-        </dl>
-        <p className="text-xs text-gray-600">{terms ? `${terms.feeBps / 100}%` : "A fixed share"} of positive net gains is charged when exiting, after the underlying vault’s fees. Loss recovery is not charged. This estimate can change and does not guarantee cash availability.</p>
-      </>}
-      {holdings ? <dl className="yield-values">
-        <div><dt>Receipt shares held</dt><dd>{formatYieldAmount(holdings.shares)}</dd></div>
-        <div><dt>Idle {symbol}</dt><dd>{fmt(holdings.idle)} {symbol}</dd></div>
-      </dl> : <p role="status">Checking receipt shares and idle {symbol}…</p>}
-      {canExit && holdings && holdings.shares > 0n && <Button onClick={onExit} disabled={busy}>Move all receipt shares to my wallet</Button>}
-      {canExit && <p className="text-xs text-gray-600">Moving shares works without cash liquidity and pays any positive-gain fee in shares. It does not cancel inheritance or move idle {symbol}{symbol === "USDC" ? " or WLD rewards" : ""}.</p>}
-      <a className="text-blue-600 underline text-xs" href={`${EXPLORER}/address/${route?.strategy ?? MORPHO_VAULT_ADDRESS}`} target="_blank" rel="noreferrer">View underlying vault ↗</a>
-    </CardContent></Card>;
+  return <Card><CardHeader><CardTitle>{t("yield.position.title")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+    <YieldRateSummary rates={rates} loading={ratesLoading} strategy={route?.strategy} />
+    {!position ? <p role="status">{t("yield.position.unavailable")}</p> : <>
+      <div className="stat-row"><div className="stat yield-stat"><div className="stat-label">{t("yield.position.net", { symbol })}</div><div className="stat-value">{position.valued ? `${fmt(position.net)} ${symbol}` : t("home.value.unavailable")}</div></div></div>
+      <dl className="yield-values"><div><dt>{t("yield.position.liquid")}</dt><dd>{fmt(position.liquid)} {symbol}</dd></div>
+        <div><dt>{t("yield.position.fee")}</dt><dd>{position.valued ? `${fmt(position.fee)} ${symbol}` : t("home.value.unavailable")}</dd></div></dl>
+      <p className="text-xs text-gray-600">{t("yield.position.disclosure", { percent: terms ? terms.feeBps / 100 : 10 })}</p>
+    </>}
+    {holdings ? <dl className="yield-values"><div><dt>{t("yield.position.shares")}</dt><dd>{formatYieldAmount(holdings.shares)}</dd></div>
+      <div><dt>{t("yield.position.idle", { symbol })}</dt><dd>{fmt(holdings.idle)} {symbol}</dd></div></dl> : <p role="status">{t("yield.position.loading", { symbol })}</p>}
+    {canExit && holdings && holdings.shares > 0n && <Button onClick={onExit} disabled={busy}>{t("yield.position.move")}</Button>}
+    {canExit && <p className="text-xs text-gray-600">{t("yield.position.moveBody", { symbol })} {symbol === "USDC" && t("yield.position.usdcRewards")}</p>}
+    <a className="text-blue-600 underline text-xs" href={`${EXPLORER}/address/${route?.strategy ?? MORPHO_VAULT_ADDRESS}`} target="_blank" rel="noreferrer">{t("yield.position.source")}</a>
+  </CardContent></Card>;
 }
 
 export function IncomePositionCard({ state, symbol, decimals, position, to, account, disabledReason, recipientValid, canCollect, busy, onToChange, onCollect, onUseMyAddress, onRefresh }: {

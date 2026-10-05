@@ -42,7 +42,7 @@ try {
   const token = await deploy("MockERC20", ["Worldcoin", "WLD"]);
   const factory = await deploy("InheritanceVaultWLDFactoryOnePerOwner", [await token.getAddress()]);
   await (await factory.createVault(ACCOUNTS.a1.a, 30 * 86400)).wait();
-  const vault = new Contract(await factory.vaultOf(ACCOUNTS.a0.a), ["function lastPing() view returns(uint256)"], provider);
+  const vault = new Contract(await factory.vaultOf(ACCOUNTS.a0.a), ["function lastPing() view returns(uint256)", "function heartbeatInterval() view returns(uint256)"], provider);
   proxy = http(async (request, response) => {
     response.setHeader("Access-Control-Allow-Origin", "*");
     response.setHeader("Access-Control-Allow-Headers", "*");
@@ -93,10 +93,14 @@ try {
   assert.equal(await page.ev("return document.getElementById('period-change').value"), "31");
   pass("Fresh identity polling restores controls and preserves the user's edit");
   const before = await vault.lastPing();
-  assert.match(await page.ev("return __q.click('Reset timer')"), /clicked/);
+  await page.ev("const fixture = await import('/src/test/minikit-stub.ts'); const send = fixture.MiniKit.sendTransaction; window.__CHECKIN_SENDS__ = 0; fixture.MiniKit.sendTransaction = async request => { window.__CHECKIN_SENDS__++; return send(request); }; return true;");
+  assert.match(await page.ev("return __q.click('Check in')"), /clicked/);
+  await until(() => page.ev("return __q.tabs().includes('Home') && document.querySelector('.plan-overview-card') !== null"));
   await until(async () => await vault.lastPing() > before);
-  pass("Recovered controls renew the actual on-chain timer");
-  await until(() => page.ev("return /Timer reset/.test(document.body.innerText)"));
+  assert.equal(await page.ev("return window.__CHECKIN_SENDS__"), 1);
+  assert.equal(await vault.heartbeatInterval(), 30n * 86400n, "check-in must retain the live interval instead of applying the unsaved 31-day draft");
+  pass("Recovered controls renew the actual timer with one tap and one request, retaining the unsaved interval draft");
+  await until(() => page.ev("return /Checked in to all 1 active vaults/.test(document.body.innerText)"));
   pass("Receipt-confirmed success is shown after recovery");
   console.log(`\n  Passed ${passed} / failed 0`);
 } catch (error) {

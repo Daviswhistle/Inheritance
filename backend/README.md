@@ -1,6 +1,6 @@
 # Notification Backend (Cloudflare Workers)
 
-금고별 상속 알림을 D1에 저장하고 매 분 온체인 상태를 읽어 World App으로 보냅니다.
+금고별 상속 알림을 D1에 저장하고 필요한 다음 시점에 온체인 상태를 읽어 World App으로 보냅니다.
 API 접근에는 Pages에서 검증한 World App 지갑 세션이 필요합니다. 알림 세션은
 온체인 트랜잭션 서명 권한을 주지 않습니다.
 
@@ -28,9 +28,12 @@ Pages의 `app/wrangler.toml`과 Worker의 `backend/wrangler.toml`은 기존 D1
 원래 팩토리 등록은 검증할 수 있습니다. 임의 owner/heir 응답만으로 수신자를 신뢰하지 않습니다.
 
 정산 완료는 필수 조회한 `claimedAt > 0`으로 확인합니다. 완료 시 `heir`가 0으로
-바뀐 금고도 canonical 검증을 통과하면 owner에게만 조회·관리 권한을 허용하며,
-이전 heir의 캐시는 권한 근거가 아닙니다. 완료된 감시는 비활성화하고 재등록해도
-다시 알리지 않습니다. 기본 팩토리 슬롯 해제는 API 접근을 거절하고 기존 감시만
+바뀐 수익 금고는 finalized 블록의 불변 `inheritanceRecipient`를 검증해 owner와 실제 수령자에게
+조회 권한을 허용합니다. 이전 heir의 캐시는 권한 근거가 아닙니다. 기본 금고는 불변 수령자
+getter가 없으므로 완료 후 owner만 조회할 수 있으며 캐시 주소로 완료 알림을 보내지 않습니다.
+수익 금고는 지급 확정 후 완료 알림을 시도하며 성공 결과를 저장한 뒤 감시를 종료합니다.
+미전달은 하루 뒤 재시도하고, 아직 지급이 확정되지 않았다면 1분 뒤 다시 확인합니다.
+기본 팩토리 슬롯 해제는 API 접근을 거절하고 기존 감시만
 종료합니다. 수익 금고는 영구 등록을 확인해 보관된 링크와 늦은 보상 처리를 지원합니다.
 RPC 실패나 정산 상태 미확인은 완료나 슬롯 해제로 간주하지 않습니다.
 
@@ -81,8 +84,9 @@ Nonce 발급은 Cloudflare가 확인한 연결 IP별 분당 30회로 제한합�
 
 | API | 권한과 요청 |
 | --- | --- |
-| `GET /api/notifications?cursor=0x...` | 호출자가 현재 owner/heir인 watcher만 반환. 네 후보씩 canonical 검증하며 `nextCursor`가 있으면 다음 페이지를 조회. 이전 heir의 캐시만으로 접근 불가. RPC 장애는 503이며 빈 목록으로 숨기지 않음. |
-| `GET /api/notifications/status?vaultAddress=0x...` | 현재 owner 또는 heir. |
+| `GET /api/notifications?cursor=0x...` | 호출자가 현재 owner/heir 또는 정산 확정 수익 금고의 불변 수령자인 watcher만 반환. 네 후보씩 canonical 검증하며 `nextCursor`가 있으면 다음 페이지를 조회. 이전 heir의 캐시만으로 접근 불가. RPC 장애는 503이며 빈 목록으로 숨기지 않음. |
+| `GET /api/notifications/status?vaultAddress=0x...` | 현재 owner/heir 또는 정산 확정 수익 금고의 불변 수령자. |
+| `POST /api/notifications/open` | 현재 heir만 가능. `{ "vaultAddress": "0x...", "notificationPermission": "granted" }`; permission은 `granted`, `denied`, `unknown` 중 하나. 마지막 방문/알림 권한을 저장하며 알림·거래는 보내지 않음. |
 | `POST /api/notifications/register` | 현재 owner 또는 heir. `{ "vaultAddress": "0x..." }`; 선택한 owner/heir 필드는 온체인 값과 일치해야 함. |
 | `POST /api/notifications/unregister` | 현재 owner만 가능. `{ "vaultAddress": "0x..." }`. |
 | `POST /api/notifications/check-now` | 현재 owner 또는 heir. `{ "vaultAddress": "0x..." }` 한 건만 검사. 전역 수동 스캔 불가. |

@@ -90,6 +90,7 @@ async function clickPlanSubmit() {
   return click("Confirm and deposit");
 }
 async function selectVault(labelPrefix) {
+  if (!await page.ev("return !!document.querySelector('.asset-switcher')")) await page.ev("return __q.tab('Assets')");
   const symbol = labelPrefix.startsWith("USDC") ? "USDC" : "WLD";
   await until(() => page.ev(`const button = [...document.querySelectorAll('.asset-switcher button')]
     .find(item => item.textContent.trim() === ${JSON.stringify(symbol)} && !item.disabled); if (!button) return false; button.click(); return true;`));
@@ -168,6 +169,7 @@ try {
   };
   await open(ACCOUNTS.a0);
   await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
+  await click("Add to my plan");
   await until(() => page.ev("return !!document.querySelector('.plan-assets')"));
   const planRows = JSON.parse(await page.ev(`
     const wld = document.getElementById('plan-wld');
@@ -249,10 +251,10 @@ try {
   assert.match(await page.ev("return document.body.innerText"), /Available: 199.123456 USDC/);
   await click("Max");
   assert.equal(await page.ev("return document.getElementById('deposit-amount').value"), "199.123456");
-  await page.ev("return __q.tab('Plan')");
-  await until(() => page.ev("return /^(29|30)d/.test(document.querySelector('.timer-value')?.textContent.trim() ?? '')"));
+  await page.ev("return __q.tab('Home')");
+  await until(() => page.ev("return /Check in every[\\s\\S]*30 days/.test(document.querySelector('.plan-overview-card')?.innerText ?? '')"));
   await sleep(500);
-  assert.match(await page.ev("return document.querySelector('.timer-value').textContent.trim()"), /^(29|30)d/);
+  assert.match(await page.ev("return document.querySelector('.plan-overview-card').innerText"), /Check in every[\s\S]*30 days/);
   assert.equal(await child.heartbeatInterval(), 30n * 86400n);
   await page.ev("return __q.tab('Assets')");
   pass("A delayed creation-monitoring response cannot overwrite USDC balance, Max or countdown with the prior WLD vault");
@@ -302,7 +304,7 @@ try {
   await click("Refresh balance"); await until(() => page.ev("return /109.134567 USDC/.test(document.body.innerText)"));
   const fee = (await child.position()).fee; assert.ok(fee > 0n); await page.shot("usdc-position");
   const storeScreen = await page.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-  writeFileSync("/tmp/wld-verify/shots/usdc-store-position.png", Buffer.from(storeScreen.data, "base64"));
+  writeFileSync(`${process.env.VERIFY_TMP || '/tmp/wld-verify'}/shots/usdc-store-position.png`, Buffer.from(storeScreen.data, "base64"));
   await click("Move all receipt shares to my wallet"); await until(async () => await usdcStrategy.balanceOf(vault) === 0n);
   const chargedShares = await usdcStrategy.balanceOf(ACCOUNTS.a2.a); assert.ok(chargedShares > 0n);
   await click("Redeem available shares to USDC"); await until(async () => await usdcStrategy.balanceOf(ACCOUNTS.a0.a) === 0n);
@@ -315,31 +317,33 @@ try {
   await (await usdcStrategy.setLiquidity(0)).wait(); await provider.send("evm_increaseTime", [30 * 86400 + 1]); await provider.send("evm_mine", []);
   await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
   await click("File claim"); await until(async () => await child.claimFiledAt() > 0n);
+  await until(() => page.ev("return /Claim confirmed for the listed assets/.test(document.body.innerText)"), "canonical combined file receipt");
   await provider.send("evm_increaseTime", [7 * 86400 + 1]); await provider.send("evm_mine", []);
   await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
   await page.ev("window.__E2E_REWARDS_DOWN__=true;return true;"); await click("Refresh rewards");
   await click("Complete inheritance"); await until(async () => await child.claimedAt() > 0n);
   assert.equal(await usdcStrategy.balanceOf(ACCOUNTS.a1.a), parseEther("20"));
-  assert.equal(await wld.balanceOf(ACCOUNTS.a1.a), parseEther("9")); assert.equal(await child.inheritanceRecipient(), ACCOUNTS.a1.a);
+  assert.equal(await wld.balanceOf(ACCOUNTS.a1.a), parseEther("39")); assert.equal(await plainVaultContract.claimedAt() > 0n, true); assert.equal(await existingWldVault.claimedAt() > 0n, true); assert.equal(await child.inheritanceRecipient(), ACCOUNTS.a1.a);
   assert.equal(await child.hasAssets(), false); await page.shot("usdc-inheritance");
   pass("Illiquid USDC inheritance transfers receipt shares and WLD rewards to the same fixed heir despite reward API failure");
   await (await usdcStrategy.setLiquidity(2n ** 256n - 1n)).wait(); await click("Redeem available shares to USDC");
   await until(async () => await usdcStrategy.balanceOf(ACCOUNTS.a1.a) === 0n);
   assert.equal(await usdc.balanceOf(ACCOUNTS.a1.a), 20_000000n);
-  assert.equal(await wld.balanceOf(ACCOUNTS.a1.a), parseEther("9")); assert.equal(await usdcStrategy.balanceOf(ACCOUNTS.a2.a), chargedShares);
+  assert.equal(await wld.balanceOf(ACCOUNTS.a1.a), parseEther("39")); assert.equal(await usdcStrategy.balanceOf(ACCOUNTS.a2.a), chargedShares);
   pass("The heir redeems eighteen-decimal receipt shares to six-decimal USDC without a second service fee");
   await (await usdcFactory.releaseMyVault()).wait(); await (await usdcFactory.createVault(ACCOUNTS.a3.a, 30 * 86400)).wait();
   const replacement = await usdcFactory.vaultOf(ACCOUNTS.a0.a), replacementChild = new Contract(replacement, artifact("InheritanceVaultUSDC").abi, provider);
   const replacementPing = await replacementChild.lastPing(); await publish(parseEther("30"), parseEther("20"));
+  await page.ev("return __q.tab('Assets')");
   await page.ev("window.__E2E_REWARDS_DOWN__=false;return true;"); await click("Refresh rewards"); await click("Claim remaining inheritance rewards");
-  await until(async () => await wld.balanceOf(ACCOUNTS.a1.a) === parseEther("18"));
+  await until(async () => await wld.balanceOf(ACCOUNTS.a1.a) === parseEther("48"));
   assert.equal(await wld.balanceOf(replacement), 0n); assert.equal(await replacementChild.lastPing(), replacementPing);
   pass("Late WLD rewards of a released USDC vault still pay its original fixed heir and leave the replacement untouched");
   await externalReward(parseEther("40")); await (await wld.mint(vault, parseEther("5"))).wait();
   const recoveryOwner = await wld.balanceOf(ACCOUNTS.a0.a); await open(ACCOUNTS.a0, vault);
   await click("Recover archived assets to me"); await until(async () => await wld.balanceOf(vault) === 0n);
   assert.equal(await wld.balanceOf(ACCOUNTS.a0.a) - recoveryOwner, parseEther("5"));
-  assert.equal(await wld.balanceOf(ACCOUNTS.a1.a), parseEther("27")); assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a), replacement);
+  assert.equal(await wld.balanceOf(ACCOUNTS.a1.a), parseEther("57")); assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a), replacement);
   assert.equal(await replacementChild.lastPing(), replacementPing);
   pass("Archived owner recovery separates WLD gifts from canonical heir rewards and cannot alter the current USDC vault");
   assert.deepEqual(await page.ev("return __q.errs()"), []); pass("No runtime errors or unhandled rejections in the USDC flow");

@@ -110,6 +110,7 @@ async function clickPlanSubmit() {
   return clickReady("Confirm and deposit");
 }
 async function selectOwnedVault(labelPrefix) {
+  if (!await page.ev("return !!document.querySelector('.asset-switcher')")) await page.ev("return __q.tab('Assets')");
   const symbol = labelPrefix.startsWith("USDC") ? "USDC" : "WLD";
   await until(() => page.ev(`const button = [...document.querySelectorAll('.asset-switcher button')]
     .find(item => item.textContent.trim() === ${JSON.stringify(symbol)} && !item.disabled); if (!button) return false; button.click(); return true;`));
@@ -134,7 +135,7 @@ async function selectOwnedVault(labelPrefix) {
 async function captureStore(name) {
   if (!storeCapture) return;
   const shot = await page.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-  writeFileSync(`/tmp/wld-verify/shots/yield-store-${name}.png`, Buffer.from(shot.data, "base64"));
+  writeFileSync(`${process.env.VERIFY_TMP || '/tmp/wld-verify'}/shots/yield-store-${name}.png`, Buffer.from(shot.data, "base64"));
 }
 try {
   await until(async () => { try { return (await fetch(rpc, { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) })).ok; } catch { return false; } });
@@ -185,9 +186,14 @@ try {
   await fault(yieldFactory, yieldFactory.interface.getFunction("vaultOf").selector);
   await clickReady("Continue with World App");
   await until(() => page.ev("return __q.tabs().includes('Plan')"));
-  await page.ev("return __q.tab('Plan')");
-  await until(() => page.ev("return __q.btns().some(b => b.t === 'Reset timer' && !b.d) && /time left to renew/i.test(document.body.innerText) && !/Expires -/.test(document.body.innerText) && !/^0d 0h 0m 0s$/.test(document.querySelector('.timer-value')?.textContent.trim())"));
+  await page.ev("return __q.tab('Assets')");
+  await until(() => page.ev("return __q.btns().some(b => b.t === 'Renew this WLD only' && !b.d) && /Other assets are temporarily unavailable/.test(document.body.innerText)"));
   assert.ok(await page.ev("return window.__E2E_RPC_FAULT_MATCHES__") > 0);
+  const recoveryPing = await plainVaultContract.lastPing();
+  await provider.send("evm_increaseTime", [60]); await provider.send("evm_mine", []);
+  await clickReady("Renew this WLD only");
+  await until(async () => await plainVaultContract.lastPing() > recoveryPing, "verified basic-only renewal during registry failure");
+  await until(() => page.ev("return /WLD renewed/.test(document.body.innerText)"));
   assert.equal(await token.balanceOf(plainVault), parseEther("50"));
   pass("A failed optional yield registry keeps funded basic-vault renewal and withdrawal accessible");
   await clearFaults();
@@ -195,6 +201,7 @@ try {
   await until(() => page.ev("return !/Some vault registries could not be refreshed/.test(document.body.innerText)"));
   await captureStore("countdown");
   await page.ev("return __q.tab('Plan')");
+  await clickReady("Add to my plan");
   await until(() => page.ev("return !!document.querySelector('.plan-assets')"));
   const planRows = await page.ev(`
     const wld = document.getElementById('plan-wld');
@@ -224,12 +231,13 @@ try {
     await captureStore("create");
     await page.ev("window.scrollTo(0,0); return true;");
   }
+  const beforeDraftRequest = await page.ev("return window.__E2E_MINIKIT__.lastCalldata()");
   await clickReady("Review plan");
   assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
   assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
   await page.ev("document.getElementById('yield-consent').click(); return true");
   await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
-  assert.equal(await page.ev("return window.__E2E_MINIKIT__.lastCalldata().length"), 0);
+  assert.deepEqual(await page.ev("return window.__E2E_MINIKIT__.lastCalldata()"), beforeDraftRequest);
   await clickPlanSubmit();
   await until(() => page.ev("return document.querySelector('.plan-alignment-review') !== null"), "shared settings review");
   assert.match(await page.ev("return document.querySelector('.plan-alignment-review').innerText"), /WLD[\s\S]*Confirm and align settings/);
@@ -237,7 +245,7 @@ try {
   assert.equal(await plainVaultContract.heartbeatInterval(), originalPlainInterval);
   assert.equal(await token.balanceOf(plainVault), originalPlainBalance);
   assert.equal(await yieldFactory.vaultOf(ACCOUNTS.a0.a), "0x0000000000000000000000000000000000000000");
-  assert.equal(await page.ev("return window.__E2E_MINIKIT__.lastCalldata().length"), 0);
+  assert.deepEqual(await page.ev("return window.__E2E_MINIKIT__.lastCalldata()"), beforeDraftRequest);
   pass("Shared-setting differences stay untouched and no wallet request is sent before explicit review confirmation");
   await clickReady("Confirm and align settings");
   await until(async () => await yieldFactory.vaultOf(ACCOUNTS.a0.a) !== "0x0000000000000000000000000000000000000000", "yield creation");
@@ -294,6 +302,7 @@ try {
   assert.doesNotMatch(await page.ev("return document.querySelector('.yield-rate-summary').innerText"), /1.70%/);
   pass("An unavailable rates API replaces the old quote with its unavailable state for the selected Morpho vault");
   await page.ev("return __q.tab('Plan')");
+  await clickReady("Add to my plan");
   await until(() => page.ev("return !!document.querySelector('.plan-assets')"));
   await page.ev(`return __q.setInput('heir-input', '${ACCOUNTS.a1.a}')`);
   await page.ev("return __q.setInput('period-input', '30')");
@@ -354,9 +363,8 @@ try {
   await clickReady("Refresh balance");
   await until(() => page.ev("return /109.0 WLD/.test(document.body.innerText) && /1.0 WLD/.test(document.body.innerText)"));
   pass("The UI separates net value, the gain fee and available cash liquidity");
-  await page.ev("return __q.tab('Plan')");
-  assert.equal(await page.ev("return [...document.querySelectorAll('b')].find(b => b.parentElement.textContent.trim().startsWith('At stake in this vault:'))?.textContent.trim()"), "109.0 WLD");
-  pass("Inheritance status quotes the heir's after-fee 109 WLD instead of the gross 110 WLD");
+  assert.equal(await page.ev("return [...document.querySelectorAll('.stat')].some(s => /estimated WLD after service fee/i.test(s.innerText) && /109.0 WLD/.test(s.innerText))"), true);
+  pass("Asset details quote the after-fee 109 WLD distinctly from the gross 110 WLD");
   await openAssetDetails();
   const walletRead = morpho.interface.encodeFunctionData("balanceOf", [ACCOUNTS.a0.a]);
   await fault(morpho, walletRead);
@@ -446,9 +454,10 @@ try {
   pass("Wallet receipt redemption adds no second service fee");
 
   const beforeIdleRecovery = await token.balanceOf(ACCOUNTS.a0.a);
+  await openAssetDetails();
   await (await token.mint(vault, parseEther("5"))).wait();
   await clickReady("Refresh balance");
-  await until(() => page.ev("return /Idle WLD[\\s\\S]{0,20}5.0 WLD/.test(document.body.innerText)"));
+  await until(() => page.ev("return /Uninvested WLD[\\s\\S]{0,20}5.0 WLD/.test(document.body.innerText)"));
   await clickReady("All");
   assert.equal(await page.ev("return document.getElementById('withdraw-amount').value"), "5.0");
   await clickReady("Withdraw to myself");
@@ -469,6 +478,7 @@ try {
   page = await launch({ pk: ACCOUNTS.a1.pk, url: url + "?vault=" + vault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
   await clickReady("Continue with World App");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'File claim' && !b.d)"));
+  await page.ev("return __q.tab('Plan')");
   await clickReady("File claim");
   await until(() => page.ev("return /Claim confirmed/.test(document.body.innerText)"));
   await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
@@ -483,9 +493,10 @@ try {
   await until(async () => await morpho.balanceOf(ACCOUNTS.a1.a) > 0n);
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Redeem available shares to WLD' && !b.d)"));
   assert.equal(await morpho.balanceOf(vault), 0n);
-  assert.equal(await token.balanceOf(plainVault), parseEther("50"));
+  assert.equal(await token.balanceOf(plainVault), 0n);
+  assert.ok(await plainVaultContract.claimedAt() > 0n);
   pass("After seven days the heir receives illiquid shares through the verified factory");
-  await until(() => page.ev("return /Your inheritance completed/.test(document.body.innerText)"));
+  await until(() => page.ev(`return [...document.querySelectorAll('.inheritance-asset')].some(el=>el.dataset.vault?.toLowerCase()===${JSON.stringify(vault.toLowerCase())}&&!!el.querySelector('.receipt-link'))`), "original canonical payout receipt stays visible");
   assert.doesNotMatch(await page.ev("return document.body.innerText"), /You are neither the owner nor the heir/);
   assert.equal(await yieldVault.inheritanceRecipient(), ACCOUNTS.a1.a);
   assert.equal(await page.ev("return __q.btns().some(button => ['Reset timer', 'Withdraw to myself'].includes(button.t))"), false);
@@ -506,7 +517,8 @@ try {
   await (await yieldFactory.createVault(ACCOUNTS.a1.a, 30 * 86400)).wait();
   const newVault = await yieldFactory.vaultOf(ACCOUNTS.a0.a);
   await page.send("Page.reload", {}); await sleep(1500); await page.ev(HELPERS); await enableAtomicBatch();
-  await until(() => page.ev("return /WLD campaign rewards/.test(document.body.innerText) && /Your inheritance completed/.test(document.body.innerText)"));
+  await until(() => page.ev(`return [...document.querySelectorAll('.inheritance-asset')].some(el=>el.dataset.vault?.toLowerCase()===${JSON.stringify(vault.toLowerCase())}&&!!el.querySelector('.receipt-link'))`), "original canonical payout receipt stays visible");
+  await page.ev("return __q.tab('Assets')");
   await publishReward(parseEther("20"), parseEther("10"));
   await clickReady("Refresh rewards");
   const heirBeforeLateReward = await token.balanceOf(ACCOUNTS.a1.a);
@@ -528,17 +540,19 @@ try {
   await publishReward(parseEther("10"), 0n, 0n, newVault);
   await clickReady("Continue with World App");
   await until(() => page.ev("return /This archived vault/.test(document.body.innerText)"));
+  await page.ev("return __q.tab('Assets')");
   await clickReady("Refresh rewards");
   await clickReady("Claim and reinvest WLD rewards");
   await until(async () => await morpho.balanceOf(newVault) > 0n);
   await until(() => page.ev("return /WLD rewards claimed and reinvested/.test(document.body.innerText)"));
+  await page.ev("return __q.tab('Plan')");
   await clickReady("File claim");
   await until(() => page.ev("return /Claim confirmed/.test(document.body.innerText)"));
   pass("Rewards published after an empty vault was released can still enter its original inheritance review");
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a0.pk, url: url + "?vault=" + newVault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
   await clickReady("Continue with World App");
-  await until(() => page.ev("return /This is your archived vault/.test(document.body.innerText)"));
+  await until(() => page.ev("return /An earlier balance/.test(document.body.innerText)"));
   assert.doesNotMatch(await page.ev("return document.body.innerText"), /You are neither|You are neither of them/);
   for (const tab of ["Assets", "Home", "Plan"]) {
     await page.ev(`return __q.tab(${JSON.stringify(tab)})`);
@@ -558,7 +572,7 @@ try {
   const beforeArchivedPayout = await token.balanceOf(ACCOUNTS.a1.a);
   await clickReady("Complete inheritance");
   await until(async () => await morpho.balanceOf(newVault) === 0n);
-  await until(() => page.ev("return /Claim complete/.test(document.body.innerText)"));
+  await until(() => page.ev("return /Inheritance transfer confirmed/.test(document.body.innerText)"));
   assert.ok(await token.balanceOf(ACCOUNTS.a1.a) - beforeArchivedPayout >= parseEther("9") - 2n);
   assert.equal(await token.balanceOf(currentVault), 0n);
   assert.equal(await morpho.balanceOf(currentVault), 0n);
@@ -574,7 +588,8 @@ try {
   page = await launch({ pk: ACCOUNTS.a0.pk, url: url + "?vault=" + currentVault, preload: withoutPosition(currentVault) }); await page.ev(HELPERS); await enableAtomicBatch();
   await publishReward(parseEther("10"), 0n, 0n, currentVault);
   await clickReady("Continue with World App");
-  await until(() => page.ev("return /This is your archived vault/.test(document.body.innerText)"));
+  await until(() => page.ev("return /An earlier balance/.test(document.body.innerText)"));
+  await page.ev("return __q.tab('Assets')");
   await clickReady("Refresh rewards");
   await clickReady("Claim and reinvest WLD rewards");
   await until(async () => await morpho.balanceOf(currentVault) > 0n);
@@ -600,6 +615,7 @@ try {
   const lateHeirBefore = await token.balanceOf(ACCOUNTS.a1.a);
   await externalReward(newVault, parseEther("20"));
   await page.ev("window.__E2E_REWARDS_DOWN__ = true; return true;");
+  await page.ev("return __q.tab('Assets')");
   await clickReady("Refresh rewards");
   await until(() => page.ev("return /Rewards are temporarily unavailable/.test(document.body.innerText)"));
   await clickReady("Receive remaining WLD rewards");
@@ -642,7 +658,7 @@ try {
   await provider.send("evm_increaseTime", [30 * 86400 + 1]); await provider.send("evm_mine", []);
   await page.send("Page.reload", {}); await sleep(1500); await page.ev(HELPERS); await enableAtomicBatch();
   await page.ev("return __q.tab('Plan')");
-  await clickReady("Release slot");
+  await clickReady("Close this empty plan");
   await page.ev("[...document.querySelectorAll('label')].find(l => l.textContent.includes('I understand the conditions')).querySelector('input').click(); return true;");
   await clickReady("Confirm");
   await until(async () => await yieldFactory.vaultOf(ACCOUNTS.a0.a) === "0x0000000000000000000000000000000000000000");

@@ -35,7 +35,9 @@ function observationIsComplete(snapshot) {
 export function nextObservationAt(snapshot, now = Date.now()) {
   const sooner = [];
   let delay = OBSERVATION_INTERVAL_MS;
-  if (snapshot.claimedAt > 0n) delay = 60_000;
+  // Once settlement is finalized, only an undelivered completion notice remains.
+  // Its retry cooldown is one day; keep one-minute checks only while finality is pending.
+  if (snapshot.claimedAt > 0n) delay = snapshot.settled === true ? 24 * 60 * 60_000 : 60_000;
   else if (!observationIsComplete(snapshot)) delay = 60_000;
   else if (snapshot.claimableNow === true || snapshot.isExpired === true && snapshot.claimPending !== true) delay = 5 * 60_000;
   else if (snapshot.claimPending === true && snapshot.challengeEndsAt !== null) {

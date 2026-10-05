@@ -36,9 +36,9 @@ const extracted = [
 ].join("\n");
 writeFileSync(
   resolve(here, ".alerts-extract.mjs"),
-  extracted + "\nexport { decideAlerts, shouldSend, markAlert, readDelivery, ALERT };\n",
+  extracted + "\nexport { decideAlerts, shouldSend, shouldSendCompletion, markAlert, readDelivery, ALERT };\n",
 );
-const { decideAlerts, shouldSend, markAlert, readDelivery, ALERT } = await import(
+const { decideAlerts, shouldSend, shouldSendCompletion, markAlert, readDelivery, ALERT } = await import(
   resolve(here, ".alerts-extract.mjs")
 );
 
@@ -237,6 +237,20 @@ check("기록이 깨졌으면 보내는 쪽으로 (조용히 삼키지 않는다
 
 check("기록이 아예 없으면 보낸다", () => {
   assert.equal(shouldSend({}, ALERT.HEIR_CLAIMABLE, Date.now()), true);
+});
+
+check("완료 알림은 성공 뒤 중복하지 않고 실패만 재시도한다", () => {
+  const now = Date.parse("2026-09-27T00:00:00Z");
+  const recipient = "0x2222222222222222222222222222222222222222";
+  const prev = {};
+  assert.equal(shouldSendCompletion(prev, recipient, now), true);
+  prev[ALERT.HEIR_COMPLETED] = { at: new Date(now).toISOString(), delivered: false, recipient };
+  assert.equal(shouldSendCompletion(prev, recipient, now + 60_000), false);
+  assert.equal(shouldSendCompletion(prev, recipient, now + 25 * 3600_000), true);
+  prev[ALERT.HEIR_COMPLETED] = { at: new Date(now).toISOString(), delivered: true, recipient };
+  assert.equal(shouldSendCompletion(prev, recipient, now + 30 * 24 * 3600_000), false);
+  prev[ALERT.HEIR_COMPLETED] = { at: new Date(now).toISOString(), delivered: true, recipient: "0x3333333333333333333333333333333333333333" };
+  assert.equal(shouldSendCompletion(prev, recipient, now + 60_000), true, "새 수령자의 완료 기록은 별도로 보낸다");
 });
 
 // ---------------------------------------------------------------- 결과

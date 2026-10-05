@@ -107,6 +107,9 @@ function fixture() {
           "0xde061d66": factory.wld, "0xa8c62e76": factory.strategy };
         if (getters[selector]) result = addressWord(getters[selector]);
       } else if (value) {
+        if (selector === "0xb4a9208c" && value.recipientReadFails) {
+          return Response.json({ jsonrpc: "2.0", id: body.id, error: { message: "recipient read unavailable" } });
+        }
         const selectors = {
           "0x8da5cb5b": addressWord(value.owner), "0x91f2ebb8": addressWord(value.heir),
           "0xc45a0155": addressWord(value.factory), "0xde061d66": addressWord(value.wld || ZERO),
@@ -115,7 +118,8 @@ function fixture() {
           "0x5be9b2d3": word(value.hasAssets ?? BigInt(value.balance ?? 0) > 0n),
           "0x2f13b60c": word(value.expired), "0x03a9f06e": word(value.pending),
           "0xc4671608": word(value.finalizable), "0x12cd6595": word(value.cancelled),
-          "0xd2217fac": word(value.claimedAt), "0x765be13f": word(value.challengeEndsAt),
+          "0xd2217fac": word(value.claimedAt), "0xb4a9208c": addressWord(value.inheritanceRecipient || ZERO),
+          "0x765be13f": word(value.challengeEndsAt),
           "0xe3cfef60": word(value.remaining), "0x561a4fac": word(value.interval),
         };
         result = selectors[selector] ?? word(0);
@@ -134,7 +138,7 @@ function configureUSDC(context, overrides = {}) {
   const value = { owner: OWNER, heir: HEIR, factory: USDC_FACTORY, asset: USDC, rewardToken: WLD,
     strategy: USDC_STRATEGY, known: true, registered: false, pending: false, expired: false,
     finalizable: false, cancelled: false, claimedAt: 0, challengeEndsAt: 0, remaining: 86400,
-    interval: 86400, balance: 0n, totalAssets: 0n, hasAssets: true, ...overrides };
+    interval: 86400, balance: 0n, totalAssets: 0n, hasAssets: true, inheritanceRecipient: null, ...overrides };
   context.vaults.set(USDC_VAULT, value);
   return value;
 }
@@ -363,7 +367,8 @@ try {
   });
   await test("all notification paths require authentication, including no-Origin CLI requests", async (context) => {
     for (const [endpoint, body] of [["", undefined], [`/status?vaultAddress=${VAULT}`, undefined], ["/register", { vaultAddress: VAULT }],
-      ["/unregister", { vaultAddress: VAULT }], ["/test", { walletAddress: OWNER }], ["/check-now", { vaultAddress: VAULT }]]) {
+      ["/unregister", { vaultAddress: VAULT }], ["/test", { walletAddress: OWNER }], ["/check-now", { vaultAddress: VAULT }],
+      ["/open", { vaultAddress: VAULT, notificationPermission: "unknown" }]]) {
       assert.equal((await call(context, endpoint, OWNER, body, null)).status, 401);
     }
     assert.equal((await worker.fetch(new Request("https://notify.test/api/notifications"), context.env)).status, 401);
@@ -392,6 +397,69 @@ try {
     assert.equal((await call(context, "/unregister", HEIR, { vaultAddress: VAULT })).status, 403);
     assert.equal((await call(context, "/unregister", OWNER, { vaultAddress: VAULT })).status, 200);
     assert.equal((await __test.getWatcherByVault(context.env, VAULT)).active, false);
+  });
+  await test("open records passive heir readiness; owner and stale heirs cannot report it", async (context) => {
+    assert.equal((await call(context, "/open", OWNER, { vaultAddress: VAULT, notificationPermission: "granted" })).status, 403);
+    assert.equal((await call(context, "/open", HEIR, { vaultAddress: VAULT, notificationPermission: "prompt" })).status, 400);
+    assert.equal((await call(context, "/open", STRANGER, { vaultAddress: VAULT, notificationPermission: "denied" })).status, 403);
+    let response = await call(context, "/open", HEIR, { vaultAddress: VAULT, notificationPermission: "unknown" });
+    assert.equal(response.status, 200, await response.clone().text());
+    const { heirReadiness } = await response.json();
+    assert.deepEqual(Object.keys(heirReadiness).sort(), ["address", "openedAt", "notificationPermission", "permissionReportedAt"].sort());
+    assert.equal(heirReadiness.address, HEIR);
+    assert.equal(heirReadiness.notificationPermission, "unknown");
+    assert.equal(heirReadiness.permissionReportedAt, heirReadiness.openedAt);
+    assert.equal((await __test.getWatcherByVault(context.env, VAULT)).active, false,
+      "a passive open record does not opt the owner into background notifications");
+    response = await call(context, `/status?vaultAddress=${VAULT}`, OWNER);
+    const statusWatcher = (await response.json()).watcher;
+    assert.deepEqual(statusWatcher.alerts.heirReadiness, heirReadiness);
+    const listed = await (await call(context, "", OWNER)).json();
+    assert.deepEqual(listed.watchers[0].alerts.heirReadiness, heirReadiness);
+
+    context.vaults.get(VAULT).heir = STRANGER;
+    assert.equal((await call(context, "/open", HEIR, { vaultAddress: VAULT, notificationPermission: "granted" })).status, 403);
+    response = await call(context, `/status?vaultAddress=${VAULT}`, OWNER);
+    assert.equal("heirReadiness" in (await response.json()).watcher.alerts, false, "owner view ignores another heir's stale report");
+
+    response = await call(context, "/open", STRANGER, { vaultAddress: VAULT, notificationPermission: "denied" });
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal((await __test.getWatcherByVault(context.env, VAULT)).alerts.heirReadiness.address, STRANGER,
+      "the new heir's report replaces invalid readiness");
+    response = await call(context, `/status?vaultAddress=${VAULT}`, OWNER);
+    const newReadiness = (await response.json()).watcher.alerts.heirReadiness;
+    assert.equal(newReadiness.address, STRANGER);
+    assert.equal(newReadiness.notificationPermission, "denied");
+    assert.equal(context.deliveries.length, 0, "open never sends a notification");
+  });
+  await test("concurrent open requests use the watcher lease", async (context) => {
+    await register(context);
+    const real = globalThis.fetch;
+    let release, held = false;
+    globalThis.fetch = async (input, init) => {
+      const body = JSON.parse(init.body);
+      if (!held && body.method === "eth_call") {
+        held = true;
+        await new Promise(resolve => { release = resolve; });
+      }
+      return context.mockFetch(input, init);
+    };
+    try {
+      const first = call(context, "/open", HEIR, { vaultAddress: VAULT, notificationPermission: "granted" });
+      for (let i = 0; i < 20 && !held; i++) await new Promise(resolve => setTimeout(resolve, 0));
+      assert.equal(held, true, "first request holds the vault lease while chain identity is checked");
+      const second = await call(context, "/open", HEIR, { vaultAddress: VAULT, notificationPermission: "denied" });
+      assert.equal(second.status, 409);
+      release();
+      assert.equal((await first).status, 200);
+    } finally {
+      if (release) release();
+      globalThis.fetch = real;
+    }
+    const stored = await __test.getWatcherByVault(context.env, VAULT);
+    assert.equal(stored.active, true, "open preserves the owner's existing reminder setting");
+    assert.equal(stored.alerts.heirReadiness.notificationPermission, "granted");
+    assert.equal(context.deliveries.length, 0);
   });
   await test("canonical provenance rejects impersonating factory, WLD and unmapped vaults", async (context) => {
     context.vaults.set(FAKE_VAULT, { ...context.vaults.get(VAULT), registered: false });
@@ -453,8 +521,10 @@ try {
     assert.equal(state.registered, false, "yield registry membership is independent of the owner's current slot");
 
     state.heir = ZERO;
-    state.claimedAt = 1;
-    assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, HEIR)).status, 403);
+    state.claimedAt = Math.floor(Date.now() / 1000);
+    state.inheritanceRecipient = HEIR;
+    context.finalizedVaults.set(USDC_VAULT, { ...state });
+    assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, HEIR)).status, 200);
     assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, OWNER)).status, 200);
   });
   for (const [label, change] of [
@@ -569,6 +639,9 @@ try {
     await register(context, OTHER_VAULT, OTHER_OWNER);
     let data = await (await call(context, "", HEIR)).json();
     assert.deepEqual(data.watchers.map((entry) => entry.vaultAddress), [VAULT]);
+    const stale = await __test.getWatcherByVault(context.env, VAULT);
+    stale.alerts.inheritanceRecipient = HEIR;
+    await __test.saveWatcher(context.env, stale);
     context.vaults.get(VAULT).heir = STRANGER;
     data = await (await call(context, "", HEIR)).json();
     assert.deepEqual(data.watchers, []);
@@ -651,6 +724,64 @@ try {
     assert.equal(context.deliveries.length, 2);
     assert.equal(externalCalls, 42);
     console.log("  USDC pages: 44/44/33 requests; notification cycle: 42 requests");
+  });
+  await test("settled USDC discovery stays below 50 requests with finalized recipient proof", async (context) => {
+    const addresses = await addRelatedWatchers(context, 4);
+    const settledAt = Math.floor(Date.now() / 1000);
+    const state = configureUSDC(context, {
+      heir: ZERO, claimedAt: settledAt, inheritanceRecipient: HEIR,
+      totalAssets: 0n, balance: 0n, hasAssets: false,
+    });
+    for (const address of addresses) {
+      const owner = context.vaults.get(address).owner;
+      const settled = { ...state, owner };
+      context.vaults.set(address, settled);
+      context.finalizedVaults.set(address, { ...settled });
+      await __test.saveWatcher(context.env, watcher(address, owner, ZERO, { inheritanceRecipient: HEIR }));
+    }
+    let externalCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      if (++externalCalls > 50) throw new Error("Too many external subrequests");
+      return context.mockFetch(input, init);
+    };
+    const counts = [], found = [];
+    let cursor = null;
+    do {
+      externalCalls = 0;
+      const response = await call(context, cursor ? `?cursor=${cursor}` : "", HEIR);
+      assert.equal(response.status, 200, await response.clone().text());
+      const data = await response.json();
+      assert.ok(data.watchers.length <= 4);
+      found.push(...data.watchers.map(entry => entry.vaultAddress));
+      counts.push(externalCalls);
+      cursor = data.nextCursor;
+    } while (cursor);
+    assert.deepEqual(found, addresses);
+    assert.deepEqual(counts, [48]);
+    console.log("  Settled USDC page: 48 requests (finalized recipient getter proves settlement)");
+  });
+  await test("two settled yield completion deliveries stay below the 50-request cycle limit", async (context) => {
+    const addresses = await addRelatedWatchers(context, 2);
+    const state = configureUSDC(context, {
+      heir: ZERO, claimedAt: Math.floor(Date.now() / 1000), inheritanceRecipient: HEIR,
+      totalAssets: 0n, balance: 0n, hasAssets: false,
+    });
+    for (const address of addresses) {
+      const settled = { ...state, owner: context.vaults.get(address).owner };
+      context.vaults.set(address, settled);
+      context.finalizedVaults.set(address, { ...settled });
+      await __test.saveWatcher(context.env, watcher(address, settled.owner, HEIR));
+    }
+    let externalCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      if (++externalCalls > 50) throw new Error("Too many external subrequests");
+      return context.mockFetch(input, init);
+    };
+    const cycle = await __test.runCheckCycle(context.env);
+    assert.deepEqual(cycle, { checked: 2, notified: 2 });
+    assert.equal(context.deliveries.length, 2);
+    assert.equal(externalCalls, 44);
+    console.log(`  Settled yield completion cycle: ${externalCalls} requests`);
   });
   await test("RPC failures during watcher verification fail the page instead of reporting partial success", async (context) => {
     const addresses = await addRelatedWatchers(context, 9);
@@ -751,6 +882,116 @@ try {
     assert.deepEqual(listed.watchers.map((entry) => entry.vaultAddress), [VAULT]);
     assert.equal(listed.watchers[0].heirAddress, ZERO);
   });
+  await test("finalized yield recipient rediscovers zeroed and stale-heir rows by canonical recipient", async (context) => {
+    const settledAt = Math.floor(Date.now() / 1000);
+    const state = configureUSDC(context, {
+      heir: ZERO, claimedAt: settledAt, inheritanceRecipient: HEIR,
+      totalAssets: 0n, balance: 0n, hasAssets: false,
+    });
+    const oldHeirVault = "0x" + "45".repeat(20);
+    context.vaults.set(oldHeirVault, { ...state, owner: OTHER_OWNER });
+    context.finalizedVaults.set(USDC_VAULT, { ...state });
+    context.finalizedVaults.set(oldHeirVault, { ...state, owner: OTHER_OWNER });
+    const completion = { at: new Date().toISOString(), delivered: true, recipient: HEIR };
+    await __test.saveWatcher(context.env, {
+      ...watcher(USDC_VAULT, OWNER, ZERO, { inheritanceRecipient: HEIR, heir_completed: completion }), active: false,
+    });
+    await __test.saveWatcher(context.env, {
+      ...watcher(oldHeirVault, OTHER_OWNER, STRANGER, { inheritanceRecipient: HEIR, heir_completed: completion }), active: false,
+    });
+
+    for (const vault of [USDC_VAULT, oldHeirVault]) {
+      const response = await call(context, `/status?vaultAddress=${vault}`, HEIR);
+      assert.equal(response.status, 200, await response.clone().text());
+      const { watcher: listed } = await response.json();
+      assert.equal(listed.heirAddress, HEIR);
+      assert.equal(listed.inheritanceRecipient, HEIR);
+      assert.equal(listed.settled, true);
+    }
+    const history = await call(context, "", HEIR);
+    assert.equal(history.status, 200);
+    const entries = (await history.json()).watchers;
+    assert.deepEqual(entries.map(entry => entry.vaultAddress), [oldHeirVault, USDC_VAULT].sort());
+    assert.ok(entries.every(entry => entry.heirAddress === HEIR && entry.settled));
+    assert.equal((await call(context, `/status?vaultAddress=${oldHeirVault}`, STRANGER)).status, 403);
+    assert.deepEqual((await (await call(context, "", STRANGER)).json()).watchers, []);
+    assert.equal(context.deliveries.length, 0);
+  });
+  await test("yield recipient read failure cannot authorize historical access", async (context) => {
+    const settledAt = Math.floor(Date.now() / 1000);
+    const state = configureUSDC(context, {
+      heir: ZERO, claimedAt: settledAt, inheritanceRecipient: HEIR,
+      recipientReadFails: true, totalAssets: 0n, balance: 0n, hasAssets: false,
+    });
+    context.finalizedVaults.set(USDC_VAULT, { ...state });
+    await __test.saveWatcher(context.env, watcher(USDC_VAULT, OWNER, ZERO, { inheritanceRecipient: HEIR }));
+    assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, HEIR)).status, 503);
+    assert.equal((await call(context, "", HEIR)).status, 503);
+    assert.equal(context.deliveries.length, 0);
+  });
+  await test("yield completion waits for canonical finality, delivers to the immutable recipient once", async (context) => {
+    const state = configureUSDC(context, {
+      expired: true, pending: true, finalizable: true, challengeEndsAt: 1,
+      totalAssets: 0n, balance: 0n, hasAssets: true,
+    });
+    await register(context, USDC_VAULT);
+    const settledAt = Math.floor(Date.now() / 1000);
+    Object.assign(state, { heir: ZERO, claimedAt: settledAt, inheritanceRecipient: HEIR, hasAssets: false });
+    context.finalizedVaults.set(USDC_VAULT, { ...state, heir: HEIR, claimedAt: 0, inheritanceRecipient: null });
+
+    assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 1, notified: 0 });
+    let stored = await __test.getWatcherByVault(context.env, USDC_VAULT);
+    assert.equal(stored.active, true);
+    assert.equal(stored.heirAddress, HEIR);
+    assert.equal(stored.alerts.heir_completed, undefined);
+    assert.equal(context.deliveries.length, 0, "latest-only settlement cannot send before finality");
+    assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, HEIR)).status, 403,
+      "the provisional recipient cannot read the completed journey before finality");
+
+    context.finalizedVaults.set(USDC_VAULT, { ...state });
+    await register(context, USDC_VAULT);
+    assert.equal((await __test.getWatcherByVault(context.env, USDC_VAULT)).active, true,
+      "re-registering cannot retire pending completion handling");
+    assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 1, notified: 1 });
+    stored = await __test.getWatcherByVault(context.env, USDC_VAULT);
+    assert.equal(stored.active, false);
+    assert.equal(stored.heirAddress, HEIR);
+    assert.equal(stored.alerts.inheritanceRecipient, HEIR);
+    assert.equal(stored.alerts.heir_completed.delivered, true);
+    assert.equal(stored.alerts.heir_completed.recipient, HEIR);
+    assert.deepEqual(context.deliveries[0].wallet_addresses, [HEIR]);
+    assert.equal(context.deliveries[0].title, "Your inheritance is complete");
+    assert.match(context.deliveries[0].message, /cash or receipt shares may have arrived/i);
+    assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 0, notified: 0 });
+    assert.equal(context.deliveries.length, 1);
+  });
+  await test("failed completion delivery remains active and retries after the durable cooldown", async (context) => {
+    const state = configureUSDC(context, {
+      heir: ZERO, claimedAt: Math.floor(Date.now() / 1000), inheritanceRecipient: HEIR,
+      totalAssets: 0n, balance: 0n, hasAssets: false,
+    });
+    context.finalizedVaults.set(USDC_VAULT, { ...state });
+    await __test.saveWatcher(context.env, watcher(USDC_VAULT, OWNER, HEIR));
+    context.setSendHook(() => { throw new Error("fixture delivery failure"); });
+
+    assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 1, notified: 0 });
+    let stored = await __test.getWatcherByVault(context.env, USDC_VAULT);
+    assert.equal(stored.active, true);
+    assert.equal(stored.alerts.heir_completed.delivered, false);
+    assert.match(stored.alerts.heir_completed.reason, /fixture delivery failure/);
+    assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 1, notified: 0 });
+    assert.equal(context.deliveries.length, 1, "a failed attempt is not retried on every watcher tick");
+
+    const alerts = stored.alerts;
+    alerts.heir_completed.at = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    await __test.saveWatcher(context.env, stored);
+    context.setSendHook(null);
+    assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 1, notified: 1 });
+    stored = await __test.getWatcherByVault(context.env, USDC_VAULT);
+    assert.equal(stored.active, false);
+    assert.equal(stored.alerts.heir_completed.delivered, true);
+    assert.equal(context.deliveries.length, 2);
+  });
   await test("completed vault grants no cached former-heir or stranger access", async (context) => {
     await register(context);
     Object.assign(context.vaults.get(VAULT), { heir: ZERO, claimedAt: Math.floor(Date.now() / 1000), balance: 0n });
@@ -767,27 +1008,22 @@ try {
     assert.equal((await call(context, `/status?vaultAddress=${VAULT}`, HEIR)).status, 403);
     assert.equal(context.deliveries.length, 0);
   });
-  await test("completed checks deactivate safely and registration never rearms terminal delivery", async (context) => {
+  await test("basic settlement never notifies a cached former heir without recipient proof", async (context) => {
     const stamp = new Date().toISOString();
     const alerts = { heir_finalizable: { at: stamp, delivered: true } };
-    await __test.saveWatcher(context.env, { ...watcher(VAULT, OWNER, HEIR, alerts), notifiedHeirAddress: HEIR, notifiedAt: stamp });
-    // Late deposits do not revive inheritance reminders after the irreversible claim.
+    await __test.saveWatcher(context.env, { ...watcher(VAULT, OWNER, STRANGER, alerts), notifiedHeirAddress: STRANGER, notifiedAt: stamp });
     Object.assign(context.vaults.get(VAULT), { heir: ZERO, claimedAt: Math.floor(Date.now() / 1000), balance: 1n, finalizable: true });
     assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 1, notified: 0 });
     let stored = await __test.getWatcherByVault(context.env, VAULT);
     assert.equal(stored.active, false);
-    assert.equal(stored.lastClaimable, false);
     assert.equal(stored.heirAddress, ZERO);
     assert.equal(stored.lastError, null);
     assert.deepEqual(stored.alerts, alerts);
-    assert.deepEqual(await __test.runCheckCycle(context.env), { checked: 0, notified: 0 });
+    assert.equal(context.deliveries.length, 0);
     await register(context);
     stored = await __test.getWatcherByVault(context.env, VAULT);
     assert.equal(stored.active, false);
-    assert.deepEqual(stored.alerts, alerts);
-    assert.equal(stored.notifiedHeirAddress, HEIR);
-    assert.equal(stored.notifiedAt, stamp);
-    assert.equal((await call(context, "/unregister", OWNER, { vaultAddress: VAULT })).status, 200);
+    assert.equal((await call(context, `/status?vaultAddress=${VAULT}`, STRANGER)).status, 403);
     assert.equal(context.deliveries.length, 0);
   });
   await test("manual payout remains monitored before finality and a removed payout resumes alerts", async (context) => {

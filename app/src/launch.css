@@ -101,3 +101,25 @@
 }
 
 .asset-money-card .stat-label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.5; min-height: 2.5em; }
+
+.heir-plans { display: grid; gap: 16px; }
+.inheritance-assets { display: grid; gap: 12px; }
+.inheritance-asset { padding: 16px; border: 1px solid var(--line, #e6e7e2); border-radius: 16px; background: var(--canvas, #fafbf7); display: grid; gap: 6px; }
+.inheritance-asset > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.inheritance-asset p { margin: 0; }
+.inheritance-amount { font-size: 1.4rem; font-weight: 650; overflow-wrap: anywhere; }
+.inheritance-amount small { display: block; font-size: .75rem; font-weight: 400; }
+.inheritance-state { font-size: .72rem; border-radius: 20px; padding: 4px 8px; background: #eaf1ed; color: #315746; }
+.state-expired, .state-ready { background: #f9ebd5; color: #745016; }
+.inheritance-next, .inheritance-asset small { color: #59665c; font-size: .8rem; }
+.receipt-link { font-size: .8rem; text-decoration: underline; }
+.inheritance-steps { display: grid; gap: 8px; padding-left: 20px; }
+.heir-readiness { padding-top: 12px; border-top: 1px solid var(--line, #e6e7e2); font-size: .8rem; }
+.heir-readiness small { display: block; color: #657066; }
+.plan-ready-card { border-color: #a9c5b4; }
+.owner-plan-settings .field-row { width: 100%; }
+.owner-plan-settings .field-row-controls { flex-wrap: wrap; }
+.owner-plan-settings input { min-width: 0; }
+.heir-plan-card, .invite-heir-card { overflow-wrap: anywhere; }
+.plan-service-details { padding: 12px 16px; font-size: .8rem; color: #59665c; }
+.plan-service-details .automation-note { margin-top: 12px; }

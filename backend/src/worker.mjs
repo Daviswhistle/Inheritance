@@ -38,6 +38,7 @@ const SELECTORS = {
   HEARTBEAT_INTERVAL: "0x561a4fac", // heartbeatInterval()
   CANCELLED: "0x12cd6595",          // inheritanceCancelled()
   CLAIMED_AT: "0xd2217fac",          // claimedAt()          최종 수령 완료 시각
+  INHERITANCE_RECIPIENT: "0xb4a9208c", // inheritanceRecipient(), yield vaults only
   STRATEGY: "0xa8c62e76",            // strategy()
   TOTAL_ASSETS: "0x01e1d114",        // totalAssets()
   HAS_ASSETS: "0x5be9b2d3",          // hasAssets()
@@ -265,6 +266,10 @@ const terminalFinalized = async (env, identity, released = false) => {
         SELECTORS.VAULT_OF + padAddress(identity.ownerAddress), "finalized"));
       return mapped !== identity.vaultAddress;
     }
+    // Yield contracts atomically set this immutable recipient with claimedAt.
+    // A nonzero read at the finalized block therefore proves settlement without
+    // a second finalized eth_call.
+    if (identity.yieldVault && identity.claimedAt > 0n) return Boolean(identity.inheritanceRecipient);
     return decodeUint(await ethCall(env, identity.vaultAddress, SELECTORS.CLAIMED_AT, "finalized")) > 0n;
   } catch {
     return false;
@@ -392,17 +397,31 @@ const getVaultIdentity = async (env, vaultAddress) => {
   if (heirAddress === ZERO_ADDRESS && claimedAt === 0n) {
     throw new HttpError(400, "A vault without an heir must have a completed claim");
   }
+  let inheritanceRecipient = null;
+  if (yieldVault && claimedAt > 0n) {
+    try {
+      const finalizedRecipient = decodeAddress(await ethCall(env, vault, SELECTORS.INHERITANCE_RECIPIENT, "finalized"));
+      if (finalizedRecipient !== ZERO_ADDRESS) inheritanceRecipient = finalizedRecipient;
+    } catch {
+      throw new HttpError(503, "Could not verify the yield vault's inheritance recipient");
+    }
+  }
   return { vaultAddress: vault, ownerAddress, heirAddress, factoryAddress, tokenAddress, claimedAt,
-    yieldVault };
+    yieldVault, inheritanceRecipient,
+    settled: yieldVault && claimedAt > 0n && inheritanceRecipient !== null };
 };
 
 const requireVaultAccess = async (env, vaultAddress, walletAddress, ownerOnly = false) => {
   const identity = await getVaultIdentity(env, vaultAddress);
-  if (!addrEq(walletAddress, identity.ownerAddress)
-    && (ownerOnly || identity.claimedAt > 0n || !addrEq(walletAddress, identity.heirAddress))) {
+  const isOwner = addrEq(walletAddress, identity.ownerAddress);
+  const settled = identity.claimedAt > 0n && await terminalFinalized(env, identity);
+  const currentHeir = identity.claimedAt === 0n && addrEq(walletAddress, identity.heirAddress);
+  const completedBeneficiary = identity.yieldVault && identity.claimedAt > 0n && settled
+    && addrEq(walletAddress, identity.inheritanceRecipient);
+  if (!isOwner && (ownerOnly || (!currentHeir && !completedBeneficiary))) {
     throw new HttpError(403, ownerOnly ? "Only the vault owner can disable reminders" : "Wallet is not the vault owner or heir");
   }
-  return identity;
+  return { ...identity, settled };
 };
 
 const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
@@ -453,6 +472,9 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
     claimableNow,
     cancelled,
     claimedAt,
+    inheritanceRecipient: checked.inheritanceRecipient || null,
+    yieldVault: checked.yieldVault === true,
+    settled: checked.settled === true,
     challengeEndsAt,
     timeRemaining,
     heartbeatInterval,
@@ -474,6 +496,30 @@ const rowToWatcher = (row) => {
     notifiedAt: row.notified_at || null,
     alerts: parseAlerts(row.alerts),
     lastError: row.last_error || null,
+  };
+};
+
+const watcherForIdentity = (watcher, identity) => {
+  const alerts = parseAlerts(watcher.alerts);
+  if (identity.claimedAt > 0n && identity.yieldVault && identity.inheritanceRecipient) {
+    alerts.inheritanceRecipient = identity.inheritanceRecipient;
+  } else {
+    delete alerts.inheritanceRecipient;
+  }
+  const expectedReadinessAddress = identity.claimedAt > 0n
+    ? identity.inheritanceRecipient || ZERO_ADDRESS
+    : identity.heirAddress;
+  if (alerts.heirReadiness && !addrEq(alerts.heirReadiness.address, expectedReadinessAddress)) {
+    delete alerts.heirReadiness;
+  }
+  return {
+    ...watcher,
+    ownerAddress: identity.ownerAddress,
+    heirAddress: identity.claimedAt > 0n && identity.yieldVault && identity.inheritanceRecipient
+      ? identity.inheritanceRecipient : identity.heirAddress,
+    inheritanceRecipient: identity.inheritanceRecipient || null,
+    settled: identity.settled === true,
+    alerts,
   };
 };
 
@@ -565,8 +611,12 @@ const listWatchers = async (env, onlyActive = false, walletAddress = null, page 
   const bindings = [];
   if (onlyActive) conditions.push("active = 1");
   if (walletAddress) {
-    conditions.push("(owner_address = ? OR heir_address = ?)");
-    bindings.push(walletAddress, walletAddress);
+    conditions.push(`(owner_address = ? OR heir_address = ? OR notified_heir_address = ?
+      OR CASE WHEN json_valid(alerts) THEN json_extract(alerts, '$.inheritanceRecipient') END = ?
+      OR CASE WHEN json_valid(alerts) THEN json_extract(alerts, '$.heir_completed.recipient') END = ?
+      OR CASE WHEN json_valid(alerts) THEN json_extract(alerts, '$.heir_claimable.recipient') END = ?
+      OR CASE WHEN json_valid(alerts) THEN json_extract(alerts, '$.heir_finalizable.recipient') END = ?)`);
+    bindings.push(walletAddress, walletAddress, walletAddress, walletAddress, walletAddress, walletAddress, walletAddress);
   }
   if (page?.after) {
     conditions.push("vault_address > ?");
@@ -610,13 +660,29 @@ const upsertWatcherFromSnapshot = async (env, snapshot) => withWatcherLease(env,
   const prev = await getWatcherByVault(env, snapshot.vaultAddress);
   const stamp = nowIso();
   const observedSettled = snapshot.claimedAt > 0n;
-  const settled = observedSettled && await terminalFinalized(env, snapshot);
+  const settled = observedSettled && (snapshot.settled === true || await terminalFinalized(env, snapshot));
+  const alerts = parseAlerts(prev?.alerts);
+  const settlementRecipient = settled
+    ? snapshot.yieldVault ? snapshot.inheritanceRecipient : null
+    : null;
+  let completion = alerts[ALERT.HEIR_COMPLETED];
+  if (settled && settlementRecipient && completion?.recipient && !addrEq(completion.recipient, settlementRecipient)) {
+    delete alerts[ALERT.HEIR_COMPLETED];
+    completion = null;
+  }
+  if (settled && snapshot.yieldVault && settlementRecipient) alerts.inheritanceRecipient = settlementRecipient;
+  if (prev && !observedSettled && !addrEq(prev.heirAddress, snapshot.heirAddress)) {
+    delete alerts[ALERT.HEIR_CLAIMABLE];
+    delete alerts[ALERT.HEIR_FINALIZABLE];
+    delete alerts.heirReadiness;
+  }
   const keepNotifiedHeir = prev?.notifiedHeirAddress && (observedSettled || addrEq(prev.notifiedHeirAddress, snapshot.heirAddress));
   const watcher = {
     vaultAddress: snapshot.vaultAddress,
     ownerAddress: snapshot.ownerAddress,
-    heirAddress: observedSettled && !settled ? prev?.heirAddress || snapshot.heirAddress : snapshot.heirAddress,
-    active: !settled,
+    heirAddress: settled && settlementRecipient ? settlementRecipient
+      : observedSettled ? prev?.heirAddress || snapshot.heirAddress : snapshot.heirAddress,
+    active: !settled || snapshot.yieldVault && completion?.delivered !== true,
     createdAt: prev?.createdAt || stamp,
     updatedAt: stamp,
     lastCheckedAt: prev?.lastCheckedAt || null,
@@ -625,12 +691,8 @@ const upsertWatcherFromSnapshot = async (env, snapshot) => withWatcherLease(env,
     notifiedHeirAddress: keepNotifiedHeir ? prev.notifiedHeirAddress : null,
     notifiedAt: keepNotifiedHeir ? prev.notifiedAt : null,
     lastError: null,
-    alerts: parseAlerts(prev?.alerts),
+    alerts,
   };
-  if (prev && !observedSettled && !addrEq(prev.heirAddress, snapshot.heirAddress)) {
-    delete watcher.alerts[ALERT.HEIR_CLAIMABLE];
-    delete watcher.alerts[ALERT.HEIR_FINALIZABLE];
-  }
   await saveWatcher(env, watcher);
   await recordObservation(env, snapshot);
   return watcher;
@@ -742,6 +804,7 @@ const ALERT = {
   OWNER_CLAIM_FILED: "owner_claim_filed",
   OWNER_EXPIRING: "owner_expiring",
   HEIR_FINALIZABLE: "heir_finalizable",
+  HEIR_COMPLETED: "heir_completed",
 };
 
 /**
@@ -774,6 +837,16 @@ const shouldSend = (prevAlerts, kind, nowMs) => {
 /** 시도 결과를 기록한다. 실패도 기록한다 — 그래야 ��마다 재시도하지 않는다. */
 const markAlert = (prevAlerts, kind, stamp, delivered, reason = null) => {
   prevAlerts[kind] = delivered ? { at: stamp, delivered: true } : { at: stamp, delivered: false, reason };
+};
+
+const shouldSendCompletion = (prevAlerts, recipient, nowMs) => {
+  const rec = prevAlerts[ALERT.HEIR_COMPLETED];
+  if (typeof rec === "string") return false;
+  if (rec?.recipient && String(rec.recipient).toLowerCase() !== String(recipient).toLowerCase()) return true;
+  if (rec?.delivered === true) return false;
+  if (!rec) return true;
+  const at = Date.parse(rec.at || "");
+  return !Number.isFinite(at) || nowMs - at >= ALERT_RETRY_MS;
 };
 
 /** 기한 임박 기준: 주기의 5% 이내. 주기 대비 비율이라 기간 길이와 무관하다. */
@@ -878,24 +951,99 @@ export const checkWatcher = async (env, watcher, caller = null) => {
       let next = { ...current, updatedAt: stamp, lastCheckedAt: stamp };
       try {
         const snapshot = await getVaultSnapshot(env, current.vaultAddress);
-        if (caller && !addrEq(caller, snapshot.ownerAddress)
-          && (snapshot.claimedAt > 0n || !addrEq(caller, snapshot.heirAddress))) {
+        const isOwner = caller && addrEq(caller, snapshot.ownerAddress);
+        const isCurrentHeir = caller && snapshot.claimedAt === 0n && addrEq(caller, snapshot.heirAddress);
+        let settlementFinalized = null;
+        const isCompletedBeneficiary = caller && snapshot.claimedAt > 0n && snapshot.yieldVault
+          && addrEq(caller, snapshot.inheritanceRecipient)
+          && (settlementFinalized = await terminalFinalized(env, snapshot));
+        if (caller && !isOwner && !isCurrentHeir && !isCompletedBeneficiary) {
           throw new HttpError(403, "Wallet is not the vault owner or heir");
         }
         await recordObservation(env, snapshot);
         if (snapshot.claimedAt > 0n) {
-          const finalized = await terminalFinalized(env, snapshot);
-          await saveWatcher(env, {
-            ...next, ownerAddress: snapshot.ownerAddress,
-            heirAddress: finalized ? snapshot.heirAddress : current.heirAddress,
-            active: !finalized, lastClaimable: false, lastVaultBalance: snapshot.vaultBalance.toString(), lastError: null,
-          });
-          return { notified: false, reason: finalized ? "already_settled" : "settlement_pending_finality" };
+          const finalized = settlementFinalized ?? await terminalFinalized(env, snapshot);
+          const prevAlerts = parseAlerts(current.alerts);
+          const recipient = snapshot.inheritanceRecipient;
+          if (!finalized) {
+            await saveWatcher(env, {
+              ...next, ownerAddress: snapshot.ownerAddress, heirAddress: current.heirAddress,
+              active: true, lastClaimable: false, lastVaultBalance: snapshot.vaultBalance.toString(), lastError: null,
+            });
+            return { notified: false, reason: "settlement_pending_finality" };
+          }
+          if (!snapshot.yieldVault) {
+            await saveWatcher(env, { ...next, ownerAddress: snapshot.ownerAddress, heirAddress: snapshot.heirAddress,
+              active: false, lastClaimable: false, lastVaultBalance: snapshot.vaultBalance.toString(), lastError: null });
+            return { notified: false, reason: "already_settled" };
+          }
+          if (!recipient || recipient === ZERO_ADDRESS) {
+            await saveWatcher(env, {
+              ...next, ownerAddress: snapshot.ownerAddress, heirAddress: current.heirAddress,
+              active: true, lastClaimable: false, lastVaultBalance: snapshot.vaultBalance.toString(),
+              lastError: "Could not verify the settlement recipient", alerts: prevAlerts,
+            });
+            return { notified: false, reason: "completion_recipient_unavailable" };
+          }
+          const previousCompletion = prevAlerts[ALERT.HEIR_COMPLETED];
+          if (previousCompletion?.recipient && !addrEq(previousCompletion.recipient, recipient)) {
+            delete prevAlerts[ALERT.HEIR_COMPLETED];
+          }
+          if (snapshot.yieldVault) prevAlerts.inheritanceRecipient = recipient;
+          const completion = prevAlerts[ALERT.HEIR_COMPLETED];
+          next = {
+            ...next, ownerAddress: snapshot.ownerAddress, heirAddress: recipient,
+            active: completion?.delivered !== true, lastClaimable: false,
+            lastVaultBalance: snapshot.vaultBalance.toString(), alerts: prevAlerts,
+          };
+          if (!shouldSendCompletion(prevAlerts, recipient, Date.parse(stamp))) {
+            next.lastError = completion?.delivered === true ? null : current.lastError || "Completion notification retry is pending";
+            await saveWatcher(env, next);
+            return { notified: false, reason: completion?.delivered === true ? "already_settled" : "completion_retry_pending" };
+          }
+
+          // Reserve the durable attempt before the external send. A crash or a failed
+          // delivery stays active and is retried after the normal alert cooldown.
+          prevAlerts[ALERT.HEIR_COMPLETED] = {
+            at: stamp, delivered: false, reason: "delivery in progress", recipient,
+          };
+          next.active = true;
+          next.lastError = null;
+          await saveWatcher(env, next);
+          try {
+            const response = await sendWorldNotification(env, {
+              walletAddress: recipient,
+              title: "Your inheritance is complete",
+              message: "Your inheritance was finalized. Cash or receipt shares may have arrived in your wallet; open the app to review the vault.",
+              vaultAddress: snapshot.vaultAddress,
+            });
+            const outcome = readDelivery(response, recipient);
+            prevAlerts[ALERT.HEIR_COMPLETED] = {
+              at: stamp, delivered: outcome.delivered, reason: outcome.reason || undefined, recipient,
+            };
+            next.active = !outcome.delivered;
+            next.lastError = outcome.delivered ? null : `undelivered ${ALERT.HEIR_COMPLETED}: ${outcome.reason}`;
+            await saveWatcher(env, next);
+            return {
+              notified: outcome.delivered,
+              reason: outcome.delivered ? "completion_sent" : "completion_undelivered",
+              sent: outcome.delivered ? [ALERT.HEIR_COMPLETED] : [],
+              undelivered: outcome.delivered ? [] : [`${ALERT.HEIR_COMPLETED}: ${outcome.reason}`],
+            };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            prevAlerts[ALERT.HEIR_COMPLETED] = { at: stamp, delivered: false, reason: message, recipient };
+            next.active = true;
+            next.lastError = `undelivered ${ALERT.HEIR_COMPLETED}: ${message}`;
+            await saveWatcher(env, next);
+            return { notified: false, reason: "completion_undelivered", undelivered: [`${ALERT.HEIR_COMPLETED}: ${message}`] };
+          }
         }
         const prevAlerts = { ...parseAlerts(current.alerts) };
         if (!addrEq(current.heirAddress, snapshot.heirAddress)) {
           delete prevAlerts[ALERT.HEIR_CLAIMABLE];
           delete prevAlerts[ALERT.HEIR_FINALIZABLE];
+          delete prevAlerts.heirReadiness;
         }
         next = {
           ...next, ownerAddress: snapshot.ownerAddress, heirAddress: snapshot.heirAddress,
@@ -1037,7 +1185,7 @@ const handleRequest = async (request, env) => {
     for (const watcher of page) {
       try {
         const identity = await requireVaultAccess(env, watcher.vaultAddress, caller);
-        watchers.push({ ...watcher, ownerAddress: identity.ownerAddress, heirAddress: identity.heirAddress });
+        watchers.push(watcherForIdentity(watcher, identity));
       } catch (error) {
         // Known stale membership/noncanonical identity grants no access. Transport,
         // config and subrequest-limit failures must never masquerade as a full page.
@@ -1051,8 +1199,9 @@ const handleRequest = async (request, env) => {
   if (request.method === "GET" && url.pathname === "/api/notifications/status") {
     const vault = normalizeAddress(url.searchParams.get("vaultAddress"));
     if (!vault) throw new HttpError(400, "vaultAddress is required");
-    await requireVaultAccess(env, vault, caller);
-    return jsonResponse(200, { status: "success", watcher: await getWatcherByVault(env, vault) }, cors.headers);
+    const identity = await requireVaultAccess(env, vault, caller);
+    const watcher = await getWatcherByVault(env, vault);
+    return jsonResponse(200, { status: "success", watcher: watcher ? watcherForIdentity(watcher, identity) : null }, cors.headers);
   }
   if (request.method !== "POST") throw new HttpError(404, "Not found");
   let body;
@@ -1063,6 +1212,47 @@ const handleRequest = async (request, env) => {
   }
   const vault = normalizeAddress(body?.vaultAddress);
 
+  if (url.pathname === "/api/notifications/open") {
+    if (!vault) throw new HttpError(400, "vaultAddress is required");
+    if (!["granted", "denied", "unknown"].includes(body?.notificationPermission)) {
+      throw new HttpError(400, "notificationPermission must be granted, denied or unknown");
+    }
+    const readiness = await withWatcherLease(env, vault, async () => {
+      const identity = await getVaultIdentity(env, vault);
+      if (identity.claimedAt > 0n || addrEq(caller, identity.ownerAddress) || !addrEq(caller, identity.heirAddress)) {
+        throw new HttpError(403, "Only the current heir can report readiness");
+      }
+      const current = await getWatcherByVault(env, vault);
+      const alerts = parseAlerts(current?.alerts);
+      if (current && !addrEq(current.heirAddress, identity.heirAddress)) {
+        delete alerts[ALERT.HEIR_CLAIMABLE];
+        delete alerts[ALERT.HEIR_FINALIZABLE];
+        delete alerts.heirReadiness;
+      }
+      const stamp = nowIso();
+      const base = current || {
+        vaultAddress: vault, ownerAddress: identity.ownerAddress, heirAddress: identity.heirAddress,
+        active: false, createdAt: stamp, updatedAt: stamp, lastCheckedAt: null, lastClaimable: false,
+        lastVaultBalance: "0", notifiedHeirAddress: null, notifiedAt: null, lastError: null, alerts,
+      };
+      const observed = {
+        address: caller,
+        openedAt: stamp,
+        notificationPermission: body.notificationPermission,
+        permissionReportedAt: stamp,
+      };
+      await saveWatcher(env, {
+        ...base,
+        ownerAddress: identity.ownerAddress,
+        heirAddress: identity.heirAddress,
+        updatedAt: stamp,
+        alerts: { ...alerts, heirReadiness: observed },
+      });
+      return observed;
+    });
+    return jsonResponse(200, { status: "success", heirReadiness: readiness }, cors.headers);
+  }
+
   if (url.pathname === "/api/notifications/register") {
     if (!vault) throw new HttpError(400, "vaultAddress is required");
     const identity = await requireVaultAccess(env, vault, caller);
@@ -1072,7 +1262,7 @@ const handleRequest = async (request, env) => {
     const snapshot = await getVaultSnapshot(env, vault, identity);
     const watcher = await upsertWatcherFromSnapshot(env, snapshot);
     if (watcher.active) await requestWatcherSchedule(env, vault);
-    return jsonResponse(200, { status: "success", watcher }, cors.headers);
+    return jsonResponse(200, { status: "success", watcher: watcherForIdentity(watcher, identity) }, cors.headers);
   }
   if (url.pathname === "/api/notifications/unregister") {
     if (!vault) throw new HttpError(400, "vaultAddress is required");
