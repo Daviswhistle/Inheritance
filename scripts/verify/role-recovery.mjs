@@ -1,4 +1,4 @@
-// A single failed identity read must recover without another sign-in or reload.
+// An identity-read outage must recover without another sign-in or reload.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -27,7 +27,7 @@ const rpc = `http://127.0.0.1:${await freePort()}`;
 // just before the receipt, while Anvil's block subscriber starts at the new head.
 const anvil = spawn("anvil", ["--port", new URL(rpc).port, "--chain-id", "480",
   "--block-time", "1", "--mixed-mining", "--silent"], { stdio: "ignore" });
-let provider, proxy, vite, page, failNextOwner = false, failures = 0, passed = 0;
+let provider, proxy, vite, page, failOwnerReads = false, failures = 0, passed = 0;
 const pass = name => { passed++; console.log("  PASS  " + name); };
 try {
   await until(async () => { try { return (await fetch(rpc, { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) })).ok; } catch { return false; } });
@@ -53,8 +53,8 @@ try {
       let raw = ""; for await (const chunk of request) raw += chunk;
       const body = JSON.parse(raw);
       const result = await Promise.all((Array.isArray(body) ? body : [body]).map(async call => {
-        if (failNextOwner && call.method === "eth_call" && call.params[0].data === "0x8da5cb5b") {
-          failNextOwner = false; failures++;
+        if (failOwnerReads && call.method === "eth_call" && call.params[0].data === "0x8da5cb5b") {
+          failures++;
           return { jsonrpc: "2.0", id: call.id, error: { code: -32000, message: "temporary read failure" } };
         }
         return (await fetch(rpc, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(call) })).json();
@@ -63,26 +63,32 @@ try {
     } catch { response.statusCode = 500; response.end("{}"); }
   });
   await new Promise(resolve => proxy.listen(0, "127.0.0.1", resolve));
+  for(const key of Object.keys(process.env))if(key.startsWith("VITE_"))delete process.env[key];
   Object.assign(process.env, {
     VITE_FACTORY_ADDRESS: await factory.getAddress(), VITE_WLD_ADDRESS: await token.getAddress(),
     VITE_RPC: `http://127.0.0.1:${proxy.address().port}`, VITE_FACTORY_DEPLOY_BLOCK: "1",
     VITE_LEGACY_FACTORY_ADDRESS: "", VITE_FACTORY_RELEASE_SUPPORTED: "true",
     VITE_NOTIFY_BACKEND_URL: "", VITE_REQUIRE_VERIFY: "false",
+    VITE_YIELD_FACTORY_ADDRESS: "", VITE_USDC_YIELD_FACTORY_ADDRESS: "", VITE_USDC_YIELD_ENABLED: "false",
+    VITE_LEGACY_YIELD_FACTORY_ADDRESSES: "", VITE_LEGACY_USDC_YIELD_FACTORY_ADDRESSES: "",
   });
-  vite = await createVite({ root: process.cwd() + "/app", configFile: process.cwd() + "/app/vite.config.e2e.ts", logLevel: "error", server: { host: "127.0.0.1", port: await freePort() } });
+  vite = await createVite({ root: process.cwd() + "/app", envDir: false, configFile: process.cwd() + "/app/vite.config.e2e.ts", logLevel: "error", server: { host: "127.0.0.1", port: await freePort() } });
   await vite.listen();
-  page = await launch({ pk: ACCOUNTS.a0.pk, url: vite.resolvedUrls.local[0] });
+  page = await launch({ pk: ACCOUNTS.a0.pk, url: vite.resolvedUrls.local[0], preload: `window.__E2E_RPC__ = ${JSON.stringify(rpc)};` });
   await page.ev(HELPERS);
   await page.ev("return __q.click('Continue with World App')");
-  await until(() => page.ev("return __q.tabs().includes('Vault')"));
-  await page.ev("return __q.tab('Vault')");
+  await until(() => page.ev("return __q.tabs().includes('Plan')"));
+  await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return !!document.getElementById('period-change')"));
   pass("Owner controls appear after canonical identity verification");
-  failNextOwner = true;
+  // Home and the selected contract both refresh identity. Keep the outage active
+  // until the role gate is observed instead of racing whichever reader runs first.
+  failOwnerReads = true;
   await page.ev("return __q.setInput('period-change', '31')");
-  await until(() => page.ev("return !document.getElementById('period-change')"), 5000);
-  assert.equal(failures, 1);
-  pass("A failed owner read hides role-dependent controls");
+  await until(() => page.ev("return !document.getElementById('period-change')"));
+  assert.ok(failures >= 1);
+  pass("An owner-read outage hides role-dependent controls");
+  failOwnerReads = false;
   await until(() => page.ev("return !!document.getElementById('period-change')"));
   assert.equal(await page.ev("return document.getElementById('period-change').value"), "31");
   pass("Fresh identity polling restores controls and preserves the user's edit");

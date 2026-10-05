@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import type { InterfaceAbi } from "ethers";
 import { CHAIN_ID } from "@/config";
 import { humanizeRevertText } from "./errors";
+import { isDefinitelyNotSubmittedCode, isDefinitelyNotSubmittedResponse } from "./transaction-safety";
 
 /**
  * MiniKit 2.x 로 보내는 트랜잭션의 한 건.
@@ -37,6 +38,8 @@ export type TxFailure = {
   error: string;
   /** 사용자에게 보여줄 수 있는 메시지인지 여부. */
   userFacing: boolean;
+  /** True only when the send is proven not to have been submitted. */
+  definitelyNotSubmitted?: boolean;
 };
 
 export type TxResult = { ok: true; tx: TxSubmission } | TxFailure;
@@ -71,7 +74,8 @@ function isUserRejection(msg: string): boolean {
  * 순서를 지켜야 한다 — 먼저 꺼내낼 승인이 없으면 transferFrom 이 revert 된다.
  */
 export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult> {
-  if (!calls.length) return { ok: false, error: "Nothing to send", userFacing: true };
+  if (!calls.length) return { ok: false, error: "Nothing to send", userFacing: true, definitelyNotSubmitted: true };
+  let walletRequestStarted = false;
   try {
     const { MiniKit } = await loadMiniKitModule();
     const transactions = calls.map((c) => ({
@@ -83,14 +87,27 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
       value: "0x0",
     }));
 
+    walletRequestStarted = true;
     const result = await MiniKit.sendTransaction({
       chainId: CHAIN_ID,
       transactions,
     });
 
+    const data = result.data as {
+      userOpHash?: string;
+      status?: string;
+      transaction_hash?: string;
+      transaction_id?: string;
+      error?: string;
+      reason?: string;
+      error_code?: string;
+    } | undefined;
+    const hasIdentifier = Boolean(data?.transaction_hash || data?.transaction_id || data?.userOpHash);
+
     // 2.x 는 { executedWith, data } 를 돌려준다.
     if (result.executedWith === "fallback") {
-      return { ok: false, error: "This browser cannot send transactions", userFacing: true };
+      return { ok: false, error: "This browser cannot send transactions", userFacing: true,
+        definitelyNotSubmitted: !hasIdentifier };
     }
       // MiniKit 2.x 는 실패를 throw 하지 않고 status 로 알린다. 그리고 revert 사유를
       // data.error / data.reason 에 담아 준다.
@@ -99,13 +116,6 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
       // 냈다. 그래서 "개인은 기한 중이라 더 이상 갱신할 수 없습니다" 와 "잘못된 주소입니다"
       // 가 화면에서 똑같이 보였다. 사용자는 gas 를 쓰고 아무 변화도 없는 이유를 알 수
       // 없었다.
-      const data = result.data as {
-        userOpHash?: string;
-        status?: string;
-        transaction_hash?: string;
-        error?: string;
-        reason?: string;
-      } | undefined;
       if (!data || data.status !== "success") {
         /* 여기서 사람이 읽을 문장으로 바꾼다 — MiniKit 이 돌려준 문자열은 ethers 의
            원본 메시지라 셀렉터·트랜잭션 덤프·서명된 페이로드를 전부 포함한다.
@@ -113,19 +123,36 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
            그 방어 코드가 revert 실패에서 실행되지 않는다. 배선 지점은 여기 하나뿐이어야
            한다 — 11개 호출부에 각각 붙이면 하나씩 빠진다(그리고 그렇게 빠졌었다). */
         const reason = (data?.error || data?.reason || "").toString().trim();
+        const userRejected = data?.error_code === "user_rejected";
         return {
           ok: false,
-          error: reason ? humanizeRevertText(reason) : "The transaction did not go through",
-          userFacing: true,
+          error: userRejected ? "You cancelled the transaction"
+            : reason ? humanizeRevertText(reason) : "The transaction did not go through",
+          userFacing: !userRejected,
+          definitelyNotSubmitted: isDefinitelyNotSubmittedResponse(data?.error_code, hasIdentifier),
         };
       }
     return { ok: true, tx: { hash: data.transaction_hash ?? data.userOpHash, hashType: data.transaction_hash ? "transaction" : "user-operation", executedWith: result.executedWith } };
   } catch (e) {
     const msg = unwrap(e);
-    if (isUserRejection(msg)) {
-      return { ok: false, error: "You cancelled the transaction", userFacing: false };
+    let code: unknown;
+    let unavailableBeforeSubmission = false;
+    if (walletRequestStarted && e instanceof Error) {
+      try {
+        const { SendTransactionError, CommandUnavailableError } = await import("@worldcoin/minikit-js/commands");
+        if (e instanceof SendTransactionError) code = e.code;
+        unavailableBeforeSubmission = e instanceof CommandUnavailableError;
+      } catch { /* Unknown SDK or transport errors remain ambiguous. */ }
     }
-    return { ok: false, error: humanizeRevertText(msg), userFacing: true };
+    const userRejected = code === "user_rejected";
+    return {
+      ok: false,
+      error: userRejected ? "You cancelled the transaction"
+        : unavailableBeforeSubmission ? "Update World App or reopen this app in World App to send transactions."
+          : humanizeRevertText(msg),
+      userFacing: !userRejected,
+      definitelyNotSubmitted: !walletRequestStarted || unavailableBeforeSubmission || isDefinitelyNotSubmittedCode(code),
+    };
   }
 }
 

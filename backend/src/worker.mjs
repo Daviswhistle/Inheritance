@@ -1,10 +1,10 @@
 import { DEFAULT_FRONTEND_ORIGIN, takeCooldown, takeRateLimit, verifySession } from "./session.mjs";
-import { runFinalizerCycle, readFinalizerHealth } from "./finalizer.mjs";
+import { ensureSchedulingSchema, recordObservation, requestWatcherSchedule } from "./scheduling.mjs";
 
 const DEFAULT_RPC_URL = "https://worldchain-mainnet.g.alchemy.com/public";
 // 라이브 응답에 노출한다. 배포가 실제로 반영됐는지 curl 로 확인할 수 있다
 // (한동안 옛 코드가 도는 것 같아 이 필드로 판별했다).
-const CODE_VERSION = "inheritance-usdc-1";
+const CODE_VERSION = "inheritance-scheduled-operations-1";
 const SEND_NOTIFICATION_URL = "https://developer.world.org/api/v2/minikit/send-notification";
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -98,6 +98,26 @@ const normalizeAddress = (value) => {
   return `0x${v.slice(2).toLowerCase()}`;
 };
 
+const configuredAddress = (env, key) => {
+  const value = env[key];
+  if (value == null || String(value).trim() === "") return null;
+  const address = normalizeAddress(String(value));
+  if (!address || address === ZERO_ADDRESS) throw new HttpError(503, `Invalid ${key} configuration`);
+  return address;
+};
+
+const configuredAddressList = (env, key) => {
+  const value = env[key];
+  if (value == null || String(value).trim() === "") return [];
+  const parts = String(value).split(",").map((part) => part.trim());
+  const addresses = parts.map(normalizeAddress);
+  if (parts.length > 8 || parts.some((part) => !part) || addresses.some((address) => !address || address === ZERO_ADDRESS) ||
+      new Set(addresses).size !== addresses.length) {
+    throw new HttpError(503, `Invalid ${key} configuration`);
+  }
+  return addresses;
+};
+
 const addrEq = (a, b) => normalizeAddress(a) === normalizeAddress(b);
 
 const padAddress = (address) => {
@@ -128,24 +148,28 @@ const decodeUint = (hex) => {
   return BigInt(hex);
 };
 
-const usdcFactoryConfig = (env, { factory, legacyFactory, yieldFactory, wld }) => {
+const usdcFactoryConfig = (env, { existingFactories, wld, wldStrategy }) => {
   const keys = ["USDC_YIELD_FACTORY_ADDRESS", "USDC_MORPHO_VAULT_ADDRESS", "USDC_ADDRESS"];
   const values = keys.map((key) => env[key]);
   const configured = values.map((value) => value != null && String(value).trim() !== "");
-  if (!configured.some(Boolean)) return null;
+  const legacyUsdcFactories = configuredAddressList(env, "LEGACY_USDC_YIELD_FACTORY_ADDRESSES");
+  if (!configured.some(Boolean) && !legacyUsdcFactories.length) return null;
   if (!configured.every(Boolean)) {
     throw new HttpError(503, "Canonical USDC vault configuration is incomplete");
   }
 
   const [usdcYieldFactory, usdcStrategy, usdc] = values.map(normalizeAddress);
-  const existingFactories = [factory, legacyFactory, yieldFactory].filter(Boolean);
-  if (!usdcYieldFactory || !usdcStrategy || !usdc ||
+  const usdcFactories = [usdcYieldFactory, ...legacyUsdcFactories];
+  if (usdcFactories.some((address) => !address || address === ZERO_ADDRESS) || !usdcStrategy || !usdc ||
       [usdcYieldFactory, usdcStrategy, usdc].includes(ZERO_ADDRESS) ||
-      existingFactories.includes(usdcYieldFactory) || usdcYieldFactory === usdcStrategy ||
-      usdcYieldFactory === usdc || usdc === wld || usdc === usdcStrategy) {
+      usdcFactories.some((address) => existingFactories.includes(address)) ||
+      new Set(usdcFactories).size !== usdcFactories.length ||
+      usdcStrategy === usdc || usdcFactories.includes(usdcStrategy) || existingFactories.includes(usdcStrategy) ||
+      usdcYieldFactory === usdc || usdcFactories.includes(usdc) || existingFactories.includes(usdc) ||
+      usdc === wld || usdc === wldStrategy || usdcStrategy === wldStrategy) {
     throw new HttpError(503, "Canonical USDC vault configuration is invalid");
   }
-  return { factoryAddress: usdcYieldFactory, strategyAddress: usdcStrategy, assetAddress: usdc };
+  return { factoryAddresses: usdcFactories, strategyAddress: usdcStrategy, assetAddress: usdc };
 };
 
 const resolveCors = (request, env) => {
@@ -203,9 +227,11 @@ const ensureSchema = async (env) => {
       .then(() => {});
   }
   await schemaReady;
+  if (env.WATCHER_TASKS) await ensureSchedulingSchema(env.DB);
 };
 
 const rpc = async (env, method, params = []) => {
+  if (env.OBSERVATION_RPC) return env.OBSERVATION_RPC(method, params);
   const rpcUrl = (env.RPC_URL || DEFAULT_RPC_URL).trim() || DEFAULT_RPC_URL;
   const res = await fetch(rpcUrl, {
     method: "POST",
@@ -273,15 +299,30 @@ const readUint = async (env, to, selector, fallback = null) => {
 const getVaultIdentity = async (env, vaultAddress) => {
   const vault = normalizeAddress(vaultAddress);
   if (!vault) throw new Error("Invalid vault address");
-  const factory = normalizeAddress(env.FACTORY_ADDRESS);
-  const legacyFactory = normalizeAddress(env.LEGACY_FACTORY_ADDRESS);
-  const yieldFactory = normalizeAddress(env.YIELD_FACTORY_ADDRESS);
-  const strategy = normalizeAddress(env.MORPHO_VAULT_ADDRESS);
-  const wld = normalizeAddress(env.WLD_ADDRESS);
-  if (!factory || factory === ZERO_ADDRESS || !wld || wld === ZERO_ADDRESS) {
+  const factory = configuredAddress(env, "FACTORY_ADDRESS");
+  const legacyFactory = configuredAddress(env, "LEGACY_FACTORY_ADDRESS");
+  const yieldFactory = configuredAddress(env, "YIELD_FACTORY_ADDRESS");
+  const strategy = configuredAddress(env, "MORPHO_VAULT_ADDRESS");
+  const wld = configuredAddress(env, "WLD_ADDRESS");
+  if (!factory || !wld || factory === wld) {
     throw new HttpError(503, "Canonical vault configuration is missing");
   }
-  const usdcConfig = usdcFactoryConfig(env, { factory, legacyFactory, yieldFactory, wld });
+  const legacyYieldFactories = configuredAddressList(env, "LEGACY_YIELD_FACTORY_ADDRESSES");
+  const yieldFactories = [yieldFactory, ...legacyYieldFactories].filter(Boolean);
+  const basicFactories = [factory, legacyFactory].filter(Boolean);
+  if (Boolean(yieldFactory) !== Boolean(strategy) ||
+      legacyYieldFactories.length && !strategy ||
+      new Set(basicFactories).size !== basicFactories.length ||
+      new Set(yieldFactories).size !== yieldFactories.length ||
+      yieldFactories.some((address) => basicFactories.includes(address)) ||
+      strategy && (strategy === ZERO_ADDRESS || yieldFactories.includes(strategy) || basicFactories.includes(strategy))) {
+    throw new HttpError(503, "Canonical WLD yield configuration is invalid");
+  }
+  const usdcConfig = usdcFactoryConfig(env, {
+    existingFactories: [...basicFactories, ...yieldFactories],
+    wld,
+    wldStrategy: strategy,
+  });
   const [ownerAddress, heirAddress, factoryAddress, claimedAt] = await Promise.all([
     ethCall(env, vault, SELECTORS.OWNER).then(decodeAddress),
     ethCall(env, vault, SELECTORS.HEIR).then(decodeAddress),
@@ -290,9 +331,9 @@ const getVaultIdentity = async (env, vaultAddress) => {
     ethCall(env, vault, SELECTORS.CLAIMED_AT).then(decodeUint),
   ]);
 
-  const wldYieldVault = Boolean(yieldFactory && factoryAddress === yieldFactory);
-  const usdcYieldVault = Boolean(usdcConfig && factoryAddress === usdcConfig.factoryAddress);
-  const knownFactory = [factory, legacyFactory].filter(Boolean).includes(factoryAddress) ||
+  const wldYieldVault = yieldFactories.includes(factoryAddress);
+  const usdcYieldVault = Boolean(usdcConfig && usdcConfig.factoryAddresses.includes(factoryAddress));
+  const knownFactory = basicFactories.includes(factoryAddress) ||
     wldYieldVault || usdcYieldVault;
   if (ownerAddress === ZERO_ADDRESS || !knownFactory) {
     throw new HttpError(400, "Vault is not from a configured inheritance factory");
@@ -320,6 +361,16 @@ const getVaultIdentity = async (env, vaultAddress) => {
   } else {
     tokenAddress = decodeAddress(await ethCall(env, vault, SELECTORS.WLD));
     if (tokenAddress !== wld) throw new HttpError(400, "Vault does not use the configured WLD token");
+  }
+
+  if (wldYieldVault) {
+    const [factoryWld, factoryStrategy] = await Promise.all([
+      ethCall(env, factoryAddress, SELECTORS.WLD).then(decodeAddress),
+      ethCall(env, factoryAddress, SELECTORS.STRATEGY).then(decodeAddress),
+    ]);
+    if (factoryWld !== wld || !strategy || factoryStrategy !== strategy) {
+      throw new HttpError(400, "Source factory does not match the configured WLD asset and Morpho strategy");
+    }
   }
 
   const expectedStrategy = usdcYieldVault ? usdcConfig.strategyAddress : strategy;
@@ -371,6 +422,7 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
   ]);
 
   let vaultBalance = 0n;
+  let vaultBalanceKnown = false;
   let hasVaultAssets;
   if (checked.yieldVault) {
     // The existence of protected receipts is independent of cash liquidity and
@@ -381,6 +433,7 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
     try {
       vaultBalance = decodeUint(await ethCall(env, checked.yieldVault ? vault : tokenAddress,
         checked.yieldVault ? SELECTORS.TOTAL_ASSETS : encodeBalanceOf(vault)));
+      vaultBalanceKnown = true;
     } catch {
       vaultBalance = 0n;
     }
@@ -388,10 +441,12 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
 
   return {
     vaultAddress: vault,
+    factoryAddress: checked.factoryAddress,
     ownerAddress,
     heirAddress,
     tokenAddress,
     vaultBalance,
+    vaultBalanceKnown,
     hasVaultAssets,
     isExpired,
     claimPending,
@@ -477,7 +532,7 @@ const saveWatcher = async (env, watcher) => {
       .run();
 };
 
-const getWatcherByVault = async (env, vaultAddress) => {
+export const getWatcherByVault = async (env, vaultAddress) => {
   const row = await env.DB.prepare(
     `
       SELECT
@@ -577,6 +632,7 @@ const upsertWatcherFromSnapshot = async (env, snapshot) => withWatcherLease(env,
     delete watcher.alerts[ALERT.HEIR_FINALIZABLE];
   }
   await saveWatcher(env, watcher);
+  await recordObservation(env, snapshot);
   return watcher;
 });
 
@@ -812,7 +868,7 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
   return { alerts, reason: alerts.length ? "pending" : "nothing_to_say" };
 };
 
-const checkWatcher = async (env, watcher, caller = null) => {
+export const checkWatcher = async (env, watcher, caller = null) => {
   try {
     return await withWatcherLease(env, watcher.vaultAddress, async () => {
       // The cron list is only navigation. Read the latest row while holding the lease.
@@ -826,6 +882,7 @@ const checkWatcher = async (env, watcher, caller = null) => {
           && (snapshot.claimedAt > 0n || !addrEq(caller, snapshot.heirAddress))) {
           throw new HttpError(403, "Wallet is not the vault owner or heir");
         }
+        await recordObservation(env, snapshot);
         if (snapshot.claimedAt > 0n) {
           const finalized = await terminalFinalized(env, snapshot);
           await saveWatcher(env, {
@@ -941,7 +998,14 @@ const handleRequest = async (request, env) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors.headers });
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/api/automation/health") {
-    return jsonResponse(200, { status: "success", automation: await readFinalizerHealth(env) }, cors.headers);
+    const namespace = env.FINALIZER_EXECUTOR;
+    const automation = env.FINALIZER_ENABLED !== "true"
+      ? { enabled: false, reason: "disabled" }
+      : namespace
+        ? await namespace.get(namespace.idFromName("executor")).readHealth()
+        : { enabled: true, reason: "not_running" };
+    automation.executionRuntime = env.FINALIZER_EXECUTOR ? "durable_object" : "unconfigured";
+    return jsonResponse(200, { status: "success", automation }, cors.headers);
   }
   if (request.method === "GET" && url.pathname === "/api/health") {
     await ensureSchema(env);
@@ -1007,6 +1071,7 @@ const handleRequest = async (request, env) => {
     }
     const snapshot = await getVaultSnapshot(env, vault, identity);
     const watcher = await upsertWatcherFromSnapshot(env, snapshot);
+    if (watcher.active) await requestWatcherSchedule(env, vault);
     return jsonResponse(200, { status: "success", watcher }, cors.headers);
   }
   if (url.pathname === "/api/notifications/unregister") {
@@ -1038,7 +1103,10 @@ const handleRequest = async (request, env) => {
     await requireVaultAccess(env, vault, caller);
     await requireCooldown(env, `check:${caller}`);
     const watcher = await getWatcherByVault(env, vault);
-    const result = watcher ? await checkWatcher(env, watcher, caller) : { notified: false, reason: "not_registered" };
+    const result = !watcher ? { notified: false, reason: "not_registered" }
+      : env.WATCHER_TASKS
+        ? await env.WATCHER_TASKS.get(env.WATCHER_TASKS.idFromName(vault)).checkNow(vault, caller)
+        : await checkWatcher(env, watcher, caller);
     return jsonResponse(200, {
       status: "success", summary: { checked: watcher?.active ? 1 : 0, notified: result.notified ? 1 : 0 }, result,
     }, cors.headers);
@@ -1056,6 +1124,13 @@ const handleRequest = async (request, env) => {
  */
 export const __test = { saveWatcher, getWatcherByVault, listWatchers, rowToWatcher, getVaultSnapshot, upsertWatcherFromSnapshot, checkWatcher, runCheckCycle };
 
+const runScheduledFinalizer = async (env) => {
+  if (env.FINALIZER_ENABLED !== "true") return { enabled: false, reason: "disabled" };
+  const namespace = env.FINALIZER_EXECUTOR;
+  if (!namespace) throw new Error("Scheduled execution runtime is not configured");
+  return namespace.get(namespace.idFromName("executor")).runCycle();
+};
+
 export default {
   async fetch(request, env) {
     try {
@@ -1070,11 +1145,24 @@ export default {
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(
       (async () => {
+        if (env.WATCHER_TASKS) {
+          await ensureSchema(env);
+          if (!env.FINALIZER_EXECUTOR) throw new Error("Scheduled execution runtime is not configured");
+          const results = await Promise.allSettled([
+            env.FINALIZER_EXECUTOR.get(env.FINALIZER_EXECUTOR.idFromName("executor")).synchronize(),
+            runScheduledFinalizer(env),
+          ]);
+          if (results.some(result => result.status === "rejected")) throw new Error("A scheduled service task is unavailable");
+          const [monitoring, finalizer] = results.map(result => result.value);
+          console.log(`[scheduler] scheduled=${monitoring.scheduled || 0} failed=${monitoring.failed || 0}`);
+          console.log(`[finalizer] checked=${finalizer.checked || 0} finalized=${finalizer.finalized || 0} reason=${finalizer.reason}`);
+          return;
+        }
         // Alternate the two tasks to respect existing Free-plan subrequest limits.
         // Bounded batches advance persisted cursors; each task runs every two minutes.
         if (Math.floor(controller.scheduledTime / 60_000) % 2 === 0) {
           await ensureSchema(env);
-          const result = await runFinalizerCycle(env);
+          const result = await runScheduledFinalizer(env);
           console.log(`[finalizer] checked=${result.checked || 0} finalized=${result.finalized || 0} reason=${result.reason}`);
           return;
         }

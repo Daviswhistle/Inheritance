@@ -20,6 +20,12 @@ const USDC_FACTORY = "0x" + "bb".repeat(20);
 const USDC = "0x79a02482a880bce3f13e09da970dc34db4cd24d1";
 const USDC_STRATEGY = "0xb1e80387ebe53ff75a89736097d34dc8d9e9045b";
 const USDC_VAULT = "0x" + "66".repeat(20);
+const NEW_USDC_FACTORY = "0x" + "bc".repeat(20);
+const LEGACY_USDC_VAULT = "0x" + "44".repeat(20);
+const WLD_YIELD_FACTORY = "0x" + "cc".repeat(20);
+const LEGACY_WLD_YIELD_FACTORY = "0x" + "dd".repeat(20);
+const WLD_STRATEGY = "0x" + "ee".repeat(20);
+const WLD_YIELD_VAULT = "0x" + "55".repeat(20);
 const VAULT = "0x" + "99".repeat(20);
 const OTHER_VAULT = "0x" + "88".repeat(20);
 const FAKE_VAULT = "0x" + "77".repeat(20);
@@ -97,7 +103,8 @@ function fixture() {
       const factory = factoryStates.get(to.toLowerCase());
       const value = stateVaults.get(to.toLowerCase());
       if (factory) {
-        const getters = { "0x38d52e0f": factory.asset, "0xf7c618c1": factory.rewardToken, "0xa8c62e76": factory.strategy };
+        const getters = { "0x38d52e0f": factory.asset, "0xf7c618c1": factory.rewardToken,
+          "0xde061d66": factory.wld, "0xa8c62e76": factory.strategy };
         if (getters[selector]) result = addressWord(getters[selector]);
       } else if (value) {
         const selectors = {
@@ -130,6 +137,32 @@ function configureUSDC(context, overrides = {}) {
     interval: 86400, balance: 0n, totalAssets: 0n, hasAssets: true, ...overrides };
   context.vaults.set(USDC_VAULT, value);
   return value;
+}
+
+function configureLegacyWld(context, overrides = {}) {
+  Object.assign(context.env, { YIELD_FACTORY_ADDRESS: WLD_YIELD_FACTORY, MORPHO_VAULT_ADDRESS: WLD_STRATEGY,
+    LEGACY_YIELD_FACTORY_ADDRESSES: LEGACY_WLD_YIELD_FACTORY });
+  for (const factory of [WLD_YIELD_FACTORY, LEGACY_WLD_YIELD_FACTORY]) {
+    context.factoryStates.set(factory, { wld: WLD, strategy: WLD_STRATEGY });
+  }
+  const value = { owner: OWNER, heir: HEIR, factory: LEGACY_WLD_YIELD_FACTORY, wld: WLD, strategy: WLD_STRATEGY,
+    known: true, registered: false, pending: false, expired: true, finalizable: false, cancelled: false,
+    claimedAt: 0, challengeEndsAt: 0, remaining: 0, interval: 86400, balance: 0n, hasAssets: true, ...overrides };
+  context.vaults.set(WLD_YIELD_VAULT, value);
+  return value;
+}
+
+function configureLegacyUsdc(context, overrides = {}) {
+  const value = configureUSDC(context, { expired: true, registered: false, known: true, ...overrides });
+  Object.assign(context.env, { USDC_YIELD_FACTORY_ADDRESS: NEW_USDC_FACTORY,
+    LEGACY_USDC_YIELD_FACTORY_ADDRESSES: USDC_FACTORY });
+  context.factoryStates.set(NEW_USDC_FACTORY, { asset: USDC, strategy: USDC_STRATEGY, rewardToken: WLD });
+  value.factory = USDC_FACTORY;
+  value.registered = false;
+  value.known = true;
+  context.vaults.set(LEGACY_USDC_VAULT, { ...value });
+  context.vaults.delete(USDC_VAULT);
+  return context.vaults.get(LEGACY_USDC_VAULT);
 }
 
 async function test(name, run) {
@@ -375,6 +408,37 @@ try {
     await register(context);
     context.vaults.get(VAULT).registered = false;
     assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 400);
+  });
+  await test("authenticated registration and alerts retain a WLD vault from an explicit legacy yield factory", async (context) => {
+    configureLegacyWld(context);
+    await register(context, WLD_YIELD_VAULT);
+    const snapshot = await __test.getVaultSnapshot(context.env, WLD_YIELD_VAULT);
+    assert.equal(snapshot.tokenAddress, WLD);
+    assert.equal(snapshot.hasVaultAssets, true);
+    assert.equal((await call(context, "/check-now", OWNER, { vaultAddress: WLD_YIELD_VAULT })).status, 200);
+    assert.deepEqual(context.deliveries[0].wallet_addresses, [HEIR]);
+    assert.equal((await call(context, `/status?vaultAddress=${WLD_YIELD_VAULT}`, STRANGER)).status, 403);
+  });
+  await test("authenticated registration and alerts retain a USDC vault from an explicit legacy factory", async (context) => {
+    configureLegacyUsdc(context);
+    await register(context, LEGACY_USDC_VAULT);
+    const snapshot = await __test.getVaultSnapshot(context.env, LEGACY_USDC_VAULT);
+    assert.equal(snapshot.tokenAddress, USDC);
+    assert.equal(snapshot.hasVaultAssets, true);
+    assert.equal((await call(context, "/check-now", OWNER, { vaultAddress: LEGACY_USDC_VAULT })).status, 200);
+    assert.deepEqual(context.deliveries[0].wallet_addresses, [HEIR]);
+  });
+  await test("legacy factory lists reject malformed, zero, duplicate, oversized and cross-asset addresses", async (context) => {
+    for (const value of ["bad", ZERO, `${LEGACY_WLD_YIELD_FACTORY},`,
+      `${LEGACY_WLD_YIELD_FACTORY},${LEGACY_WLD_YIELD_FACTORY}`,
+      Array.from({ length: 9 }, (_, index) => "0x" + (index + 1).toString(16).padStart(40, "0")).join(",")]) {
+      context.env.LEGACY_YIELD_FACTORY_ADDRESSES = value;
+      assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 503);
+    }
+    configureLegacyWld(context);
+    configureUSDC(context);
+    context.env.LEGACY_YIELD_FACTORY_ADDRESSES = USDC_FACTORY;
+    assert.equal((await call(context, `/status?vaultAddress=${VAULT}`)).status, 503);
   });
   await test("USDC yield identity selects asset and reward getters and accepts known released vaults", async (context) => {
     const state = configureUSDC(context, { expired: true });

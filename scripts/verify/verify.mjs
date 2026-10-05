@@ -149,7 +149,7 @@ log("\n[1] 정산 후 늦게 들어온 잔액 회수 (P0-1)");
   const expected = await wld(vault);
   log(`    스위프 대상: ${F(expected)} WLD`);
   const b = await openApp(owner);
-  await clickTab(b, "inherit");
+  await clickTab(b, "plan");
   await sleep(1200);
   const t = await text(b);
   const bs = await buttons(b);
@@ -189,7 +189,7 @@ log("\n[2] 자기 금고가 있는 사람의 상속인 링크 (P0-2)");
   check("setup: 상속인도 자기 금고를 가짐", heirOwn !== "0x" + "0".repeat(40), heirOwn);
 
   const b = await openApp(heir, `${APP}?vault=${target}`);
-  await clickTab(b, "inherit");
+  await clickTab(b, "plan");
   await sleep(1400);
   const t = await text(b);
   const bs = await buttons(b);
@@ -220,30 +220,50 @@ log("\n[3] 상속인에게 피상속인 목소리가 나오지 않는가 (P1-6, 
   const heirOfA6 = cast(["call", target, "heir()(address)", "--rpc-url", RPC]);
   log(`    a6 의 상속인: ${heirOfA6}`);
   const b = await openApp(A.a7, `${APP}?vault=${target}`);
-  await clickTab(b, "inherit");
+  await clickTab(b, "plan");
   await sleep(1200);
   // "How this works" 설명문구에는 "Name your heir" 처럼 Owner 화법이 들어 있다. 그건
   // 상속인을 향한 말이 아니라 기능 설명이므로, 상태 카드 안에서만 검사한다.
   const statusOnly = async () => {
-    const cards = await b.ev(`return [...document.querySelectorAll("div")].filter(d=>d.innerText&&d.innerText.startsWith("Inheritance Status")).slice(-1).map(d=>d.innerText)[0]||"";`);
+    const cards = await b.ev(`return [...document.querySelectorAll('.card-surface')]
+      .find(card => card.querySelector('.card-title')?.textContent === 'Inheritance Status')?.innerText || '';`);
     return cards;
   };
   const t = await text(b);
-  check("'your heir' (설명문구 제외) 없음", !/your heir/i.test(t.replace(/Name your heir and how often[\s\S]*?this step\./gi, "")),
-    first(/[^\n]*your heir[^\n]*/i, t.replace(/Name your heir and how often[\s\S]*?this step\./gi, "")) || "없음");
-  check("'You can renew at any point' 없음", !/You can renew at any point/i.test(t));
+  const linkedCards = await b.ev(`return [...document.querySelectorAll('.card-surface')]
+    .filter(card => ['Inheritance Status', 'Your plan settings'].includes(card.querySelector('.card-title')?.textContent))
+    .map(card => card.innerText).join('\\n');`);
+  check("'your heir' (자기 계획 생성 설명 제외) 없음", linkedCards.includes('Inheritance Status') && !/your heir/i.test(linkedCards),
+    first(/[^\n]*your heir[^\n]*/i, linkedCards) || "상속 상태 카드에 없음");
+  check("'You can renew at any point' 없음", !!linkedCards && !/You can renew at any point/i.test(linkedCards));
   const st = await statusOnly();
   check("상태 카드가 상속인 화법으로 바뀜", /You filed a claim|You can now file/i.test(st) || !/your heir/i.test(st),
     first(/Funds move[\s\S]{0,150}/, st) || "(카드 못 찾음)");
   // "Owner: (not you)" 는 money 탭(=Vault & Send)에 있다
-  await clickTab(b, "send");
+  await clickTab(b, "assets");
+  await b.ev("const details = document.querySelector('.money-metadata'); if (details && !details.open) details.querySelector('summary').click(); return true;");
   const tm = await text(b);
   check("Owner 옆에 '(not you)'", /\(not you\)/i.test(tm), first(/Owner[^\n]{0,70}/, tm) || "없음");
   check("상속인 화면에 자기 username 이 Owner 로 찍히지 않는다", !/@e2e_[0-9a-f]+\s*$/m.test(first(/Owner:\n([^\n]*)/, tm) || ""),
     first(/Owner:[\s\S]{0,60}/, tm) || "없음");
-  await clickTab(b, "vault");
+  await clickTab(b, "home");
+  const heirOwn = await vaultOf(A.a7.a);
+  const ownOverview = await b.ev('return document.querySelector(".plan-overview-card")?.innerText || "";');
+  const ownPlanHeir = cast(["call", heirOwn, "heir()(address)", "--rpc-url", RPC]);
+  const displayedHeir = await b.ev('return document.querySelector(".plan-common-settings strong[title]")?.title || "";');
+  check("Vault 탭은 상속 중인 링크가 아니라 자기 계획을 보여준다",
+    /Your inheritance plan/.test(ownOverview)
+      && displayedHeir.toLowerCase() === ownPlanHeir.toLowerCase()
+      && displayedHeir.toLowerCase() !== heirOfA6.toLowerCase(),
+    ownOverview.split("\n").filter((line) => /Heir|active assets/i.test(line)).join(" / ") || "자기 계획 요약 없음");
+  await clickTab(b, "plan");
   const tv = await text(b);
-  check("Vault 탭도 상속인 화법", !/Your heir can now file a claim/.test(tv), first(/[^\n]*Your heir[^\n]*/, tv) || "없음");
+  check("Inherit 탭에서 링크 금고의 상속인 상태를 본다",
+    /viewing a vault you were sent/i.test(tv) && /Inheritance Status/i.test(tv),
+    first(/You are viewing[^\n]*/i, tv) || "공유 금고 상태 없음");
+  const inheritedStatus = await statusOnly();
+  check("공유 금고의 상속인 화법", !/Your heir can now file a claim/.test(inheritedStatus),
+    first(/[^\n]*Your heir[^\n]*/, inheritedStatus) || "없음");
   // 만료 전 금고면 "Counting down" 이 맞고, 만료 후면 "You can now file a claim" 이 맞다.
   // 어느 쪽이든 상속인 화법이어야 한다.
   const countdown = cast(["call", target, "deadline()(uint256)", "--rpc-url", RPC]);
@@ -267,7 +287,7 @@ log("\n[4] 주기 입력 필드가 실제 값으로 시드되는가 (P1-5)");
   const v90 = await vaultOf(who.a);
   log(`    ${who.a.slice(0,10)} vault=${v90} heartbeat=90일`);
   const b = await openApp(who);
-  await clickTab(b, "vault");
+  await clickTab(b, "plan");
   await sleep(1600);
   const v = await b.ev('return (()=>{const e=document.querySelector("#period-change");return e?e.value:"NOTFOUND";})();');
   check("필드가 금고의 실제 주기(90)를 보여준다", v === "90", `값="${v}"  (고정 30 이었다면 "30")`);
@@ -300,28 +320,35 @@ log("\n[6] 자기 행동 뒤 화면이 갱신되는가 (P1-3)");
   const renewalVault = await vaultOf(who.a);
   const balanceBefore = await wld(renewalVault);
   const b = await openApp(who);
-  await clickTab(b, "vault");
+  await clickTab(b, "home");
   await sleep(1800);
   const readPing = async () => {
     const v = await vaultOf(who.a);
     return cast(["call", v, "lastPing()(uint256)", "--rpc-url", RPC]);
   };
   const chainBefore = await readPing();
-  // "Last ping" 은 money(Vault & Send) 탭의 "Show addresses & explorer links" 안쪽에 있다.
-  // 다른 탭에 있거나 접혀 있으면 없는 것처럼 보여서 오검증된다.
-  await clickTab(b, "send");
+  // "Last ping" 은 Send 탭의 주소 상세 안쪽에 있다. 같은 위치와 조건에서 읽는다.
+  await clickTab(b, "assets");
+  await b.ev("const details = document.querySelector('.money-metadata'); if (details && !details.open) details.querySelector('summary').click(); return true;");
   const tog = await b.ev('return (()=>{const e=[...document.querySelectorAll("button")].find(x=>/Show addresses|Hide details/.test(x.innerText));if(e){e.click();return "toggled:"+e.innerText.trim();}return "no-toggle";})();');
   log(`    토글: ${tog}`);
   await sleep(900);
   const shownBefore = ((await text(b)).match(/Last ping[^\n]*/) || ["(표시 없음)"])[0];
-  await clickTab(b, "vault");
-  const r = await click(b, "Reset timer");
-  log(`    클릭 결과: ${r}`);
+  await clickTab(b, "home");
+  const review = await click(b, "Review check-in");
+  log(`    검토 열기: ${review}`);
+  await sleep(500);
+  const reviewText = await text(b);
+  check("검토 단계에서 체크인 대상을 확인한다", review === "OK" && /Confirm your check-in/i.test(reviewText),
+    reviewText.split("\n").find((line) => /Confirm your check-in/.test(line)) || "검토 화면 없음");
+  const r = await click(b, "Confirm check-in");
+  log(`    체크인 확인: ${r}`);
   await sleep(6000);
   const chainAfter = await readPing();
   // 갱신 후에는 money 탭으로 돌아가 접힌 상태를 다시 펼치고, 같은 조건에서 다시 읽는다.
   // 그러지 않으면 "표시가 사라짐" 이 "갱신됨" 으로 통과해 버린다.
-  await clickTab(b, "send");
+  await clickTab(b, "assets");
+  await b.ev("const details = document.querySelector('.money-metadata'); if (details && !details.open) details.querySelector('summary').click(); return true;");
   await b.ev('return (()=>{const e=[...document.querySelectorAll("button")].find(x=>/Show addresses|Hide details/.test(x.innerText));if(e)e.click();return "toggled";})();');
   await sleep(1200);
   const shownAfter = ((await text(b)).match(/Last ping[^\n]*/) || ["(표시 없음)"])[0];

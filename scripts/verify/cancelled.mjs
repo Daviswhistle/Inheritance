@@ -30,8 +30,18 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { spawnSync, spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { createServer } from "node:net";
+import { createServer as createVite } from "../../app/node_modules/vite/dist/node/index.js";
 import { launch, ACCOUNTS } from "./drv.mjs";
+
+async function freePort() {
+  const socket = createServer();
+  await new Promise(resolve => socket.listen(0, "127.0.0.1", resolve));
+  const port = socket.address().port;
+  await new Promise(resolve => socket.close(resolve));
+  return port;
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
@@ -47,7 +57,7 @@ const log = (s) => console.log(s);
 const F = process.env.FACTORY;
 const WLD = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const RPC = "http://127.0.0.1:8546";
-const PORT = Number(process.env.PORT || 7713);
+const PORT = await freePort();
 const APP = `http://127.0.0.1:${PORT}/`;
 // a2's earlier renewal fixture can be expired and still hold WLD. Clean its actual
 // phase before reuse; CLI completion alone does not establish transaction success.
@@ -157,33 +167,17 @@ function releaseIfPossible() {
   emptySlot();
 }
 
-let up = false;
+// Own a fresh server rather than reusing a stale build on a fixed port.
+// envDir:false prevents production yield routes from entering a basic-vault fixture.
+for (const key of Object.keys(process.env)) if (key.startsWith("VITE_")) delete process.env[key];
+Object.assign(process.env, { VITE_RPC: RPC, VITE_FACTORY_ADDRESS: F, VITE_WLD_ADDRESS: WLD,
+  VITE_FACTORY_DEPLOY_BLOCK: "1", VITE_FACTORY_RELEASE_SUPPORTED: "true",
+  VITE_REQUIRE_VERIFY: "false", VITE_NOTIFY_BACKEND_URL: "" });
+const vite = await createVite({ root: REPO + "/app", configFile: REPO + "/app/vite.config.e2e.ts",
+  envDir: false, logLevel: "error", server: {host:"127.0.0.1",port:PORT,strictPort:true} });
+await vite.listen();
 try {
-  up = (await fetch(APP)).ok;
-} catch {
-  up = false;
-}
-if (!up) {
-  spawn("node", ["node_modules/vite/bin/vite.js", "--config", "vite.config.e2e.ts", "--port", String(PORT), "--strictPort"], {
-    cwd: REPO + "/app",
-    env: { ...process.env, VITE_RPC: RPC, VITE_FACTORY_ADDRESS: F, VITE_WLD_ADDRESS: WLD, VITE_FACTORY_DEPLOY_BLOCK: "1" },
-    stdio: "ignore",
-    detached: true,
-  });
-  for (let i = 0; i < 60; i++) {
-    await sleep(500);
-    try {
-      if ((await fetch(APP)).ok) {
-        up = true;
-        break;
-      }
-    } catch {
-      /* 아직 안 뜸 */
-    }
-  }
-}
-check("dev 서버 기동", up, up ? APP : "기동 실패");
-if (!up) process.exit(1);
+check("dev 서버 기동", (await fetch(APP)).ok, APP);
 
 await cleanSlot();
 
@@ -191,7 +185,7 @@ await cleanSlot();
 const created = send(F, "createVault(address,uint256)", [heir.a, "604800"]);
 if (!created.ok) {
   console.error("  금고 생성 실패: " + (created.err || created.out).slice(0, 200));
-  process.exit(1);
+  throw new Error("Fixture creation failed");
 }
 const vCancel = vaultOf(owner.a);
 log(`  취소할 금고 ${vCancel}`);
@@ -226,7 +220,7 @@ const goto = (tab) =>
   b.ev(
     `return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim().toLowerCase().includes("${tab}"));if(e)e.click();return 1;})()`,
   );
-await goto("vault");
+await goto("plan");
 await sleep(1800);
 const vaultText = await b.ev("return document.body.innerText;");
 /** 파이프라인 단계는 한 줄짜리 항목이라, 문장 속 "your heir files a claim" 과 겹치지
@@ -280,8 +274,9 @@ check("'내 것이며 해제할 수 있다' 고 안내한다", /release your slo
 log("\n[F] Send 탭 — 입금 차단 사유와 유일한 출구(긴급 출금)");
 /* 입금 폼과 "Emergency withdraw" 는 **Send 탭** 에 있다. Vault 탭에서 검사하면 버튼이
    없는 것이 아니라 다른 탭에 있는 것이므로 실패로 잘못 읽는다(실제로 그랬다). */
-await goto("send");
+await goto("assets");
 await sleep(1500);
+await b.ev("const details = document.querySelector('.principal-controls'); if (details && !details.open) details.querySelector('summary').click(); return true;");
 const sendText = await b.ev("return document.body.innerText;");
 const sendControls = await b.ev(
   `return [...document.querySelectorAll("button")].map(x=>({t:x.innerText.trim(),disabled:x.disabled}));`,
@@ -304,7 +299,7 @@ check("출금 설명이 취소 금고에 맞게 바뀐다", /inheritance was can
 await b.shot("cancelled-send");
 
 log("\n[G] Inherit 탭 — 파이프라인과 되돌리기 안내");
-await goto("inherit");
+await goto("plan");
 await sleep(1500);
 const inheritText = await b.ev("return document.body.innerText;");
 check("상속 파이프라인 5단계를 보여주지 않는다", !hasStep(inheritText, "Heir files a claim"),
@@ -317,7 +312,7 @@ await b.shot("cancelled-inherit");
 
 // ── 3) 해제해서 두 번째 금고를 만들 수 있는가 ───────────────────────────────
 log("\n[H] 슬롯 해제 후 두 번째 금고");
-await goto("vault");
+await goto("plan");
 await sleep(1200);
 const relNow = await b.ev(
   `return !([...document.querySelectorAll("button")].find(x=>/release slot/i.test(x.innerText))||{}).disabled;`,
@@ -326,7 +321,7 @@ check("해제 버튼이 눌릴 수 있다", relNow === true, relNow ? "활성" :
 await b.ev(`return (()=>{const btn=[...document.querySelectorAll("button")].find(x=>/release slot/i.test(x.innerText));if(!btn)return false;btn.click();return true;})()`);
 await sleep(900);
 const acked = await b.ev(
-  `return (()=>{const c=document.querySelector('input[type=checkbox]');if(!c)return false;c.click();return true;})()`,
+  `return (()=>{const c=document.querySelector('[role=dialog] .release-ack');if(!c)return false;c.click();return true;})()`,
 );
 check("확인 체크박스를 누를 수 있다", acked === true, acked === true ? "눌렀다" : "체크박스 없음");
 const confirm = await b.ev(
@@ -344,7 +339,7 @@ check("슬롯이 비었다 (vaultOf = 0)", after === ZERO, after);
 const formAfter = await b.ev(`return (()=>({
   heir: !!document.querySelector("#heir-input"),
   period: !!document.querySelector("#period-input"),
-  create: !!([...document.querySelectorAll("button")].find(x=>/create vault/i.test(x.innerText))),
+  create: !!([...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan")),
   stillMyVault: /You already have a vault/i.test(document.body.innerText),
 }))();`);
 check("새로고침 없이 금고 생성 폼이 보인다", formAfter.heir && formAfter.period && formAfter.create,
@@ -359,16 +354,21 @@ if (formAfter.heir && formAfter.create) {
       const d=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value");
       d.set.call(e,v); e.dispatchEvent(new Event("input",{bubbles:true}));};
     setV("#heir-input","${heir.a}");
+    setV("#plan-wld","0.01");
     return 1;
   })()`);
   await sleep(4500);
   const canCreate = await b.ev(
-    `return !([...document.querySelectorAll("button")].find(x=>/create vault/i.test(x.innerText))||{}).disabled;`,
+    `return !([...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan")||{}).disabled;`,
   );
   check("상속인을 넣으면 Create 가 활성화된다", canCreate === true, canCreate ? "활성" : "비활성");
-  await b.ev(`return (()=>{const btn=[...document.querySelectorAll("button")].find(x=>/create vault/i.test(x.innerText));if(!btn||btn.disabled)return false;btn.click();return true;})()`);
+  await b.ev(`return (()=>{const btn=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan");if(!btn||btn.disabled)return false;btn.click();return true;})()`);
+  await b.waitFor('.plan-final-review');
+  const reviewed = await b.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Confirm and deposit'); if (!button || button.disabled) return false; button.click(); return true;");
+  check("최종 검토 후에만 두 번째 입금 요청을 승인한다", reviewed === true, reviewed ? "승인" : "확인 버튼 없음");
   await sleep(9000);
   const v2 = vaultOf(owner.a);
+  if (v2 === ZERO) log("Recreate diagnostic: " + JSON.stringify(await b.ev("return {text: document.body.innerText, calldata: window.__E2E_MINIKIT__?.lastCalldata(), bridgeError: window.__E2E_MINIKIT__?.lastError(), errors: window.__E2E_ERRS__};")));
   check("두 번째 금고가 만들어졌다", v2 !== ZERO, v2);
 }
 
@@ -376,4 +376,7 @@ await b.close();
 await releaseIfPossible();
 
 log(`\n  통과 ${pass} / 실패 ${fail}`);
-process.exit(fail ? 1 : 0);
+process.exitCode = fail ? 1 : 0;
+} finally {
+  await vite.close();
+}

@@ -1,9 +1,5 @@
-// Checks the notification surface, because the complaint about it was visual:
-// it lived in the Help tab, showed internal state strings, and had no auto-recovery.
-//
-// Verifies: the countdown tab carries the notice, the wording states the consequence
-// rather than a state name, a broken state is announced assertively, and the fix
-// buttons are reachable there.
+// Checks the notification surface across the unified-plan overview, selected-vault
+// Inherit details, and the new-plan form.
 import { setTimeout as sleep } from "node:timers/promises";
 import { launch, ACCOUNTS, APP } from "./drv.mjs";
 import { spawnSync } from "node:child_process";
@@ -30,19 +26,64 @@ const castSend = (a) => {
 };
 const A = ACCOUNTS;
 
+// Keep notification reads and writes inside this browser fixture. In particular,
+// registration must never add an Anvil vault to the production watcher list.
+const LOCAL_NOTIFY_FIXTURE = `
+  const networkFetch = window.fetch.bind(window);
+  window.__NOTIFY_REQUESTS__ = [];
+  window.__NOTIFY_WATCHERS__ = {};
+  window.fetch = async (input, init) => {
+    const url = new URL(typeof input === "string" ? input : input.url, location.origin);
+    if (url.pathname === "/api/automation/health") return Response.json({ automation: {
+      enabled: true, supported: true, funded: true, halted: false, reason: "ready" } });
+    if (url.pathname === "/api/notifications") return Response.json({ status: "success", watchers: [], nextCursor: null });
+    if (url.pathname === "/api/notifications/status") {
+      const vault = (url.searchParams.get("vaultAddress") || "").toLowerCase();
+      return Response.json({ status: "success", watcher: window.__NOTIFY_WATCHERS__[vault] ? { active: true } : null });
+    }
+    if (url.pathname === "/api/notifications/register" || url.pathname === "/api/notifications/unregister") {
+      const body = typeof init?.body === "string" ? init.body : "{}";
+      const data = JSON.parse(body);
+      window.__NOTIFY_REQUESTS__.push({ path: url.pathname, body });
+      const vault = (data.vaultAddress || "").toLowerCase();
+      if (url.pathname.endsWith("/register")) window.__NOTIFY_WATCHERS__[vault] = true;
+      else delete window.__NOTIFY_WATCHERS__[vault];
+      return Response.json({ status: "success", watcher: { active: url.pathname.endsWith("/register") } });
+    }
+    if (url.pathname === "/api/notifications/test") return Response.json({ status: "success", result: { sent: false } });
+    return networkFetch(input, init);
+  };
+`;
+
+async function waitUntil(read, timeout = 20000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (await read()) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
+async function setInput(page, id, value) {
+  return page.ev(`return (() => {
+    const input = document.getElementById(${JSON.stringify(id)});
+    if (!input) return false;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })();`);
+}
+
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? pass++ : fail++; console.log(`  ${ok ? "PASS" : "FAIL"}  ${n}${d ? "  — " + d : ""}`); };
 const log = (s) => console.log(s);
 
-// Fund a vault so the notice is warranted (balance 0 suppresses it by design).
+// Fund an active own plan so the wallet-permission overview row is warranted.
 //
 // **앞 단계가 남긴 금고를 그대로 쓰면 안 된다.** run.sh 는 체인을 한 번만 만들고
 // 8단계를 순서대로 돌린다. 그 중 UX 감사(ux2.mjs) 단계는 anvil 시간을 **앞으로
-// 보낸다**(만료·이의제기·정산 상태를 만들기 위해). 그래서 이 단계가 시작될 때 a4 의
-// 금고는 이미 만료되어 있을 수 있다 — 알림 줄은 잔액만 있으면 렌더되지만
-// "If you stop renewing, your heir can file a claim…" 문장은 **진행 중인 소유자에게만**
-// 나온다. 그래서 "결과를 말한다" 검사가 여기서만 실패했다. 단독 실행은 새 체인이라
-// 통과하고 8단계 전체 실행에서만 재현됐다.
+// 보낸다. 이 fixture 는 a4 의 기존 vault 와 잔액을 정리한 뒤 새 활성 plan 을 만든다.
 //
 // 다른 단계들이 이미 쓰고 있는 방법(잔액 회수 → 슬롯 해제)으로 정리한 뒤 새로 만든다.
 const RPC = "http://127.0.0.1:8546";
@@ -100,7 +141,7 @@ cast(["send", FACTORY, "deposit(uint256)", "5000000000000000000", "--from", A.a4
 const bal = cast(["call", WLD, "balanceOf(address)(uint256)", vault, "--rpc-url", "http://127.0.0.1:8546"]);
 log(`    setup: vault=${vault.slice(0, 12)}… 잔액=${bal.split(" ")[0]}`);
 
-const b = await launch({ pk: A.a4.pk, url: APP });
+const b = await launch({ pk: A.a4.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
 await sleep(2800);
 await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
@@ -110,115 +151,109 @@ const clickTab = async (n) => {
   await sleep(1100);
 };
 
-log("\n[1] 카운트다운 탭에 알림 상태가 있는가");
-await clickTab("vault");
-const t = await b.ev("return document.body.innerText;");
-/* 헤딩을 제거했으므로 "Notifications on" 같은 문자열을 찾으면 안 된다. 무엇이 되고
-   있는지를 말하는 문장으로 찾는다.
-
-   문구를 특정 문구에 묶지 않는다 — 묶으면 문구가 바뀔 때마다 검사가 "위반" 으로
-   알리지만 실제로는 개선인 경우도 있다. 예전 알림 권한 읽기 버그를 고치면서
-   `unknown` → 실제 값(denied/off) 이 되면서 문구가 달라졌고, 이 정규식이 그걸
-   "사라졌다" 고 읽었다. 상태 종류(꺼짐 / 막힘 / 미등록 / 미전달)만 확인한다. */
-const STATES = [
-  /Notifications are off/i,
-  /World App is blocking notifications/i,
-  /not being watched/i,
-  /took the request/i,
-  /Reminders are enabled for you/i,
-];
-const onVaultTab = STATES.some((r) => r.test(t));
-check("Vault 탭에 알림 상태가 보인다", onVaultTab,
-  onVaultTab ? (t.match(/[^\n]*(?:Notifications|nobody will be told)[^\n]*/i) || [""])[0].slice(0, 110)
-             : "없음 — Help 탭에만 있다");
-
-/* 아직 아무에게도 묻지 않은 지갑에게 "누가 알림을 막았다" 고 말하면 근거가 없다.
-   MiniKit 2.x 는 "아직 요청 안 함" 과 "요청하고 거절당함" 을 구분해 주지 않는다
-   (둘 다 notifications: false). 그래서 앱은 우리가 직접 물어봤는지를 따로 기억하고,
-   물어보기 전에는 중립적인 문구를 쓴다. 여기서는 그 구분이 실제로 지켜지는지 본다. */
-check("요청하지 않은 상태에서 '누가 막았다' 고 말하지 않는다",
-  !/World App is blocking notifications/i.test(t),
-  /World App is blocking notifications/i.test(t) ? "아직 묻지 않았는데 막혔다고 말한다" : "중립적 문구");
-
-log("\n[2] 내부 상태값을 그대로 노출하지 않는가");
-const leaked = ["unknown", "not registered", "enabled", "disabled"].filter(
-  (w) => new RegExp(`(^|\\n)\\s*${w}\\s*($|\\n)`, "i").test(t));
-check("상태값이 사람 말로 바뀌었다", leaked.length === 0, leaked.length ? `남은 원문: ${leaked.join(", ")}` : "없음");
-
-log("\n[3] 무엇이 되고 있지 않은지 + 대처가 함께 오는가");
-// 상태값이 아니라 **결과**를 말해야 한다: "알림이 꺼져 있다" 가 아니라
-// "갱신을 멈추면 아무도 통보받지 못한다".
-//
-// **화면 어디에 있든** 결과가 보이면 된다. 예전에는 이 문장이 알림 블록 **안** 에 있었고
-// 그 위치까지 검사했다. 그런데 같은 화면의 바로 아래 문장이 그 결과를 이미 말하고 있어서
-// ("If you stop renewing, your heir can file a claim and take the balance…") 알림 블록이
-// 다시 말하는 순간 화면이 두 번 같은 말을 하게 된다. 요구는 "사용자가 결과를 안다" 이지
-// "알림 상자 안에서 말하라" 가 아니다 — 요구를 있는 그대로 검사한다.
-const consequence = /nobody will be told|will not be told|will not be warned|not be sent about it|heir can file a claim and take the balance/i.test(t);
-check("결과를 말한다 (누가 무엇을 놓치는지)", consequence,
-  (t.match(/[^\n]*(nobody will be told|will not be told|will not be warned|heir can file a claim and take the balance)[^\n]*/i) || ["(결과 문장 없음)"])[0].slice(0, 120));
-// 헤딩이 없는 것이 의도다. "Notifications need attention" 같은 큰 제목은 카운트다운보다
-// 눈에 띄어서 알림이 주인공이 되어 버렸다. 문장으로만 말한다.
-check("큰 헤딩 없이 문장으로 말한다", !/^\s*Notifications (on|need attention)\s*$/im.test(t),
-  /Notifications (on|need attention)/im.exec(t)?.[0] || "헤딩 없음 (옳음)");
-
-// 블록 크기는 실제 DOM 요소로 잰다. 정규식으로 뒤쪽 400자를 잡으면 탭의 나머지
-// 내용까지 같이 세어 14줄 같은 헛값이 나온다 — 실제로 그랬다.
-// 블록을 **알림 상태 문구**로 찾는다. 예전에는 "nobody will be told" 로 찾았는데 그
-// 문장을 알림 블록에서 뺐으므로(중복 제거) 이제는 블록을 못 찾고 "요소를 못 찾음" 이
-// 났다 — 검사 대상이 아니라 문구 변화에 묶여 있었다. 이 검사는 블록의 **크기**를 재는
-// 것이므로, 블록을 식별하는 조건도 그 블록 고유의 것(무엇이 되고 있지 않은가)으로 둔다.
-const metrics = await b.ev(`return (() => {
-  const el = [...document.querySelectorAll("[role=alert],[role=status]")]
-    .find((n) => /Notifications are off|Reminders are enabled for you|is blocking|not being watched|took the request/i.test(n.innerText || ""));
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  const timer = document.querySelector(".timer-block");
+log("\n[1] funded own-plan overview shows wallet permission and its actions");
+await clickTab("home");
+await b.waitFor(".plan-overview-reminders");
+const overview = await b.ev("return document.querySelector('.plan-overview-card')?.innerText || ''; ");
+const reminder = await b.ev(`return (() => {
+  const row = document.querySelector('.plan-overview-reminders');
+  if (!row) return null;
+  const r = row.getBoundingClientRect();
+  const assets = document.querySelector('.plan-overview-assets')?.getBoundingClientRect();
+  const next = document.querySelector('.home-checkin-date')?.getBoundingClientRect();
   return {
-    height: Math.round(r.height),
-    timerHeight: timer ? Math.round(timer.getBoundingClientRect().height) : null,
-    lines: (el.innerText || "").split("\\n").filter((x) => x.trim()).length,
+    text: row.innerText || '', visible: r.width > 0 && r.height > 0,
+    lines: (row.innerText || '').split("\\n").filter(line => line.trim()).length,
+    height: Math.round(r.height), primaryHeight: Math.round((assets?.height || 0) + (next?.height || 0)),
+    hasHeading: !!row.querySelector('h1,h2,h3'),
+    buttons: [...row.querySelectorAll('button,a')].map(el => ({ text: el.textContent.trim(), disabled: !!el.disabled }))
   };
 })();`);
-check("알림 블록이 DOM 에서 4줄 이내다", !!metrics && metrics.lines <= 4,
-  metrics ? `${metrics.lines}줄 / ${metrics.height}px` : "요소를 못 찾음");
-check("알림 블록이 카운트다운 블록보다 작다 (카운트다운이 주인공)",
-  !!metrics && metrics.timerHeight != null && metrics.height < metrics.timerHeight,
-  metrics ? `알림 ${metrics.height}px vs 카운트다운 ${metrics.timerHeight}px` : "");
-// 진단 버튼("Send a test to me") 은 Help 탭에 남긴다. 카운트다운 옆에 둘 이유가 없다.
-check("진단 버튼이 카운트다운 탭을 차지하지 않는다", !/Send a test/i.test(t), "Help 탭에만 있음");
+check("funded owner sees the own-plan overview and next check-in", /Your inheritance plan/i.test(overview)
+  && /Next check-in/i.test(overview),
+  overview.split("\n").filter(line => /inheritance plan|Next check-in/i.test(line)).join(" / ") || "overview missing");
+check("overview states this wallet's notification permission", !!reminder && reminder.visible
+  && /Notifications are off|Notifications are on for this wallet/i.test(reminder.text),
+  reminder ? reminder.text.slice(0, 140) : "plan reminder row missing");
+check("wallet permission is not presented as vault monitoring or delivery", !!reminder
+  && !/reminders are enabled|delivery enabled|monitoring enabled|(?:all|every) (?:of your )?(?:active )?vaults?.{0,35}(?:monitor|watch|reminder|notify)|(?:monitor|watch|reminder|notify).{0,35}(?:all|every) (?:of your )?(?:active )?vaults?/i.test(reminder.text),
+  reminder?.text.slice(0, 140) || "plan reminder row missing");
+check("overview reminder controls are present", !!reminder
+  && reminder.buttons.some(button => button.text === "Enable reminders" && !button.disabled)
+  && reminder.buttons.some(button => button.text === "Reminder settings"),
+  reminder?.buttons.map(button => `${button.text}${button.disabled ? "(disabled)" : ""}`).join(" | ") || "no controls");
+check("reminder row stays visually subordinate to the plan overview", !!reminder
+  && reminder.lines <= 4 && reminder.height < reminder.primaryHeight && !reminder.hasHeading,
+  reminder ? `${reminder.lines} lines; ${reminder.height}px vs primary ${reminder.primaryHeight}px` : "row missing");
 
-log("\n[4] 고칠 수 있는 버튼이 그 자리에 있는가");
-const btns = await b.ev(`return [...document.querySelectorAll("button")].filter(x=>x.offsetParent!==null).map(e=>({t:e.innerText.trim(),d:e.disabled}));`);
-// 라벨을 짧게 줄였으므로("Turn on notifications" → "Turn on") 검사도 같이 갱신한다.
-const fixes = btns.filter((x) => /^turn on$|watch this vault/i.test(x.t));
-check("Vault 탭에서 바로 고칠 수 있다", fixes.length > 0,
-  fixes.length ? fixes.map((x) => `${x.t}${x.d ? "(비활성)" : ""}`).join(" | ") : "고치는 버튼 없음");
-// 활성/비활성은 검사하지 않는다. E2E 스텁이 miniInstalled 를 true 로 만들기 때문에
-// 여기서 활성인 게 정상이지만, 정작 실제 데스크톱 사용자에게 보이는 화면은 gate2 가
-// "Open in World App" 로 막는다. 스텁의 상태를 사용자 상태로 오독하지 말 것.
+await b.ev("const details = document.querySelector('.plan-overview-reminders details'); if (details && !details.open) details.querySelector('summary').click(); return true;");
+const reminderSettings = await b.ev(`return (() => {
+  const row = document.querySelector('.plan-overview-reminders');
+  const control = [...(row?.querySelectorAll('button,a') || [])].find(el => el.innerText.trim() === 'Reminder settings');
+  if (!control || control.disabled) return false;
+  control.click(); return true;
+})();`);
+await sleep(900);
+const helpTab = await b.ev("return document.querySelector('.tab-item-active')?.innerText.trim() || ''; ");
+check("Reminder settings opens Help", reminderSettings && /Help/i.test(helpTab), helpTab || "Help tab not selected");
 
-log("\n[5] 잔액 0 이면 경고하지 않는가");
+log("\n[2] overview permissions do not leak backend state or delivery claims");
+await clickTab("home");
+const rowText = await b.ev("return document.querySelector('.plan-overview-reminders')?.innerText || ''; ");
+const leaked = ["unknown", "not_registered", "not registered", "enabled", "disabled"].filter(
+  word => new RegExp(`(^|\\n)\\s*${word}\\s*($|\\n)`, "i").test(rowText));
+check("backend state values are not exposed", leaked.length === 0, leaked.length ? leaked.join(", ") : "none");
+
+log("\n[3] selected-vault reminder detail stays with Inherit");
+await clickTab("plan");
+await b.waitFor(".automation-note");
+const detail = await b.ev(`return (() => {
+  const notice = document.querySelector('.automation-note');
+  const selected = [...document.querySelectorAll('[role=alert],[role=status]')]
+    .find(el => /Notifications are off|Notifications are on for this wallet/i.test(el.innerText || ''));
+  const monitor = [...(notice?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Enable vault monitoring');
+  return { notice: notice?.innerText || '', selected: selected?.innerText || '', monitor: !!monitor && !monitor.disabled };
+})();`);
+check("selected-vault notification detail remains in Inherit", !!detail && /Notifications are off/i.test(detail.selected)
+  && /Enable monitoring so this vault/i.test(detail.notice),
+  detail ? `${detail.selected.slice(0, 80)} / ${detail.notice.split("\n")[0]}` : "selected-vault details missing");
+check("selected-vault monitoring action remains available separately", !!detail?.monitor,
+  detail?.monitor ? "Enable vault monitoring" : "monitor action missing/disabled");
+const monitorClick = await b.ev(`return (() => {
+  const button = [...(document.querySelector('.automation-note')?.querySelectorAll('button') || [])]
+    .find(el => el.innerText.trim() === 'Enable vault monitoring');
+  if (!button || button.disabled) return false;
+  button.click(); return true;
+})();`);
+const monitoringReady = await waitUntil(() => b.ev("return /Automatic transfer is enabled/i.test(document.querySelector('.automation-note')?.innerText || '');"));
+const watchRequests = await b.ev("return window.__NOTIFY_REQUESTS__ || []; ");
+check("selected-vault action registers only its selected vault", monitorClick && monitoringReady
+  && watchRequests.some(call => call.path === "/api/notifications/register" && /vaultAddress/.test(call.body)),
+  watchRequests.map(call => call.path).join(" | ") || "no local watcher request");
+
+log("\n[4] no funded plan means no funded-plan permission row");
 await b.close();
-const c = await launch({ pk: A.a9.pk, url: APP });
+const c = await launch({ pk: A.a9.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
 await sleep(2800);
 await c.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
-await c.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim().toLowerCase().includes("vault"));if(e)e.click();return 1;})()`);
 await sleep(1000);
-const t2 = await c.ev("return document.body.innerText;");
-check("금고가 없는 화면에 알림 경고가 뜨지 않는다", !/Notifications need attention/i.test(t2),
-  /Notifications[^\n]*/i.test(t2) ? (t2.match(/Notifications[^\n]*/i) || [""])[0] : "없음 (맞음)");
+await c.ev("const section = document.querySelector('.plan-reminder-details'); if (section && !section.open) section.querySelector('summary').click(); return true;");
+const emptyPlan = await c.ev(`return (() => ({
+  overviewReminder: !!document.querySelector('.plan-overview-reminders'),
+  note: document.querySelector('.plan-notification-note')?.innerText || ''
+}))();`);
+check("금고가 없으면 funded-plan 권한 행이 없다", !emptyPlan.overviewReminder,
+  emptyPlan.overviewReminder ? "overview row present" : "none");
+check("잔액이 생기기 전에는 알림 시작 시점을 분명히 말한다",
+  /notices (?:begin|start) after a vault holds funds/i.test(emptyPlan.note),
+  emptyPlan.note || "new-plan notice missing");
 await c.close();
 
-log("\n[6] 새 사용자도 금고를 만들 수 있는가");
-// 여기서 실제로 P0 하나가 나왔었다. 주기 필드를 "실제 값으로 시드" 하도록 바꾼 뒤,
-// 금고가 없는 사용자에게는 시드할 값이 없으므로 필드가 빈 채로 남고 periodValid 가
-// false 가 되었다. 결과적으로 "Create vault" 가 **영영 켜지지 않았고 아무도 금고를
-// 만들 수 없었다.** 로컬 E2E 는 캐스트로 금고를 만들어서 이 경로를 한 번도 안 밟았다.
-// 알림 자동 등록 검사가 발목을 걸어 오히려 잡아냈다.
+log("\n[5] 새 사용자가 양의 입금액으로 unified plan 을 만들 수 있는가");
+// Period validation alone does not enable a unified plan: one asset amount must also be positive.
 {
-  const c3 = await launch({ pk: A.a11.pk, url: APP });
+  const c3 = await launch({ pk: A.a11.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
   await sleep(2800);
   await c3.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   // `sleep(5000)` 은 추측이고 여기서는 관측이 필요하다. 지갑 연결이 끝나기 전에
@@ -228,133 +263,120 @@ log("\n[6] 새 사용자도 금고를 만들 수 있는가");
   const period = await c3.ev(`return (document.getElementById("period-input")||{}).value;`);
   check("금고가 없어도 주기 필드가 채워져 있다", !!period && period.length > 0, `값="${period}"`);
   check("상속인 입력창이 나타난다", await c3.waitFor("#heir-input"), "#heir-input");
-  await c3.ev(`return (()=>{
-    const i=document.getElementById("heir-input");
-    const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
-    s.call(i, ${JSON.stringify(A.a9.a)});
-    i.dispatchEvent(new Event("input",{bubbles:true}));
-    return 1;
-  })()`);
-  await sleep(2500);
+  await c3.waitFor("#plan-wld");
+  const heirSet = await setInput(c3, "heir-input", A.a9.a);
+  const amountSet = await setInput(c3, "plan-wld", "0.01");
+  await waitUntil(() => c3.ev(`return [...document.querySelectorAll("button")]
+    .some(button => button.innerText.trim() === "Review plan" && !button.disabled);`));
+  const amount = await c3.ev("return document.getElementById('plan-wld')?.value || ''; ");
   const btn = await c3.ev(`return (()=>{
-    const e=[...document.querySelectorAll("button")].find(x=>/create vault/i.test(x.innerText));
+    const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan");
     return e ? (e.disabled ? "disabled" : "enabled") : "missing";
   })();`);
-  check("상속인을 넣으면 금고 만들기가 열린다", btn === "enabled", `버튼 ${btn}`);
+  check("새 plan 입력은 지정한 상속인과 양의 WLD 금액을 보존한다", heirSet && amountSet && amount === "0.01",
+    `heir=${heirSet}, WLD=${amount}`);
+  check("상속인과 양의 입금액을 넣으면 현재 생성 CTA 가 열린다", btn === "enabled", `버튼 ${btn}`);
   await c3.close();
 }
 
-log("\n[6] 금고 만들면 자동으로 등록되는가");
-// 알림이 이 앱의 핵심 경로인데 등록이 수동이면 아무도 하지 않는다. createVault 경로에
-// 자동 등록이 이미 붙어 있는데, 백엔드 saveWatcher 가 500 을 내고 있어서 조용히
-// 실패하고 있었다. 백엔드가 고쳐졌으니 이 경로가 실제로 호출되는지 본다.
-//
-// 프로덕션 D1 을 건드리지 않으려면 fetch 를 가로채야 한다. 실제로 등록하면
-// 테스트용 anvil 금고가 운영 감시 목록에 남는다.
+log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 화면으로 간다");
 {
-  const c2 = await launch({ pk: A.a10.pk, url: APP });
+  const c2 = await launch({ pk: A.a10.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
   await sleep(2800);
-  await c2.ev(`return (()=>{
-    window.__REG_CALLS__ = [];
-    const of = window.fetch;
-    window.fetch = function (u, o) {
-      try {
-        const url = typeof u === "string" ? u : (u && u.url) || "";
-        if (url.indexOf("/notifications/register") > -1 || url.indexOf("/notifications/unregister") > -1) {
-          window.__REG_CALLS__.push({ url: url, body: o && o.body ? String(o.body) : null });
-          return Promise.resolve(new Response(JSON.stringify({ status: "success", watcher: {} }),
-            { status: 200, headers: { "content-type": "application/json" } }));
-        }
-      } catch (e) {}
-      return of.apply(this, arguments);
-    };
-    return 1;
-  })()`);
   await c2.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
-  await sleep(5000);
-  const setHeir = await c2.ev(`return (()=>{
-    const inp = document.querySelector('input[placeholder*="username"], input[placeholder*="0x"]');
-    if (!inp) return "NO INPUT";
-    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-    set.call(inp, ${JSON.stringify(A.a9.a)});
-    inp.dispatchEvent(new Event("input", { bubbles: true }));
-    return "ok";
-  })()`);
-  await sleep(2500);
+  check("생성 폼과 amount control 이 나타난다",
+    await c2.waitFor("#heir-input") && await c2.waitFor("#plan-wld"), "#heir-input + #plan-wld");
+  const setHeir = await setInput(c2, "heir-input", A.a9.a);
+  const setAmount = await setInput(c2, "plan-wld", "0.01");
+  const requestedAmount = await c2.ev("return document.getElementById('plan-wld')?.value || ''; ");
+  await waitUntil(() => c2.ev(`return [...document.querySelectorAll("button")]
+    .some(button => button.innerText.trim() === "Review plan" && !button.disabled);`));
   const clicked = await c2.ev(`return (()=>{
-    const e=[...document.querySelectorAll("button")].find(x=>/create vault/i.test(x.innerText));
+    const e=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan");
     if(!e) return "NO BUTTON";
     if(e.disabled) return "DISABLED";
     e.click(); return "clicked";
   })()`);
-  log(`    상속인 입력 ${setHeir} / 생성 버튼 ${clicked}`);
-  await sleep(7000);
-  const calls = await c2.ev("return (window.__REG_CALLS__ || []);");
-  const regCalls = Array.isArray(calls) ? calls.filter((x) => /register/.test(x.url)) : [];
+  await waitUntil(() => c2.ev("return !!document.querySelector('.plan-final-review')"));
+  await c2.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Confirm and deposit'); if (!button || button.disabled) throw new Error('Final deposit approval unavailable'); button.click(); return true;");
+  log(`    상속인 입력 ${setHeir} / amount 입력 ${setAmount} / 생성 CTA ${clicked}`);
+  const creationObserved = await waitUntil(() => c2.ev(`return (window.__NOTIFY_REQUESTS__ || []).some(call => call.path === '/api/notifications/register')
+    && !document.getElementById('heir-input')
+    && document.querySelector('.page-intro h1')?.textContent === 'Today, and for their tomorrow.'
+    && !!document.querySelector('.plan-overview-card');`), 30000);
+  const registrationObserved = await c2.ev("return (window.__NOTIFY_REQUESTS__ || []).some(call => call.path === '/api/notifications/register');");
+  const managed = await c2.ev("return !document.getElementById('heir-input') && document.querySelector('.page-intro h1')?.textContent === 'Today, and for their tomorrow.' && !!document.querySelector('.plan-overview-card');");
+  const calls = await c2.ev("return (window.__NOTIFY_REQUESTS__ || []);");
+  const regCalls = Array.isArray(calls) ? calls.filter((x) => x.path === "/api/notifications/register") : [];
+  const canonicalVault = cast(["call", FACTORY, "vaultOf(address)(address)", A.a10.a, "--rpc-url", RPC]);
+  const registeredBody = regCalls[0]?.body ? JSON.parse(regCalls[0].body) : {};
+  const depositedAmount = canonicalVault.toLowerCase() === ZERO.toLowerCase() ? 0n
+    : castUint(["call", WLD, "balanceOf(address)(uint256)", canonicalVault, "--rpc-url", RPC]);
+  if (!creationObserved) log("    Creation diagnostic: " + JSON.stringify(await c2.ev("return {text: document.body.innerText, calldata: window.__E2E_MINIKIT__?.lastCalldata(), bridgeError: window.__E2E_MINIKIT__?.lastError()};")));
   check("금고 생성 시 등록을 자동으로 호출한다", regCalls.length > 0,
-    regCalls.length ? `${regCalls.length}회: ${regCalls[0].url.replace(/^https?:\/\/[^/]+/, "")}` : "호출 없음");
-  check("등록 본문에 금고 주소가 들어간다",
-    !!(regCalls[0] && regCalls[0].body && /vaultAddress/.test(regCalls[0].body)),
-    regCalls[0] && regCalls[0].body ? String(regCalls[0].body).slice(0, 110) : "(본문 없음)");
+    creationObserved && registrationObserved ? `${regCalls.length}회: ${regCalls[0]?.path}` : "호출 없음");
+  check("생성 요청은 정확히 0.01 WLD 를 사용한다", setAmount && requestedAmount === "0.01" && depositedAmount === 10000000000000000n,
+    `requested=${requestedAmount} WLD; canonical deposited=${depositedAmount} wei`);
+  check("등록 본문이 생성된 canonical vault 와 owner/heir 를 가리킨다",
+    canonicalVault.toLowerCase() !== ZERO.toLowerCase()
+      && registeredBody.vaultAddress?.toLowerCase() === canonicalVault.toLowerCase()
+      && registeredBody.ownerAddress?.toLowerCase() === A.a10.a.toLowerCase()
+      && registeredBody.heirAddress?.toLowerCase() === A.a9.a.toLowerCase(),
+    JSON.stringify(registeredBody));
   const createdUi = await c2.ev("return {form: Boolean(document.getElementById('heir-input')), heading: document.querySelector('.page-intro h1')?.textContent};");
   check("금고 생성 직후 새로고침 없이 관리 화면으로 바뀐다",
-    !createdUi.form && createdUi.heading === "Your person. Your plan.", JSON.stringify(createdUi));
+    creationObserved && managed && !createdUi.form && createdUi.heading === "Today, and for their tomorrow.", JSON.stringify(createdUi));
   await c2.close();
 }
 
-log("\n[7] 처음 쓰는 사람이 금고를 만들기 전에 알림을 알게 되는가");
-// 알림 안내를 Vault 탭에만 두면 안 된다. Vault 탭은 `needsVault` 이라 **금고가 없으면
-// 보이지 않는다.** 처음 쓰는 사람은 기본 탭(Inherit)에서 금고를 만들 텐데, 알림을
-// 그때 알려주지 않으면 존재를 모른 채 지나간다. 이 검사는 바로 그 경우를 본다.
+log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위치와 의미를 갖는가");
+// 새 사용자는 Inherit 탭에서 계획을 만든다. 선택적 알림 안내는 같은 생성 카드 안,
+// CTA 앞에 있고, 잔액이 생긴 뒤 알림이 시작된다고 설명해야 한다.
 {
-  const fresh = await launch({ pk: A.a11.pk, url: APP });
+  const fresh = await launch({ pk: A.a11.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
   await sleep(2800);
   await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5000);
   const tabs = await fresh.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
-  check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.some((t) => /vault/i.test(t)),
+  check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.includes("Home"),
     `탭: ${tabs.join(" | ")}`);
-  check("그래도 알림 안내가 보인다 (보이는 탭 어딘가)",
-    /Turn on notifications/i.test(await fresh.ev("return document.body.innerText;")),
-    (await fresh.ev("return document.body.innerText;")).match(/[^\n]*Turn on notifications[^\n]*/i)?.[0] || "없음");
-  // "Create vault" 바로 위에 있는가. 기하(좌표)로 재면 컨테이너 높이 따라 조상 찾기가
-  // 뒤틀린다 — 앞선 두 판이 그랬다. **두 요소의 공통 조상 카드를 찾는 것**이 곧
-  // "같은 카드" 다. 기하 없이 직접 답을 얻고, 순서만 좌표로 본다.
+  await fresh.ev("const section = document.querySelector('.plan-reminder-details'); if (section && !section.open) section.querySelector('summary').click(); return true;");
+  await fresh.waitFor(".plan-notification-note");
   const placement = await fresh.ev(`return (() => {
-    const btn = [...document.querySelectorAll("button")].find((x) => /create vault/i.test(x.innerText));
-    const leaf = [...document.querySelectorAll("div,span,p")].find(
-      (d) => d.children.length === 0 && /^Turn on notifications/.test((d.innerText || "").trim()));
-    if (!btn || !leaf) return { err: "missing", btn: !!btn, leaf: !!leaf };
-    const chain = [];
-    for (let n = leaf; n; n = n.parentElement) chain.push(n);
-    const card = chain.find((n) => n.contains(btn));
-    if (!card) return { err: "no common card" };
-    const b = btn.getBoundingClientRect();
-    // 카드 안에서 leaf 를 담는 가장 작은 박스를 찾는다.
-    let box = null;
-    for (const k of card.children) {
-      if (!k.contains(leaf)) continue;
-      const r = k.getBoundingClientRect();
-      if (r.height > 0 && (!box || r.height < box.height)) box = r;
-    }
-    if (!box) return { err: "no note box" };
-    return { sameCard: true, before: box.bottom <= b.top + 2, gap: Math.round(b.top - box.bottom) };
+    const card = document.querySelector('.plan-setup-card');
+    const note = card?.querySelector('.plan-notification-note');
+    const cta = [...(card?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Review plan');
+    const enable = [...(note?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Enable reminders');
+    if (!card || !note || !cta || !enable) return { err: 'missing control', card: !!card, note: !!note, cta: !!cta, enable: !!enable };
+    const n = note.getBoundingClientRect(), b = cta.getBoundingClientRect();
+    return {
+      sameCard: card.contains(note) && card.contains(cta),
+      before: Boolean(note.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING) && n.bottom <= b.top + 2,
+      gap: Math.round(b.top - n.bottom), text: note.innerText || '', role: note.getAttribute('role'),
+      classes: note.className, enableDisabled: enable.disabled,
+    };
   })();`);
-  check("금고 만들기 버튼과 같은 카드 안이다", !!placement && placement.sameCard === true,
-    placement ? (placement.err || "같은 카드") : "측정 실패");
-  check("버튼보다 **위에** 있다 (액션 전에 읽혀야 한다)", !!placement && placement.before === true,
-    placement && placement.gap !== undefined ? `버튼 위 ${placement.gap}px` : "측정 실패");
-  // "켜라" 고 말하면서 정상(초록) styling 이 붙으면 모순이다.
-  const tone = await fresh.ev(`return (() => {
-    const el = [...document.querySelectorAll("div")].find(
-      (d) => /^Turn on notifications/.test((d.innerText || "").trim()) && d.className.indexOf("rounded") >= 0);
-    if (!el) return "missing";
-    return /bg-green-100/.test(el.className) ? "ok-tone" : /bg-yellow-50/.test(el.className) ? "warn-tone" : "plain";
-  })();`);
-  check("'켜라'고 말할 때는 경고 톤이다", tone === "warn-tone", `톤 ${tone}`);
-  check("알림이 잔액 0 일 때는 간다고 말하지 않는다",
-    /Notices start once the vault holds WLD/i.test(await fresh.ev("return document.body.innerText;")),
-    (await fresh.ev("return document.body.innerText;")).match(/[^\n]*Notices start[^\n]*/i)?.[0] || "없음");
+  check("새 계획 안내와 CTA 는 같은 setup 카드에 있다", !!placement && placement.sameCard === true,
+    placement ? (placement.err || "same plan card") : "measurement failed");
+  check("새 계획 안내는 Review plan 앞에 있다", !!placement && placement.before === true,
+    placement && placement.gap !== undefined ? `${placement.gap}px before CTA` : "measurement failed");
+  check("꺼진 권한은 안내의 alert 톤으로 표시되고 Enable reminders 가 있다", !!placement
+    && placement.role === "alert" && /notice-needs-action/.test(placement.classes) && !placement.enableDisabled,
+    placement ? `role=${placement.role}; class=${placement.classes}; disabled=${placement.enableDisabled}` : "note missing");
+  check("새 계획 안내는 자산 입금 뒤에만 알림이 시작된다고 말한다",
+    !!placement && /notices (?:begin|start) after a vault holds funds/i.test(placement.text),
+    placement?.text || "notice missing");
+  check("상속인 지갑은 별도 권한이 필요하다고 안내한다",
+    !!placement && /your heir needs their own permission/i.test(placement.text),
+    placement?.text || "notice missing");
+  const heirSet = await setInput(fresh, "heir-input", A.a9.a);
+  const amountSet = await setInput(fresh, "plan-wld", "0.01");
+  await waitUntil(() => fresh.ev(`return [...document.querySelectorAll('button')]
+    .some(button => button.innerText.trim() === 'Review plan' && !button.disabled);`));
+  const enabledCta = await fresh.ev(`return [...document.querySelectorAll('button')]
+    .some(button => button.innerText.trim() === 'Review plan' && !button.disabled);`);
+  check("초기 사용자의 실제 생성 CTA 에 양의 test amount 와 heir 로 도달한다", heirSet && amountSet && enabledCta,
+    `heir=${heirSet}, amount=${amountSet}, enabled=${enabledCta}`);
   await fresh.shot("notify-first-run");
   await fresh.close();
 }
@@ -367,7 +389,7 @@ log("\n[8] 상속인 카드는 결과가 있을 때만 첫 화면에 나온다")
 {
   // This case asserts a completed empty search, not an unavailable production API.
   // Actual RPC failures and retry are covered by heir-discovery.mjs.
-  const plain = await launch({ pk: A.a11.pk, url: APP, preload: `
+  const plain = await launch({ pk: A.a11.pk, url: APP, preload: `${LOCAL_NOTIFY_FIXTURE}
     const realFetch = window.fetch.bind(window);
     window.__emptyIndexReads = 0;
     window.fetch = (input, init) => {
@@ -430,53 +452,33 @@ log("\n[9] 진짜 상속인에게는 여전히 첫 화면에 보여야 한다");
   if (heir) await heir.close();
 }
 
-log("\n[10] 'Turn on notifications' 를 누르면 화면이 실제로 바뀌는가");
+log("\n[10] Enable reminders updates the overview to the confirmed wallet permission");
 
-/* 이 검사가 없으면 알림 UX 의 핵심 버그를 못 잡는다.
-   실제로 있었던 일: MiniKit 2.x 는 권한을 {executedWith, data:{permissions}} 로
-   감싸서 돌려주는데 앱은 최상위 permissions 를 읽었다. 거기엔 없으므로 값이 항상
-   undefined 였고 앱은 영영 "꺼짐" 이라고 말했다. 그런데 그 상태에서도 "Turn on
-   notifications" 를 누르면 **성공 토스트가 떴다** — 사용자는 켠 줄 알고 화면은
-   "꺼짐" 그대로였다. 하네스는 그 버튼을 한 번도 누른 적이 없었다.
-   그래서 (1) 누르기 전 상태를 기억하고 (2) 누르고 (3) 상태가 실제로 바뀌었는지 본다. */
-/* 금고가 있는 계정이어야 한다. 금고가 없으면 Vault 탭의 알림 줄이 아예 렌더링되지
-   않으므로(잔액 0 기준) 전제 조건이 없는 검사가 되어 통과가 아무 의미가 없어진다.
-   a4 는 이 파일 맨 앞에서 금고를 만든 계정이다. 이 단계 앞의 [5] 에서 `b`(=a4)를
-   이미 닫아 놨으므로 여기서 새로 띄운다. */
-const perm = await launch({ pk: A.a4.pk, url: APP });
+// A fresh browser profile starts with notifications off. The action must update the
+// wallet permission status without implying that a vault was registered or delivery succeeded.
+const perm = await launch({ pk: A.a4.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
 await sleep(2800);
 await perm.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(6000);
-await perm.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim().toLowerCase().includes("vault"));if(e)e.click();return 1;})()`);
+await perm.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim()==="Home");if(e)e.click();return 1;})()`);
 await sleep(1500);
-const before = await perm.ev("return document.body.innerText;");
-const wasBlocked = /World App is blocking notifications/i.test(before);
-const wasOff = /Notifications are off/i.test(before);
-check("누르기 전에는 알림이 꺼짐/막힘 으로 보인다", wasOff || wasBlocked,
-    wasBlocked ? "이미 막힘" : wasOff ? "꺼짐" : "표시 없음");
+const before = await perm.ev("return document.querySelector('.plan-overview-reminders')?.innerText || ''; ");
+check("누르기 전 overview 는 지갑 권한이 꺼졌다고 표시한다", /Notifications are off/i.test(before)
+  && !/Notifications are on for this wallet/i.test(before), before || "overview permission row missing");
 
-/* 라벨이 두 곳에 있다 — Vault 탭의 조용한 고침 버튼은 "Turn on", 금고 생성 카드와
-   Help 탭은 "Turn on notifications". 어느 쪽이든 고쳐야 하는 동작이 같으므로 둘 다
-   찾는다. */
 const clicked = await perm.ev(`return (()=>{
-  const btn=[...document.querySelectorAll("button")].find(x=>/^turn on( notifications)?$/i.test(x.innerText.trim()) && !x.disabled);
+  const btn=[...(document.querySelector('.plan-overview-reminders')?.querySelectorAll('button') || [])]
+    .find(x=>x.innerText.trim()==='Enable reminders' && !x.disabled);
   if(!btn) return false; btn.click(); return true;
 })()`);
-check("알림 켜기 버튼을 누를 수 있다", clicked === true, clicked === true ? "눌렀다" : "버튼 없음/비활성");
-
-await sleep(3500);
-const after = await perm.ev("return document.body.innerText;");
-  const stillBroken = /World App is blocking notifications/i.test(after);
-  check("누른 뒤 화면이 '꺼짐/막힘' 에서 벗어나야 한다", !(stillBroken || /Notifications are off/i.test(after)),
-    stillBroken ? "여전히 막힘이라고 표시" : /Notifications are off/i.test(after) ? "여전히 꺼짐이라고 표시" : "바뀜");
-
-  /* 성공 토스트를 띄웠다면 그것이 거짓말이 아니어야 한다. 예전에는 호출이 예외 없이
-     끝났다는 사실만으로 "enabled" 를 말했는데, MiniKit 2.x 는 거절도 throw 하지 않고
-     결과로 돌려줄 수 있다. */
-const claimed = /Notifications are on for this wallet/i.test(after);
-const truthy = !/Notifications are off/i.test(after) && !/World App is blocking/i.test(after);
-check("'켜짐' 토스트는 실제 상태와 일치한다", !claimed || truthy,
-    claimed ? (truthy ? "켜짐=true, 화면도 켜짐" : "켜짐이라 했지만 화면은 꺼짐 — 거짓말") : "켜짐 토스트 없음");
+check("Enable reminders 를 누를 수 있다", clicked === true, clicked ? "clicked" : "button missing/disabled");
+const changed = await waitUntil(() => perm.ev("return /Notifications are on for this wallet/i.test(document.querySelector('.plan-overview-reminders')?.innerText || '');"));
+const after = await perm.ev("return document.querySelector('.plan-overview-reminders')?.innerText || ''; ");
+check("권한 응답 뒤 overview 가 지갑 권한을 on 으로 갱신한다", changed
+  && /Notifications are on for this wallet/i.test(after) && !/Notifications are off/i.test(after), after || "permission row missing");
+check("권한 on 을 감시 등록이나 delivery 성공으로 과장하지 않는다",
+  !/reminders are enabled|delivery enabled|monitoring enabled|Automatic transfer is enabled/i.test(after),
+  after || "permission row missing");
 await perm.shot("notify-permission-roundtrip");
 await perm.close();
 

@@ -153,12 +153,28 @@ export async function launch({ pk, url, profile, preload = "" } = {}) {
 
 // ---- page-side helpers (injected as strings)
 export const HELPERS = `
+  const revealControl = (el) => {
+    const parents = [];
+    for (let parent = el?.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS' && !parent.open) parents.unshift(parent);
+    }
+    for (const parent of parents) parent.querySelector(':scope > summary')?.click();
+    return el;
+  };
   window.__q = {
     btns: () => [...document.querySelectorAll('button')].filter(b=>b.offsetParent!==null).map(b=>({t:b.textContent.trim().slice(0,46), d:b.disabled})),
     tabs: () => [...document.querySelectorAll('.tab-item')].map(b=>b.textContent.trim()),
     tab: (name) => { const b=[...document.querySelectorAll('.tab-item')].find(x=>x.textContent.trim()===name); if(!b) return 'NO TAB '+name; b.click(); return 'ok'; },
-    click: (label) => { const b=[...document.querySelectorAll('button')].filter(x=>x.offsetParent!==null).find(x=>x.textContent.trim()===label); if(!b) return 'NO BUTTON: '+label; if(b.disabled) return 'DISABLED: '+label; b.click(); return 'clicked '+label; },
-    setInput: (id, val) => { const el=document.getElementById(id); if(!el) return 'NO INPUT '+id;
+    reveal: (selector) => Boolean(revealControl(document.querySelector(selector))),
+    revealButton: (label) => Boolean(revealControl([...document.querySelectorAll('button')].find(b=>b.textContent.trim()===label))),
+    click: (label) => { const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()===label); if(!b) return 'NO BUTTON: '+label; revealControl(b); if(b.offsetParent===null) return 'HIDDEN: '+label; if(b.disabled) return 'DISABLED: '+label; b.click(); return 'clicked '+label; },
+    setInput: async (id, val) => { let el=document.getElementById(id);
+      if(!el && ['plan-wld','plan-usdc','heir-input','period-input'].includes(id)) {
+        const edit=[...document.querySelectorAll('button')].find(b=>b.offsetParent!==null && !b.disabled && b.textContent.trim()==='Edit plan');
+        if(edit) { edit.click(); await new Promise(requestAnimationFrame); el=document.getElementById(id); }
+      }
+      if(!el) return 'NO INPUT '+id;
+      revealControl(el);
       const proto = el.tagName==='TEXTAREA'?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;
       const s=Object.getOwnPropertyDescriptor(proto,'value').set; s.call(el, val);
       el.dispatchEvent(new Event('input',{bubbles:true})); return 'set '+id+'='+val; },

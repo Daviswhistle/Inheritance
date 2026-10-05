@@ -30,7 +30,7 @@ const vite = await createServer({
   server: { middlewareMode: true },
   optimizeDeps: { noDiscovery: true },
 });
-const { FACTORY_ABI, VAULT_ABI } = await vite.ssrLoadModule("/src/abis.ts");
+const { FACTORY_ABI, VAULT_ABI, INCOME_FACTORY_ABI, INCOME_VAULT_ABI } = await vite.ssrLoadModule("/src/abis.ts");
 await vite.close();
 
 if (!FACTORY_ABI?.length || !VAULT_ABI?.length) {
@@ -40,12 +40,19 @@ if (!FACTORY_ABI?.length || !VAULT_ABI?.length) {
 
 const art = JSON.parse(readFileSync(ART, "utf8"));
 const vart = JSON.parse(readFileSync(VART, "utf8"));
+const incomeFactoryArt = JSON.parse(readFileSync(REPO + "/out/InheritanceVaultMorphoFactory.sol/InheritanceVaultMorphoFactory.json", "utf8"));
+const incomeVaultArt = JSON.parse(readFileSync(REPO + "/out/InheritanceVaultMorpho.sol/InheritanceVaultMorpho.json", "utf8"));
 const code = art.deployedBytecode.object;
 const vcode = vart.deployedBytecode.object;
 
 let fail = 0;
 const rows = [];
-for (const [label, rawAbi, hex] of [["factory", FACTORY_ABI, code], ["vault", VAULT_ABI, vcode]]) {
+const surfaces = [
+  ["factory", FACTORY_ABI, code], ["vault", VAULT_ABI, vcode],
+  ["income factory", INCOME_FACTORY_ABI, incomeFactoryArt.deployedBytecode.object],
+  ["income vault", INCOME_VAULT_ABI, incomeVaultArt.deployedBytecode.object],
+];
+for (const [label, rawAbi, hex] of surfaces) {
   /* 앱의 ABI 는 **문자열 조각**과 **커스텀 에러 객체**가 섞여 있다
      (`...VAULT_ERROR_ABI` 로 뒤에 붙는다). 원소별로 종류를 판단해야 한다 —
      배열 전체로 `every` 로 재면 하나라도 객체가 섞여 있어 전부 문자열이 아니라고
@@ -63,6 +70,10 @@ for (const [label, rawAbi, hex] of [["factory", FACTORY_ABI, code], ["vault", VA
       return `${f.name}(${(f.inputs || []).map((i) => i.type).join(",")})`;
     })
     .filter(Boolean);
+  if (frags.length === 0) {
+    console.error(`  ${label} 에서 확인할 함수 조각을 하나도 읽지 못했습니다.`);
+    process.exit(1);
+  }
   for (const sig of frags) {
     const name = sig.slice(0, sig.indexOf("("));
     const sel = iface.getFunction(sig).selector;

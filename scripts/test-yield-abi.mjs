@@ -17,7 +17,7 @@ try {
     assert.ok((compiled.bytecode.object.length - 2) / 2 <= 49_152, `${name} exceeds EIP-3860`);
   }
   const abi = await vite.ssrLoadModule("/src/yield.ts");
-  for (const [name, exported] of [["InheritanceVaultMorphoFactory", "YIELD_FACTORY_ABI"], ["InheritanceVaultMorpho", "YIELD_VAULT_ABI"], ["InheritanceVaultUSDCFactory", "USDC_YIELD_FACTORY_ABI"], ["InheritanceVaultUSDC", "USDC_YIELD_VAULT_ABI"], ["MockERC4626", "MORPHO_ABI"]]) {
+  for (const [name, exported] of [["InheritanceVaultMorphoFactory", "INCOME_YIELD_FACTORY_ABI"], ["InheritanceVaultMorpho", "INCOME_YIELD_VAULT_ABI"], ["InheritanceVaultUSDCFactory", "USDC_INCOME_YIELD_FACTORY_ABI"], ["InheritanceVaultUSDC", "USDC_INCOME_YIELD_VAULT_ABI"], ["MockERC4626", "MORPHO_ABI"]]) {
     const artifact = JSON.parse(readFileSync(`out/${name}.sol/${name}.json`, "utf8"));
     const deployed = new Interface(artifact.abi);
     new Interface(abi[exported]).forEachFunction(fragment => {
@@ -27,6 +27,15 @@ try {
       assert.deepEqual(actual.outputs.map(p => p.type), fragment.outputs.map(p => p.type));
       checks++;
     });
+  }
+  for (const [exported, functions] of [
+    ["YIELD_FACTORY_ABI", ["withdrawIncomeFromMyVault"]],
+    ["YIELD_VAULT_ABI", ["incomePosition", "ownerWithdrawIncome"]],
+    ["USDC_YIELD_FACTORY_ABI", ["withdrawIncomeFromMyVault"]],
+    ["USDC_YIELD_VAULT_ABI", ["incomePosition", "ownerWithdrawIncome"]],
+  ]) {
+    const base = new Interface(abi[exported]);
+    for (const name of functions) assert.equal(base.getFunction(name), null, `${exported} must not require optional ${name}`);
   }
   assert.equal(abi.minimumOutput(10000n), 9950n);
   assert.equal(abi.minimumOutput(1n), 1n);

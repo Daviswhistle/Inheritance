@@ -103,6 +103,10 @@ contract InheritanceVaultMorphoFactory {
         _mine().ownerWithdrawWLD(grossAssets, to);
     }
 
+    function withdrawIncomeFromMyVault(address to, uint256 minNetAssets) external returns (uint256 netReceived) {
+        return _mine().ownerWithdrawIncome(to, minNetAssets);
+    }
+
     function withdrawAllFromMyVault(address to, uint256 minNetAssets) external {
         _mine().ownerWithdrawAllWLD(to, minNetAssets);
     }

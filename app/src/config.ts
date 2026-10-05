@@ -30,6 +30,7 @@ const morphoVault = (raw.VITE_MORPHO_VAULT_ADDRESS ?? "").trim();
 const usdcFactory = (raw.VITE_USDC_YIELD_FACTORY_ADDRESS ?? "").trim();
 const usdcStrategy = (raw.VITE_USDC_MORPHO_VAULT_ADDRESS ?? "").trim();
 const usdc = (raw.VITE_USDC_ADDRESS ?? "").trim();
+const wldAddress = (raw.VITE_WLD_ADDRESS ?? "").trim();
 if (usdcFactory || usdcStrategy || usdc) {
   if (![usdcFactory, usdcStrategy, usdc].every(value => ADDRESS_RE.test(value) && !/^0x0{40}$/i.test(value))) {
     problems.push("USDC token, yield factory and Morpho strategy must be configured together.");
@@ -48,6 +49,94 @@ if (yieldFactory || morphoVault) {
     problems.push("The yield factory must be separate from the existing factories.");
   }
 }
+
+const ZERO_ADDRESS_RE = /^0x0{40}$/i;
+const isNonzeroAddress = (value: string): boolean => ADDRESS_RE.test(value) && !ZERO_ADDRESS_RE.test(value);
+const parseLegacyFactoryList = (key: string): { configured: boolean; valid: boolean; addresses: string[] } => {
+  const value = (raw[key] ?? "").trim();
+  if (!value) return { configured: false, valid: true, addresses: [] };
+
+  const entries = value.split(",").map(entry => entry.trim());
+  let valid = true;
+  if (entries.length > 8) {
+    problems.push(`${key} can contain at most 8 factory addresses.`);
+    valid = false;
+  }
+  if (entries.some(entry => !entry)) {
+    problems.push(`${key} cannot contain empty entries.`);
+    valid = false;
+  }
+  if (entries.some(entry => !isNonzeroAddress(entry))) {
+    problems.push(`${key} must contain only nonzero EVM addresses.`);
+    valid = false;
+  }
+  const normalized = entries.filter(isNonzeroAddress).map(entry => entry.toLowerCase());
+  if (new Set(normalized).size !== normalized.length) {
+    problems.push(`${key} cannot contain duplicate factory addresses.`);
+    valid = false;
+  }
+  return { configured: true, valid, addresses: valid ? entries : [] };
+};
+
+const legacyWldList = parseLegacyFactoryList("VITE_LEGACY_YIELD_FACTORY_ADDRESSES");
+const legacyUsdcList = parseLegacyFactoryList("VITE_LEGACY_USDC_YIELD_FACTORY_ADDRESSES");
+const parseLegacyDeployBlock = (key: string, configured: boolean): number | null => {
+  if (!configured) return null;
+  const value = (raw[key] ?? "").trim();
+  const parsed = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed) || parsed <= 0) {
+    problems.push(`${key} must be a positive integer when its legacy factory list is configured.`);
+    return null;
+  }
+  return parsed;
+};
+const legacyWldBlock = parseLegacyDeployBlock("VITE_LEGACY_YIELD_FACTORY_DEPLOY_BLOCK", legacyWldList.configured);
+const legacyUsdcBlock = parseLegacyDeployBlock("VITE_LEGACY_USDC_YIELD_FACTORY_DEPLOY_BLOCK", legacyUsdcList.configured);
+
+if (legacyWldList.configured && ![wldAddress, yieldFactory, morphoVault].every(isNonzeroAddress)) {
+  problems.push("Legacy WLD yield factories require the primary WLD token, yield factory and Morpho strategy to be configured.");
+}
+if (legacyUsdcList.configured && ![usdc, usdcFactory, usdcStrategy].every(isNonzeroAddress)) {
+  problems.push("Legacy USDC yield factories require the primary USDC token, yield factory and Morpho strategy to be configured.");
+}
+
+const legacyDuplicates = new Set<"WLD" | "USDC">();
+const reservedAddresses = new Set([
+  raw.VITE_FACTORY_ADDRESS,
+  raw.VITE_LEGACY_FACTORY_ADDRESS,
+  yieldFactory,
+  usdcFactory,
+  wldAddress,
+  usdc,
+  morphoVault,
+  usdcStrategy,
+].map(value => (value ?? "").trim().toLowerCase()).filter(Boolean));
+const seenLegacyAddresses = new Map<string, "WLD" | "USDC">();
+let hasLegacyFactoryCollision = false;
+for (const [symbol, addresses] of [["WLD", legacyWldList.addresses], ["USDC", legacyUsdcList.addresses]] as const) {
+  for (const address of addresses) {
+    const normalized = address.toLowerCase();
+    const priorSymbol = seenLegacyAddresses.get(normalized);
+    if (reservedAddresses.has(normalized) || priorSymbol) {
+      hasLegacyFactoryCollision = true;
+      legacyDuplicates.add(symbol);
+      if (priorSymbol) legacyDuplicates.add(priorSymbol);
+    }
+    seenLegacyAddresses.set(normalized, symbol);
+  }
+}
+if (hasLegacyFactoryCollision) {
+  problems.push("Legacy yield factory addresses must be unique and separate from configured factories, asset tokens and strategies.");
+}
+
+const legacyWldPrimaryReady = [wldAddress, yieldFactory, morphoVault].every(isNonzeroAddress);
+const legacyUsdcPrimaryReady = [usdc, usdcFactory, usdcStrategy].every(isNonzeroAddress);
+export const LEGACY_YIELD_FACTORY_ADDRESSES = legacyWldList.valid && legacyWldPrimaryReady
+  && legacyWldBlock !== null && !legacyDuplicates.has("WLD") ? legacyWldList.addresses : [];
+export const LEGACY_YIELD_FACTORY_DEPLOY_BLOCK = legacyWldBlock;
+export const LEGACY_USDC_YIELD_FACTORY_ADDRESSES = legacyUsdcList.valid && legacyUsdcPrimaryReady
+  && legacyUsdcBlock !== null && !legacyDuplicates.has("USDC") ? legacyUsdcList.addresses : [];
+export const LEGACY_USDC_YIELD_FACTORY_DEPLOY_BLOCK = legacyUsdcBlock;
 
 /** 환경변수 문제로 앱을 시작할 수 없을 때 채워지는 안내 문자열. null 이면 정상. */
 export const CONFIG_ERROR: string | null =
@@ -79,7 +168,7 @@ export const FACTORY_ADDRESS = (raw.VITE_FACTORY_ADDRESS ?? "").trim();
 /** The previous immutable factory remains accessible for existing vaults. */
 export const LEGACY_FACTORY_ADDRESS = (raw.VITE_LEGACY_FACTORY_ADDRESS ?? "").trim();
 export const LEGACY_FACTORY_DEPLOY_BLOCK = Number(raw.VITE_LEGACY_FACTORY_DEPLOY_BLOCK) || null;
-export const WLD_ADDRESS = (raw.VITE_WLD_ADDRESS ?? "").trim();
+export const WLD_ADDRESS = wldAddress;
 export const YIELD_FACTORY_ADDRESS = yieldFactory;
 export const MORPHO_VAULT_ADDRESS = morphoVault;
 export const YIELD_ENABLED = ADDRESS_RE.test(yieldFactory) && ADDRESS_RE.test(morphoVault);

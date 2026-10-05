@@ -54,14 +54,26 @@ const AUDIT = `
   const bar = document.querySelector(".tab-bar, .tabbar, nav.fixed, [class*=tab-bar]");
   const inBar = (el) => bar && (bar === el || bar.contains(el));
   const barTop = bar ? bar.getBoundingClientRect().top : vh;
+  // Chrome lays out descendants of closed details even when they are not painted.
+  // Count only rendered controls; the expanded audit below checks those descendants.
+  const rendered = (el) => {
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS' && !parent.open) {
+        const summary = [...parent.children].find(child => child.tagName === 'SUMMARY');
+        if (!summary?.contains(el)) return false;
+      }
+    }
+    const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
+  };
 
   // "Occluded" must mean unreachable, not merely below the fold: the page scrolls, so
   // the honest test is whether scrolling to the very bottom leaves the last piece of
   // content clear of the bar. Measure the gap after a real scroll to the end.
   window.scrollTo(0, de.scrollHeight);
   await new Promise((r) => setTimeout(r, 350));
-  const last = [...document.querySelectorAll("button, a, input, .card")]
-    .filter((el) => !inBar(el) && el.getBoundingClientRect().height > 0)
+  const last = [...document.querySelectorAll("button, a, input, summary, .card")]
+    .filter((el) => !inBar(el) && rendered(el))
     .map((el) => ({ el, r: el.getBoundingClientRect() }))
     .sort((x, y) => y.r.bottom - x.r.bottom)[0];
   out.bottomPad = last ? Math.round(barTop - last.r.bottom) : null;
@@ -70,13 +82,13 @@ const AUDIT = `
   window.scrollTo(0, 0);
   await new Promise((r) => setTimeout(r, 250));
 
-  for (const el of document.querySelectorAll("button, a, input, [role=button]")) {
-    if (inBar(el)) continue;
+  for (const el of document.querySelectorAll("button, a, input, summary, [role=button]")) {
+    if (inBar(el) || !rendered(el)) continue;
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) continue;
     const cs = getComputedStyle(el);
     if (cs.visibility === "hidden" || cs.display === "none") continue;
-    if ((el.tagName === "BUTTON" || el.getAttribute("role") === "button") && (r.height < 28 || r.width < 28))
+    if ((el.tagName === "BUTTON" || el.tagName === "SUMMARY" || el.getAttribute("role") === "button") && (r.height < 28 || r.width < 28))
       out.small.push({ t: (el.innerText || el.getAttribute("aria-label") || "?").trim().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) });
     if (el.tagName === "BUTTON") {
       const label = (el.innerText || "").trim() || el.getAttribute("aria-label") || el.getAttribute("title") || "";
@@ -102,18 +114,27 @@ async function audit(name, acct, url = APP) {
     await b.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].find(x=>x.innerText.trim().toLowerCase().includes(${JSON.stringify(t.toLowerCase())}));if(e)e.click();return 1;})()`);
     await sleep(1100);
     const r = await b.ev(`return (async()=>{ ${AUDIT} })()`);
+    await b.shot(`${name}-${t}`.toLowerCase().replace(/[^a-z0-9-]/g, ""));
+    const expanded = await b.ev(`
+      const opened = [...document.querySelectorAll('details:not([open])')];
+      for (const details of opened) details.querySelector(':scope > summary')?.click();
+      const result = await (async()=>{ ${AUDIT} })();
+      for (const details of opened.reverse()) if (details.open) details.querySelector(':scope > summary')?.click();
+      return result;
+    `);
     const msgs = [];
-    if (r.overflow) msgs.push(`가로 넘침 ${r.overflow.scrollWidth}>${r.overflow.vw}`);
-    if (r.occluded.length) msgs.push(`맨 아래에서도 탭바에 가림: ${r.occluded.slice(0, 2).join(", ")}`);
-    if (r.bottomPad !== null && r.bottomPad < 8) msgs.push(`탭바 여백 ${r.bottomPad}px (최소 8 권장)`);
-    if (r.small.length) msgs.push(`터치영역 작음 ${r.small.length}개: ${JSON.stringify(r.small.slice(0, 2))}`);
-    if (r.unlabelled.length) msgs.push(`이름 없는 버튼 ${r.unlabelled.length}개`);
-    if (r.tiny.length) msgs.push(`10px 미만 글자 ${r.tiny.length}개: ${JSON.stringify(r.tiny.slice(0, 2))}`);
+    for (const [state, result] of [['기본', r], ['상세 펼침', expanded]]) {
+      if (result.overflow) msgs.push(`${state}: 가로 넘침 ${result.overflow.scrollWidth}>${result.overflow.vw}`);
+      if (result.occluded.length) msgs.push(`${state}: 맨 아래에서도 탭바에 가림: ${result.occluded.slice(0, 2).join(", ")}`);
+      if (result.bottomPad !== null && result.bottomPad < 8) msgs.push(`${state}: 탭바 여백 ${result.bottomPad}px (최소 8 권장)`);
+      if (result.small.length) msgs.push(`${state}: 터치영역 작음 ${result.small.length}개: ${JSON.stringify(result.small.slice(0, 2))}`);
+      if (result.unlabelled.length) msgs.push(`${state}: 이름 없는 버튼 ${result.unlabelled.length}개`);
+      if (result.tiny.length) msgs.push(`${state}: 10px 미만 글자 ${result.tiny.length}개: ${JSON.stringify(result.tiny.slice(0, 2))}`);
+    }
     const body = await b.ev("return document.body.innerText;");
     if (body.trim().split("\n").filter((l) => l.trim()).length < 3) msgs.push("탭이 사실상 비어 있음");
     check(`${name} / ${t} 탭`, msgs.length === 0, msgs.join(" | ") || "이상 없음");
     issues += msgs.length;
-    await b.shot(`${name}-${t}`.toLowerCase().replace(/[^a-z0-9-]/g, ""));
   }
   check(`${name}: 배너가 뜨지 않아야 한다(연결 정상)`, !(await b.ev(`return (async()=>{ ${AUDIT} })()`)).banner, "연결 배너 없음");
   await b.close();

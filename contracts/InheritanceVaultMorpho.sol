@@ -45,6 +45,7 @@ contract InheritanceVaultMorpho {
     event RewardsClaimed(uint256 assets, uint256 shares, address indexed recipient);
     event PerformanceFeePaid(address indexed recipient, uint256 assets, uint256 shares);
     event OwnerWithdrawnWLD(address indexed to, uint256 amount);
+    event IncomeWithdrawn(address indexed to, uint256 gross, uint256 fee, uint256 net);
     event SharesWithdrawn(address indexed to, uint256 shares);
     event InheritanceFinalized(address indexed recipient, uint256 wldAmount, uint256 claimedAt);
     event InheritanceSharesFinalized(address indexed recipient, uint256 shares, uint256 claimedAt);
@@ -55,6 +56,8 @@ contract InheritanceVaultMorpho {
     uint256 public constant MAX_PERFORMANCE_FEE_BPS = 1000;
     uint256 public constant AUTOMATIC_REDEEM_GAS = 300_000;
     uint256 public constant SHARE_VALUATION_GAS = 150_000;
+    /// @notice Read-only income quotes traverse up to 32 configured lending markets.
+    uint256 public constant INCOME_VALUATION_GAS = 2_000_000;
     address public constant MERKL_DISTRIBUTOR = 0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae;
     address public immutable owner;
     address public immutable factory;
@@ -77,6 +80,22 @@ contract InheritanceVaultMorpho {
     /// @dev Cumulative rewards already compounded or disposed as fee-bearing cash.
     uint256 private accountedRewards;
     uint256 private locked = 1;
+
+    struct IncomeWithdrawalState {
+        uint256 heldShares;
+        uint256 managedAssets;
+        uint256 pending;
+        uint256 idle;
+        uint256 protectedAmount;
+        uint256 rewardCash;
+        uint256 shareAssets;
+        uint256 gross;
+        uint256 fee;
+        uint256 expectedNet;
+        uint256 burned;
+        uint256 beforeTo;
+        uint256 beforeFeeRecipient;
+    }
 
     modifier nonReentrant() {
         if (locked != 1) revert Reentrancy();
@@ -214,6 +233,76 @@ contract InheritanceVaultMorpho {
         uint256 rewards = unprocessedRewards();
         if (rewards > remainingLoss) fee += YieldMath.mulDiv(rewards - remainingLoss, performanceFeeBps, 10_000);
         net = gross - fee;
+    }
+
+    /// @notice Positive income attributable to tracked shares and canonical WLD rewards.
+    /// Direct WLD and receipt-share gifts are excluded from both value and liquidity.
+    function incomePosition()
+        external
+        view
+        returns (uint256 gross, uint256 fee, uint256 net, uint256 withdrawableNet, bool valued)
+    {
+        uint256 heldShares;
+        try strategy.balanceOf(address(this)) returns (uint256 shares) {
+            heldShares = shares;
+        } catch {
+            return (0, 0, 0, 0, false);
+        }
+        if (accountedShares > heldShares) return (0, 0, 0, 0, false);
+
+        uint256 managedAssets;
+        if (accountedShares != 0) {
+            try strategy.convertToAssets{gas: INCOME_VALUATION_GAS}(accountedShares) returns (uint256 value) {
+                managedAssets = value;
+            } catch {
+                return (0, 0, 0, 0, false);
+            }
+        }
+
+        uint256 claimed;
+        try IMerklDistributor(MERKL_DISTRIBUTOR).claimed(address(this), WLD) returns (uint208 amount) {
+            claimed = amount;
+        } catch {
+            return (0, 0, 0, 0, false);
+        }
+        if (claimed < accountedRewards) return (0, 0, 0, 0, false);
+        uint256 rewards = claimed - accountedRewards;
+        uint256 idle;
+        try IERC20(WLD).balanceOf(address(this)) returns (uint256 amount) {
+            idle = amount;
+        } catch {
+            return (0, 0, 0, 0, false);
+        }
+        if (rewards > idle || managedAssets > type(uint256).max - rewards) return (0, 0, 0, 0, false);
+        if (costBasis > type(uint256).max - realizedLoss) return (0, 0, 0, 0, false);
+
+        uint256 protected = costBasis + realizedLoss;
+        uint256 totalManaged = managedAssets + rewards;
+        gross = totalManaged > protected ? totalManaged - protected : 0;
+        fee = YieldMath.mulDiv(gross, performanceFeeBps, 10_000);
+        net = gross - fee;
+        valued = true;
+
+        uint256 cashIncome = gross < rewards ? gross : rewards;
+        uint256 shareIncome = gross - cashIncome;
+        uint256 withdrawableGross = cashIncome;
+        if (shareIncome != 0) {
+            uint256 liquid;
+            try strategy.maxWithdraw(address(this)) returns (uint256 available) {
+                liquid = available < shareIncome ? available : shareIncome;
+            } catch {
+                withdrawableNet = cashIncome - YieldMath.mulDiv(cashIncome, performanceFeeBps, 10_000);
+                return (gross, fee, net, withdrawableNet, valued);
+            }
+            try strategy.convertToAssets{gas: INCOME_VALUATION_GAS}(1) returns (uint256 unitValue) {
+                if (unitValue != type(uint256).max) {
+                    uint256 reserve = unitValue + 1;
+                    if (liquid > reserve) withdrawableGross += liquid - reserve;
+                }
+            } catch { /* Canonical cash remains withdrawable without a share quote. */ }
+        }
+        uint256 withdrawableFee = YieldMath.mulDiv(withdrawableGross, performanceFeeBps, 10_000);
+        withdrawableNet = withdrawableGross - withdrawableFee;
     }
 
     /// @notice Includes delivery by approved external operators, not just app claims.
@@ -355,6 +444,94 @@ contract InheritanceVaultMorpho {
         _payFee(fee, 0);
         SafeERC20Lib.safeTransfer(WLD, to, grossAssets - fee);
         emit OwnerWithdrawnWLD(to, grossAssets - fee);
+    }
+
+    /// @notice Withdraw only value above the remaining tracked capital and closed-loss reserve.
+    /// Canonical WLD rewards are used first; direct WLD and share gifts are never income.
+    function ownerWithdrawIncome(address to, uint256 minNetAssets)
+        external
+        onlyOwnerOrFactory
+        withdrawableOwner
+        nonReentrant
+        returns (uint256 netReceived)
+    {
+        _validRecipient(to);
+        IncomeWithdrawalState memory state_;
+        state_.heldShares = strategy.balanceOf(address(this));
+        if (accountedShares > state_.heldShares) revert InvalidStrategy();
+        state_.managedAssets = accountedShares == 0 ? 0 : strategy.convertToAssets(accountedShares);
+        state_.pending = unprocessedRewards();
+        state_.idle = IERC20(WLD).balanceOf(address(this));
+        if (state_.pending > state_.idle) revert InvalidRewards();
+        if (costBasis > type(uint256).max - realizedLoss || state_.managedAssets > type(uint256).max - state_.pending) {
+            revert InvalidStrategy();
+        }
+
+        state_.protectedAmount = costBasis + realizedLoss;
+        uint256 totalManaged = state_.managedAssets + state_.pending;
+        if (totalManaged <= state_.protectedAmount) revert NothingToTransfer();
+        uint256 income = totalManaged - state_.protectedAmount;
+        state_.rewardCash = income < state_.pending ? income : state_.pending;
+        state_.shareAssets = income - state_.rewardCash;
+        if (state_.shareAssets != 0) {
+            uint256 shareIncome = state_.shareAssets;
+            state_.shareAssets = 0;
+            try strategy.maxWithdraw(address(this)) returns (uint256 available) {
+                try strategy.convertToAssets{gas: SHARE_VALUATION_GAS}(1) returns (uint256 unitValue) {
+                    if (unitValue != type(uint256).max) {
+                        uint256 liquid = available < shareIncome ? available : shareIncome;
+                        uint256 reserve = unitValue + 1;
+                        if (liquid > reserve) state_.shareAssets = liquid - reserve;
+                    }
+                } catch { /* Canonical rewards remain harvestable without share granularity. */ }
+            } catch { /* Canonical rewards remain harvestable without a liquidity quote. */ }
+        }
+        state_.gross = state_.rewardCash + state_.shareAssets;
+        if (state_.gross == 0) revert NothingToTransfer();
+        state_.fee = YieldMath.mulDiv(state_.gross, performanceFeeBps, 10_000);
+        state_.expectedNet = state_.gross - state_.fee;
+        if (state_.expectedNet == 0) revert NothingToTransfer();
+        if (state_.expectedNet < minNetAssets) revert SlippageExceeded();
+
+        if (state_.shareAssets != 0) {
+            state_.burned = strategy.withdraw(state_.shareAssets, address(this), address(this));
+            uint256 afterShares = strategy.balanceOf(address(this));
+            uint256 afterAssets = IERC20(WLD).balanceOf(address(this));
+            if (
+                afterShares > state_.heldShares || state_.heldShares - afterShares != state_.burned
+                    || state_.burned == 0 || state_.burned > accountedShares || afterAssets < state_.idle
+                    || afterAssets - state_.idle != state_.shareAssets
+            ) revert InvalidStrategy();
+            accountedShares -= state_.burned;
+        }
+        accountedRewards += state_.rewardCash;
+
+        state_.beforeTo = IERC20(WLD).balanceOf(to);
+        state_.beforeFeeRecipient = IERC20(WLD).balanceOf(feeRecipient);
+        _payFee(state_.fee, 0);
+        SafeERC20Lib.safeTransfer(WLD, to, state_.expectedNet);
+        uint256 afterTo = IERC20(WLD).balanceOf(to);
+        uint256 afterFeeRecipient = IERC20(WLD).balanceOf(feeRecipient);
+        if (afterTo < state_.beforeTo) revert InvalidStrategy();
+        if (to == feeRecipient) {
+            if (afterTo - state_.beforeTo != state_.gross) revert InvalidStrategy();
+        } else if (
+            afterTo - state_.beforeTo != state_.expectedNet || afterFeeRecipient < state_.beforeFeeRecipient
+                || afterFeeRecipient - state_.beforeFeeRecipient != state_.fee
+        ) {
+            revert InvalidStrategy();
+        }
+        netReceived = state_.expectedNet;
+        if (netReceived < minNetAssets) revert SlippageExceeded();
+
+        uint256 remainingIdle = IERC20(WLD).balanceOf(address(this));
+        uint256 pendingAfter = unprocessedRewards();
+        if (remainingIdle != state_.idle - state_.rewardCash || pendingAfter > remainingIdle) revert InvalidRewards();
+        uint256 managedAfter = accountedShares == 0 ? 0 : strategy.convertToAssets(accountedShares);
+        if (managedAfter > type(uint256).max - pendingAfter || managedAfter + pendingAfter < state_.protectedAmount) {
+            revert InvalidStrategy();
+        }
+        emit IncomeWithdrawn(to, state_.gross, state_.fee, state_.expectedNet);
     }
 
     /// @notice Exit without requiring Morpho cash liquidity. Takes the same

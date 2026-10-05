@@ -1,11 +1,16 @@
 # World Inheritance Vault (Mini App)
 
-Non‑custodial inheritance vault for WLD, designed to run inside World App using MiniKit.
+WLD and USDC inheritance plans inside World App using MiniKit. Users choose amounts,
+an heir and a check-in interval; the app manages the separate asset contracts.
+Morpho is the default for configured new routes, with explicit risk/fee consent.
 
 ## Custody model (non‑custodial)
 - Keys live in World App. This app never has access to private keys.
 - All state‑changing actions are transaction requests via MiniKit and must be approved in World App.
-- Funds live either in the user’s World App wallet or a per‑user vault contract.
+- Funds live either in the user's World App wallet or a per‑user vault contract.
+- New income-capable contracts let owners collect available income while preserving
+  the tracked inheritance principal and check-in timer. The service takes 10% of
+  realized gains. Existing contracts retain their original withdrawal controls.
 
 ## Run locally
 1. `cp .env.example .env` and fill in the `VITE_*` values.
@@ -35,10 +40,10 @@ the selector actually exists. `.app-shell` repeats `min-height`, so declaration
 order decides the winner (static `100vh` fallback first, then `svh`, then `dvh`).
 
 ## Auth & verification
-- Login uses Wallet Auth (`MiniKit.commandsAsync.walletAuth`) only.
+- Login uses Wallet Auth (`MiniKit.walletAuth`) only.
 - Login always starts from a user tap. The mount effect only initialises the
   MiniKit bridge; it never calls `walletAuth` on its own.
-- A previously saved address is restored from `localStorage` for display. This
-  involves no signature and is not an auth gate.
+- A saved address is restored for display; protected operations still require a
+  valid server-verified session. It is never an authentication gate by itself.
 - Verification, if required by policy, is requested only after the user is connected (never as a login gate).
 - Being an heir in someone else's vault does not block creating your own vault.

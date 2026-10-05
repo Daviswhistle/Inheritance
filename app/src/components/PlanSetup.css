@@ -1,0 +1,86 @@
+.plan-setup-card { overflow: hidden; background: #fffef9; }
+.plan-setup-card .card-header { padding: 17px 18px 13px; border-color: #e4e8dc; background: #fbfcf6; }
+.plan-setup-card .eyebrow { color: #5f795e; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.plan-setup-card .card-title { margin-top: 5px; color: #263e31; font-size: 20px; letter-spacing: -.45px; }
+.plan-setup-card .card-content.plan-setup-content { display: grid; gap: 15px; padding: 15px 16px 18px; }
+
+.plan-card-intro, .plan-section-hint, .plan-field-help, .plan-pending-settings { margin: 0; color: #5b6e60; font-size: 12px; line-height: 1.55; }
+.plan-section-hint { margin-top: -5px; }
+.plan-setup-card .plan-assets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.plan-setup-card .plan-amount-control strong { display: none; }
+.plan-setup-card .plan-amount-control .input-control { width: 100%; padding: 12px 9px; }
+.plan-setup-card .plan-risk-points { display: grid; gap: 7px; margin: 7px 0; padding-left: 16px; }
+.plan-assets legend { margin-bottom: 0; color: #263e31; font-size: 14px; font-weight: 700; }
+.plan-asset-row { padding: 11px 12px; border-color: #e0e7d9; border-radius: 13px; background: #fbfcf8; }
+.plan-asset-heading { margin-bottom: 7px; }
+.plan-asset-heading label { color: #263e31; }
+.plan-asset-heading span { color: #5c715e; }
+.plan-amount-control .input-control, .plan-setup-card .field-row-controls > .input-control { min-width: 0; min-height: 48px; font-size: 16px; }
+.plan-amount-control strong { color: #405e49; }
+.plan-asset-balance { margin: 6px 0 0; color: #5b6e60; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.plan-inline-error { margin: 5px 0 0; color: #8b3827; font-size: 12px; line-height: 1.45; }
+
+.plan-setup-card .field-row { gap: 6px; }
+.plan-setup-card .field-row-label { color: #405e49; font-size: 13px; font-weight: 650; line-height: 1.45; }
+.plan-setup-card .field-row-controls { gap: 8px; }
+.plan-setup-card .plan-recipient-controls { flex-wrap: nowrap; }
+.plan-setup-card .field-row-controls > .input-control { flex: 1 1 auto; }
+.plan-setup-card .field-row-controls > .btn { min-height: 46px; flex: 0 0 auto; padding-inline: 12px; }
+.plan-setup-card .plan-period-input { max-width: 116px; }
+.plan-setup-card .period-presets { gap: 7px; }
+.plan-setup-card .period-preset { min-width: 74px; min-height: 44px; padding: 8px 12px; border-color: #dfe6d9; border-radius: 11px; background: #fffefb; color: #4c6652; }
+.plan-setup-card .period-preset-selected { border-color: #8ca783; background: #edf3e8; color: #31573e; }
+.plan-setup-card .resolved-heir { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 9px; color: #31573e; }
+.plan-setup-card .resolved-heir span { color: #637366; font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.plan-setup-card .plan-risk { border-color: #dfe6d8; background: #f5f8f0; color: #43594a; }
+.plan-setup-card .plan-risk h3, .plan-setup-card .plan-review h3, .plan-setup-card .plan-resume h3 { color: #294432; line-height: 1.4; }
+.plan-setup-card .plan-risk .yield-consent { min-height: 44px; margin: 9px 0 0; padding: 8px 0 0; border-top: 1px solid #e0e7d9; color: #2f4938; line-height: 1.5; }
+.plan-setup-card .plan-risk .yield-consent input { width: 20px; height: 20px; flex: 0 0 20px; margin: 1px 0 0; }
+.plan-more-details, .plan-reminder-details { border-top: 1px solid #e0e7d9; }
+.plan-more-details summary, .plan-reminder-details summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 9px; color: #34543d; font-size: 12px; font-weight: 650; cursor: pointer; list-style: none; }
+.plan-more-details summary::-webkit-details-marker, .plan-reminder-details summary::-webkit-details-marker { display: none; }
+.plan-more-details summary::after, .plan-reminder-details summary::after { content: "+"; color: #5a775d; font-size: 17px; font-weight: 500; }
+.plan-more-details[open] summary::after, .plan-reminder-details[open] summary::after { content: "−"; }
+.plan-more-details a, .plan-legal-copy a { display: inline-flex; min-height: 44px; align-items: center; color: #315b40; text-decoration: underline; }
+.plan-more-details a { font-weight: 650; }
+
+.plan-setup-card .plan-review { border-color: #d5bd7d; background: #fff9e9; }
+.plan-setup-card .plan-final-review { border-color: #b7cbb3; background: #f1f6ed; }
+.plan-setup-card .plan-alignment-review { border-color: #d5bd7d; background: #fff9e9; }
+.plan-review h3:focus { outline: 2px solid #86a97f; outline-offset: 4px; border-radius: 2px; }
+.plan-review-list { display: grid; margin: 8px 0 0; }
+.plan-review-list > div { display: grid; grid-template-columns: minmax(95px, .72fr) minmax(0, 1.5fr); gap: 10px; padding: 9px 0; border-top: 1px solid #eee4c8; }
+.plan-review-list dt { color: #5c6654; font-size: 11px; font-weight: 650; }
+.plan-review-list dd { display: grid; gap: 4px; min-width: 0; margin: 0; color: #303f32; font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.plan-review-amount { font-weight: 700; }
+.plan-review-address { color: #536457; font-size: 11px; overflow-wrap: anywhere; }
+.plan-action-row, .plan-step-actions { display: grid; gap: 8px; }
+.plan-setup-card .plan-action-row .btn, .plan-setup-card .plan-step-actions .btn { min-height: 46px; }
+.plan-setup-card .plan-submit { width: 100%; min-height: 54px; }
+.plan-validation-message { margin: -3px 0 0; padding: 9px 11px; border: 1px solid #ead6c9; border-radius: 11px; background: #fff5ef; color: #823d2d; font-size: 12px; line-height: 1.5; }
+.plan-legal-copy { margin: 0; color: #5b6e60; font-size: 11px; line-height: 1.5; }
+
+.plan-setup-card .plan-resume { display: grid; gap: 9px; border-color: #b9cdb8; background: #f1f6ed; }
+.plan-progress-list { gap: 6px; margin: 0; }
+.plan-progress-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.plan-progress-list dt { min-width: 0; color: #2f4938; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.plan-progress-list dd { color: #506b55; }
+.plan-reminder-details { padding: 0 12px; border: 1px solid #dce5d5; border-radius: 13px; background: #f8faf5; }
+.plan-reminder-details > .plan-notification-note { margin: 0 0 12px; }
+.plan-setup-card :is(input, button, a, summary):focus-visible { outline: 3px solid #86a97f; outline-offset: 2px; }
+.plan-setup-card input[aria-invalid="true"] { border-color: #ad5842; }
+
+@media (max-width: 360px) {
+  .plan-setup-card .card-header { padding-inline: 15px; }
+  .plan-setup-card .card-content.plan-setup-content { gap: 13px; padding-inline: 13px; }
+  .plan-asset-row, .plan-risk, .plan-review, .plan-resume { padding: 11px; }
+  .plan-setup-card .field-row-controls > .btn { padding-inline: 9px; font-size: 11px; }
+  .plan-review-list > div { grid-template-columns: minmax(80px, .65fr) minmax(0, 1.4fr); gap: 7px; }
+  .plan-progress-list > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .plan-progress-list dd { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-setup-card *, .plan-setup-card *::before, .plan-setup-card *::after { scroll-behavior: auto; transition-duration: .01ms; }
+}

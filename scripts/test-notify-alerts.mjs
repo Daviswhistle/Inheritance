@@ -19,7 +19,7 @@ const src = readFileSync(resolve(here, "worker.mjs"), "utf8");
 // decideAlerts, ALERT, EXPIRING_* 를 워커에서 그대로 떼어낸다.
 // 붙여서 쓰면 테스트와 제품이 같은 코드다 — 복사본을 테스트하는 셈이 된다.
 const start = src.indexOf("const ALERT = {");
-const end = src.indexOf("const checkWatcher = async");
+const end = src.indexOf("export const checkWatcher = async");
 assert.ok(start > 0 && end > start, "decideAlerts 블록을 찾지 못했다");
 const zeroAt = src.indexOf("const ZERO_ADDRESS");
 const zeroLine = src.slice(zeroAt).split("\n")[0];

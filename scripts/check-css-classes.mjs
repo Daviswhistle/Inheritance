@@ -24,7 +24,26 @@ const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, "..", "app");
 const cssPath = join(appRoot, "src", "index.css");
 
-const css = readFileSync(cssPath, "utf8");
+// Follow actual source imports; an unused stylesheet must not satisfy this check.
+const cssFiles = new Set([cssPath]);
+const seenImports = new Set();
+const followStyles = (file) => {
+  if (seenImports.has(file)) return;
+  seenImports.add(file);
+  const source = readFileSync(file, "utf8");
+  for (const match of source.matchAll(/(?:import|export)\s+(?:[^;\n]*?\s+from\s+)?["']([^"']+)["']/g)) {
+    const specifier = match[1];
+    if (!specifier.startsWith(".") && !specifier.startsWith("@/")) continue;
+    const target = specifier.startsWith("@/") ? join(appRoot, "src", specifier.slice(2)) : resolve(dirname(file), specifier);
+    const candidates = [target, `${target}.tsx`, `${target}.ts`, join(target, "index.tsx"), join(target, "index.ts")];
+    const imported = candidates.find(candidate => { try { return statSync(candidate).isFile(); } catch { return false; } });
+    if (!imported) continue;
+    if (extname(imported) === ".css") cssFiles.add(imported);
+    else if ([".ts", ".tsx"].includes(extname(imported))) followStyles(imported);
+  }
+};
+followStyles(join(appRoot, "src", "main.tsx"));
+const css = [...cssFiles].map(file => readFileSync(file, "utf8")).join("\n");
 
 /**
  * CSS 에 정의된 클래스 이름.
@@ -143,11 +162,11 @@ const missing = [...usage.entries()]
   .sort((a, b) => a[0].localeCompare(b[0]));
 
 console.log("\n  === CSS 클래스 정합성 ===");
-console.log(`  stylesheet: ${relative(appRoot, cssPath)}`);
+console.log(`  stylesheets: ${[...cssFiles].map(file => relative(appRoot, file)).join(", ")}`);
 console.log(`  검사한 이름: ${usage.size}개`);
 
 if (!missing.length) {
-  console.log("\n  OK  JSX 의 모든 className 이 index.css 에 정의되어 있습니다.");
+  console.log("\n  OK  JSX 의 모든 className 이 앱에서 가져온 CSS 에 정의되어 있습니다.");
   process.exit(0);
 }
 

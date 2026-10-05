@@ -12,9 +12,9 @@ const STRATEGY = "0xb1e80387ebe53ff75a89736097d34dc8d9e9045b";
 const DISTRIBUTOR = "0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae";
 const OPERATOR = "0x93bC44B8296977Feb479F95855D9b9E051C17dA2";
 const FEE_BPS = 1000;
-const GAS_LIMIT = 6_500_000n;
-const MAX_TOTAL_COST = parseEther("0.000015");
-const STATE = ".env.usdc-deployment.json"; // gitignored, owner-readable only
+const GAS_LIMIT = 9_500_000n;
+const MAX_TOTAL_COST = parseEther("0.000020");
+const STATE = ".env.usdc-income-deployment.json"; // gitignored, owner-readable only
 const broadcast = process.argv.includes("--broadcast");
 const provider = new JsonRpcProvider("https://worldchain-mainnet.g.alchemy.com/public", 480, {
   staticNetwork: true, batchMaxCount: 1, cacheTimeout: -1,
@@ -87,7 +87,7 @@ try {
     assert.equal(getCreateAddress({ from: tx.from, nonce: tx.nonce }), state.address);
     assert.ok(tx.type === 0 && tx.gasPrice > 0n && tx.gasLimit * tx.gasPrice <= MAX_TOTAL_COST);
   } else {
-    const key = readFileSync(".env.deploy", "utf8").split("\n").find(line => line.startsWith("PRIVATE_KEY="))?.slice(12).trim();
+    const key = readFileSync(process.env.INHERITANCE_DEPLOY_KEY_FILE || ".env.deploy", "utf8").split("\n").find(line => line.startsWith("PRIVATE_KEY="))?.slice(12).trim();
     assert.match(key || "", /^(0x)?[0-9a-fA-F]{64}$/, "Deployment key must be present");
     const wallet = new Wallet(key.startsWith("0x") ? key : "0x" + key);
     assert.ok(equalAddress(wallet.address, OPERATOR), "Use the existing operator deployment wallet");

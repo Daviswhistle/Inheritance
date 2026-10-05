@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import type { YieldPosition, YieldTerms } from "@/yield";
 import type { WldRewards } from "@/rewards";
 import { EXPLORER, MORPHO_VAULT_ADDRESS } from "@/config";
@@ -7,6 +8,7 @@ import { formatYieldAmount } from "@/yield";
 import { formatRate, RATE_MAX_AGE_SECONDS } from "@/yield-rates";
 import type { YieldRates } from "@/yield-rates";
 import type { YieldRoute } from "@/assets";
+import { useLocale } from "@/locale-context";
 
 function YieldRateSummary({ rates, loading, strategy = MORPHO_VAULT_ADDRESS }: { rates: YieldRates | null; loading: boolean; strategy?: string }) {
   const now = Math.floor(Date.now() / 1000);
@@ -111,4 +113,71 @@ export function YieldPositionCard({ position, holdings, terms, rates, ratesLoadi
       {canExit && <p className="text-xs text-gray-600">Moving shares works without cash liquidity and pays any positive-gain fee in shares. It does not cancel inheritance or move idle {symbol}{symbol === "USDC" ? " or WLD rewards" : ""}.</p>}
       <a className="text-blue-600 underline text-xs" href={`${EXPLORER}/address/${route?.strategy ?? MORPHO_VAULT_ADDRESS}`} target="_blank" rel="noreferrer">View underlying vault ↗</a>
     </CardContent></Card>;
+}
+
+export function IncomePositionCard({ state, symbol, decimals, position, to, account, disabledReason, recipientValid, canCollect, busy, onToChange, onCollect, onUseMyAddress, onRefresh }: {
+  state: "loading" | "available" | "unavailable" | "error";
+  symbol: "WLD" | "USDC";
+  decimals: number;
+  position: { gross: bigint; fee: bigint; net: bigint; withdrawableNet: bigint; valued: boolean } | null;
+  to: string;
+  account: string;
+  disabledReason: string;
+  recipientValid: boolean;
+  canCollect: boolean;
+  busy: boolean;
+  onToChange: (value: string) => void;
+  onCollect: () => void;
+  onUseMyAddress: () => void;
+  onRefresh: () => void;
+}) {
+  const { t } = useLocale();
+  const fmt = (amount: bigint) => formatYieldAmount(amount, decimals);
+  return <Card className="income-card">
+    <CardHeader><CardTitle>{t("income.title")}</CardTitle></CardHeader>
+    <CardContent className="grid gap-3">
+      {state === "loading" && <p role="status">{t("income.loading")}</p>}
+      {state === "unavailable" && <p className="text-sm text-gray-600">{t("income.unsupported")}</p>}
+      {state === "error" && <div className="grid gap-2"><p role="alert" className="text-sm text-yellow-800">{t("income.error")}</p><Button disabled={busy} onClick={onRefresh}>{t("income.refresh")}</Button></div>}
+      {state === "available" && position && <>
+        {position.valued ? <>
+          <div className="stat-row">
+            <div className="stat income-stat">
+              <div className="stat-label">{t("income.available")}</div>
+              <div className="stat-value">{fmt(position.withdrawableNet)} {symbol}</div>
+            </div>
+          </div>
+          <dl className="yield-values">
+            <div><dt>{t("income.gross")}</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
+            <div><dt>{t("income.fee")}</dt><dd>{fmt(position.fee)} {symbol}</dd></div>
+            <div><dt>{t("income.net")}</dt><dd>{fmt(position.net)} {symbol}</dd></div>
+          </dl>
+          <p className="income-explainer">{t("income.explainer")}</p>
+          <p className="income-destination">{recipientValid
+            ? to.toLowerCase() === account.toLowerCase() ? t("income.toWallet") : t("income.toAddress", { address: `${to.slice(0, 6)}…${to.slice(-4)}` })
+            : t("income.chooseRecipient")}</p>
+          <Button className="income-collect" variant="primary" disabled={busy || !canCollect || position.withdrawableNet <= 0n || !position.valued} onClick={onCollect}>
+            {t("income.collect", { amount: fmt(position.withdrawableNet), symbol })}
+          </Button>
+          {disabledReason && <p className="income-explainer" role="status">{disabledReason}</p>}
+          {!disabledReason && position.withdrawableNet <= 0n && <p className="income-explainer" role="status">{position.net > 0n
+            ? t("income.withdrawable")
+            : t("income.none")}</p>}
+          <details className="income-recipient"><summary>{t("income.changeRecipient")}</summary><div>
+          <div className="field-row">
+            <label className="field-row-label" htmlFor="income-to">{t("income.sendTo")}</label>
+            <div className="field-row-controls">
+              <Input id="income-to" inputMode="text" autoComplete="off" placeholder="0x…" value={to} onChange={event => onToChange(event.target.value)} />
+              <Button onClick={onUseMyAddress}>{t("income.myAddress")}</Button>
+            </div>
+            {to && !recipientValid && <p role="alert" className="text-xs text-red-700">{t("income.invalidAddress")}</p>}
+          </div>
+          </div></details>
+          <details className="income-recipient"><summary>{t("income.feeDetails")}</summary><div>
+            <p className="income-explainer">{t("income.feeDisclosure")}</p>
+          </div></details>
+        </> : <div className="grid gap-2"><p role="status">{t("income.noValue")}</p><Button disabled={busy} onClick={onRefresh}>{t("income.refresh")}</Button></div>}
+      </>}
+    </CardContent>
+  </Card>;
 }
