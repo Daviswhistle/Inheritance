@@ -86,17 +86,17 @@ async function setPlanAmount(symbol, amount) {
   await page.ev(`return __q.setInput(${JSON.stringify(id)}, ${JSON.stringify(amount)})`);
 }
 async function clickPlanSubmit() {
-  await click("Review plan");
+  if (!await page.ev("return !!document.querySelector('.plan-final-review')")) await click("Review plan");
   return click("Confirm and deposit");
 }
 async function selectVault(labelPrefix) {
+  const symbol = labelPrefix.startsWith("USDC") ? "USDC" : "WLD";
+  await until(() => page.ev(`const button = [...document.querySelectorAll('.asset-switcher button')]
+    .find(item => item.textContent.trim() === ${JSON.stringify(symbol)} && !item.disabled); if (!button) return false; button.click(); return true;`));
+  await until(() => page.ev(`return document.querySelector('.asset-switcher button[aria-pressed="true"]')?.textContent.trim() === ${JSON.stringify(symbol)}`));
   const result = await page.ev(`
     const prefix = ${JSON.stringify(labelPrefix)};
-    const symbol = prefix.startsWith('USDC') ? 'USDC' : 'WLD';
-    const assetButton = [...document.querySelectorAll('.asset-switcher button')].find(item => item.textContent.trim().endsWith(symbol));
-    if (!assetButton) return 'missing asset ' + prefix;
-    assetButton.click();
-    await new Promise(requestAnimationFrame);
+    const symbol = ${JSON.stringify(symbol)};
     const history = document.querySelector('.asset-history');
     if (!history) return 'selected ' + symbol;
     if (!history.open) history.querySelector('summary').click();
@@ -168,7 +168,7 @@ try {
   };
   await open(ACCOUNTS.a0);
   await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
-  await until(() => page.ev("return !!(document.getElementById('yield-consent') && document.querySelector('.plan-assets'))"));
+  await until(() => page.ev("return !!document.querySelector('.plan-assets')"));
   const planRows = JSON.parse(await page.ev(`
     const wld = document.getElementById('plan-wld');
     const usdc = document.getElementById('plan-usdc-amount') || document.getElementById('plan-usdc');
@@ -176,12 +176,12 @@ try {
       usdcRow: usdc?.closest('.plan-asset-row')?.innerText || '', radios: [...document.querySelectorAll('.plan-setup-card input[type="radio"]')].length,
       obsoleteAssetMode: document.querySelector('input[value="yield"], input[value="plain"]') !== null });
   `));
-  assert.match(planRows.wldRow, /WLD[\s\S]*Yield/);
-  assert.match(planRows.usdcRow, /USDC[\s\S]*Yield/);
+  assert.match(planRows.wldRow, /WLD[\s\S]*Morpho/);
+  assert.match(planRows.usdcRow, /USDC[\s\S]*Morpho/);
   assert.equal(planRows.radios, 0);
   assert.equal(planRows.obsoleteAssetMode, false);
   await until(() => page.ev("return /Available: 200\.123456 USDC/.test(document.body.innerText)"));
-  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  assert.equal(await page.ev("return document.getElementById('yield-consent') === null"), true);
   assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
   pass("Unified inheritance entry exposes separate WLD and six-decimal USDC amounts on their configured Morpho routes");
   await page.shot("usdc-create");
@@ -190,7 +190,7 @@ try {
   await setPlanAmount("USDC", "1");
   await until(() => page.ev("return document.querySelector('.resolved-heir') !== null"));
   await until(() => page.ev("return /Available: 200\.123456 USDC/.test(document.body.innerText)"));
-  assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
+  await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a), "0x0000000000000000000000000000000000000000");
   assert.equal(await plainVaultContract.heir(), originalPlainHeir);
   assert.equal(await plainVaultContract.heartbeatInterval(), originalPlainInterval);
@@ -198,6 +198,9 @@ try {
   assert.equal(await existingWldVault.heartbeatInterval(), existingWldInterval);
   assert.equal(await wldStrategy.balanceOf(wldVault), existingWldShares);
   pass("A six-decimal USDC plan amount is editable while consent is required and existing WLD positions remain intact");
+  await click("Review plan");
+  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
   await page.ev("document.getElementById('yield-consent').click(); return true;");
   await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   assert.equal(await page.ev("return window.__E2E_MINIKIT__.lastCalldata().length"), 0);
@@ -227,9 +230,11 @@ try {
   assert.equal(await wldStrategy.balanceOf(wldVault), existingWldShares);
   assert.equal(await usdc.balanceOf(ACCOUNTS.a0.a), 199_123456n);
   const plannedDeposit = await page.ev("return window.__E2E_MINIKIT__.lastCalldata()");
-  assert.equal(plannedDeposit[0].to.toLowerCase(), (await usdc.getAddress()).toLowerCase());
-  assert.equal(plannedDeposit[1].to.toLowerCase(), (await usdcFactory.getAddress()).toLowerCase());
-  assert.equal(usdcFactory.interface.parseTransaction({ data: plannedDeposit[1].data }).args[0], 1_000000n);
+  assert.equal(plannedDeposit.length, 3);
+  assert.equal(usdcFactory.interface.parseTransaction({ data: plannedDeposit[0].data }).name, "createVault");
+  assert.equal(plannedDeposit[1].to.toLowerCase(), (await usdc.getAddress()).toLowerCase());
+  assert.equal(plannedDeposit[2].to.toLowerCase(), (await usdcFactory.getAddress()).toLowerCase());
+  assert.equal(usdcFactory.interface.parseTransaction({ data: plannedDeposit[2].data }).args[0], 1_000000n);
   pass("After explicit review the USDC vault receives the entered amount while both existing WLD positions and balances remain intact");
   await page.ev("return __q.tab('Assets')"); await page.waitFor("#deposit-amount");
   await page.ev("return __q.reveal('.yield-rate-summary')");

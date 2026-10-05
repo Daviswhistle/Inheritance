@@ -31,6 +31,9 @@ scripts/verify/run.sh selectors    # 앱 ABI ↔ 배포 바이트코드 (로컬 
 ## 지원 파일
 
 - `drv.mjs` — CDP 드라이버. `window.__E2E_SIGNER__` 로 서명 주입, 기기 390×844.
+  여러 호출은 로컬 Anvil의 `MockWorldAppWallet`과 EIP-7702를 이용해 한 거래로
+  실행한다. 마지막 호출 실패 시 앞선 생성·입금까지 되돌아가는지 검증하며,
+  실제 World App의 승인 화면을 대신 검증하지는 않는다.
   **시나리오마다 새 프로필**을 쓴다. 재사용하면 `addScriptToEvaluateOnNewDocument`
   가 누적되어 조용히 이전 계정으로 테스트한다.
 - `reset.sh` — anvil 재시작, 모크 WLD, 계정 민팅, 팩토리 배포, dev 서버 기동.

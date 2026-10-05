@@ -22,7 +22,7 @@ import { HAS_YIELD_ROUTES, PRIMARY_YIELD_ROUTES, YIELD_ROUTES, TRUSTED_FACTORIES
 import type { AssetSymbol, YieldRoute } from "@/assets";
 import { FinalityUnavailableError, mergeBlockRanges, mergeIncomeReceipts, readFinalizedBoundary, readIncomeHistoryPage, rangesCover, uncoveredBlockRanges } from "@/income-history";
 import type { BlockRange } from "@/income-history";
-import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetAmount, runRemainingPlanSteps } from "@/plan";
+import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetAmount } from "@/plan";
 import type { PlanAssetSymbol, PlanRoute } from "@/plan";
 import { ConfirmedTransactionFailure, confirmTransaction, verifyIncomeWithdrawalReceipt } from "@/transactions";
 import type { ReactElement } from "react";
@@ -83,6 +83,13 @@ type StoredPlanAlignment = {
   txHash?: string;
   hashType?: "transaction" | "user-operation";
 };
+type StoredSetupRequest = {
+  beforeBlock: number;
+  createdFactories: string[];
+  assets: Array<{ symbol: PlanAssetSymbol; vault: string }>;
+  txHash?: string;
+  hashType?: "transaction" | "user-operation";
+};
 type StoredPlan = {
   version: 1;
   account: string;
@@ -96,6 +103,7 @@ type StoredPlan = {
   createHashType?: "transaction" | "user-operation";
   assets: StoredPlanAsset[];
   alignment?: StoredPlanAlignment;
+  setupRequest?: StoredSetupRequest;
 };
 type PlanAlignmentConflict = {
   symbol: PlanAssetSymbol; address: string; currentHeir: string; currentPeriod: number;
@@ -108,7 +116,7 @@ type PlanVaultIdentity = {
 };
 const storedPlanKey = (address: string) => `inheritance:pending-plan:${address.toLowerCase()}`;
 const canEditStoredPlan = (plan: StoredPlan) => (plan.createState === "ready" || plan.createState === "complete")
-  && !plan.alignment && !plan.createTxHash && plan.assets.every(asset => asset.depositState === "complete"
+  && !plan.alignment && !plan.setupRequest && !plan.createTxHash && plan.assets.every(asset => asset.depositState === "complete"
     || asset.depositState === "ready" && !asset.txHash && asset.beforeBlock === undefined);
 
 function hasPendingPlanDeposit(plan: StoredPlan | null, account: string, factory: string, vault: string): boolean {
@@ -181,6 +189,22 @@ function readStoredPlan(address: string): StoredPlan | null {
       && (asset.mode === "plain" || asset.mode === "morpho") && /^\d+$/.test(asset.amount)
       && BigInt(asset.amount) > 0n && ["ready", "submitting", "submitted", "complete"].includes(asset.depositState)
       && (!asset.txHash || /^0x[0-9a-fA-F]{64}$/.test(asset.txHash)))) return null;
+    if (value.setupRequest !== undefined) {
+      const request = value.setupRequest;
+      if (!request || !Number.isSafeInteger(request.beforeBlock) || request.beforeBlock < 0
+        || !Array.isArray(request.createdFactories) || !request.createdFactories.every(ethers.isAddress)
+        || new Set(request.createdFactories.map(factory => factory.toLowerCase())).size !== request.createdFactories.length
+        || !Array.isArray(request.assets) || !request.assets.length || request.assets.length > 2
+        || new Set(request.assets.map(asset => asset.symbol)).size !== request.assets.length
+        || !request.assets.every(target => assets.some(asset => asset.symbol === target.symbol)
+          && typeof target.vault === "string" && (!target.vault || ethers.isAddress(target.vault)))
+        || !request.createdFactories.every(factory => request.assets.some(target => !target.vault
+          && assets.some(asset => asset.symbol === target.symbol && asset.factory.toLowerCase() === factory.toLowerCase())))
+        || request.assets.some(target => !target.vault && !request.createdFactories.some(factory =>
+          assets.some(asset => asset.symbol === target.symbol && asset.factory.toLowerCase() === factory.toLowerCase())))
+        || request.txHash !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(request.txHash)
+        || request.hashType !== undefined && !["transaction", "user-operation"].includes(request.hashType)) return null;
+    }
     if (value.alignment !== undefined) {
       const alignment = value.alignment;
       if (!alignment || !["submitting", "submitted"].includes(alignment.state)
@@ -393,7 +417,7 @@ export default function App() {
   const pendingDeposit = hasPendingPlanDeposit(pendingPlan, account, vaultFactory, vault);
   const [alignmentReview, setAlignmentReview] = useState<string>("");
   const [alignmentConflicts, setAlignmentConflicts] = useState<PlanAlignmentConflict[]>([]);
-  const [checkinReview, setCheckinReview] = useState(false);
+  const [checkinReview, setCheckinReview] = useState<{ fingerprint: string; claimCount: number } | null>(null);
   const [ownedPlanRead, setOwnedPlanRead] = useState<{
     account: string; loading: boolean; incomplete: boolean;
     unavailableSymbols: AssetSymbol[];
@@ -1005,7 +1029,11 @@ export default function App() {
   }));
   const nextCheckIn = activeOwnedPlans.length && !ownedPlanRead.incomplete
     ? Math.min(...activeOwnedPlans.map(item => Number(item.lastPing + item.periodSeconds))) : null;
-  const draftPlanRows = APP_PLAN_ROUTES.map(route => ({
+  const draftPlanRoutes = APP_PLAN_ROUTES.map(route => {
+    const saved = pendingPlan?.assets.find(asset => asset.symbol === route.symbol);
+    return saved ? storedPlanRoute(saved) ?? route : route;
+  });
+  const draftPlanRows = draftPlanRoutes.map(route => ({
     symbol: route.symbol, decimals: route.decimals, mode: route.mode,
     amount: route.symbol === "WLD" ? planWldAmount : planUsdcAmount,
     walletBalance: planWalletBalances[route.symbol] ?? null,
@@ -1027,14 +1055,14 @@ export default function App() {
   const createPlanDisabled = !provider || !miniInstalled || !account || !periodValid || !heirResolved?.address
     || heirResolved.address === ethers.ZeroAddress || !draftAmountsValid || selectedDraftRows.length === 0
     || !draftBalancesReady
-    || (selectedDraftRows.some(item => item.row.mode === "morpho") && (!yieldConsent || !draftTermsReady));
+    || (selectedDraftRows.some(item => item.row.mode === "morpho") && !draftTermsReady);
   const resumePlanNeedsYieldConsent = Boolean(pendingPlan?.assets.some(asset => asset.mode === "morpho" && asset.depositState === "ready"));
   const resumePlanTermsReady = Boolean(pendingPlan?.assets.filter(asset => asset.mode === "morpho" && asset.depositState === "ready").every(asset => {
     const route = storedPlanRoute(asset);
     const terms = route?.details ? yieldTermsByFactory[route.factory] : null;
     return Boolean(terms && terms.feeBps === 1000 && terms.recipient !== ethers.ZeroAddress);
   }));
-  const resumePlanHasOutstandingRequest = Boolean(pendingPlan && (pendingPlan.alignment
+  const resumePlanHasOutstandingRequest = Boolean(pendingPlan && (pendingPlan.alignment || pendingPlan.setupRequest
     || pendingPlan.createState === "submitting" || pendingPlan.createState === "submitted"
     || pendingPlan.assets.some(asset => asset.depositState === "submitting" || asset.depositState === "submitted")));
   const resumePlanDisabled = !resumePlanHasOutstandingRequest
@@ -2622,6 +2650,66 @@ export default function App() {
     });
   };
 
+  const confirmSetupRequest = async (plan: StoredPlan, original: StoredSetupRequest,
+    recordRequest: (request: StoredSetupRequest) => void) => {
+    if (!provider) throw new Error("World Chain is unavailable. The saved setup request was not repeated.");
+    const steps = original.assets.map(target => {
+      const asset = plan.assets.find(item => item.symbol === target.symbol);
+      const route = asset && storedPlanRoute(asset);
+      if (!asset || !route) throw new Error("An original setup route is unavailable. No request was repeated.");
+      return { target, asset, route };
+    });
+    const createdRoutes = original.createdFactories.map(factoryAddress => {
+      const route = steps.find(item => item.route.factory.toLowerCase() === factoryAddress.toLowerCase())?.route;
+      if (!route) throw new Error("An original create target is unavailable. No request was repeated.");
+      return route;
+    });
+    const observed = new Map<string, string>();
+    const verifyReceipt = (receipt: { logs: readonly { address: string; topics: readonly string[]; data: string }[] }) => {
+      const created = new Map<string, string>();
+      if (createdRoutes.length) verifyCreateReceipt(receipt, createdRoutes, plan, created);
+      if (created.size !== createdRoutes.length) return false;
+      const resolved = new Map<string, string>();
+      for (const { target, asset, route } of steps) {
+        const vaultAddress = target.vault || created.get(route.factory.toLowerCase());
+        if (!vaultAddress || !verifyDepositReceipt(receipt, route, { ...asset, vault: vaultAddress }, plan.account)) return false;
+        resolved.set(asset.symbol, vaultAddress);
+      }
+      observed.clear();
+      for (const [symbol, vaultAddress] of resolved) observed.set(symbol, vaultAddress);
+      return true;
+    };
+    let request = original;
+    if (!request.txHash) {
+      const receipt = await findUniquePlanReceipt(request.beforeBlock,
+        () => provider.getBlockNumber(),
+        (fromBlock, toBlock) => provider.getLogs({
+          address: [...new Set([...createdRoutes.map(route => route.factory), ...steps.map(item => item.route.asset)])],
+          topics: [[new ethers.Interface(FACTORY_ABI).getEvent("VaultCreated")!.topicHash,
+            TRANSFER_EVENT_IFACE.getEvent("Transfer")!.topicHash], ethers.zeroPadValue(ethers.getAddress(plan.account), 32)],
+          fromBlock, toBlock,
+        }),
+        hash => provider.getTransactionReceipt(hash), () => true,
+        candidate => candidate.status === 1 && verifyReceipt(candidate));
+      if (!receipt) throw new Error("The prior setup request has no verifiable result yet. It was not repeated.");
+      request = { ...request, txHash: receipt.hash, hashType: "transaction" };
+      recordRequest(request);
+    }
+    await waitForTxOrEvent(getRwProvider(), {
+      txHash: request.txHash, hashType: request.hashType, verifyReceipt,
+      check: async () => {
+        for (const { asset, route } of steps) {
+          const vaultAddress = observed.get(asset.symbol);
+          if (!vaultAddress) return false;
+          const identity = await readPlanVaultIdentity(route, plan.account, vaultAddress);
+          if (!identity || identity.owner.toLowerCase() !== plan.account.toLowerCase()) return false;
+        }
+        return observed.size === steps.length;
+      },
+    });
+    return observed;
+  };
+
   const continuePlan = async (confirmAlignment = false, reviewedStrategyFees?: Partial<Record<AssetSymbol, number>>) => {
     if (creating) return;
     if (!account || !factory) { setStatus("Connect first"); return; }
@@ -2697,6 +2785,16 @@ export default function App() {
         }
         return route;
       };
+      const finishSetupRequest = async (request: StoredSetupRequest) => {
+        const observed = await confirmSetupRequest(workingPlan!, request, recovered =>
+          persist(current => ({ ...current, setupRequest: recovered })));
+        persist(current => ({ ...current, setupRequest: undefined, createState: "complete", createTargets: [],
+          createBeforeBlock: undefined, createTxHash: undefined, createHashType: undefined,
+          assets: current.assets.map(asset => observed.has(asset.symbol)
+            ? { ...asset, vault: observed.get(asset.symbol)!, depositState: "complete", beforeBlock: undefined,
+              beforeBalance: undefined, txHash: undefined, hashType: undefined } : asset),
+        }));
+      };
       // New deposits use the selected routes; shared settings review includes
       // every trusted active generation, including existing basic WLD vaults.
       const planRoutes = [...new Set(TRUSTED_FACTORIES.map(address => address.toLowerCase()))]
@@ -2715,17 +2813,21 @@ export default function App() {
         }
       }
 
+      // A single wallet request can create and fund both assets. Resolve its
+      // entire historical receipt before legacy recovery or any fresh fee reads.
+      if (workingPlan.setupRequest) await finishSetupRequest(workingPlan.setupRequest);
+
       for (const asset of workingPlan.assets.filter(item => item.depositState === "complete")) {
         monitorConfirmedVault(routeForStep(asset), asset.vault, plan.account);
       }
 
-      if (plan.createState === "submitted" && plan.createTxHash && plan.createTargets.length > 0) {
+      if (workingPlan.createState === "submitted" && workingPlan.createTxHash && workingPlan.createTargets.length > 0) {
         const submittedRoutes = plan.createTargets.map(factoryAddress => planRoutes.find(route => route.factory.toLowerCase() === factoryAddress.toLowerCase()))
           .filter((route): route is AppPlanRoute => Boolean(route));
         if (submittedRoutes.length !== plan.createTargets.length) throw new Error("The saved create route could not be matched. No retry was sent.");
         await confirmPlanCreation(plan, submittedRoutes);
         persist(current => ({ ...current, createState: "ready", createTargets: [], createTxHash: undefined, createHashType: undefined }));
-      } else if (plan.createState === "submitting" || (plan.createState === "submitted" && !plan.createTxHash)) {
+      } else if (workingPlan.createState === "submitting" || (workingPlan.createState === "submitted" && !workingPlan.createTxHash)) {
         const uncertain = plan.createTargets.map(factoryAddress => planRoutes.find(route => route.factory.toLowerCase() === factoryAddress.toLowerCase()))
           .filter((route): route is AppPlanRoute => Boolean(route));
         if (!uncertain.length || uncertain.length !== plan.createTargets.length) throw new Error("The original create targets are unavailable. No retry was sent.");
@@ -2863,135 +2965,80 @@ export default function App() {
         await verifyAcceptedStrategyFee(route);
       }
 
-      const missingRoutes: AppPlanRoute[] = [];
-      for (const asset of workingPlan.assets.filter(item => item.depositState === "ready")) {
-        const route = routeForStep(asset);
-        const identity = await readPlanVaultIdentity(route, plan.account);
-        if (!identity) missingRoutes.push(route);
-        else {
-          if (identity.heir.toLowerCase() !== plan.heir.toLowerCase() || identity.periodSeconds !== periodSeconds) {
-            throw new Error(`${asset.symbol} settings changed before deposit. Review the plan again.`);
+      const readyAssets = workingPlan.assets.filter(asset => asset.depositState === "ready");
+      if (readyAssets.length) {
+        const createdFactories: string[] = [];
+        const requestAssets: StoredSetupRequest["assets"] = [];
+        const calls: Parameters<typeof sendWorldChainTx>[0] = [];
+        const block = await provider.getBlock("latest");
+        if (!block) throw new Error("World Chain time is unavailable. Refresh before continuing.");
+        // Prepare every call before saving the request or asking the wallet.
+        // Factories resolve the owner's new vault inside the same atomic batch.
+        for (const asset of readyAssets) {
+          const route = routeForStep(asset);
+          const identity = await readPlanVaultIdentity(route, plan.account);
+          if (identity) {
+            if (identity.heir.toLowerCase() !== plan.heir.toLowerCase() || identity.periodSeconds !== periodSeconds
+              || identity.claimedAt > 0n || identity.deadline <= BigInt(block.timestamp)) {
+              throw new Error(`${asset.symbol} settings changed before deposit. Review the plan again.`);
+            }
+            requestAssets.push({ symbol: asset.symbol, vault: identity.address });
+          } else {
+            createdFactories.push(route.factory);
+            requestAssets.push({ symbol: asset.symbol, vault: "" });
+            calls.push({ address: route.factory, abi: planFactoryAbi(route), functionName: "createVault",
+              args: [plan.heir, periodSeconds.toString()] });
           }
-          if (identity.claimedAt > 0n || identity.deadline <= BigInt(latestBlock.timestamp)) {
-            throw new Error(`${asset.symbol} vault is no longer active. No deposit was sent.`);
-          }
-          persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === asset.symbol
-            ? { ...item, vault: identity.address } : item) }));
         }
-      }
-
-      if (missingRoutes.length > 0) {
-        const beforeBlock = await provider.getBlockNumber();
-        persist(current => ({ ...current, createState: "submitting", createTargets: missingRoutes.map(route => route.factory),
-          createBeforeBlock: beforeBlock, createTxHash: undefined, createHashType: undefined }));
-        const sent = await sendWorldChainTx(missingRoutes.map(route => ({
-          address: route.factory, abi: FACTORY_ABI, functionName: "createVault",
-          args: [plan.heir, periodSeconds.toString()],
-        })));
-        if (!sent.ok) {
-          // Only a structured failure that proves pre-submission returns this step to
-          // ready. An ID-less bridge/transport error stays submitting for safe recovery.
-          if (sent.definitelyNotSubmitted) {
-            persist(current => ({ ...current, createState: "ready", createTargets: [], createBeforeBlock: undefined,
-              createTxHash: undefined, createHashType: undefined }));
+        for (const asset of readyAssets) {
+          const route = routeForStep(asset);
+          const amount = BigInt(asset.amount);
+          const token = new ethers.Contract(route.asset, ERC20_ABI, provider);
+          const [decimals, balance] = await Promise.all([token.decimals(), token.balanceOf(plan.account)]);
+          if (Number(decimals) !== route.decimals || BigInt(balance) < amount) {
+            throw new Error(`Not enough ${route.symbol} in your wallet to finish this plan.`);
           }
+          if (route.mode === "morpho") await verifyAcceptedStrategyFee(route);
+          const minShares = route.mode === "morpho"
+            ? minimumOutput(BigInt(await new ethers.Contract(route.details!.strategy, MORPHO_ABI, provider).previewDeposit(amount))) : 0n;
+          calls.push({ address: route.asset, abi: ERC20_ABI, functionName: "approve", args: [route.factory, amount.toString()] });
+          calls.push(route.mode === "morpho"
+            ? { address: route.factory, abi: planFactoryAbi(route), functionName: "depositWithMinShares", args: [amount.toString(), minShares.toString()] }
+            : { address: route.factory, abi: planFactoryAbi(route), functionName: "deposit", args: [amount.toString()] });
+        }
+        const request: StoredSetupRequest = { beforeBlock: await provider.getBlockNumber(), createdFactories, assets: requestAssets };
+        const symbols = new Set(readyAssets.map(asset => asset.symbol));
+        const resetRequest = (current: StoredPlan): StoredPlan => ({ ...current, setupRequest: undefined,
+          createState: createdFactories.length ? "ready" : "complete", createTargets: [], createBeforeBlock: undefined,
+          createTxHash: undefined, createHashType: undefined,
+          assets: current.assets.map(asset => symbols.has(asset.symbol)
+            ? { ...asset, depositState: "ready", vault: request.assets.find(target => target.symbol === asset.symbol)!.vault,
+              beforeBlock: undefined, beforeBalance: undefined, txHash: undefined, hashType: undefined } : asset),
+        });
+        persist(current => ({ ...current, setupRequest: request,
+          createState: createdFactories.length ? "submitting" : "complete", createTargets: createdFactories,
+          createBeforeBlock: request.beforeBlock,
+          assets: current.assets.map(asset => symbols.has(asset.symbol)
+            ? { ...asset, vault: request.assets.find(target => target.symbol === asset.symbol)!.vault, depositState: "submitting" } : asset),
+        }));
+        const sent = await sendWorldChainTx(calls);
+        if (!sent.ok) {
+          if (sent.definitelyNotSubmitted) persist(resetRequest);
           setStatus(sent.error);
           if (sent.userFacing) pushToast("error", sent.error);
           return;
         }
-        persist(current => ({ ...current, createState: "submitted", createTxHash: sent.tx.hash, createHashType: sent.tx.hashType }));
-        setStatus("Pending… verifying the new vaults");
-        const observed = await confirmPlanCreation(workingPlan!, missingRoutes);
-        const created: Record<string, string> = {};
-        for (const route of missingRoutes) {
-          const identity = await readPlanVaultIdentity(route, plan.account);
-          if (identity && identity.heir.toLowerCase() === plan.heir.toLowerCase() && identity.periodSeconds === periodSeconds) {
-            created[route.factory.toLowerCase()] = identity.address;
-          }
-        }
-        const stillMissing = missingRoutes.filter(route => !created[route.factory.toLowerCase()]);
-        persist(current => ({ ...current, createState: stillMissing.length ? "ready" : "complete",
-          createTargets: stillMissing.map(route => route.factory), createTxHash: undefined, createHashType: undefined,
-          assets: current.assets.map(item => {
-            const route = missingRoutes.find(candidate => candidate.symbol === item.symbol);
-            const address = route ? created[route.factory.toLowerCase()] : undefined;
-            return address ? { ...item, vault: address } : item;
-          }) }));
-        if (observed.size === 0) throw new Error("The create receipt did not identify a canonical vault. Check before retrying.");
-        if (stillMissing.length > 0) {
-          setStatus("Some vaults were created. Resume to finish the remaining asset.");
-          return;
-        }
-      } else if (workingPlan.createState !== "complete") {
-        persist(current => ({ ...current, createState: "complete", createTargets: [] }));
-      }
-
-      const steps = workingPlan.assets.map(asset => ({ key: asset.symbol, value: asset }));
-      await runRemainingPlanSteps(
-        steps,
-        symbol => workingPlan?.assets.find(asset => asset.symbol === symbol)?.depositState === "complete",
-        async asset => {
-          const route = routeForStep(asset);
-          const step = workingPlan!.assets.find(item => item.symbol === asset.symbol)!;
-          const identity = await readPlanVaultIdentity(route, plan.account);
-          if (!identity || !step.vault || identity.address.toLowerCase() !== step.vault.toLowerCase()) {
-            throw new Error(`${asset.symbol} canonical vault changed. No deposit was sent.`);
-          }
-          if (identity.owner.toLowerCase() !== plan.account.toLowerCase()
-            || identity.heir.toLowerCase() !== plan.heir.toLowerCase() || identity.periodSeconds !== periodSeconds) {
-            throw new Error(`${asset.symbol} owner, heir or interval changed. No deposit was sent.`);
-          }
-          const amount = BigInt(step.amount);
-          if (step.depositState !== "ready") throw new Error(`${asset.symbol} prior request still needs verification. It was not repeated.`);
-          if (identity.claimedAt > 0n || identity.deadline <= BigInt((await provider.getBlock("latest"))?.timestamp ?? 0)) {
-            throw new Error(`${asset.symbol} vault is no longer active. No deposit was sent.`);
-          }
-          const token = new ethers.Contract(route.asset, ERC20_ABI, provider);
-          const [decimals, walletBalance] = await Promise.all([token.decimals(), token.balanceOf(plan.account)]);
-          if (Number(decimals) !== route.decimals) throw new Error(`${route.symbol} token precision does not match its configured route.`);
-          if (BigInt(walletBalance) < amount) throw new Error(`Not enough ${route.symbol} in your wallet to finish this plan.`);
-          if(route.mode === "morpho")await verifyAcceptedStrategyFee(route);
-          // Save a resumable ready step before quote/read RPCs. A failure here is
-          // provably before any wallet request, so it must never look ambiguous.
-          persist(current => ({ ...current }));
-          const beforeBlock = await provider.getBlockNumber();
-          const minShares = route.mode === "morpho"
-            ? minimumOutput(BigInt(await new ethers.Contract(route.details!.strategy, MORPHO_ABI, provider).previewDeposit(amount))) : 0n;
-          const depositCall = route.mode === "morpho"
-            ? { address: route.factory, abi: planFactoryAbi(route), functionName: "depositWithMinShares", args: [amount.toString(), minShares.toString()] }
-            : { address: route.factory, abi: planFactoryAbi(route), functionName: "deposit", args: [amount.toString()] };
-          persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === step.symbol
-            ? { ...item, depositState: "submitting", beforeBalance: undefined, beforeBlock,
-              txHash: undefined, hashType: undefined } : item) }));
-          const sent = await sendWorldChainTx([
-            { address: route.asset, abi: ERC20_ABI, functionName: "approve", args: [route.factory, amount.toString()] },
-            depositCall,
-          ]);
-          if (!sent.ok) {
-            // Only a structured pre-submission failure returns this step to ready.
-            // Other ID-less errors stay submitting until recovery proves the outcome.
-            if (sent.definitelyNotSubmitted) {
-              persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === step.symbol
-                ? { ...item, depositState: "ready", beforeBalance: undefined, beforeBlock: undefined,
-                  txHash: undefined, hashType: undefined } : item) }));
-            }
-            setStatus(sent.error);
-            if (sent.userFacing) pushToast("error", sent.error);
-            throw new Error(sent.error);
-          }
-          const submittedStep = { ...workingPlan!.assets.find(item => item.symbol === step.symbol)!,
-            depositState: "submitted" as const, txHash: sent.tx.hash, hashType: sent.tx.hashType };
-          persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === step.symbol ? submittedStep : item) }));
-          setStatus(`Pending… verifying ${asset.symbol} deposit`);
-          await confirmSavedPlanDeposit(plan, submittedStep, route);
-        },
-        symbol => {
-          persist(current => ({ ...current, assets: current.assets.map(asset => asset.symbol === symbol
-            ? { ...asset, depositState: "complete", txHash: undefined, hashType: undefined } : asset) }));
-          const asset = workingPlan!.assets.find(item => item.symbol === symbol)!;
+        const submitted = { ...request, txHash: sent.tx.hash, hashType: sent.tx.hashType };
+        persist(current => ({ ...current, setupRequest: submitted,
+          createState: createdFactories.length ? "submitted" : "complete",
+          assets: current.assets.map(asset => symbols.has(asset.symbol) ? { ...asset, depositState: "submitted" } : asset),
+        }));
+        setStatus("Pending… verifying your plan and deposits");
+        await finishSetupRequest(submitted);
+        for (const asset of workingPlan.assets.filter(item => symbols.has(item.symbol))) {
           monitorConfirmedVault(routeForStep(asset), asset.vault, plan.account);
-        },
-      );
+        }
+      }
 
       const completedPlan = workingPlan;
       if (!completedPlan || completedPlan.assets.some(asset => asset.depositState !== "complete")) {
@@ -3022,7 +3069,18 @@ export default function App() {
     } catch (error) {
       if (error instanceof ConfirmedTransactionFailure && workingPlan) {
         const failedHash = error.txHash.toLowerCase();
-        if (workingPlan.alignment?.txHash?.toLowerCase() === failedHash) {
+        if (workingPlan.setupRequest?.txHash?.toLowerCase() === failedHash) {
+          const failed = workingPlan.setupRequest;
+          persist(current => ({ ...current, setupRequest: undefined,
+            createState: failed.createdFactories.length ? "ready" : "complete", createTargets: [], createBeforeBlock: undefined,
+            createTxHash: undefined, createHashType: undefined,
+            assets: current.assets.map(asset => {
+              const target = failed.assets.find(item => item.symbol === asset.symbol);
+              return target ? { ...asset, vault: target.vault, depositState: "ready", beforeBlock: undefined,
+                beforeBalance: undefined, txHash: undefined, hashType: undefined } : asset;
+            }),
+          }));
+        } else if (workingPlan.alignment?.txHash?.toLowerCase() === failedHash) {
           persist(current => ({ ...current, alignment: undefined }));
         } else if (workingPlan.createState === "submitted" && workingPlan.createTxHash?.toLowerCase() === failedHash) {
           persist(current => ({ ...current, createState: "ready", createTargets: [], createBeforeBlock: undefined,
@@ -3428,7 +3486,7 @@ export default function App() {
     }
   };
 
-  const checkInAllPlans = async () => {
+  const checkInAllPlans = async (confirmClaimCancellation = false) => {
     if (!provider || !account || !miniInstalled) { setStatus("Open in World App and connect before checking in."); return; }
     if (ownedPlanRead.loading || ownedPlanRead.incomplete) { setStatus("Refresh every owned vault before checking in. No check-in was sent."); return; }
     if (activeOwnedPlans.length === 0) { setStatus("There are no active inheritance vaults to check in to."); return; }
@@ -3452,8 +3510,16 @@ export default function App() {
           || identity.heir.toLowerCase() === account.toLowerCase() || identity.heir === ethers.ZeroAddress) {
           throw new Error(`${item.symbol} vault changed. Refresh the plan before checking in.`);
         }
-        return { ...item, route, identityRoute, factoryAbi, vaultAbi, beforePing: identity.lastPing };
+        const claimFiledAt = BigInt(await new ethers.Contract(identity.address, vaultAbi, provider).claimFiledAt());
+        return { ...item, route, identityRoute, factoryAbi, vaultAbi, beforePing: identity.lastPing, claimFiledAt };
       }));
+      const pendingClaims = targets.filter(target => target.claimFiledAt > 0n);
+      const fingerprint = [account.toLowerCase(), ...targets.map(target =>
+        `${target.address.toLowerCase()}:${target.heir.toLowerCase()}:${target.periodSeconds}:${target.claimFiledAt}`).sort()].join("|");
+      if (pendingClaims.length && (!confirmClaimCancellation || checkinReview?.fingerprint !== fingerprint)) {
+        setCheckinReview({ fingerprint, claimCount: pendingClaims.length });
+        return;
+      }
       const sent = await sendWorldChainTx(targets.map(target => ({
         address: target.factory, abi: target.factoryAbi, functionName: "pingMyVault", args: [],
       })));
@@ -3494,7 +3560,7 @@ export default function App() {
         const timestamp = pingTimes.get(item.address.toLowerCase());
         return timestamp === undefined ? item : { ...item, lastPing: timestamp };
       }) }));
-      setCheckinReview(false);
+      setCheckinReview(null);
       setStatus(`Checked in to all ${targets.length} active vaults.`);
     } catch (error) {
       setStatus("Check-in error: " + errorText(error));
@@ -4191,10 +4257,10 @@ export default function App() {
               {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
             {activeOwnedPlans.length > 0 && !checkinReview && <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
-              onClick={() => setCheckinReview(true)}>{t("home.checkin.review")}</Button>}
+              onClick={() => void runWalletAction(() => checkInAllPlans())}>{t("home.checkin.direct")}</Button>}
             {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
               <h3 id="checkin-review-title">{t("home.checkin.title")}</h3>
-              <p>{t("home.checkin.body")}</p>
+              <p>{t("home.checkin.claimBody", { count: checkinReview.claimCount })}</p>
               <ul>{activeOwnedPlans.map(item => <li key={item.address}>
                 <strong>{item.symbol}</strong> · {formatPlanInterval(item.periodSeconds)}
                 <span>{item.lastPing ? t("home.checkin.last", { date: new Date(Number(item.lastPing) * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en") }) : t("home.checkin.notAvailable")}</span>
@@ -4204,8 +4270,8 @@ export default function App() {
               </details>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
-                  onClick={() => void runWalletAction(checkInAllPlans)}>{t("home.checkin.confirm")}</Button>
-                <Button disabled={pendingAction} onClick={() => setCheckinReview(false)}>{t("home.checkin.cancel")}</Button>
+                  onClick={() => void runWalletAction(() => checkInAllPlans(true))}>{t("home.checkin.cancelClaims")}</Button>
+                <Button disabled={pendingAction} onClick={() => setCheckinReview(null)}>{t("home.checkin.cancel")}</Button>
               </div>
             </section>}
 
@@ -5331,17 +5397,7 @@ export default function App() {
             busy={pendingAction || creating}
             createDisabled={createPlanDisabled}
             resumeDisabled={resumePlanDisabled}
-            reminderNote={NOTIFY_BACKEND_ENABLED && !ownVault && notifyHealth.level !== "checking" ? (
-              <section className={`plan-notification-note ${notifyPermission === "granted" ? "notice-ready" : "notice-needs-action"}`} role={notifyPermission === "granted" ? "status" : "alert"}>
-                <strong>{notifyPermission === "granted" ? "Reminders are on" : "Reminders are optional"}</strong>
-                <p>{notifyPermission === "granted"
-                  ? "Your heir must also open this app and enable reminders. Notices begin after a vault holds funds."
-                  : "Enable World App notifications to receive reminders. Your heir needs their own permission; notices begin after a vault holds funds."}</p>
-                {notifyPermission !== "granted" && <Button disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>
-                  {notifyBusy ? "Working…" : "Enable reminders"}
-                </Button>}
-              </section>
-            ) : null}
+
           />
         )}
 

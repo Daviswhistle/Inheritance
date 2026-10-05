@@ -245,9 +245,8 @@ const emptyPlan = await c.ev(`return (() => ({
 }))();`);
 check("금고가 없으면 funded-plan 권한 행이 없다", !emptyPlan.overviewReminder,
   emptyPlan.overviewReminder ? "overview row present" : "none");
-check("잔액이 생기기 전에는 알림 시작 시점을 분명히 말한다",
-  /notices (?:begin|start) after a vault holds funds/i.test(emptyPlan.note),
-  emptyPlan.note || "new-plan notice missing");
+check("입력 화면에는 선택적 알림 설명을 반복하지 않는다", emptyPlan.note === "",
+  emptyPlan.note || "설정 후 안내");
 await c.close();
 
 log("\n[5] 새 사용자가 양의 입금액으로 unified plan 을 만들 수 있는가");
@@ -330,8 +329,7 @@ log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 �
 }
 
 log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위치와 의미를 갖는가");
-// 새 사용자는 Inherit 탭에서 계획을 만든다. 선택적 알림 안내는 같은 생성 카드 안,
-// CTA 앞에 있고, 잔액이 생긴 뒤 알림이 시작된다고 설명해야 한다.
+// 새 사용자는 권한 결정 없이 플랜을 만든다. 알림은 자산을 넣은 뒤 홈에서 설정한다.
 {
   const fresh = await launch({ pk: A.a11.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
   await sleep(2800);
@@ -340,35 +338,8 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
   const tabs = await fresh.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
   check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.includes("Home"),
     `탭: ${tabs.join(" | ")}`);
-  await fresh.ev("const section = document.querySelector('.plan-reminder-details'); if (section && !section.open) section.querySelector('summary').click(); return true;");
-  await fresh.waitFor(".plan-notification-note");
-  const placement = await fresh.ev(`return (() => {
-    const card = document.querySelector('.plan-setup-card');
-    const note = card?.querySelector('.plan-notification-note');
-    const cta = [...(card?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Review plan');
-    const enable = [...(note?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Enable reminders');
-    if (!card || !note || !cta || !enable) return { err: 'missing control', card: !!card, note: !!note, cta: !!cta, enable: !!enable };
-    const n = note.getBoundingClientRect(), b = cta.getBoundingClientRect();
-    return {
-      sameCard: card.contains(note) && card.contains(cta),
-      before: Boolean(note.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING) && n.bottom <= b.top + 2,
-      gap: Math.round(b.top - n.bottom), text: note.innerText || '', role: note.getAttribute('role'),
-      classes: note.className, enableDisabled: enable.disabled,
-    };
-  })();`);
-  check("새 계획 안내와 CTA 는 같은 setup 카드에 있다", !!placement && placement.sameCard === true,
-    placement ? (placement.err || "same plan card") : "measurement failed");
-  check("새 계획 안내는 Review plan 앞에 있다", !!placement && placement.before === true,
-    placement && placement.gap !== undefined ? `${placement.gap}px before CTA` : "measurement failed");
-  check("꺼진 권한은 안내의 alert 톤으로 표시되고 Enable reminders 가 있다", !!placement
-    && placement.role === "alert" && /notice-needs-action/.test(placement.classes) && !placement.enableDisabled,
-    placement ? `role=${placement.role}; class=${placement.classes}; disabled=${placement.enableDisabled}` : "note missing");
-  check("새 계획 안내는 자산 입금 뒤에만 알림이 시작된다고 말한다",
-    !!placement && /notices (?:begin|start) after a vault holds funds/i.test(placement.text),
-    placement?.text || "notice missing");
-  check("상속인 지갑은 별도 권한이 필요하다고 안내한다",
-    !!placement && /your heir needs their own permission/i.test(placement.text),
-    placement?.text || "notice missing");
+  check("초기 입력 화면에는 선택적 알림이나 권한 경고가 없다",
+    await fresh.ev("return !document.querySelector('.plan-notification-note') && !document.querySelector('.plan-reminder-details');"));
   const heirSet = await setInput(fresh, "heir-input", A.a9.a);
   const amountSet = await setInput(fresh, "plan-wld", "0.01");
   await waitUntil(() => fresh.ev(`return [...document.querySelectorAll('button')]
@@ -377,6 +348,16 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
     .some(button => button.innerText.trim() === 'Review plan' && !button.disabled);`);
   check("초기 사용자의 실제 생성 CTA 에 양의 test amount 와 heir 로 도달한다", heirSet && amountSet && enabledCta,
     `heir=${heirSet}, amount=${amountSet}, enabled=${enabledCta}`);
+  await fresh.ev("const button=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Review plan');button.click();return true;");
+  await waitUntil(()=>fresh.ev("return !!document.querySelector('.plan-final-review');"));
+  await fresh.ev("const button=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Confirm and deposit');if(!button||button.disabled)throw Error('Review unavailable');button.click();return true;");
+  await waitUntil(()=>fresh.ev("return !!document.querySelector('.plan-overview-reminders');"),30000);
+  const reminder=fresh.ev("return document.querySelector('.plan-overview-reminders').getAttribute('role');");
+  check("설정 후 홈에서 알림 상태를 경고 없이 안내한다",await reminder==='status');
+  check("설정 후 선택적으로 알림을 켤 수 있다",await fresh.ev("return [...document.querySelectorAll('.plan-overview-reminders button')].some(x=>x.textContent.trim()==='Enable reminders'&&!x.disabled);"));
+  check("세부 알림 설정은 기본적으로 접혀 있다",await fresh.ev("return !document.querySelector('.plan-overview-reminders details').open;"));
+  await fresh.ev("document.querySelector('.plan-overview-reminders details').open=true;return true;");
+  check("상속인에게도 별도 알림 권한이 필요하다고 안내한다",await fresh.ev("return /Your heir needs their own notification permission/.test(document.querySelector('.plan-overview-reminders').innerText);"));
   await fresh.shot("notify-first-run");
   await fresh.close();
 }

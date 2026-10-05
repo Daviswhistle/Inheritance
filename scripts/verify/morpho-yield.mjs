@@ -106,17 +106,17 @@ async function setPlanAmount(symbol, amount) {
   await page.ev(`return __q.setInput(${JSON.stringify(id)}, ${JSON.stringify(amount)})`);
 }
 async function clickPlanSubmit() {
-  await clickReady("Review plan");
+  if (!await page.ev("return !!document.querySelector('.plan-final-review')")) await clickReady("Review plan");
   return clickReady("Confirm and deposit");
 }
 async function selectOwnedVault(labelPrefix) {
+  const symbol = labelPrefix.startsWith("USDC") ? "USDC" : "WLD";
+  await until(() => page.ev(`const button = [...document.querySelectorAll('.asset-switcher button')]
+    .find(item => item.textContent.trim() === ${JSON.stringify(symbol)} && !item.disabled); if (!button) return false; button.click(); return true;`));
+  await until(() => page.ev(`return document.querySelector('.asset-switcher button[aria-pressed="true"]')?.textContent.trim() === ${JSON.stringify(symbol)}`));
   const result = await page.ev(`
     const prefix = ${JSON.stringify(labelPrefix)};
-    const symbol = prefix.startsWith('USDC') ? 'USDC' : 'WLD';
-    const assetButton = [...document.querySelectorAll('.asset-switcher button')].find(item => item.textContent.trim().endsWith(symbol));
-    if (!assetButton) return 'missing asset ' + prefix;
-    assetButton.click();
-    await new Promise(requestAnimationFrame);
+    const symbol = ${JSON.stringify(symbol)};
     const history = document.querySelector('.asset-history');
     if (!history) return 'selected ' + symbol;
     if (!history.open) history.querySelector('summary').click();
@@ -195,7 +195,7 @@ try {
   await until(() => page.ev("return !/Some vault registries could not be refreshed/.test(document.body.innerText)"));
   await captureStore("countdown");
   await page.ev("return __q.tab('Plan')");
-  await until(() => page.ev("return !!(document.getElementById('yield-consent') && document.querySelector('.plan-assets'))"));
+  await until(() => page.ev("return !!document.querySelector('.plan-assets')"));
   const planRows = await page.ev(`
     const wld = document.getElementById('plan-wld');
     const radios = [...document.querySelectorAll('.plan-setup-card input[type="radio"]')].length;
@@ -204,10 +204,10 @@ try {
   `);
   const routeView = JSON.parse(planRows);
   assert.equal(routeView.wld, true);
-  assert.match(routeView.wldRow, /WLD[\s\S]*Yield/);
+  assert.match(routeView.wldRow, /WLD[\s\S]*Morpho/);
   assert.equal(routeView.radios, 0);
   assert.equal(routeView.obsoleteAssetMode, false);
-  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  assert.equal(await page.ev("return document.getElementById('yield-consent') === null"), true);
   assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
   pass("Unified WLD amount entry shows the configured Morpho route and requires explicit fee and risk consent");
   await page.ev(`return __q.setInput('heir-input', '${ACCOUNTS.a1.a}')`);
@@ -215,17 +215,20 @@ try {
   await setPlanAmount("WLD", "1");
   await until(() => page.ev("return document.querySelector('.resolved-heir') !== null"));
   await until(() => page.ev("return /Available: 100 WLD/.test(document.body.innerText)"));
-  assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
+  await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   assert.equal(await yieldFactory.vaultOf(ACCOUNTS.a0.a), "0x0000000000000000000000000000000000000000");
   pass("A resolved heir and valid WLD amount still cannot create a Morpho vault without consent");
-  await page.ev("document.getElementById('yield-consent').click(); return true");
-  await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   if (storeCapture) {
     await page.ev("document.getElementById('heir-input').closest('.field-row').scrollIntoView({block:'start'}); window.scrollBy(0,-105); return true;");
     await sleep(150);
     await captureStore("create");
     await page.ev("window.scrollTo(0,0); return true;");
   }
+  await clickReady("Review plan");
+  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
+  await page.ev("document.getElementById('yield-consent').click(); return true");
+  await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   assert.equal(await page.ev("return window.__E2E_MINIKIT__.lastCalldata().length"), 0);
   await clickPlanSubmit();
   await until(() => page.ev("return document.querySelector('.plan-alignment-review') !== null"), "shared settings review");
@@ -267,9 +270,11 @@ try {
   assert.equal(await yieldVault.heartbeatInterval(), 30n * 86400n);
   assert.equal(await morpho.balanceOf(vault), parseEther("1"));
   const plannedDeposit = await page.ev("return window.__E2E_MINIKIT__.lastCalldata()");
-  assert.equal(plannedDeposit[0].to.toLowerCase(), (await token.getAddress()).toLowerCase());
-  assert.equal(plannedDeposit[1].to.toLowerCase(), (await yieldFactory.getAddress()).toLowerCase());
-  assert.equal(yieldFactory.interface.parseTransaction({ data: plannedDeposit[1].data }).args[0], parseEther("1"));
+  assert.equal(plannedDeposit.length, 3);
+  assert.equal(yieldFactory.interface.parseTransaction({ data: plannedDeposit[0].data }).name, "createVault");
+  assert.equal(plannedDeposit[1].to.toLowerCase(), (await token.getAddress()).toLowerCase());
+  assert.equal(plannedDeposit[2].to.toLowerCase(), (await yieldFactory.getAddress()).toLowerCase());
+  assert.equal(yieldFactory.interface.parseTransaction({ data: plannedDeposit[2].data }).args[0], parseEther("1"));
   pass("Explicit settings confirmation preserves the funded basic vault and creates a distinct Morpho vault with the entered WLD amount");
   await openAssetDetails();
   await page.waitFor("#deposit-amount");
@@ -289,19 +294,22 @@ try {
   assert.doesNotMatch(await page.ev("return document.querySelector('.yield-rate-summary').innerText"), /1.70%/);
   pass("An unavailable rates API replaces the old quote with its unavailable state for the selected Morpho vault");
   await page.ev("return __q.tab('Plan')");
-  await until(() => page.ev("return !!(document.getElementById('yield-consent') && document.querySelector('.plan-submit'))"));
+  await until(() => page.ev("return !!document.querySelector('.plan-assets')"));
   await page.ev(`return __q.setInput('heir-input', '${ACCOUNTS.a1.a}')`);
   await page.ev("return __q.setInput('period-input', '30')");
   await setPlanAmount("WLD", "0.1");
   await until(() => page.ev("return document.querySelector('.resolved-heir') !== null"));
-  assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
+  await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   const requestsBeforeUnavailableQuoteDraft = await page.ev("return window.__E2E_MINIKIT__.lastCalldata()");
+  await clickReady("Review plan");
+  assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
+  assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);
   await page.ev("document.getElementById('yield-consent').click(); return true;");
   await until(() => page.ev("return !document.querySelector('.plan-submit').disabled"));
   assert.deepEqual(await page.ev("return window.__E2E_MINIKIT__.lastCalldata()"), requestsBeforeUnavailableQuoteDraft);
   pass("Unavailable display-only rates do not block a consent-gated unified plan draft or send a wallet request");
+  await clickReady("Edit plan");
   await setPlanAmount("WLD", "");
-  await page.ev("document.getElementById('yield-consent').click(); return true;");
   await openAssetDetails();
   await page.waitFor("#deposit-amount");
   await page.ev("return __q.reveal('.yield-rate-summary')");
@@ -357,14 +365,14 @@ try {
   await (await token.mint(await morpho.getAddress(), parseEther("1"))).wait();
   await clickReady("Refresh balance");
   await until(() => page.ev(`return window.__E2E_RPC_FAULT_MATCHES__ > ${rejected} && /109.9 WLD/.test(document.body.innerText)`));
-  assert.equal(await page.ev("return [...document.querySelectorAll('.stat')].some(el => el.innerText.toLowerCase().includes('invested value before fee') && /111.0 WLD/.test(el.innerText))"), true);
+  assert.equal(await page.ev("return [...document.querySelectorAll('.stat')].some(el => el.innerText.toLowerCase().includes('invested value before service fee') && /111.0 WLD/.test(el.innerText))"), true);
   pass("A wallet receipt read failure does not prevent a fresh, coherent vault valuation");
   await clearFaults();
   await fault(yieldVault, yieldVault.interface.getFunction("position").selector);
   rejected = await page.ev("return window.__E2E_RPC_FAULT_MATCHES__");
   await clickReady("Refresh balance");
   await until(() => page.ev(`return window.__E2E_RPC_FAULT_MATCHES__ > ${rejected}`));
-  assert.equal(await page.ev("return [...document.querySelectorAll('.stat')].some(el => el.innerText.toLowerCase().includes('invested value before fee') && /111.0 WLD/.test(el.innerText))"), true);
+  assert.equal(await page.ev("return [...document.querySelectorAll('.stat')].some(el => el.innerText.toLowerCase().includes('invested value before service fee') && /111.0 WLD/.test(el.innerText))"), true);
   pass("A failed vault position read preserves its last coherent balance instead of replacing it with idle cash");
   await clearFaults();
   await (await morpho.setRate(parseEther("1.1"))).wait();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -38,10 +38,9 @@ export function PlanSetup({
   rows, heir, onHeirChange, onPickHeir, resolvingHeir, heirResolved, heirUsername, shareBusy,
   period, periodValid, onPeriodChange, onPreset, onAmountChange, yieldConsent, onYieldConsent, pendingPlan,
   heirSuspicious, alignmentConflicts, onConfirmAlignment, onCancelAlignment, onCreate, onResume,
-  busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining, reminderNote,
+  busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining,
 }: {
   rows: PlanRouteRow[];
-  reminderNote?: ReactNode;
   heir: string;
   onHeirChange: (value: string) => void;
   onPickHeir: () => void;
@@ -74,7 +73,6 @@ export function PlanSetup({
   const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const wasReviewingRef = useRef(false);
   const createClickLocked = useRef(false);
-  const hasYieldRoute = rows.some(row => row.mode === "morpho");
   const formatInterval = (seconds: bigint) => {
     if (locale === "en") return formatPlanInterval(seconds);
     const days = seconds / 86400n;
@@ -111,7 +109,7 @@ export function PlanSetup({
   const consentValid = !needsYieldConsent || yieldConsent;
   const hasSelectedAsset = selectedRows.length > 0;
   const balancesValid = !amountWithoutBalance && !exceedsBalance;
-  const formValid = !invalidAmountRow && hasSelectedAsset && balancesValid && recipientValid && intervalValid && consentValid;
+  const formValid = !invalidAmountRow && hasSelectedAsset && balancesValid && recipientValid && intervalValid;
 
   const currentFingerprint = JSON.stringify({
     amounts: rows.map(row => [row.symbol, row.amount, row.decimals, row.mode, row.underlyingFeePercent]),
@@ -120,7 +118,6 @@ export function PlanSetup({
     heirUsername,
     heirSuspicious,
     period,
-    yieldConsent,
   });
   const canReview = formValid && !busy && !pendingPlan && !createDisabled && alignmentConflicts.length === 0;
   const showReview = Boolean(reviewSnapshot && reviewSnapshot.fingerprint === currentFingerprint && !pendingPlan && alignmentConflicts.length === 0);
@@ -159,7 +156,7 @@ export function PlanSetup({
     if (resolvedIsZero) return t("plan.validation.zeroAddress");
     if (!recipientValid) return t("plan.validation.recipient");
     if (!intervalValid) return t("plan.validation.interval");
-    if (!consentValid) return t("plan.validation.consent");
+    if (showReview && !consentValid) return t("plan.validation.consent");
     if (alignmentConflicts.length > 0) return t("plan.validation.alignment");
     if (createDisabled) return t("plan.validation.checking");
     return "";
@@ -189,7 +186,7 @@ export function PlanSetup({
   };
 
   const confirmPlan = () => {
-    if (!reviewSnapshot || !showReview || !formValid || busy || pendingPlan || createDisabled || alignmentConflicts.length > 0 || createClickLocked.current) return;
+    if (!reviewSnapshot || !showReview || !formValid || !consentValid || busy || pendingPlan || createDisabled || alignmentConflicts.length > 0 || createClickLocked.current) return;
     createClickLocked.current = true;
     try {
       const reviewedFees: Partial<Record<PlanAsset, number>> = {};
@@ -230,23 +227,30 @@ export function PlanSetup({
     })}
   </fieldset>;
 
-  const strategyFeeText = (asset: Pick<ReviewAsset, "symbol" | "underlyingFeePercent">) => {
+  const strategyFeeText = (asset: { symbol: string; underlyingFeePercent?: number }) => {
     const fee = asset.underlyingFeePercent;
     return typeof fee === "number" && Number.isFinite(fee) && fee >= 0 && fee <= 100
       ? t("plan.risk.strategyFee", { symbol: asset.symbol, percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(fee) })
       : t("plan.risk.strategyFeeChecking", { symbol: asset.symbol });
   };
-  const disclosedYieldRows = (selectedRows.length ? selectedRows.map(item => item.row) : rows).filter(row => row.mode === "morpho");
+  const feeGroups = (assets: readonly { symbol: string; underlyingFeePercent?: number }[]) => {
+    const groups = new Map<number | undefined, string[]>();
+    for (const asset of assets) groups.set(asset.underlyingFeePercent, [...(groups.get(asset.underlyingFeePercent) ?? []), asset.symbol]);
+    return [...groups].map(([underlyingFeePercent, symbols]) => ({ symbol: symbols.join(" + "), underlyingFeePercent }));
+  };
+  const disclosedYieldRows = (pendingPlan ? rows.filter(row => pendingPlan.assets.some(asset => asset.symbol === row.symbol
+    && asset.mode === "morpho" && asset.depositState === "ready")) : selectedRows.map(item => item.row)).filter(row => row.mode === "morpho");
+  const hasYieldRoute = disclosedYieldRows.length > 0;
   const riskDisclosure = <section className="plan-risk" aria-labelledby="plan-risk-title">
-    <h3 id="plan-risk-title">{t("plan.risk.title")}</h3>
+    <h3 id="plan-risk-title" className={showReview ? "sr-only" : undefined}>{t("plan.risk.title")}</h3>
     <ul className="plan-risk-points">
       {!showReview && <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>}
-      {!showReview && disclosedYieldRows.map(row => <li key={row.symbol}>{strategyFeeText(row)}</li>)}
+      {!showReview && feeGroups(disclosedYieldRows).map(row => <li key={row.symbol}>{strategyFeeText(row)}</li>)}
       {hasYieldRoute && <li>{t("plan.risk.value")}</li>}
       {!showReview && <li>{t("plan.risk.inheritance")}</li>}
     </ul>
     {hasYieldRoute && <label className="yield-consent"><input id="yield-consent" type="checkbox" checked={yieldConsent} disabled={busy}
-      onChange={event => { setReviewSnapshot(null); onYieldConsent(event.target.checked); }} />
+      onChange={event => onYieldConsent(event.target.checked)} />
       <span>{t("plan.risk.consent")}</span>
     </label>}
     <details className="plan-more-details">
@@ -279,11 +283,9 @@ export function PlanSetup({
   </section>;
 
   return <Card className="plan-setup-card">
-    <CardHeader>
-      <span className="eyebrow">{t("plan.eyebrow")}</span>
+    {!showReview && <CardHeader>
       <CardTitle>{t("plan.title")}</CardTitle>
-      <p className="plan-card-intro">{t("plan.intro")}</p>
-    </CardHeader>
+    </CardHeader>}
     <CardContent className="plan-setup-content">
       {pendingPlan && <section className="plan-resume" aria-labelledby="plan-resume-title">
         <div>
@@ -370,26 +372,23 @@ export function PlanSetup({
           </div>
           {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <div>
             <dt>{t("plan.review.strategyFee")}</dt>
-            <dd>{reviewSnapshot.assets.filter(asset => asset.mode === "morpho").map(asset => <span className="plan-review-amount" key={asset.symbol}>{strategyFeeText(asset)}</span>)}</dd>
+            <dd>{feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(asset => <span className="plan-review-amount" key={asset.symbol}>{strategyFeeText(asset)}</span>)}</dd>
           </div>}
           <div><dt>{t("plan.review.missedTitle")}</dt><dd>{t("plan.review.missedBody")}</dd></div>
         </dl>
+        {riskDisclosure}
       </section>}
 
       {alignmentReview}
-      {riskDisclosure}
+      {pendingPlan && hasYieldRoute && riskDisclosure}
 
-      {reminderNote && <details className="plan-reminder-details">
-        <summary>{t("plan.reminders.optional")}</summary>
-        {reminderNote}
-      </details>}
-
-      <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html">{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html">{t("plan.legal.privacy")}</a>.</p>
-      {validationReason && <p className="plan-validation-message" role={formValid && createDisabled ? "status" : "alert"}>{validationReason}</p>}
+      {showReview && <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html">{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html">{t("plan.legal.privacy")}</a>.</p>}
+      {validationReason && !pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
+        && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
       {showReview
         ? <div className="plan-step-actions">
-          <Button variant="primary" size="lg" className="plan-submit" disabled={busy || Boolean(pendingPlan) || createDisabled || !formValid || alignmentConflicts.length > 0} onClick={confirmPlan}>
+          <Button variant="primary" size="lg" className="plan-submit" disabled={busy || Boolean(pendingPlan) || createDisabled || !formValid || !consentValid || alignmentConflicts.length > 0} onClick={confirmPlan}>
             {busy ? <><span className="spinner" />{t("plan.action.settingUp")}</> : t("plan.action.confirm")}
           </Button>
           <Button disabled={busy || Boolean(pendingPlan)} onClick={editPlan}>{t("plan.action.edit")}</Button>
