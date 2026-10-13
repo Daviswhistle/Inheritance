@@ -1,5 +1,48 @@
 # Release evidence
 
+## October 13, 2026 app entry review candidate
+
+The marketing landing page is removed. Home, Assets, Plan and Help are available
+before sign-in and remain stable for wallets without a plan. Unauthenticated
+balances are unavailable rather than illustrative or zero. Signing in requires a
+button tap; shared links enter Plan and retain the vault in the World App link.
+An explicitly opened Plan stays selected after owner discovery. Empty screens
+lead to setup or received plans, and unavailable discovery is distinguished from
+an empty result. Authenticated money and recipient controls retain their gates.
+
+Entry fits 320x640, 390x844 and desktop without scrolling or covering the primary
+action. Headings describe app functions; promotional copy, the illustration and
+landing footer are removed. Legal and fee information remains in Help and the
+transaction review. Store captures use the current UI; the content card contains
+no embedded identity or promotional text and reserves its bottom 94px for the
+host overlay at 3x export. All store PNGs are below 500KB and have no metadata.
+The changes follow the official [App Guidelines](https://docs.world.org/mini-apps/guidelines/app-guidelines)
+and [Design Guidelines](https://docs.world.org/mini-apps/guidelines/design-guidelines).
+
+Local verification passed: app entry/shared plan browser 45, unified plan browser
+83, canonical identity recovery 5, SIWE/notification authorization 76, locale 7,
+typecheck, lint, CSS mapping, Foundry formatting/full tests and generated ABI
+parity. A production build using current public GitHub deployment variables was
+also opened with the actual SDK outside World App: all four tabs and the World
+App entry link work at 320/390px, with no auth requests or runtime errors.
+
+Review regressions verify that a failed heir index offers retry without declaring
+an empty plan, and wallet-held receipt assets suppress the Assets setup message.
+Assets waits for a complete wallet-share lookup; a selected-token or share-read
+failure offers retry instead of presenting an empty result.
+Restored unfinished setup opens Plan automatically and retains a resume action
+on Home/Assets. Verified received plans remain reachable during partial discovery.
+Archived assets retain their recovery screen without an empty Home message; guest
+tiles explicitly describe plan balances rather than general wallet balances.
+Background balance polling does not supersede an unfinished same-scope read;
+a 33-second initial read still reveals held receipt assets after the poll interval.
+Reads that stall for 45 seconds expose retry and discard late results. Background
+refresh keeps a settled Assets setup action available while balances are read.
+
+This is a local review candidate on `fix/app-first-entry`, based on `6fb901d`.
+Production deployment, updated Portal images and review submission are pending;
+local Chrome checks do not establish native phone acceptance or store approval.
+
 ## October 6, 2026 KST shared owner plan and heir journey release
 
 Owner recipient and interval settings now cover every unsettled configured asset.

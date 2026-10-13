@@ -34,7 +34,7 @@
 .income-history-list a { color: #356b46; text-decoration: underline; }
 .income-history-transaction { display: inline-flex; min-height: 32px; align-items: center; font-size: 10px; }
 .income-history-actions { display: flex; gap: 7px; flex-wrap: wrap; }
-.landing-header-actions { display: flex; align-items: center; gap: 8px; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
 .locale-picker { display: inline-flex; align-items: center; }
 .locale-picker select { min-height: 44px; max-width: 116px; border: 1px solid var(--line); border-radius: 999px; padding: 0 27px 0 11px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
 .asset-history summary, .asset-details > summary, .principal-controls > summary, .income-recipient > summary { display: flex; min-height: 48px; align-items: center; justify-content: space-between; padding: 12px 15px; gap: 10px; color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
@@ -84,7 +84,6 @@
 @media (max-width: 360px) {
   .header-content { padding: 14px 16px; }
   .app-content { padding-left: 14px; padding-right: 14px; }
-  .brand-caption { font-size: 9px; }
   .page-intro h1 { font-size: 25px; }
   .card-header { padding-left: 16px; padding-right: 16px; }
   .card-content { padding-left: 16px; padding-right: 16px; }
@@ -123,3 +122,33 @@
 .heir-plan-card, .invite-heir-card { overflow-wrap: anywhere; }
 .plan-service-details { padding: 12px 16px; font-size: .8rem; color: #59665c; }
 .plan-service-details .automation-note { margin-top: 12px; }
+
+/* App entry shares the same shell and navigation as signed-in screens. */
+.account-entry { display: grid; gap: 24px; }
+.entry-assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px; }
+.entry-asset { display: grid; grid-template-columns: 24px 1fr; gap: 10px; padding: 20px 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.entry-asset > span { align-self: center; font-size: 14px; font-weight: 600; }
+.entry-asset > strong, .entry-asset > small { grid-column: 1 / -1; }
+.entry-asset > strong { font-size: 28px; font-weight: 550; }
+.entry-asset > small { font-size: 12px; color: var(--muted); }
+.entry-access { display: grid; justify-items: center; gap: 12px; padding: 24px 16px; text-align: center; }
+.entry-access-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 16px; color: var(--accent); background: #e9efdf; }
+.entry-access h2 { margin: 4px 0 0; font-size: 20px; font-weight: 600; }
+.entry-access p { margin: 0; max-width: 300px; font-size: 14px; line-height: 1.6; color: var(--muted); }
+.entry-action { display: grid; gap: 12px; }
+.entry-action .btn { width: 100%; min-height: 52px; text-decoration: none; }
+.entry-action > p { margin: 0; text-align: center; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.app-empty-state { display: grid; justify-items: center; gap: 16px; padding: 32px 16px; text-align: center; }
+.app-empty-state h2 { margin: 0; font-size: 20px; }
+.app-empty-state p { margin: 0; max-width: 300px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.app-empty-state .btn { min-height: 48px; }
+@media (max-height: 740px) {
+  .app-content-entry { padding-top: 16px; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .account-entry { gap: 16px; }
+  .entry-asset { padding: 16px; gap: 8px; }
+  .entry-asset > strong { font-size: 24px; }
+  .entry-access { padding: 12px 8px; gap: 8px; }
+  .entry-access-icon { width: 36px; height: 36px; }
+  .entry-access h2 { margin-top: 0; }
+  .entry-action { gap: 8px; }
+}

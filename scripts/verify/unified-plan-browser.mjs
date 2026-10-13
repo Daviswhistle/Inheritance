@@ -110,7 +110,7 @@ async function clickMatchingButton(targetPage, matcher) {
 async function signIn(targetPage) {
   await targetPage.ev(HELPERS);
   await clickButton(targetPage, "Continue with World App");
-  await until(() => targetPage.ev("return __q.tabs().length > 0 && !/Continue with World App/.test(document.body.innerText)"), "authenticated app shell");
+  await until(() => targetPage.ev("return !!document.querySelector('.account-row') && !/Continue with World App/.test(document.body.innerText)"), "authenticated app shell");
 }
 
 async function chooseTab(targetPage, label) {
@@ -156,7 +156,7 @@ async function captureLayout(targetPage, name, width, criticalSelectors = []) {
   assert.equal(metrics.viewport, width);
   assert.ok(metrics.documentWidth <= width, `${name} ${width}px document overflows horizontally: ${JSON.stringify(metrics)}`);
   assert.ok(metrics.bodyWidth <= width, `${name} ${width}px body overflows horizontally: ${JSON.stringify(metrics)}`);
-  const header = JSON.parse(await targetPage.ev("const brand=document.querySelector('.brand').getBoundingClientRect(); const actions=document.querySelector('.landing-header-actions').getBoundingClientRect(); return JSON.stringify({brandRight:brand.right,actionsLeft:actions.left})"));
+  const header = JSON.parse(await targetPage.ev("const brand=document.querySelector('.brand').getBoundingClientRect(); const actions=document.querySelector('.header-actions').getBoundingClientRect(); return JSON.stringify({brandRight:brand.right,actionsLeft:actions.left})"));
   assert.ok(header.brandRight <= header.actionsLeft + 1, `${name} ${width}px header controls overlap the brand`);
   for (const target of metrics.targets) {
     assert.ok(!target.missing && target.height >= 40 && target.width >= 36,
@@ -410,7 +410,7 @@ try {
   evidence.plan.preJournalRetry = { attempts: 2, duplicateTapsBlocked: true, unrelatedRefreshRequired: false };
   pass("a failure before saving a plan reenables confirmation without editing or an unrelated refresh, while duplicate taps remain blocked");
   page = await launch({ pk: ACCOUNTS.a0.pk, url: appUrl, preload });
-  await until(() => page.ev("return !!document.querySelector('.landing-content')"), "public welcome screen");
+  await until(() => page.ev("return !!document.querySelector('.account-entry') && document.querySelectorAll('.tab-item').length === 4"), "public app entry");
   await captureStore(page, "unified-store-welcome");
   await signIn(page);
   await chooseTab(page, "Plan");
@@ -549,7 +549,7 @@ try {
   ]);
   const legacyCalls=JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__);"));
   await page.send('Page.reload',{ignoreCache:true});
-  await until(async()=>{await page.ev(HELPERS);return page.ev("return __q.tabs().length > 0");},'historical partial setup restored');
+  await until(async()=>{await page.ev(HELPERS);return page.ev("return !!document.querySelector('.account-row')");},'historical partial setup restored');
   await chooseTab(page,'Plan');
   await installBridgeRecorder(page);
   await clickButton(page,'Resume remaining setup');
@@ -589,7 +589,7 @@ try {
     interrupted.assets[0].hashType = state === "submitted" ? "transaction" : undefined;
     await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(interrupted))}); return true;`);
     await page.send("Page.reload", { ignoreCache: true });
-    await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "interrupted deposit restored");
+    await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "interrupted deposit restored");
     await chooseTab(page, "Assets");
     await clickMatchingButton(page, label => label === "WLD");
     await until(() => page.ev("return !!document.getElementById('deposit-amount') && /Resume your saved setup in Plan/.test(document.body.innerText)"), "Send recovery guard");
@@ -612,8 +612,8 @@ try {
   pass("Send blocks additional deposits for unresolved original requests and Resume recovers the unique original receipt");
 
   await page.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => page.ev("return __q.tabs().length > 0"), "session restored after reload");
+  await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => page.ev("return !!document.querySelector('.account-row')"), "session restored after reload");
   await chooseTab(page, "Plan");
   await until(() => page.ev("return __q.btns().some(button => button.t === 'Resume remaining setup')"), "saved plan resume affordance");
   await installBridgeRecorder(page);
@@ -631,8 +631,8 @@ try {
   delete savedAfterReload.assets[1].hashType;
   await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(savedAfterReload))}); return true;`);
   await page.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => page.ev("return __q.tabs().length > 0"), "session restored with ambiguous progress");
+  await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => page.ev("return !!document.querySelector('.account-row')"), "session restored with ambiguous progress");
   await chooseTab(page, "Plan");
   await installBridgeRecorder(page);
   await acceptYieldTerms(page);
@@ -651,8 +651,8 @@ try {
   delete savedAfterReload.assets[1].beforeBlock;
   await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(savedAfterReload))}); return true;`);
   await page.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => page.ev("return __q.tabs().length > 0"), "session restored for USDC retry");
+  await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => page.ev("return !!document.querySelector('.account-row')"), "session restored for USDC retry");
   await chooseTab(page, "Plan");
   await installBridgeRecorder(page);
   await acceptYieldTerms(page);
@@ -739,7 +739,7 @@ try {
   await captureLayout(page, "overview", 320, [".plan-overview-assets", ".plan-overview-asset", ".tab-item"]);
   await captureLayout(page, "overview", 360, [".plan-overview-assets", ".plan-overview-asset", ".tab-item"]);
   await captureLayout(page, "overview", 390, [".plan-overview-assets", ".plan-overview-asset", ".tab-item"]);
-  await captureStore(page, "unified-store-overview");
+  await captureStore(page, "unified-store-overview", ".plan-overview-card");
 
   // Current setup: one atomic request, including both creations and deposits.
   await provider.send('anvil_setBalance',[ACCOUNTS.a10.a,'0x8ac7230489e80000']);
@@ -796,7 +796,7 @@ try {
     if(identified) {saved.setupRequest.txHash=freshReceipt.hash;saved.setupRequest.hashType='transaction';}
     await freshPage.ev(`sessionStorage.setItem(${JSON.stringify(freshKey)},${JSON.stringify(JSON.stringify(saved))});return true;`);
     await freshPage.send('Page.reload',{ignoreCache:true});
-    await until(async()=>{await freshPage.ev(HELPERS);return freshPage.ev('return __q.tabs().length>0');},'single setup receipt restored');
+    await until(async()=>{await freshPage.ev(HELPERS);return freshPage.ev("return !!document.querySelector('.account-row')");},'single setup receipt restored');
     await chooseTab(freshPage,'Plan');
     await installBridgeRecorder(freshPage);
     await clickButton(freshPage,'Resume remaining setup');
@@ -859,8 +859,8 @@ try {
   assert.ok(initialIncomeRead.valued, "new income API did not return a valued position");
   await (await wldStrategy.setRate(parseUnits("1.2", 18))).wait();
   await page.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => page.ev("return __q.tabs().length > 0"), "session restored for income screen");
+  await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => page.ev("return !!document.querySelector('.account-row')"), "session restored for income screen");
   await chooseTab(page, "Assets");
   await until(async () => {
     const position = await wldVault.incomePosition();
@@ -1003,7 +1003,7 @@ try {
   assert.equal(await page.ev("return localStorage.getItem('inheritance:locale')"), "ko");
   pass("explicit Korean selection translates Home and persists the preference");
   await page.ev("const select=document.querySelector('.locale-picker select'); select.value='en'; select.dispatchEvent(new Event('change',{bubbles:true})); return true;");
-  await until(() => page.ev("return /Today, and for their tomorrow/.test(document.body.innerText)"), "restored English Home");
+  await until(() => page.ev("return /Your plan/.test(document.body.innerText)"), "restored English Home");
   pass("switching back restores the existing English navigation and launch copy");
 
   // Separate active vault to prove settings changes wait for explicit UI consent.
@@ -1305,8 +1305,8 @@ try {
   }] };
   await alignmentPage.ev(`sessionStorage.setItem(${JSON.stringify(alignPendingKey)}, ${JSON.stringify(JSON.stringify(submittedReceiptPlan))}); return true;`);
   await alignmentPage.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => alignmentPage.ev("return __q.tabs().length > 0"), "session restored for saved deposit receipt");
+  await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => alignmentPage.ev("return !!document.querySelector('.account-row')"), "session restored for saved deposit receipt");
   await chooseTab(alignmentPage, "Plan");
   await installBridgeRecorder(alignmentPage);
   await acceptYieldTerms(alignmentPage);
@@ -1334,8 +1334,8 @@ try {
   }] };
   await alignmentPage.ev(`sessionStorage.setItem(${JSON.stringify(alignPendingKey)}, ${JSON.stringify(JSON.stringify(noIdPlan))}); return true;`);
   await alignmentPage.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => alignmentPage.ev("return __q.tabs().length > 0"), "session restored for old no-ID deposit");
+  await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => alignmentPage.ev("return !!document.querySelector('.account-row')"), "session restored for old no-ID deposit");
   await chooseTab(alignmentPage, "Plan");
   await installBridgeRecorder(alignmentPage);
   await acceptYieldTerms(alignmentPage);
@@ -1391,7 +1391,7 @@ try {
     await targetPage.send("Page.reload", { ignoreCache: true });
     await until(async () => {
       await targetPage.ev(HELPERS);
-      return targetPage.ev("return __q.tabs().length > 0");
+      return targetPage.ev("return !!document.querySelector('.account-row')");
     }, "regression session restored");
     await chooseTab(targetPage, "Plan");
     await installBridgeRecorder(targetPage);
@@ -1532,15 +1532,15 @@ try {
   await monitoredPage.ev(`sessionStorage.removeItem(${JSON.stringify(monitoredKey)}); return true;`);
   assert.equal(await provider.send("evm_revert", [alignmentSnapshot]), true);
   await monitoredPage.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await monitoredPage.ev(HELPERS); return monitoredPage.ev("return __q.tabs().length > 0"); }, "restored original chain-time scenario");
+  await until(async () => { await monitoredPage.ev(HELPERS); return monitoredPage.ev("return !!document.querySelector('.account-row')"); }, "restored original chain-time scenario");
 
   // The combined plan must review a funded basic vault as well as yield routes.
   await (await wld.mint(ACCOUNTS.a6.a, parseUnits("1", 18))).wait();
   await (await wld.transfer(legacyVaultAddress, parseUnits("0.2", 18))).wait();
   await (await usdc.mint(ACCOUNTS.a6.a, parseUnits("1", 6))).wait();
   await legacyPage.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await legacyPage.ev(HELPERS); return legacyPage.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => legacyPage.ev("return __q.tabs().length > 0"), "funded basic-vault session restored");
+  await until(async () => { await legacyPage.ev(HELPERS); return legacyPage.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => legacyPage.ev("return !!document.querySelector('.account-row')"), "funded basic-vault session restored");
   await preparePlanForm(legacyPage, ACCOUNTS.a5.a, 30, "USDC", "0.1");
   await clickButton(legacyPage, "Create plan and deposit");
   await until(() => legacyPage.ev("return !!document.querySelector('.plan-alignment-review')"), "basic-vault settings review");
@@ -1561,8 +1561,8 @@ try {
   // Preserve exact contract seconds through both a combined check-in and review.
   await (await alignFactory.changeMyPeriod(30n * 86400n + 1n)).wait();
   await alignmentPage.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => alignmentPage.ev("return __q.tabs().length > 0"), "fractional-period session restored");
+  await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => alignmentPage.ev("return !!document.querySelector('.account-row')"), "fractional-period session restored");
   await chooseTab(alignmentPage, "Home");
   await installBridgeRecorder(alignmentPage);
   const fractionalVault = new Contract(recoveryVaultAddress, artifact("InheritanceVaultMorpho").abi, provider);
@@ -1724,7 +1724,7 @@ try {
   // WLD held by a USDC plan remains an inheritance asset in the combined view.
   await (await wld.mint(usdcVaultAddress, parseUnits("3", 18))).wait();
   await page.send("Page.reload", { ignoreCache: true });
-  await until(() => page.ev("return __q.tabs().length > 0"), "held-WLD overview reload");
+  await until(() => page.ev("return !!document.querySelector('.account-row')"), "held-WLD overview reload");
   await chooseTab(page, "Home");
   const expectedCombinedWld = (await wldVault.position()).gross + await wld.balanceOf(usdcVaultAddress);
   await until(() => page.ev(`return /WLD includes rewards and gifts/.test(document.querySelector('.plan-overview-card')?.innerText || '')
@@ -2052,19 +2052,24 @@ try {
   evidence.plan.readFailure = { usdcVault: readFailureUsdcVault, overview: unavailableUsdc, combinedCheckInDisabled: true };
   pass("funded USDC read failure makes its total unavailable and disables combined check-in");
 
-  // A linked heir has status/timer content on Inherit; the owner-only Vault tab
-  // is hidden when the viewer has no owned vault of their own.
+  // A linked heir keeps the shared plan separate from personal management.
+  // Home stays available and routes back to received plans without owner controls.
   heirPage = await launch({ pk: ACCOUNTS.a1.pk, url: `${appUrl}?vault=${wldVaultAddress}`, preload });
   await signIn(heirPage);
   await chooseTab(heirPage, "Plan");
   await until(() => heirPage.ev("return document.querySelector('.heir-plan-card') !== null && document.querySelector('.inheritance-next') !== null"), "linked heir status and timer");
   const heirTabs = JSON.parse(await heirPage.ev("return JSON.stringify(__q.tabs())"));
-  assert.equal(heirTabs.includes("Home"), false, "owner-only Vault tab stayed visible for an heir without an owned vault");
+  assert.deepEqual(heirTabs, ["Home", "Assets", "Plan", "Help"]);
   assert.equal(await heirPage.ev("return document.querySelector('.tab-item-active')?.textContent.trim()"), "Plan");
   assert.equal(await heirPage.ev("return document.querySelector('.plan-overview-card') !== null"), false);
   assert.equal(await heirPage.ev("return [...document.querySelectorAll('button')].some(button => /^Check in$|Cancel claims and check in/.test(button.textContent))"), false);
   evidence.heirView = { tabs: heirTabs, activeTab: "Plan", statusVisible: true, timerVisible: true };
-  pass("heir deep link keeps read-only status and timer visible without an empty Vault tab");
+  await chooseTab(heirPage, "Home");
+  await until(() => heirPage.ev("return document.querySelector('.app-empty-state')?.innerText.includes('Plans for you')"), "received plans Home state");
+  assert.equal(await heirPage.ev("return document.querySelector('.plan-overview-card') !== null"), false);
+  await clickButton(heirPage, "View plans");
+  await until(() => heirPage.ev("return document.querySelector('.heir-plan-card') !== null && document.querySelector('.inheritance-next') !== null"), "received plans return");
+  pass("heir deep link and Home keep received status reachable without owner controls");
 
   const originalWldShares = await wldStrategy.balanceOf(wldVaultAddress);
   const originalUsdcShares = await usdcStrategy.balanceOf(usdcVaultAddress);
@@ -2085,8 +2090,8 @@ try {
     logLevel: "error", server: { host: "127.0.0.1", port, strictPort: true } });
   await vite.listen();
   await page.send("Page.reload", { ignoreCache: true });
-  await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "restored session helpers");
-  await until(() => page.ev("return __q.tabs().length > 0"), "session restored after factory rotation");
+  await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
+  await until(() => page.ev("return !!document.querySelector('.account-row')"), "session restored after factory rotation");
   await chooseTab(page, "Plan");
   await installBridgeRecorder(page);
   await acceptYieldTerms(page);
@@ -2152,7 +2157,7 @@ try {
   await (await wldFactory.connect(deployer).releaseMyVault()).wait();
   assert.equal(await wldFactory.vaultOf(owner), ZeroAddress);
   await page.send("Page.navigate", { url: `${appUrl}?vault=${wldVaultAddress}` });
-  await until(async () => { await page.ev(HELPERS); return page.ev("return __q.tabs().length > 0"); }, "released-vault session");
+  await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "released-vault session");
   await chooseTab(page, "Assets");
   await until(() => page.ev("return !!document.querySelector('.income-history-card')"), "released owner income history");
   await page.ev("document.querySelector('.income-history-disclosure').open = true; return true;");

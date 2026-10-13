@@ -22,6 +22,17 @@ function artifact(name,file=name){return JSON.parse(readFileSync(`${root}/out/${
 async function deploy(name,args,signer,file=name){const a=artifact(name,file);const c=await new ContractFactory(a.abi,a.bytecode.object,signer).deploy(...args);await c.waitForDeployment();return c;}
 async function click(p,label){await until(()=>p.ev(`const b=[...document.querySelectorAll('button')].find(x=>x.offsetParent!==null&&!x.disabled&&x.textContent.trim()===${JSON.stringify(label)});if(!b)return false;b.click();return true;`),'click '+label);}
 async function tab(p,label){assert.equal(await p.ev(`return __q.tab(${JSON.stringify(label)})`),'ok');await sleep(200);}
+async function stallNextShareRead(p,strategy,holder){await p.ev(`
+ const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js'))?.name;
+ if(!moduleUrl)throw Error('Ethers runtime not loaded');const {JsonRpcProvider}=await import(moduleUrl);const send=JsonRpcProvider.prototype.send;
+ window.__SHARE_STALL__={started:0,completed:0};
+ JsonRpcProvider.prototype.send=async function(method,params){
+  const data=(params?.[0]?.data||params?.[0]?.input||'').toLowerCase();
+  if(method==='eth_call'&&params[0].to?.toLowerCase()===${JSON.stringify(strategy.toLowerCase())}&&data.startsWith('0x70a08231')&&data.endsWith(${JSON.stringify(holder.slice(2).toLowerCase())})&&!window.__SHARE_STALL__.started){
+   window.__SHARE_STALL__.started++;await new Promise(resolve=>{window.__RELEASE_SHARE_STALL__=resolve});
+   try{return await send.call(this,method,params)}finally{window.__SHARE_STALL__.completed++}
+  }return send.call(this,method,params);
+ };return true;`);}
 async function snap(p,label){await p.ev('window.scrollTo(0,0);return true');await sleep(300);const data=await p.ev(`return {text:document.body.innerText,headings:[...document.querySelectorAll('h1,h2,h3')].map(x=>x.textContent),buttons:[...document.querySelectorAll('button')].filter(x=>x.offsetParent!==null).map(x=>({text:x.textContent.trim(),disabled:x.disabled,y:Math.round(x.getBoundingClientRect().top)})),inputs:[...document.querySelectorAll('input')].filter(x=>x.offsetParent!==null).map(x=>({id:x.id,placeholder:x.placeholder})),height:document.documentElement.scrollHeight,width:document.documentElement.scrollWidth};`);data.label=label;data.shot=await p.shot(label);evidence.snapshots.push(data);console.log('CAPTURE '+label+' '+data.height+'px '+data.headings.join(' / '));return data;}
 try{
  const port=await freePort();const rpc=`http://127.0.0.1:${port}`;
@@ -57,12 +68,90 @@ try{
  const src=readFileSync(root+'/scripts/verify/unified-plan-browser.mjs','utf8');
  const fixture=src.slice(src.indexOf('function localPublicFixtures()'),src.indexOf('\n  const exampleNames'));
  const preload=`window.__E2E_RPC__=${JSON.stringify(rpc)};window.__E2E_STRATEGIES__=${JSON.stringify([wldStrategy.target,usdcStrategy.target])};window.__MONITOR_FACTORIES__=${JSON.stringify(factories)};window.__E2E_WLD__=${JSON.stringify(wld.target)};window.__E2E_EXTERNAL_FETCHES__=[];window.__E2E_USERNAMES__=${JSON.stringify({[ACCOUNTS.a0.a.toLowerCase()]:'amy',[ACCOUNTS.a1.a.toLowerCase()]:'alex',[ACCOUNTS.a3.a.toLowerCase()]:'ben'})};(${fixture})();window.__MONITOR_REGISTERED__=${JSON.stringify({[wa.toLowerCase()]:true,[ua.toLowerCase()]:true})};(function(){${HELPERS}})();`;
- async function open(pk,link='',ko=false){const p=await launch({pk,url:url+link,preload:preload+(ko?`localStorage.setItem('inheritance:locale','ko');`:'')});pages.push(p);await p.ev(HELPERS);if(await p.ev(`return document.body.innerText.includes('Continue with World App')`))await click(p,'Continue with World App');await until(()=>p.ev(`return document.querySelectorAll('.tab-item').length>0`),'sign-in');await sleep(1800);return p;}
+ async function open(pk,link='',ko=false){const p=await launch({pk,url:url+link,preload:preload+(ko?`localStorage.setItem('inheritance:locale','ko');`:'')});pages.push(p);await p.ev(HELPERS);if(await p.ev(`return document.body.innerText.includes('Continue with World App')`))await click(p,'Continue with World App');await until(()=>p.ev(`return !!document.querySelector('.account-row')`),'sign-in');await sleep(1800);return p;}
+ const guest=await launch({pk:ACCOUNTS.a0.pk,url,preload});pages.push(guest);await guest.ev(HELPERS);
+ await until(()=>guest.ev(`return document.querySelectorAll('.tab-item').length===4 && !!document.querySelector('.account-entry')`),'initial app entry ready');
+ assert.deepEqual(await guest.ev('return __q.tabs()'),['Home','Assets','Plan','Help']);
+ assert.equal(await guest.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Home');
+ assert.equal(await guest.ev(`return document.querySelector('.account-row')`),null);
+ assert.deepEqual(await guest.ev(`return [...document.querySelectorAll('.entry-asset strong')].map(x=>x.textContent)`),['—','—']);
+ pass('first entry opens the actual app navigation and shows unavailable balances before sign-in');
+ for(const [width,height] of [[320,640],[390,844],[1280,900]]){
+   await guest.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600});
+   const layout=await guest.ev(`const action=document.querySelector('.entry-action .btn').getBoundingClientRect();const nav=document.querySelector('.tab-bar').getBoundingClientRect();return {width:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,actionBottom:action.bottom,navTop:nav.top,tabs:[...document.querySelectorAll('.tab-item')].map(x=>x.getBoundingClientRect().height)};`);
+   assert.ok(layout.width<=width,JSON.stringify(layout));assert.ok(layout.scrollHeight<=height,JSON.stringify(layout));
+   assert.ok(layout.actionBottom<=layout.navTop,JSON.stringify(layout));assert.ok(layout.tabs.every(h=>h>=44));
+   await snap(guest,`app-entry-${width}`);
+ }
+ pass('320px, 390px and desktop entry keep the primary action and all touch-sized tabs visible without scrolling');
+ for(const name of ['Assets','Plan','Help']){await tab(guest,name);assert.equal(await guest.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),name);}
+ assert.ok(await guest.ev(`return !!document.querySelector('a[href="/privacy.html"]') && !!document.querySelector('a[href="/terms.html"]')`));
+ assert.equal(await guest.ev(`return performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/auth/')).length`),0);
+ assert.equal((await guest.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);
+ assert.equal(await guest.ev(`return !!document.querySelector('.landing-content,.vault-illustration,footer')`),false);
+ pass('guest tabs and legal/support access send no authentication or transaction request');
+ await guest.close();pages.splice(pages.indexOf(guest),1);
+ const linkedGuest=await launch({pk:ACCOUNTS.a1.pk,url:url+'?vault='+wa,preload});pages.push(linkedGuest);await linkedGuest.ev(HELPERS);
+ assert.equal(await linkedGuest.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Plan');
+ assert.ok((await snap(linkedGuest,'shared-plan-entry')).text.includes('Shared inheritance plan'));
+ await linkedGuest.ev(`const {__setState}=await import('/src/test/minikit-stub.ts');__setState({installed:false});return true;`);
+ await click(linkedGuest,'Continue with World App');
+ await until(()=>linkedGuest.ev(`return !!document.querySelector('.entry-action a')`),'World App entry link');
+ const deepLink=new URL(await linkedGuest.ev(`return document.querySelector('.entry-action a').href`));
+ assert.equal(deepLink.hostname,'world.org');assert.equal(new URL('https://example.test'+deepLink.searchParams.get('path')).searchParams.get('vault').toLowerCase(),wa.toLowerCase());
+ assert.equal(await linkedGuest.ev(`return performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/auth/')).length`),0);
+ pass('a shared link opens Plan and survives the fallback into World App without wallet authentication');
+ await linkedGuest.close();pages.splice(pages.indexOf(linkedGuest),1);
+ const koreanGuest=await launch({pk:ACCOUNTS.a0.pk,url,preload:preload+`localStorage.setItem('inheritance:locale','ko');`});pages.push(koreanGuest);await koreanGuest.ev(HELPERS);
+ assert.equal(await koreanGuest.ev(`return document.querySelector('.app-shell').lang`),'ko');
+ assert.ok((await snap(koreanGuest,'app-entry-ko')).text.includes('플랜 잔액'));
+ assert.equal(await koreanGuest.ev(`return performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/auth/')).length`),0);
+ pass('Korean first entry uses the same app layout and localized unavailable balances');
+ await koreanGuest.close();pages.splice(pages.indexOf(koreanGuest),1);
+ const empty=await open(ACCOUNTS.a4.pk);await tab(empty,'Home');await until(()=>empty.ev(`return document.body.innerText.includes('No plan yet')`),'empty Home');
+ await tab(empty,'Assets');assert.ok((await snap(empty,'empty-assets')).text.includes('Set up a plan to add and manage assets.'));
+ await stallNextShareRead(empty,usdcStrategy.target,ACCOUNTS.a4.a);
+ await empty.ev(`document.dispatchEvent(new Event('visibilitychange'));return true;`);
+ await until(()=>empty.ev('return window.__SHARE_STALL__.started===1'),'background share read');
+ assert.ok(await empty.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('Create plan')&&!document.querySelector('.app-empty-state .spinner')`));
+ await empty.ev('window.__RELEASE_SHARE_STALL__();return true;');await until(()=>empty.ev('return window.__SHARE_STALL__.completed===1'),'background share read completes');
+ pass('background balance refresh preserves the settled Assets setup action');
+ await click(empty,'Create plan');await until(()=>empty.ev(`return !!document.getElementById('heir-input')`),'empty state opens setup');
+ assert.equal((await empty.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);pass('signed-in empty Home and Assets lead to actual setup without a transaction');
+ await empty.ev(`window.__ENTRY_SCAN_FETCH__=window.fetch.bind(window);window.__ENTRY_SCAN_FAILURES__=0;window.fetch=async(input,init)=>{const url=new URL(typeof input==='string'?input:input.url,location.origin);if(url.pathname==='/api/notifications'){window.__ENTRY_SCAN_FAILURES__++;throw Error('E2E heir index unavailable');}return window.__ENTRY_SCAN_FETCH__(input,init);};return true;`);
+ await tab(empty,'Help');await click(empty,'Check again');await tab(empty,'Home');
+ await until(()=>empty.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('Plan lookup unavailable')`),'failed heir lookup state');
+ assert.ok(await empty.ev('return window.__ENTRY_SCAN_FAILURES__>0'));
+ assert.equal(await empty.ev(`return document.querySelector('.app-empty-state').innerText.includes('No plan yet')`),false);
+ await empty.ev('window.fetch=window.__ENTRY_SCAN_FETCH__;return true;');await click(empty,'Try again');
+ await until(()=>empty.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('No plan yet')`),'heir lookup recovers');
+ pass('a failed heir index cannot declare no plan; retry restores a proven empty state');
+ const restoredKey='inheritance:pending-plan:'+ACCOUNTS.a4.a.toLowerCase();
+ const interrupted={version:1,account:ACCOUNTS.a4.a,heir:ACCOUNTS.a1.a,periodDays:30,createdAt:Date.now(),createState:'submitting',createTargets:[wf.target],createBeforeBlock:await provider.getBlockNumber(),assets:[{symbol:'WLD',factory:wf.target,asset:wld.target,decimals:18,mode:'morpho',amount:parseUnits('1',18).toString(),vault:'',depositState:'ready'}]};
+ await empty.ev(`sessionStorage.setItem(${JSON.stringify(restoredKey)},${JSON.stringify(JSON.stringify(interrupted))});return true;`);
+ await empty.send('Page.reload',{ignoreCache:true});await empty.ev(HELPERS);
+ await until(()=>empty.ev(`return !!document.querySelector('.account-row') && document.querySelector('.tab-item-active')?.textContent.trim()==='Plan' && document.body.innerText.includes('Resume remaining setup')`),'restored setup opens recovery');
+ await tab(empty,'Home');assert.ok((await snap(empty,'restored-pending-home')).text.includes('Setup in progress'));
+ assert.equal(await empty.ev(`return document.body.innerText.includes('No plan yet')`),false);
+ await click(empty,'Resume setup');await until(()=>empty.ev(`return document.body.innerText.includes('Resume remaining setup')`),'Home opens saved recovery');
+ assert.equal((await empty.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);assert.equal(await wf.vaultOf(ACCOUNTS.a4.a),'0x0000000000000000000000000000000000000000');
+ pass('restored unresolved setup opens Plan and remains reachable from Home without another wallet request');
+ await empty.close();pages.splice(pages.indexOf(empty),1);
+ const explicitPlan=await launch({pk:ACCOUNTS.a0.pk,url,preload});pages.push(explicitPlan);await explicitPlan.ev(HELPERS);
+ await tab(explicitPlan,'Plan');await click(explicitPlan,'Continue with World App');await until(()=>explicitPlan.ev(`return !!document.getElementById('period-change')`),'explicit Plan sign-in');
+ assert.equal(await explicitPlan.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Plan');
+ pass('sign-in from Plan preserves the chosen section when the owner registry finishes');
+ await explicitPlan.close();pages.splice(pages.indexOf(explicitPlan),1);
  const op=await open(ACCOUNTS.a0.pk);await tab(op,'Plan');await until(()=>op.ev(`return !!document.getElementById('period-change')`),'owner settings');const ownerInitial=await snap(op,'owner-plan-initial');
  assert.ok(!ownerInitial.headings.includes('Set up your plan'));pass('owner settings do not duplicate first-time setup');
  const hp=await open(ACCOUNTS.a1.pk);await until(()=>hp.ev(`return document.querySelectorAll('.inheritance-asset').length===2`),'grouped heir discovery');const discovered=await snap(hp,'heir-entry-no-link');
  assert.equal(await hp.ev(`return document.querySelectorAll('.heir-plan-card').length`),1);
  assert.ok(!discovered.headings.includes('Set up your plan'));assert.ok(discovered.text.includes('From @amy'));pass('two currencies grouped under the actual owner, no owner input form');
+ await hp.ev(`window.__ENTRY_SCAN_FETCH__=window.fetch.bind(window);window.fetch=async(input,init)=>{const raw=typeof input==='string'?input:input?.url??String(input);if(new URL(raw,location.origin).pathname==='/api/notifications')throw Error('E2E partial heir index unavailable');return window.__ENTRY_SCAN_FETCH__(input,init);};return true;`);
+ await tab(hp,'Help');await click(hp,'Check again');await tab(hp,'Home');
+ await until(()=>hp.ev(`return document.body.innerText.includes('Plan lookup unavailable') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='View plans')`),'known plans retained during partial lookup');
+ await click(hp,'View plans');await until(()=>hp.ev(`return document.querySelectorAll('.inheritance-asset').length===2`),'verified plans stay accessible');
+ await hp.ev('window.fetch=window.__ENTRY_SCAN_FETCH__;return true;');pass('partial discovery preserves direct access to both verified received assets');
  for(const symbol of ['WLD','USDC']){
   await click(hp,'View '+symbol);await until(()=>hp.ev(`return __q.tabs().includes('Assets')`),'discovered asset navigation');await tab(hp,'Assets');
   await until(()=>hp.ev(`return [...document.querySelectorAll('h2,h3')].some(x=>x.textContent===${JSON.stringify(symbol+' balance')})`),'selected '+symbol+' balance');
@@ -98,7 +187,7 @@ try{
  await click(op,'Confirm changes');await until(async()=>await wc.heartbeatInterval()===21n*86400n && await uc.heartbeatInterval()===21n*86400n,'response-lost update execution');
  await until(()=>op.ev(`return [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Check pending changes'&&!b.disabled)`),'durable settings recovery action');
  assert.equal(await op.ev(`return JSON.parse(sessionStorage.getItem('inheritance:settings-request:'+${JSON.stringify(ACCOUNTS.a0.a.toLowerCase())})).txHash===undefined`),true);
- await click(op,'Check pending changes');await until(()=>op.ev(`return !!document.getElementById('period-change')`),'receipt-based settings recovery');assert.equal(await op.ev('return window.__SETTINGS_REQUESTS__'),1);pass('a lost settings response recovers the canonical multi-asset receipt without a second send');
+ await click(op,'Check pending changes');await until(()=>op.ev(`return document.getElementById('period-change')?.value==='21' && !sessionStorage.getItem('inheritance:settings-request:'+${JSON.stringify(ACCOUNTS.a0.a.toLowerCase())})`),'receipt-based settings recovery');assert.equal(await op.ev('return window.__SETTINGS_REQUESTS__'),1);pass('a lost settings response recovers the canonical multi-asset receipt without a second send');
  await op.ev(`const fixture=await import('/src/test/minikit-stub.ts');fixture.MiniKit.sendTransaction=window.__SETTINGS_SEND__;return true`);
  // Rejected wallet handoff must remain editable.
  await op.ev(`return __q.setInput('period-change','14')`);await click(op,'Change period');await until(()=>op.ev(`return !!document.getElementById('settings-review-title')`),'rejection review');
@@ -121,6 +210,53 @@ try{
  assert.equal(await wld.balanceOf(ACCOUNTS.a1.a),parseUnits('10',18));assert.equal(await usdc.balanceOf(ACCOUNTS.a1.a),0n);assert.equal(await usdcStrategy.balanceOf(ACCOUNTS.a1.a),parseUnits('20',18));
  const paid=await snap(linked,'heir-completed-cash-and-shares');assert.match(paid.text,/10(?:\.0)? WLD/);assert.ok(paid.text.includes('invested shares received'));pass('cash receipt and liquidity-limited invested shares remain distinct');
  const reopened=await open(ACCOUNTS.a1.pk);await until(()=>reopened.ev(`return document.querySelectorAll('.receipt-link').length===2`),'reopen history');await snap(reopened,'heir-reopen-after-completion');pass('verified completed receipts are rediscovered after a fresh browser sign-in');
+ await tab(reopened,'Assets');await until(()=>reopened.ev(`return document.body.innerText.includes('Invested assets in your wallet · USDC')`),'wallet-held USDC shares');
+ assert.equal(await reopened.ev(`return !!document.querySelector('.app-empty-state')`),false);
+ assert.ok(await usdcStrategy.balanceOf(ACCOUNTS.a1.a)>0n);pass('wallet-held receipt assets remain manageable without an empty setup message');
+ await tab(reopened,'Plan');
+ const walletOutage=`window.__WALLET_READ_FETCH__=window.fetch.bind(window);window.__WALLET_READ_FAILURES__=0;window.fetch=async(input,init)=>{
+   const raw=typeof input==='string'?input:input?.url??String(input);
+   if(new URL(raw,location.origin).origin===new URL(window.__E2E_RPC__).origin&&init?.body){
+     const body=JSON.parse(typeof init.body==='string'?init.body:new TextDecoder().decode(init.body));
+     const calls=Array.isArray(body)?body:[body];const bad=calls.filter(call=>call.method==='eth_call'&&call.params[0].to?.toLowerCase()===${JSON.stringify(wld.target.toLowerCase())}&&(call.params[0].data||call.params[0].input||'').startsWith('0x70a08231')&&(call.params[0].data||call.params[0].input||'').toLowerCase().endsWith(${JSON.stringify(ACCOUNTS.a1.a.slice(2).toLowerCase())}));
+     if(bad.length){window.__WALLET_READ_FAILURES__+=bad.length;const response=await window.__WALLET_READ_FETCH__(input,init);const body=await response.json();const values=Array.isArray(body)?body:[body];const patched=values.map(value=>bad.some(call=>call.id===value.id)?{jsonrpc:'2.0',id:value.id,error:{code:-32000,message:'E2E wallet balance unavailable'}}:value);return Response.json(Array.isArray(body)?patched:patched[0]);}
+   }return window.__WALLET_READ_FETCH__(input,init);
+ };`;
+ const walletFailure=await launch({pk:ACCOUNTS.a1.pk,url,preload:preload+walletOutage});pages.push(walletFailure);await walletFailure.ev(HELPERS);
+ await until(()=>walletFailure.ev(`return !!document.querySelector('.account-entry')`),'wallet failure entry');await click(walletFailure,'Continue with World App');
+ await until(()=>walletFailure.ev(`return !!document.querySelector('.account-row')`),'wallet failure sign-in');await tab(walletFailure,'Assets');
+ await until(()=>walletFailure.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('Wallet balances unavailable')`),'wallet-read failure stays unavailable');
+ assert.ok(await walletFailure.ev('return window.__WALLET_READ_FAILURES__>0'));
+ assert.equal(await walletFailure.ev(`return document.body.innerText.includes('No plan yet')`),false);
+ await walletFailure.ev('window.fetch=window.__WALLET_READ_FETCH__;return true;');await click(walletFailure,'Try again');
+ await until(()=>walletFailure.ev(`return document.body.innerText.includes('Invested assets in your wallet · USDC')`),'wallet shares recover without setup');
+ assert.equal(await walletFailure.ev(`return !!document.querySelector('.app-empty-state')`),false);
+ assert.equal((await walletFailure.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);pass('failed wallet-balance reads stay unavailable until retry discovers actual receipt shares');
+ const slowWallet=`window.__SLOW_BALANCE_FETCH__=window.fetch.bind(window);window.__SLOW_BALANCE_REQUESTS__=0;window.fetch=async(input,init)=>{
+   const raw=typeof input==='string'?input:input?.url??String(input);
+   if(new URL(raw,location.origin).origin===new URL(window.__E2E_RPC__).origin&&init?.body){
+     const body=JSON.parse(typeof init.body==='string'?init.body:new TextDecoder().decode(init.body));const calls=Array.isArray(body)?body:[body];
+     const shareCall=call=>call.method==='eth_call'&&call.params[0].to?.toLowerCase()===${JSON.stringify(usdcStrategy.target.toLowerCase())};const data=call=>(call.params[0].data||call.params[0].input||'').toLowerCase();
+     if(calls.some(call=>shareCall(call)&&data(call).startsWith('0x70a08231')&&data(call).endsWith(${JSON.stringify(ACCOUNTS.a1.a.slice(2).toLowerCase())}))){window.__SLOW_BALANCE_REQUESTS__++;await new Promise(resolve=>setTimeout(resolve,33000));}
+   }return window.__SLOW_BALANCE_FETCH__(input,init);
+ };`;
+ const slow=await launch({pk:ACCOUNTS.a1.pk,url,preload:preload+slowWallet});pages.push(slow);await slow.ev(HELPERS);
+ await until(()=>slow.ev(`return !!document.querySelector('.account-entry')`),'slow balance entry');await click(slow,'Continue with World App');
+ await until(()=>slow.ev(`return !!document.querySelector('.account-row')`),'slow balance sign-in');await tab(slow,'Assets');
+ try{await until(()=>slow.ev(`return document.body.innerText.includes('Invested assets in your wallet · USDC')`),'slow wallet shares settle after the poll interval',45000);}catch(error){evidence.slowRead={requests:await slow.ev('return window.__SLOW_BALANCE_REQUESTS__'),logs:slow.logs};throw error;}
+ assert.equal(await slow.ev('return window.__SLOW_BALANCE_REQUESTS__'),1);assert.equal(await slow.ev(`return !!document.querySelector('.app-empty-state')`),false);
+ pass('a 33-second wallet read completes without periodic refresh starvation');
+ await slow.close();pages.splice(pages.indexOf(slow),1);
+ const stalled=await launch({pk:ACCOUNTS.a1.pk,url,preload});pages.push(stalled);await stalled.ev(HELPERS);
+ await until(()=>stalled.ev(`return !!document.querySelector('.account-entry')`),'stalled balance entry');await stallNextShareRead(stalled,usdcStrategy.target,ACCOUNTS.a1.a);
+ await click(stalled,'Continue with World App');await until(()=>stalled.ev(`return !!document.querySelector('.account-row')`),'stalled balance sign-in');await tab(stalled,'Assets');
+ await until(()=>stalled.ev('return window.__SHARE_STALL__.started===1'),'first share read is stalled');
+ await until(()=>stalled.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('Wallet balances unavailable')`),'stalled share read exposes retry',50000);
+ await stalled.ev('window.__RELEASE_SHARE_STALL__();return true;');await until(()=>stalled.ev('return window.__SHARE_STALL__.completed===1'),'expired share response completes');await sleep(300);
+ assert.equal(await stalled.ev(`return document.body.innerText.includes('Invested assets in your wallet · USDC')`),false);
+ await click(stalled,'Try again');await until(()=>stalled.ev(`return document.body.innerText.includes('Invested assets in your wallet · USDC')`),'fresh retry discovers receipt shares');
+ assert.equal((await stalled.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);assert.deepEqual(await stalled.ev('return window.__E2E_ERRS__'),[]);
+ pass('stalled share reads expose retry, ignore expired responses and recover without a wallet request');await stalled.close();pages.splice(pages.indexOf(stalled),1);
  await linked.ev(`window.__SETTINGS_GET__=Storage.prototype.getItem;Storage.prototype.getItem=function(k){if(k.startsWith('inheritance:settings-request:'))throw Error('E2E settings storage unavailable');return window.__SETTINGS_GET__.call(this,k)};return true`);
  await (await usdcStrategy.setLiquidity(parseUnits('20',6))).wait();await click(linked,'Redeem available shares to USDC');await until(async()=>await usdc.balanceOf(ACCOUNTS.a1.a)===parseUnits('20',6),'USDC redemption');
  pass('settings recovery storage failure does not block wallet-share redemption');
@@ -165,6 +301,13 @@ try{
  await(await wf.withdrawAllFromMyVault(ACCOUNTS.a0.a,0)).wait();await(await uf.withdrawAllFromMyVault(ACCOUNTS.a0.a,0)).wait();await provider.send('evm_increaseTime',[22*86400]);await provider.send('evm_mine',[]);await(await wf.releaseMyVault()).wait();await(await uf.releaseMyVault()).wait();
  await recovery.send('Page.reload');await sleep(2200);await recovery.ev(HELPERS);await tab(recovery,'Plan');await click(recovery,'Check pending changes');
  await until(()=>recovery.ev(`return sessionStorage.getItem('inheritance:settings-request:'+${JSON.stringify(ACCOUNTS.a0.a.toLowerCase())})===null`),'recovery without any current slot');assert.equal((await recovery.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);pass('settings recovery remains reachable after every current slot is released');
+ const archiveSnapshot=await provider.send('evm_snapshot',[]);await(await wld.mint(wa,parseUnits('1',18))).wait();
+ const archived=await open(ACCOUNTS.a0.pk,`?vault=${wa}`);await tab(archived,'Home');
+ await until(()=>archived.ev(`return document.body.innerText.includes('Recover archived assets')`),'archived asset recovery');
+ assert.equal(await archived.ev(`return !!document.querySelector('.app-empty-state')`),false);
+ assert.equal(await archived.ev(`return document.body.innerText.includes('No plan yet')`),false);
+ assert.equal(await wld.balanceOf(wa),parseUnits('1',18));pass('late assets in a released vault show recovery without an empty Home message');
+ await archived.close();pages.splice(pages.indexOf(archived),1);assert.equal(await provider.send('evm_revert',[archiveSnapshot]),true);
  // The Home editor belongs to the signed-in owner even after viewing someone else's shared link.
  await(await wf.createVault(ACCOUNTS.a1.a,30*86400)).wait();const ownReplacement=await wf.vaultOf(ACCOUNTS.a0.a);
  const otherFactory=wf.connect(await provider.getSigner(3));await(await otherFactory.createVault(ACCOUNTS.a0.a,30*86400)).wait();const otherVault=await wf.vaultOf(ACCOUNTS.a3.a);

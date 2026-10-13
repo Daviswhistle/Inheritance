@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Brand, Icon } from "@/components/Icon";
-import { Landing } from "@/components/Landing";
+import { AccountEntry } from "@/components/AccountEntry";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { PlanSetup } from "@/components/PlanSetup";
 import { HeirPlans, OwnerPlanSettings, InviteHeir } from "@/components/PlanExperience";
@@ -267,21 +267,12 @@ type VaultPhase =
 /** 하단 탭. 개수를 늘리지 않는 것이 의도다 —see the note on `tab`. */
 type TabKey = "vault" | "money" | "inherit" | "support";
 
-/**
- * 탭 목록. `needsVault` 는 그 탭이 금고가 있어야만 내용이 있는지를 뜻한다.
- *
- * 금고가 없는데도 탭을 보여주면 빈 화면이 남는다. 실제로 그대로 배포해서
- * "vault 란 send 탭은 왜 있는 거야? 아무것도 없잖아" 라는 지적을 받았다 — 첫 진입
- * 사용자는 빈 탭 두 개를 보고 "Inherit" 탭을 직접 찾아가야 금고를 만들 수 있었다.
- *
- * 그래서 내용이 없는 탭은 아예 감춘다. 한 손가락으로 금고가 만들어지는 경로만
- * 남긴다.
- */
-const TABS: { key: TabKey; label: string; needsVault: boolean }[] = [
-  { key: "vault", label: "Home", needsVault: true },
-  { key: "money", label: "Assets", needsVault: true },
-  { key: "inherit", label: "Plan", needsVault: false },
-  { key: "support", label: "Help", needsVault: false },
+// All four sections have meaningful entry and empty states.
+const TABS: { key: TabKey }[] = [
+  { key: "vault" },
+  { key: "money" },
+  { key: "inherit" },
+  { key: "support" },
 ];
 
 
@@ -413,7 +404,12 @@ export default function App() {
     && yieldRecipient.address.toLowerCase() === account.toLowerCase();
   const selectedYieldPosition = isYieldVault && yieldPosition?.vault.toLowerCase() === vault.toLowerCase() ? yieldPosition : null;
   const [walletShares, setWalletShares] = useState<{ account: string; amounts: Record<string, bigint> }>({ account: "", amounts: {} });
+  const [walletSharesRead, setWalletSharesRead] = useState<{ scope: string; state: "loading" | "ready" | "unavailable" }>({ scope: "", state: "loading" });
+  const walletSharesRequest = useRef(0);
+  const balanceReadInFlight = useRef<{ scope: string; request: number } | null>(null);
   const walletYieldShares = (route: YieldRoute) => walletShares.account.toLowerCase() === account.toLowerCase() ? walletShares.amounts[route.factory] ?? 0n : 0n;
+  const walletShareRoutes = YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n)
+    .filter((route, index, routes) => routes.findIndex(other => other.strategy.toLowerCase() === route.strategy.toLowerCase()) === index);
   const [walletBalances, setWalletBalances] = useState<{ account: string; amounts: Partial<Record<AssetSymbol, bigint>> }>({ account: "", amounts: {} });
   const planWalletBalances = walletBalances.account.toLowerCase() === account.toLowerCase() ? walletBalances.amounts : {};
   const [pendingPlan, setPendingPlan] = useState<StoredPlan | null>(null);
@@ -529,29 +525,14 @@ export default function App() {
    * 탭은 4개만 둔다. 그 이상은 탐색 비용이 이득보다 크고, 모바일에서 고를 수 있는
    * 목표 수가 줄어드는 것이 오히려 usability 다.
    */
-  const [tab, setTab] = useState<TabKey>("inherit");
+  const [tab, setTab] = useState<TabKey>(() => new URLSearchParams(window.location.search).has("vault") ? "inherit" : "vault");
   useEffect(() => {
     window.scrollTo(0, 0);
     document.querySelector<HTMLElement>(".page-intro h1")?.focus({ preventScroll: true });
   }, [tab]);
 
-  /**
-   * 실제로 보여줄 탭.
-   *
-   * Vault 는 소유자 요약이 있을 때만 보이고, Send 는 선택된 금고가 있을 때 보인다.
-   * 상속 링크만 가진 사용자는 상태와 타이머를 Inherit 에서 보므로 owner-only Vault 를
-   * 노출하지 않는다. 기본 탭은 첫 진입 사용자도 계획을 만들 수 있는 Inherit 다.
-   *
-   * 금고가 슬롯 해제 등으로 사라지면 현재 탭이 보이지 않게 되므로 Inherit 로 되돌린다.
-   */
-  const visibleTabs = TABS.filter(t => t.key === "vault" ? Boolean(ownVault) : t.needsVault ? Boolean(vault) : true);
-  /** 현재 탭에 실제 카드가 하나라도 있는지. 금고 로딩 중이거나 조건이 어긋난 경우를 잡는다. */
-  const tabHasContent =
-    tab === "support" || tab === "inherit" || (tab === "vault" ? Boolean(ownVault) : Boolean(vault));
-  const tabStillVisible = visibleTabs.some((t) => t.key === tab);
-  useEffect(() => {
-    if (!tabStillVisible) setTab("inherit");
-  }, [tabStillVisible]);
+  // Navigation stays available before sign-in and when a plan has no assets.
+  // Each tab supplies a sign-in, loading or empty state instead of disappearing.
 
   /**
    * 상속은 이제 두 단계다. 만료만으로는 자금이 움직이지 않는다.
@@ -741,6 +722,10 @@ export default function App() {
     if (!account) { setPendingPlan(null); return; }
     const restored = readStoredPlan(account);
     setPendingPlan(restored);
+    if (restored) {
+      navigationChosenFor.current = account.toLowerCase();
+      setTab("inherit");
+    }
     if (!restored) {
       try { sessionStorage.removeItem(storedPlanKey(account)); } catch { /* session storage may be unavailable */ }
     }
@@ -1164,6 +1149,10 @@ export default function App() {
         setSigner(null);
         setAccount(auth.address);
         setServerVerified(auth.verified);
+        // First sign-in discovers received plans or offers setup. Preserve an
+        // explicitly opened section while an owner's registry is being read.
+        navigationChosenFor.current = tab === "vault" && !linkedVault ? "" : auth.address.toLowerCase();
+        if (tab === "vault" && !linkedVault) setTab("inherit");
         // 헤더에 유저네임과 World App 표시가 있으므로 상태 줄을 비운다.
         // 여기까지 "Connected" 를 남기면 같은 정보가 두 줄로 보인다.
         setStatus('');
@@ -2035,44 +2024,56 @@ export default function App() {
     if (!provider || !account) return;
     const scope = balanceScope;
     if (scope !== balanceScopeRef.current) return;
+    const sharesRequest = ++walletSharesRequest.current;
+    const readRequest = { scope, request: sharesRequest };
+    balanceReadInFlight.current = readRequest;
+    const sharesReadCurrent = () => scope === balanceScopeRef.current && sharesRequest === walletSharesRequest.current;
+    if (HAS_YIELD_ROUTES) setWalletSharesRead(current => current.scope === scope ? current : { scope, state: "loading" });
+    const readTimeout = window.setTimeout(() => {
+      if (!sharesReadCurrent()) return;
+      ++walletSharesRequest.current;
+      if (HAS_YIELD_ROUTES) setWalletSharesRead({ scope, state: "unavailable" });
+      if (balanceReadInFlight.current === readRequest) balanceReadInFlight.current = null;
+    }, 45_000);
     try {
       const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
       const [dec, userBal, vaultBal] = await Promise.all([
         token.decimals(), token.balanceOf(account), vault ? token.balanceOf(vault) : Promise.resolve(0n),
       ]);
-      if (scope !== balanceScopeRef.current) return;
+      if (!sharesReadCurrent()) return;
       if (Number(dec) !== wldDecimals) throw new Error("Token precision does not match the configured asset.");
       setWalletBalanceRead({ scope, amount: userBal });
       if (!isYieldVault) setVaultBalanceRead({ scope, amount: vaultBal });
       const assets = [{ symbol: "WLD" as const, address: WLD_ADDRESS }, ...(USDC_ENABLED ? [{ symbol: "USDC" as const, address: USDC_ADDRESS }] : [])];
       const walletResults = await Promise.allSettled(assets.map(async asset =>
         new ethers.Contract(asset.address, ERC20_ABI, provider).balanceOf(account) as Promise<bigint>));
-      if (scope === balanceScopeRef.current) setWalletBalances({ account, amounts: Object.fromEntries(walletResults.flatMap((result, i) =>
+      if (!sharesReadCurrent()) return;
+      setWalletBalances({ account, amounts: Object.fromEntries(walletResults.flatMap((result, i) =>
         result.status === "fulfilled" ? [[assets[i].symbol, result.value]] : [])) });
       if (HAS_YIELD_ROUTES) {
         const results = await Promise.allSettled([
           ...YIELD_ROUTES.map(async route => {
             const amount: bigint = await new ethers.Contract(route.strategy, MORPHO_ABI, provider).balanceOf(account);
-            if (scope === balanceScopeRef.current) setWalletShares(current => ({ account, amounts: {
+            if (sharesReadCurrent()) setWalletShares(current => ({ account, amounts: {
               ...(current.account.toLowerCase() === account.toLowerCase() ? current.amounts : {}), [route.factory]: amount,
             } }));
           }),
           (async () => {
             if (!selectedYieldRoute) return;
             const shares: bigint = await new ethers.Contract(selectedYieldRoute.strategy, MORPHO_ABI, provider).balanceOf(vault);
-            if (scope === balanceScopeRef.current) setYieldHoldings({ scope, idle: vaultBal, shares });
+            if (sharesReadCurrent()) setYieldHoldings({ scope, idle: vaultBal, shares });
           })(),
           (async () => {
             if (!selectedYieldRoute) return;
             const ctr = new ethers.Contract(vault, selectedYieldRoute.vaultAbi, provider);
             const amount: bigint = await ctr.unprocessedRewards();
-            if (scope === balanceScopeRef.current) setReceivedRewards({ scope, amount });
+            if (sharesReadCurrent()) setReceivedRewards({ scope, amount });
           })(),
           (async () => {
             if (!selectedYieldRoute) return;
             const ctr = new ethers.Contract(vault, selectedYieldRoute.vaultAbi, provider);
             const pos = await ctr.position();
-            if (scope !== balanceScopeRef.current) return;
+            if (!sharesReadCurrent()) return;
             setYieldPosition({ vault, idle: pos.idle, shares: pos.shares, gross: pos.gross,
               net: pos.net, fee: pos.fee, liquid: pos.liquid, valued: pos.valued });
             setVaultBalanceRead({ scope, amount: pos.gross });
@@ -2080,14 +2081,20 @@ export default function App() {
           (async () => {
             if (!isUsdcVault) return;
             const amount: bigint = await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(vault);
-            if (scope === balanceScopeRef.current) setHeldRewardCash({ scope, amount });
+            if (sharesReadCurrent()) setHeldRewardCash({ scope, amount });
           })(),
         ]);
-        if (scope === balanceScopeRef.current) setYieldReadError({ scope, failed: results.some(result => result.status === "rejected") });
+        if (sharesReadCurrent()) setWalletSharesRead({ scope,
+          state: results.slice(0, YIELD_ROUTES.length).every(result => result.status === "fulfilled") ? "ready" : "unavailable" });
+        if (sharesReadCurrent()) setYieldReadError({ scope, failed: results.some(result => result.status === "rejected") });
         for (const result of results) if (result.status === "rejected") console.warn("Yield balance read failed:", errorText(result.reason));
       }
     } catch (e: unknown) {
+      if (HAS_YIELD_ROUTES && sharesReadCurrent()) setWalletSharesRead({ scope, state: "unavailable" });
       console.warn("refreshBalances failed:", errorText(e));
+    } finally {
+      window.clearTimeout(readTimeout);
+      if (balanceReadInFlight.current === readRequest) balanceReadInFlight.current = null;
     }
   }, [provider, account, vault, isYieldVault, selectedAssetAddress, selectedYieldRoute, wldDecimals, isUsdcVault, balanceScope]);
   useEffect(() => { void refreshBalances(); }, [refreshBalances]);
@@ -2313,8 +2320,11 @@ export default function App() {
 
   useEffect(() => {
     if (!provider || !account) return;
-    const id = setInterval(() => { void refreshBalances(); }, 30000);
-    const onVis = () => { if (document.visibilityState === 'visible') void refreshBalances(); };
+    const pollBalances = () => {
+      if (balanceReadInFlight.current?.scope !== balanceScopeRef.current) void refreshBalances();
+    };
+    const id = setInterval(pollBalances, 30000);
+    const onVis = () => { if (document.visibilityState === 'visible') pollBalances(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
   }, [provider, account, refreshBalances]);
@@ -4160,9 +4170,7 @@ export default function App() {
       setStatus("Failed to copy to clipboard");
     }
   };
-  if (!account && !CONFIG_ERROR) {
-    return <Landing installed={miniInstalled} busy={ctaLoading} onConnect={continueWorldApp2} linkedVault={linkedVault} status={status} />;
-  }
+  const isArchivedOwner = isYieldVault && vaultIdentity?.released && isVaultOwner;
   return (
     <div className="app-shell" lang={locale}>
       {/* 환경변수가 잘못되면 흰 화면 대신 복구 방법을 안내한다.
@@ -4188,28 +4196,19 @@ export default function App() {
       <header className="app-header">
         <div className="container-narrow header-content">
           <Brand />
-          <div className="landing-header-actions"><span className="network-pill"><span className="live-dot" />World Chain</span><LanguagePicker /></div>
+          <div className="header-actions"><LanguagePicker /></div>
         </div>
       </header>
       {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
           콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
-      <main id="main-content" className="container-narrow app-content tab-pb grid gap-4">
+      <main id="main-content" className={`container-narrow app-content tab-pb grid gap-4 ${!account && tab !== "support" ? "app-content-entry" : ""}`}>
         {/* 헤더. 로그인 상태와 탭마다 반복되므로 카드 한 장을 쓰지 않고 한 줄로 줄인다.
             카드 4개(헤더/타이머/입금/고객센터)를 한 화면에 넣으려면 이게 전부 필요했다. */}
-        <div className="account-row flex items-center justify-between gap-2">
+        {account && <div className="account-row flex items-center justify-between gap-2">
           <div className="min-w-0">
-            {account ? (
-              <>
-                <div className="text-sm font-semibold truncate">
-                  {username ? `@${username}` : short(account)}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="text-sm font-semibold">WLD Inheritance</div>
-                <div className="text-xs text-gray-500">{t("home.account.connect")}</div>
-              </>
-            )}
+            <div className="text-sm font-semibold truncate">
+              {username ? `@${username}` : short(account)}
+            </div>
           </div>
           {/* 서버 검증 여부를 숨기지 않는다. 서명이 서버에서 확인되지 않은
               세션으로는 자금을 다루는 행동을 하지 않도록 배지를 남긴다. */}
@@ -4227,8 +4226,22 @@ export default function App() {
               {ctaLoading ? (<><span className="spinner mr-2"></span>{t("home.account.connecting")}</>) : t("home.account.connectButton")}
             </Button>
           )}
-        </div>
+        </div>}
         <div className="page-intro"><span className="eyebrow">{t(tab === "vault" ? "home.intro.vault" : tab === "money" ? "home.intro.money" : tab === "support" ? "home.intro.support" : "home.intro.inherit")}</span><h1 tabIndex={-1}>{tab === "inherit" && (iAmHeir || receivedYieldInheritance || !ownVault && inheritedPositions.length > 0) ? t("journey.heir.heading") : t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>
+        {!account && !CONFIG_ERROR && tab !== "support" && <AccountEntry view={tab} installed={miniInstalled} busy={ctaLoading}
+          onConnect={continueWorldApp2} linkedVault={linkedVault} />}
+        {status && (account || !/Open in World App.*bridge unavailable/i.test(status)) && (
+          <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
+            {localizeAppMessage(locale, status)}
+          </div>
+        )}
+        {account && pendingPlan && (tab === "vault" || tab === "money") && <section className="app-empty-state" aria-labelledby="pending-setup-title">
+          <h2 id="pending-setup-title">{t("entry.pending.title")}</h2><p>{t("entry.pending.body")}</p>
+          <Button variant="primary" disabled={pendingAction} onClick={() => {
+            navigationChosenFor.current = account.toLowerCase(); setTab("inherit");
+          }}>{t("entry.pending.action")}</Button>
+        </section>}
+        {account && <>
         {tab === "inherit" && account && (notifyHeirWorthShowing || inheritedPositions.length > 0) && heirStatusCard}
         {account && tab === "vault" && justCreatedPlan && inviteCard}
         {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
@@ -4314,7 +4327,7 @@ export default function App() {
         {isYieldVault && vaultIdentity?.released && <p role="status" className="text-xs text-gray-600">
           {t("home.archived.note")}
         </p>}
-        {isYieldVault && vaultIdentity?.released && isVaultOwner && vaultHasAssets && ["vault", "money", "inherit"].includes(tab) && <Card>
+        {isArchivedOwner && vaultHasAssets && ["vault", "money", "inherit"].includes(tab) && <Card>
           <CardHeader><CardTitle>Recover archived assets</CardTitle></CardHeader><CardContent className="grid gap-2">
             <p>Return this archived vault’s idle {wldSymbol}, receipt shares{isUsdcVault ? " and other WLD" : ""} to your wallet. Your current vault stays separate. Any positive net gain pays the same 10% service fee.</p>
             <p className="text-xs text-gray-600">{isSettledClaim
@@ -4362,7 +4375,7 @@ export default function App() {
           settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
           busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
           onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
-        {YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n).filter((route, index, routes) => routes.findIndex(other => other.strategy.toLowerCase() === route.strategy.toLowerCase()) === index).map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
+        {walletShareRoutes.map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
           <CardHeader><CardTitle>{t("walletShares.title", { symbol: route.symbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
             <p>{t("walletShares.amount", { amount: formatYieldAmount(walletYieldShares(route)), symbol: route.symbol })}</p>
             <p className="text-xs text-gray-600">{t("walletShares.body")}</p>
@@ -4380,14 +4393,6 @@ export default function App() {
             aria-live="polite"
           >
             {t("home.disconnected")}
-          </div>
-        )}
-
-        {/* 8개 트랜잭션 플로우 전부의 결과/오류 채널.
-            스크린 리더 사용자에게 읽히도록 live region 이 필요하다. */}
-        {status && (
-          <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
-            {localizeAppMessage(locale, status)}
           </div>
         )}
 
@@ -4799,6 +4804,33 @@ export default function App() {
         )}
 
 
+        </>}
+        {account && !pendingPlan && (tab === "vault" && !ownVault && !isArchivedOwner || tab === "money" && !vault && walletShareRoutes.length === 0) && <section className="app-empty-state" aria-live="polite">
+          {findingHeirVaults || ownedVaultRead.account !== account.toLowerCase() || inheritedRead.account !== account.toLowerCase() || !inheritedRead.loaded
+            || tab === "money" && HAS_YIELD_ROUTES && (walletSharesRead.scope !== balanceScope || walletSharesRead.state === "loading")
+            ? <><span className="spinner" /><p>{t("entry.loading")}</p></>
+            : ownedVaultRead.incomplete || inheritedRead.incomplete || heirScanIncomplete || tab === "money" && HAS_YIELD_ROUTES && walletSharesRead.state === "unavailable" ? <>
+              <Icon name="help" size={28} />
+              <h2>{t(tab === "money" && walletSharesRead.state === "unavailable" ? "entry.money.unavailableTitle" : "entry.unavailable.title")}</h2>
+              <p>{t(tab === "money" && walletSharesRead.state === "unavailable" ? "entry.money.unavailableBody" : "entry.unavailable.body")}</p>
+              <Button disabled={pendingAction || findingHeirVaults} onClick={() => {
+                void loadVault(); void findHeirVaults(); void refreshBalances();
+              }}>{t("entry.unavailable.action")}</Button>
+            </>
+            : <>
+              <Icon name={tab === "money" ? "assets" : "inherit"} size={28} />
+              <h2>{t(inheritedPositions.length > 0 ? "entry.received.title" : "entry.empty.title")}</h2>
+              <p>{t(inheritedPositions.length > 0 ? "entry.received.body" : tab === "money" ? "entry.empty.assets" : "entry.empty.body")}</p>
+              {inheritedPositions.length === 0 && <Button variant="primary" disabled={pendingAction} onClick={() => {
+                navigationChosenFor.current = account.toLowerCase();
+                setTab("inherit");
+              }}>{t("entry.empty.action")}</Button>}
+            </>}
+          {inheritedPositions.length > 0 && <Button variant="primary" disabled={pendingAction} onClick={() => {
+            navigationChosenFor.current = account.toLowerCase(); setTab("inherit");
+          }}>{t("entry.received.action")}</Button>}
+        </section>}
+
         {/* ===== Help 탭: 신뢰성 근거와 법적 고지 =====
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && <>
@@ -4814,7 +4846,7 @@ export default function App() {
           {account && <Card><CardHeader><CardTitle>{t("help.journey.find")}</CardTitle></CardHeader><CardContent className="grid gap-2">
             <p>{t("help.journey.findBody")}</p><Button disabled={pendingAction || findingHeirVaults} onClick={() => { void findHeirVaults(); setTab("inherit"); }}>{t("help.journey.checkAgain")}</Button>
           </CardContent></Card>}
-          {NOTIFY_BACKEND_ENABLED && <Card><CardHeader><CardTitle>{t("help.journey.notifications")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+          {account && NOTIFY_BACKEND_ENABLED && <Card><CardHeader><CardTitle>{t("help.journey.notifications")}</CardTitle></CardHeader><CardContent className="grid gap-3">
             <p>{t("help.journey.notificationsBody")}</p><p>{localizeAppMessage(locale, notifyHealth.text)}</p>
             <div className="flex gap-2 flex-wrap"><Button disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>{t("home.reminders.enable")}</Button>
               {(isMyVault || iAmHeir) && !isSettledClaim && <Button disabled={pendingAction || watchBusy} onClick={registerHeirAlert}>{t("help.journey.register")}</Button>}</div>
@@ -4830,26 +4862,17 @@ export default function App() {
           </CardContent></Card>
         </>}
 
-      {/* 탭이 보이는데 그 탭의 카드가 하나도 렌더되지 않은 경우의 안전망.
-          조건문이 겹치면서 특정 조합에서 빈 탭이 생길 수 있고, 그 상태로 나가면
-          "아무것도 없잖아" 가 그대로 사용자에게 보인다. 빈 화면 대신 다음 행동을
-          말해준다. */}
-      {tabStillVisible && !tabHasContent && (
-        <div className="text-sm text-gray-600">
-          {tab === "money" && "Your vault is not set up yet. Create it in Plan first."}
-          {tab === "vault" && "Loading your vault..."}
-        </div>
-      )}
-
       {/* ===== 하단 탭 바 =====
           가이드라인이 권장하는 "Bottom tab navigation and anchored buttons" 형태다.
           fixed 이지만 safe-area 를 고려해 화면 가장자리와 겹치지 않게 들어 올린다.
-          내용이 없는 탭은 아예 보이지 않는다(visibleTabs). */}
-      <nav className="tab-bar" aria-label={t("nav.sections")} hidden={!account}>
-        {visibleTabs.map((navTab) => (
+          로그인 전에도 같은 탐색을 제공한다. */}
+      </main>
+      <nav className="tab-bar" aria-label={t("nav.sections")}>
+        {TABS.map((navTab) => (
           <button
             key={navTab.key}
             className={`tab-item ${tab === navTab.key ? "tab-item-active" : ""}`}
+            disabled={ctaLoading}
             onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab(navTab.key); }}
             aria-current={tab === navTab.key ? "page" : undefined}
           >
@@ -4859,7 +4882,6 @@ export default function App() {
         ))}
       </nav>
 
-      </main>
       <div className="toast-container" role="status" aria-live="polite" aria-atomic="false">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>{localizeAppMessage(locale, t.msg)}</div>

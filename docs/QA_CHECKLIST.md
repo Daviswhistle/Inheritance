@@ -5,7 +5,8 @@ Use current evidence, not checked boxes copied from a previous release. Local re
 ## Required local checks
 
 - Foundry formatting, contract build and full suite; generated custom error ABI matches.
-- Frontend typecheck, lint, build, CSS class mapping and English-only visible copy.
+- Frontend typecheck, lint, build, CSS class mapping, English/Korean copy and language persistence.
+- First entry opens Home and all four tabs without a landing page. Guest balances are unavailable, not zero. Navigation and Help do not request wallet sign-in or transactions. Sign-in is explicit; shared vault links open Plan and survive the World App fallback. Check the entry CTA above the bottom tabs at 320×640 as well as 390×844. Empty and failed-lookup states provide an accurate next action.
 - Actual SDK SIWE signatures: one-use nonce replay rejection, session expiry and foreign origin/wallet rejection.
 - Notification APIs: anonymous/foreign-wallet denial, canonical current/legacy vault checks, owner-only unregister, own-wallet-only test, durable rate limits, alert cooldown persistence and terminal retirement.
 - Dedicated finalizer: canonical vault/token/chain, pre-seven-day refusal, renewal cancels pending transfer, fixed recipient, concurrent lease protection, atomic budget/transaction staging, interrupted database acknowledgement, pending receipt recovery, funding/fee/daily caps, actual fees and unknown fee fail-closed behavior.

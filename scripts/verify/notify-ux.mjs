@@ -301,10 +301,10 @@ log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 �
   log(`    상속인 입력 ${setHeir} / amount 입력 ${setAmount} / 생성 CTA ${clicked}`);
   const creationObserved = await waitUntil(() => c2.ev(`return (window.__NOTIFY_REQUESTS__ || []).some(call => call.path === '/api/notifications/register')
     && !document.getElementById('heir-input')
-    && document.querySelector('.page-intro h1')?.textContent === 'Today, and for their tomorrow.'
+    && document.querySelector('.page-intro h1')?.textContent === 'Your plan'
     && !!document.querySelector('.plan-overview-card');`), 30000);
   const registrationObserved = await c2.ev("return (window.__NOTIFY_REQUESTS__ || []).some(call => call.path === '/api/notifications/register');");
-  const managed = await c2.ev("return !document.getElementById('heir-input') && document.querySelector('.page-intro h1')?.textContent === 'Today, and for their tomorrow.' && !!document.querySelector('.plan-overview-card');");
+  const managed = await c2.ev("return !document.getElementById('heir-input') && document.querySelector('.page-intro h1')?.textContent === 'Your plan' && !!document.querySelector('.plan-overview-card');");
   const calls = await c2.ev("return (window.__NOTIFY_REQUESTS__ || []);");
   const regCalls = Array.isArray(calls) ? calls.filter((x) => x.path === "/api/notifications/register") : [];
   const canonicalVault = cast(["call", FACTORY, "vaultOf(address)(address)", A.a10.a, "--rpc-url", RPC]);
@@ -324,7 +324,7 @@ log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 �
     JSON.stringify(registeredBody));
   const createdUi = await c2.ev("return {form: Boolean(document.getElementById('heir-input')), heading: document.querySelector('.page-intro h1')?.textContent};");
   check("금고 생성 직후 새로고침 없이 관리 화면으로 바뀐다",
-    creationObserved && managed && !createdUi.form && createdUi.heading === "Today, and for their tomorrow.", JSON.stringify(createdUi));
+    creationObserved && managed && !createdUi.form && createdUi.heading === "Your plan", JSON.stringify(createdUi));
   await c2.close();
 }
 
@@ -336,7 +336,7 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
   await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5000);
   const tabs = await fresh.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
-  check("금고가 없으면 Vault 탭이 보이지 않는다", !tabs.includes("Home"),
+  check("금고가 없어도 앱의 네 개 탭을 탐색할 수 있다", tabs.join("|") === "Home|Assets|Plan|Help",
     `탭: ${tabs.join(" | ")}`);
   check("초기 입력 화면에는 선택적 알림이나 권한 경고가 없다",
     await fresh.ev("return !document.querySelector('.plan-notification-note') && !document.querySelector('.plan-reminder-details');"));

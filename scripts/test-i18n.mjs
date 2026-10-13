@@ -26,7 +26,7 @@ await test("English and Korean dictionaries cover every required key and interpo
       const placeholders = value => [...value.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort();
       assert.deepEqual(placeholders(korean), placeholders(english), `placeholder drift for ${key}`);
     }
-    for (const prefix of ["landing.", "home.", "plan.", "income.", "history.", "nav.", "help."]) {
+    for (const prefix of ["entry.", "home.", "plan.", "income.", "history.", "nav.", "help."]) {
       assert.ok(englishKeys.some(key => key.startsWith(prefix)), `missing translated surface ${prefix}`);
     }
 });
@@ -54,20 +54,19 @@ await test("browser fallback follows the preferred locale and defaults safely to
     assert.equal(i18n.persistLocalePreference("en", null), false);
 });
 
-await test("English launch and transaction labels remain unchanged", () => {
-    assert.equal(i18n.translate("en", "landing.connect.continue"), "Continue with World App");
-    assert.equal(i18n.translate("en", "home.title.vault"), "Today, and for their tomorrow.");
+await test("English app and transaction labels match the interface", () => {
+    assert.equal(i18n.translate("en", "entry.connect.continue"), "Continue with World App");
+    assert.equal(i18n.translate("en", "home.title.vault"), "Your plan");
     assert.equal(i18n.translate("en", "nav.money"), "Assets");
     assert.equal(i18n.translate("en", "plan.action.review"), "Review plan");
     assert.equal(i18n.translate("en", "plan.action.confirm"), "Confirm and deposit");
     assert.equal(i18n.translate("en", "income.title"), "Collect income");
-    assert.equal(i18n.translate("en", "landing.assetChoice.both"), "WLD or USDC");
     assert.equal(i18n.translate("en", "plan.legal.join"), "and");
     assert.equal(i18n.translate("en", "plan.balance.available", { amount: "1.25", symbol: "WLD" }), "Available: 1.25 WLD");
 });
 
 await test("Korean fee disclosures keep the 10 percent fee off principal", () => {
-    for (const key of ["landing.legal.yieldRisk", "plan.risk.yieldFee", "income.feeDisclosure", "help.feeDisclosure"]) {
+    for (const key of ["plan.risk.yieldFee", "income.feeDisclosure", "help.feeDisclosure"]) {
       const disclosure = i18n.translate("ko", key);
       assert.match(disclosure, /10%/);
     }
@@ -75,8 +74,7 @@ await test("Korean fee disclosures keep the 10 percent fee off principal", () =>
       assert.match(i18n.translate("ko", key), /원금/);
     }
     assert.match(i18n.translate("ko", "plan.risk.inheritance"), /7일/);
-    assert.equal(i18n.translate("ko", "landing.assetChoice.both"), "WLD 또는 USDC");
-    assert.equal(i18n.translate("ko", "landing.amounts.both"), "WLD와 USDC 금액");
+    assert.equal(i18n.translate("ko", "entry.connect.continue"), "World App으로 계속하기");
     assert.equal(i18n.translate("ko", "plan.interval.daysSeconds", { days: 30, seconds: 3600 }), "30일 + 3600초");
 });
 

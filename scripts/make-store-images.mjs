@@ -25,7 +25,7 @@ const shots = unifiedStore ? { countdown: image('unified-store-overview'), creat
 const layouts = usdcStore ? [] : [
   { name:'content_card', width:1035, height:720, title:'A little care.\nA lasting gift.', text:unifiedStore ? 'A WLD and USDC plan for someone you choose.' : 'A WLD plan for someone you choose.', shot:'countdown', detail:'Choose an heir. Set a check-in timer.', screenHeight:590, screenRight:42, top:150, titleSize:61 },
   { name:'hero', width:1035, height:720, title:'For someone\nyou love.', text:unifiedStore ? 'Your WLD and USDC. Your choice.' : 'Your WLD. Your choice.', shot:'welcome', detail:unifiedStore ? 'One personal inheritance plan.' : 'A personal inheritance vault.', screenHeight:590, screenRight:42, top:155, titleSize:64 },
-  { name:'showcase_1', width:1080, height:1080, title:'Check in.\nCarry on.', text:'Reset your timer to stay in control.', shot:'countdown', detail:unifiedStore ? 'WLD and USDC together. You hold your keys.' : 'Basic vault: no platform fee. You hold your keys.', screenHeight:866, screenRight:42, top:325, titleSize:78 },
+  { name:'showcase_1', width:1080, height:1080, title:'Check in.\nCarry on.', text:'Check in to keep your plan active.', shot:'countdown', detail:unifiedStore ? 'WLD and USDC together. You hold your keys.' : 'Basic vault: no platform fee. You hold your keys.', screenHeight:866, screenRight:42, top:325, titleSize:78 },
   { name:'showcase_2', width:1080, height:1080, title:unifiedStore ? 'Choose your\namounts.' : 'Choose\nyour person.', text:unifiedStore ? 'WLD and USDC. One heir and check-in.' : 'A contact, a username or a wallet address.', shot:'create', detail:'Set a renewal period of 1–365 days.', screenHeight:866, screenRight:42, top:325, titleSize:75 },
   { name:'meta_tag', width:1200, height:600, title:'A little care.\nA lasting gift.', text:unifiedStore ? 'A WLD and USDC plan for someone you love.' : 'A WLD vault for someone you love.', shot:'countdown', detail:'Your own plan. Your choice.', screenHeight:514, screenRight:83, top:155, titleSize:68 },
 ];
@@ -38,7 +38,25 @@ for (const layout of layouts) {
     const {name,width,height,title,text,shot,detail,screenHeight,screenRight,top,titleSize} = layout;
     const phoneWidth = Math.round(screenHeight * 780 / 1688);
     await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    // World App supplies the card's name, icon and description itself. Keep
+    // the illustration above its 94px overlay (282px in this 3x PNG).
+    const html = name === 'content_card' ? `<!doctype html><html><head><meta charset="utf-8"><style>
+      body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#edf2e7}
+      svg{display:block;width:100%;height:100%}
+      .overlay{position:absolute;inset:auto 0 0;height:282px;background:#f7f8f255;backdrop-filter:blur(18px)}
+    </style></head><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 345 240" aria-label="Assets connected to a recipient">
+      <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f0f5e8"/><stop offset="1" stop-color="#dbe7d5"/></linearGradient></defs>
+      <rect width="345" height="240" fill="url(#bg)"/>
+      <circle cx="58" cy="75" r="68" fill="#e2ebd8"/><circle cx="302" cy="208" r="95" fill="#d0e1d2"/>
+      <path d="M104 99H236" stroke="#8ba98b" stroke-width="2" stroke-dasharray="4 5"/>
+      <rect x="84" y="44" width="100" height="93" rx="18" fill="#fff" stroke="#cfddca"/>
+      <path d="M104 72h44m-44 15h58m-58 15h31" stroke="#b6c9b1" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="86" cy="110" r="24" fill="#235743"/><circle cx="86" cy="110" r="15" fill="none" stroke="#e7f1dc" stroke-width="2"/>
+      <circle cx="183" cy="52" r="17" fill="#c9dcef"/><circle cx="183" cy="52" r="10" fill="none" stroke="#7299bd" stroke-width="2"/>
+      <path d="m205 92 7 7-7 7" fill="none" stroke="#235743" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="235" y="72" width="48" height="56" rx="16" fill="#f7faf2" stroke="#bacfb5"/>
+      <circle cx="259" cy="91" r="7" fill="#709474"/><path d="M247 115c0-14 24-14 24 0" fill="#709474"/>
+    </svg><div class="overlay"></div></body></html>` : `<!doctype html><html><head><meta charset="utf-8"><style>
       *{box-sizing:border-box}body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#f7f8f2;color:#203b32;font-family:Arial,Helvetica,sans-serif}
       .orb{position:absolute;right:-130px;top:-60px;width:${height+200}px;height:${height+200}px;border-radius:50%;background:#e6eddd;border:1px solid #dbe4d3}
       .brand{position:absolute;left:60px;top:50px;display:flex;align-items:center;gap:17px;font-size:29px;font-weight:600;letter-spacing:-.8px}
