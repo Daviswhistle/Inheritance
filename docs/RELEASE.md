@@ -1,5 +1,39 @@
 # Release evidence
 
+## October 13, 2026 app-first production and resubmission
+
+The user authorized production deployment and review resubmission. Main was
+fast-forwarded to reviewed commit `013cdd387ffe652dbba9aacd7b8450ddbea9034c`.
+Its main CI completed successfully in all three jobs:
+https://github.com/Daviswhistle/Inheritance/actions/runs/38410077458.
+Pages, shared D1 preparation and the notification Worker deployed successfully:
+https://github.com/Daviswhistle/Inheritance/actions/runs/38410076798.
+
+The public app serves `index-Dgt7ohzW.js`. English and Korean first entry, all
+four tabs, expanded rules, legal links and preserved World App shared paths
+passed at 320×640 and 390×844 with the actual SDK outside World App, without
+authentication requests or runtime errors. Privacy, Terms and Yield Terms
+return HTTP 200. All seven public store images match the reviewed repository
+bytes. The deployed automation health was enabled, supported, funded and fresh,
+with verified gas funding, `halted: false`, `reason: ready` and Durable Object
+execution. This is service health evidence, not proof of a future payout or
+native notification delivery.
+
+The existing Portal metadata was in `changes_requested`. Its MCP edit tool
+requires `unverified`, so the official team GraphQL API conditionally moved only
+that app's existing metadata back to an editable draft. Metadata and all seven
+images were then updated through the Portal MCP and read back. Submission
+validation enforces a 40-character annotation; the final 37-character tagline is
+`Prepare assets for someone you trust.` The prepared metadata file matches it.
+The 21-word overview and full fee, risk, claim and control disclosures remain.
+
+Review submission succeeded at **2026-10-13 14:18:11 UTC**. A separate readback
+at 14:18 UTC confirmed `awaiting_review` for app
+`app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`, with developer allow-listing retained.
+This confirms resubmission, not approval. Native-device acceptance, observed
+user preference and an independent external security audit remain unverified.
+
 ## October 13, 2026 independent product review fixes
 
 An independent sub-agent reviewed candidate `64ab73d` with 21 direct user-flow
