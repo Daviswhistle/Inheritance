@@ -1,5 +1,33 @@
 # Release evidence
 
+## October 13, 2026 independent product review fixes
+
+An independent sub-agent reviewed candidate `64ab73d` with 21 direct user-flow
+checks and 22 browser captures. It found two P2 issues: a shared link could put
+another owner's received plan ahead of the selected plan, and the fixture's
+`txLog` never recorded requests, making its no-request assertions ineffective.
+The calling session verified both findings against the source and reproduced
+the missing request record with a deliberately rejected SDK call.
+
+The selected owner's received-plan group now appears first. The test fixture
+records each `sendTransaction` invocation, including rejection and an atomic
+multi-call batch. A positive control proves a rejected call increases the count;
+the existing successful four-call settings operation records one request.
+Regression checks open links to each of two owners and verify the selected
+person and tappable claim appear first at 320×640 and 390×844 without a request.
+
+The complete plan-experience browser suite passed **59** checks after these
+fixes, including all existing no-request assertions with the corrected recorder.
+Runtime errors and external requests were zero. Typecheck, lint, locale checks,
+CSS mapping and a production build with current public deployment variables
+also passed. The earlier unified-plan browser result uses its own functioning
+bridge-call recorder and is separate from the defective `txLog` assertions.
+
+This follow-up is based on `64ab73d` on `fix/usable-inheritance-experience`.
+Production and Portal have not been updated. Native World App device acceptance,
+first-user observations, independent external security audit and store approval
+remain separate evidence requirements.
+
 ## October 13, 2026 usable inheritance review candidate
 
 This candidate includes the app-first entry and makes the useful actions easier

@@ -100,6 +100,8 @@ try{
  assert.equal((await guest.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);
  assert.equal(await guest.ev(`return !!document.querySelector('.landing-content,.vault-illustration,footer')`),false);
  pass('guest tabs and legal/support access send no authentication or transaction request');
+ const recordedRejection=await guest.ev(`const fixture=await import('/src/test/minikit-stub.ts');fixture.__setState({failNextTx:true});const response=await fixture.MiniKit.sendTransaction({chainId:480,transactions:[{to:${JSON.stringify(wld.target)},data:'0x12345678'}]});return {status:response.data.status,requests:window.__E2E_MINIKIT__.txLog().length};`);
+ assert.deepEqual(recordedRejection,{status:'fail',requests:1});pass('the wallet request recorder detects rejected calls instead of always reporting zero');
  await guest.close();pages.splice(pages.indexOf(guest),1);
  const linkedGuest=await launch({pk:ACCOUNTS.a1.pk,url:url+'?vault='+wa,preload});pages.push(linkedGuest);await linkedGuest.ev(HELPERS);
  assert.equal(await linkedGuest.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Plan');
@@ -260,7 +262,7 @@ try{
  await until(async()=>await wc.heartbeatInterval()===7n*86400n && await uc.heartbeatInterval()===7n*86400n,'both shortened periods');
  await until(()=>op.ev(`return document.body.innerText.includes('Plan settings confirmed for all listed assets.')`),'settings confirmation');
  assert.equal(await wc.isExpired(),false);assert.equal(await uc.isExpired(),false);assert.ok(await wc.lastPing()>pingBefore);assert.equal(await wc.lastPing(),await uc.lastPing());
- const periodCalls=await op.ev('return window.__E2E_MINIKIT__.lastCalldata()');assert.equal(periodCalls.length,4);pass('one approval changes both periods and checks in atomically');
+ const periodCalls=await op.ev('return window.__E2E_MINIKIT__.lastCalldata()');assert.equal(periodCalls.length,4);assert.equal((await op.ev('return window.__E2E_MINIKIT__.txLog()')).length,1);pass('one approval changes both periods and checks in atomically');
  await snap(op,'owner-period-shortened');
  await tab(op,'Home');await click(op,'Check in');await until(()=>op.ev(`return document.body.innerText.includes('Checked in to all 2 active vaults.')`),'immediate check-in');pass('Home can check in immediately after editing, without reload');
  await tab(op,'Plan');await until(()=>op.ev(`return !!document.getElementById('new-heir-input')`),'heir input');await op.ev(`return __q.setInput('new-heir-input',${JSON.stringify(ACCOUNTS.a3.a)})`);await click(op,'Update heir');
@@ -291,6 +293,30 @@ try{
  await op.ev(`const fixture=await import('/src/test/minikit-stub.ts');fixture.MiniKit.sendTransaction=window.__SETTINGS_SEND__;return true`);await click(op,'Confirm changes');await until(async()=>await wc.heartbeatInterval()===14n*86400n && await uc.heartbeatInterval()===14n*86400n,'post-rejection settings confirm');
  // Restore isolated fixtures to the first heir for the receiving scenarios.
  await (await wf.updateMyHeir(ACCOUNTS.a1.a)).wait();await(await uf.updateMyHeir(ACCOUNTS.a1.a)).wait();
+ const multiOwnerSnapshot=await provider.send('evm_snapshot',[]);
+ const otherOwner=await provider.getSigner(3);
+ for(const [factory,token,amount,decimals] of [[wf,wld,'1.25',18],[uf,usdc,'0.75',6]]){
+  await(await token.mint(ACCOUNTS.a3.a,parseUnits(amount,decimals))).wait();
+  await(await factory.connect(otherOwner).createVault(ACCOUNTS.a1.a,30*86400)).wait();
+  await(await token.connect(otherOwner).approve(factory.target,parseUnits(amount,decimals))).wait();
+  await(await factory.connect(otherOwner).depositWithMinShares(parseUnits(amount,decimals),1)).wait();
+ }
+ const benVault=await wf.vaultOf(ACCOUNTS.a3.a);
+ await provider.send('evm_increaseTime',[31*86400]);await provider.send('evm_mine',[]);
+ for(const [address,selectedOwner] of [[wa,ACCOUNTS.a0.a],[benVault,ACCOUNTS.a3.a]]){
+  const multi=await open(ACCOUNTS.a1.pk,`?vault=${address}`);
+  await until(()=>multi.ev(`return document.querySelectorAll('.heir-plan-card').length===2 && !!document.querySelector('.heir-next-action .btn')`),'two received owners and selected action');
+  for(const [width,height] of [[320,640],[390,844]]){
+   await multi.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await multi.ev('window.scrollTo(0,0);return true');
+   assert.equal(await multi.ev(`return document.querySelector('.heir-plan-card h2,.heir-plan-card h3').textContent.trim()`),`From @${selectedOwner===ACCOUNTS.a0.a?'amy':'ben'}`);
+   const layout=await actionVisible(multi,'.heir-next-action .btn');assert.ok(layout.visible&&layout.hit&&layout.width<=width,JSON.stringify(layout));
+   await snap(multi,`shared-${selectedOwner===ACCOUNTS.a0.a?'amy':'ben'}-${width}`);
+  }
+  assert.equal((await multi.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);
+  await multi.close();pages.splice(pages.indexOf(multi),1);
+ }
+ assert.equal(await provider.send('evm_revert',[multiOwnerSnapshot]),true);
+ pass('a shared link puts its selected owner and tappable claim first among multiple received plans at 320px and 390px');
  const linked=await open(ACCOUNTS.a1.pk,`?vault=${ua}`);await until(()=>linked.ev(`return document.querySelectorAll('.inheritance-asset').length===2`),'linked whole-plan');await snap(linked,'heir-linked-active');pass('a single asset link opens all assets left to the same heir');
  await linked.ev(`const s=document.querySelector('.locale-picker select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'ko');s.dispatchEvent(new Event('change',{bubbles:true}));return true`);const korean=await snap(linked,'heir-linked-active-ko');
  assert.ok(korean.text.includes('상속 수령 절차'));assert.ok(!korean.text.includes('Inheritance Status'));assert.ok(!korean.text.includes('Set up your plan'));pass('Korean heir path uses translated status and next steps');

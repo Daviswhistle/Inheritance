@@ -15,6 +15,8 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
   const { t, locale } = useLocale();
   const date = (stamp: bigint | number) => new Date(Number(stamp) * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const groups = groupInheritances(positions);
+  const selectedGroup = groups.findIndex(group => group[0].owner.toLowerCase() === selectedOwner.toLowerCase());
+  if (selectedGroup > 0) groups.unshift(...groups.splice(selectedGroup, 1));
   return <section className="heir-plans" aria-label={t("journey.heir.title")}>
     {loading && !groups.length && <p role="status">{t("journey.loading")}</p>}
     {groups.map(group => {

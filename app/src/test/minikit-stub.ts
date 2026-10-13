@@ -33,6 +33,7 @@ const state = {
   permissionGranted: false,
   /** 강제로 실패시킬 다음 트랜잭션 (QA 용) */
   failNextTx: false,
+  /** sendTransaction 호출당 한 건. 거절·실패·atomic batch도 기록한다. */
   txLog: [] as string[],
   /** 마지막으로 보낸 calldata — 인코딩이 실제로 일어났는지 확인용 */
   lastCalldata: [] as { to: string; data: string }[],
@@ -216,6 +217,7 @@ export const MiniKit = {
     transactions: { to: string; data?: string; value?: string }[];
     chainId: number;
   }) {
+    state.txLog.push("sendTransaction");
     if (chainId !== 480 && chainId !== 31337) {
       throw new Error(`E2E: 예상 밖 체인 ${chainId}`);
     }
