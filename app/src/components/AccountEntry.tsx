@@ -2,6 +2,7 @@ import { USDC_ENABLED } from "@/config";
 import { useLocale } from "@/locale-context";
 import { Icon } from "./Icon";
 import { Button } from "./ui/button";
+import { TransferGuide } from "./TransferGuide";
 
 export function AccountEntry({ view, installed, busy, onConnect, linkedVault }: {
   view: "vault" | "money" | "inherit";
@@ -24,9 +25,9 @@ export function AccountEntry({ view, installed, busy, onConnect, linkedVault }: 
       </div>)}
     </div>}
     <div className="entry-access">
-      <span className="entry-access-icon" aria-hidden="true"><Icon name={view === "inherit" ? "inherit" : "vault"} size={24} /></span>
       <h2 id="account-entry-title">{t(view === "inherit" && linkedVault ? "entry.linked.title" : `entry.${view}.title`)}</h2>
       <p>{t(view === "inherit" && linkedVault ? "entry.linked.body" : `entry.${view}.body`)}</p>
+      <details className="entry-rules"><summary>{t("guide.title")}</summary><TransferGuide /></details>
     </div>
     <div className="entry-action">
       {installed

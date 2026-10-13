@@ -131,11 +131,32 @@
 .entry-asset > strong, .entry-asset > small { grid-column: 1 / -1; }
 .entry-asset > strong { font-size: 28px; font-weight: 550; }
 .entry-asset > small { font-size: 12px; color: var(--muted); }
-.entry-access { display: grid; justify-items: center; gap: 12px; padding: 24px 16px; text-align: center; }
-.entry-access-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 16px; color: var(--accent); background: #e9efdf; }
+.entry-access { display: grid; justify-items: center; gap: 12px; padding: 12px 8px; text-align: center; }
 .entry-access h2 { margin: 4px 0 0; font-size: 20px; font-weight: 600; }
-.entry-access p { margin: 0; max-width: 300px; font-size: 14px; line-height: 1.6; color: var(--muted); }
-.entry-action { display: grid; gap: 12px; }
+.entry-access p { margin: 0; max-width: 300px; font-size: 14px; line-height: 1.6; color: var(--muted); word-break: keep-all; overflow-wrap: anywhere; }
+.transfer-guide, .plan-card-intro, .plan-field-help { word-break: keep-all; overflow-wrap: anywhere; }
+.entry-rules { width: 100%; text-align: left; font-size: 13px; }
+.entry-rules > summary { display: flex; min-height: 44px; align-items: center; justify-content: center; color: var(--accent); cursor: pointer; }
+.entry-rules[open] { padding: 0 12px 12px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.entry-rules .transfer-guide p { font-size: 12px; text-align: left; }
+.transfer-guide ol { display: grid; gap: 18px; list-style: none; margin: 0; padding: 0; counter-reset: transfer; }
+.transfer-guide li { position: relative; padding-left: 36px; counter-increment: transfer; }
+.transfer-guide li::before { content: counter(transfer); position: absolute; left: 0; top: 0; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: #e9efdf; color: var(--accent); font-size: 12px; font-weight: 650; }
+.transfer-guide strong { color: var(--ink); font-size: 14px; line-height: 1.5; }
+.transfer-guide p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.transfer-guide .transfer-guide-note { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.help-guide-card .card-header { padding-bottom: 16px; }
+.invite-disclosure { border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.invite-disclosure > summary { display: grid; gap: 4px; min-height: 64px; padding: 14px 18px; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+.invite-disclosure > summary > span { color: var(--muted); font-size: 12px; font-weight: 400; }
+.invite-disclosure .invite-heir-card { margin: 0 12px 12px; box-shadow: none; }
+.heir-next-action { display: grid; gap: 10px; padding: 16px; background: #edf3e7; border: 1px solid #c9dcc2; border-radius: 14px; }
+.heir-next-action > strong { font-size: 13px; color: var(--ink); }
+.heir-next-action > p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.heir-next-action .btn { min-height: 50px; }
+.home-checkin-date { border-left: 3px solid var(--accent); }
+.entry-action { display: grid; gap: 10px; position: fixed; z-index: 28; bottom: calc(89px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: calc(100% - 48px); max-width: 432px; padding: 12px 0 0; background: var(--canvas, #f7f8f2); }
+.app-content-entry { padding-bottom: calc(176px + env(safe-area-inset-bottom, 0px)); }
 .entry-action .btn { width: 100%; min-height: 52px; text-decoration: none; }
 .entry-action > p { margin: 0; text-align: center; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .app-empty-state { display: grid; justify-items: center; gap: 16px; padding: 32px 16px; text-align: center; }
@@ -143,7 +164,7 @@
 .app-empty-state p { margin: 0; max-width: 300px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .app-empty-state .btn { min-height: 48px; }
 @media (max-height: 740px) {
-  .app-content-entry { padding-top: 16px; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .app-content-entry { padding-top: 16px; padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)); }
   .account-entry { gap: 16px; }
   .entry-asset { padding: 16px; gap: 8px; }
   .entry-asset > strong { font-size: 24px; }

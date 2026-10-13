@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Brand, Icon } from "@/components/Icon";
 import { AccountEntry } from "@/components/AccountEntry";
+import { TransferGuide } from "@/components/TransferGuide";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { PlanSetup } from "@/components/PlanSetup";
 import { HeirPlans, OwnerPlanSettings, InviteHeir } from "@/components/PlanExperience";
@@ -410,7 +411,7 @@ export default function App() {
   const walletYieldShares = (route: YieldRoute) => walletShares.account.toLowerCase() === account.toLowerCase() ? walletShares.amounts[route.factory] ?? 0n : 0n;
   const walletShareRoutes = YIELD_ROUTES.filter(route => walletYieldShares(route) > 0n)
     .filter((route, index, routes) => routes.findIndex(other => other.strategy.toLowerCase() === route.strategy.toLowerCase()) === index);
-  const [walletBalances, setWalletBalances] = useState<{ account: string; amounts: Partial<Record<AssetSymbol, bigint>> }>({ account: "", amounts: {} });
+  const [walletBalances, setWalletBalances] = useState<{ account: string; amounts: Partial<Record<AssetSymbol, bigint>>; unavailable: AssetSymbol[] }>({ account: "", amounts: {}, unavailable: [] });
   const planWalletBalances = walletBalances.account.toLowerCase() === account.toLowerCase() ? walletBalances.amounts : {};
   const [pendingPlan, setPendingPlan] = useState<StoredPlan | null>(null);
   const pendingDeposit = hasPendingPlanDeposit(pendingPlan, account, vaultFactory, vault);
@@ -2028,13 +2029,47 @@ export default function App() {
     const readRequest = { scope, request: sharesRequest };
     balanceReadInFlight.current = readRequest;
     const sharesReadCurrent = () => scope === balanceScopeRef.current && sharesRequest === walletSharesRequest.current;
+    const assets = [{ symbol: "WLD" as const, address: WLD_ADDRESS }, ...(USDC_ENABLED ? [{ symbol: "USDC" as const, address: USDC_ADDRESS }] : [])];
+    const pendingWalletAssets = new Set<AssetSymbol>(assets.map(asset => asset.symbol));
+    const markWalletBalancesUnavailable = () => {
+      if (!pendingWalletAssets.size || !sharesReadCurrent()) return;
+      setWalletBalances(current => {
+        const sameAccount = current.account.toLowerCase() === account.toLowerCase();
+        return { account, amounts: sameAccount ? current.amounts : {},
+          unavailable: [...new Set([...(sameAccount ? current.unavailable : []), ...pendingWalletAssets])] };
+      });
+    };
     if (HAS_YIELD_ROUTES) setWalletSharesRead(current => current.scope === scope ? current : { scope, state: "loading" });
+    let finishWalletWait = () => {};
+    const walletWaitDeadline = new Promise<void>(resolve => { finishWalletWait = resolve; });
     const readTimeout = window.setTimeout(() => {
+      finishWalletWait();
       if (!sharesReadCurrent()) return;
+      markWalletBalancesUnavailable();
       ++walletSharesRequest.current;
       if (HAS_YIELD_ROUTES) setWalletSharesRead({ scope, state: "unavailable" });
       if (balanceReadInFlight.current === readRequest) balanceReadInFlight.current = null;
     }, 45_000);
+    const walletReads = Promise.allSettled(assets.map(async asset => {
+      let amount: bigint | null = null;
+      try {
+        const assetToken = new ethers.Contract(asset.address, ERC20_ABI, provider);
+        const [decimals, balance] = await Promise.all([assetToken.decimals(), assetToken.balanceOf(account)]);
+        if (Number(decimals) !== (asset.symbol === "USDC" ? 6 : 18)) throw new Error("Token precision does not match the configured asset.");
+        amount = balance;
+      }
+      catch (error) { console.warn("Wallet balance read failed:", asset.symbol, errorText(error)); }
+      if (!sharesReadCurrent()) return;
+      pendingWalletAssets.delete(asset.symbol);
+      setWalletBalances(current => {
+        const sameAccount = current.account.toLowerCase() === account.toLowerCase();
+        const amounts = { ...(sameAccount ? current.amounts : {}) };
+        const unavailable = new Set(sameAccount ? current.unavailable : []);
+        if (amount === null) { delete amounts[asset.symbol]; unavailable.add(asset.symbol); }
+        else { amounts[asset.symbol] = amount; unavailable.delete(asset.symbol); }
+        return { account, amounts, unavailable: [...unavailable] };
+      });
+    }));
     try {
       const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
       const [dec, userBal, vaultBal] = await Promise.all([
@@ -2044,12 +2079,8 @@ export default function App() {
       if (Number(dec) !== wldDecimals) throw new Error("Token precision does not match the configured asset.");
       setWalletBalanceRead({ scope, amount: userBal });
       if (!isYieldVault) setVaultBalanceRead({ scope, amount: vaultBal });
-      const assets = [{ symbol: "WLD" as const, address: WLD_ADDRESS }, ...(USDC_ENABLED ? [{ symbol: "USDC" as const, address: USDC_ADDRESS }] : [])];
-      const walletResults = await Promise.allSettled(assets.map(async asset =>
-        new ethers.Contract(asset.address, ERC20_ABI, provider).balanceOf(account) as Promise<bigint>));
+      await Promise.race([walletReads, walletWaitDeadline]);
       if (!sharesReadCurrent()) return;
-      setWalletBalances({ account, amounts: Object.fromEntries(walletResults.flatMap((result, i) =>
-        result.status === "fulfilled" ? [[assets[i].symbol, result.value]] : [])) });
       if (HAS_YIELD_ROUTES) {
         const results = await Promise.allSettled([
           ...YIELD_ROUTES.map(async route => {
@@ -2093,6 +2124,7 @@ export default function App() {
       if (HAS_YIELD_ROUTES && sharesReadCurrent()) setWalletSharesRead({ scope, state: "unavailable" });
       console.warn("refreshBalances failed:", errorText(e));
     } finally {
+      await Promise.race([walletReads, walletWaitDeadline]);
       window.clearTimeout(readTimeout);
       if (balanceReadInFlight.current === readRequest) balanceReadInFlight.current = null;
     }
@@ -3175,7 +3207,7 @@ export default function App() {
     const timer = setInterval(() => { if (document.visibilityState === "visible") void refreshInvite(); }, 30_000);
     return () => clearInterval(timer);
   }, [inviteVault, tab, refreshInvite]);
-  const inviteCard = heirLink && <InviteHeir ready={justCreatedPlan} name={heirUsername ?? ""} link={heirLink}
+  const inviteCard = heirLink && <InviteHeir ready={justCreatedPlan} compact={tab === "inherit"} name={heirUsername ?? ""} link={heirLink}
     busy={pendingAction || shareBusy} readiness={observedHeirReadiness}
     onChat={() => void tellHeirInChat()} onLink={() => void copyHeirLink()} onMessage={() => void copyHeirMessage()}
     onRefresh={() => void refreshInvite()} />;
@@ -4251,27 +4283,6 @@ export default function App() {
             <p className="plan-card-intro">{t("home.overview.description")}</p>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <div className="plan-overview-assets">
-              {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
-                const total = ownedPlanTotal(symbol);
-                const decimals = symbol === "USDC" ? 6 : 18;
-                const value = ownedPlanRead.loading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
-                  : `${formatYieldAmount(total.amount, decimals)} ${symbol}`;
-                return <div className="plan-overview-asset" key={symbol}>
-                  <span>{symbol}</span><strong>{value}</strong>
-                  <small>{ownedPlanRead.loading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
-                    : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
-                </div>;
-              })}
-            </div>
-            {activeOwnedPlans.some(item => item.symbol === "USDC" && (item.additionalWld ?? 0n) > 0n)
-              && <p className="text-xs text-gray-600">{t("home.additionalWld")}</p>}
-            {ownedPlanRead.incomplete
-              ? <p className="plan-settings-differ" role="status">{t("home.incomplete")}</p>
-              : activeOwnedPlans.length > 0 ? commonPlanSettings
-                ? <p className="plan-common-settings">{t("home.heir")} <strong title={activeOwnedPlans[0].heir}>{homeHeirUsername ? `@${homeHeirUsername}` : short(activeOwnedPlans[0].heir)}</strong><span>·</span> {t("home.checkin.every")} <strong>{activeOwnedPlans[0].period} {t("home.days")}</strong></p>
-                : <p className="plan-settings-differ">{t("home.settingsDiffer")}</p>
-                : <p className="text-sm text-gray-600">{t("home.noActivePlan")}</p>}
             {nextCheckIn !== null && <div className="home-checkin-date">
               <span>{chainNow > 0 && nextCheckIn <= chainNow ? t("home.checkin.overdue") : t("home.checkin.next")}</span>
               <strong>{new Date(nextCheckIn * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en", { year: "numeric", month: "short", day: "numeric" })}</strong>
@@ -4295,6 +4306,28 @@ export default function App() {
                 <Button disabled={pendingAction} onClick={() => setCheckinReview(null)}>{t("home.checkin.cancel")}</Button>
               </div>
             </section>}
+
+            <div className="plan-overview-assets">
+              {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
+                const total = ownedPlanTotal(symbol);
+                const decimals = symbol === "USDC" ? 6 : 18;
+                const value = ownedPlanRead.loading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
+                  : `${formatYieldAmount(total.amount, decimals)} ${symbol}`;
+                return <div className="plan-overview-asset" key={symbol}>
+                  <span>{symbol}</span><strong>{value}</strong>
+                  <small>{ownedPlanRead.loading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
+                    : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
+                </div>;
+              })}
+            </div>
+            {activeOwnedPlans.some(item => item.symbol === "USDC" && (item.additionalWld ?? 0n) > 0n)
+              && <p className="text-xs text-gray-600">{t("home.additionalWld")}</p>}
+            {ownedPlanRead.incomplete
+              ? <p className="plan-settings-differ" role="status">{t("home.incomplete")}</p>
+              : activeOwnedPlans.length > 0 ? commonPlanSettings
+                ? <p className="plan-common-settings">{t("home.heir")} <strong title={activeOwnedPlans[0].heir}>{homeHeirUsername ? `@${homeHeirUsername}` : short(activeOwnedPlans[0].heir)}</strong><span>·</span> {t("home.checkin.every")} <strong>{activeOwnedPlans[0].period} {t("home.days")}</strong></p>
+                : <p className="plan-settings-differ">{t("home.settingsDiffer")}</p>
+                : <p className="text-sm text-gray-600">{t("home.noActivePlan")}</p>}
 
             {NOTIFY_BACKEND_ENABLED && activeOwnedPlans.length > 0
               && (["WLD", "USDC"] as AssetSymbol[]).some(symbol => (ownedPlanTotal(symbol).amount ?? 0n) > 0n) && (
@@ -4732,7 +4765,6 @@ export default function App() {
           onClick={() => { setVault(ownVault); setLinkedVault(""); setTab("vault"); }}>{t("journey.owner.return")}</Button>}
         {tab === "inherit" && isVaultOwner && vaultIdentity?.released && <Card><CardHeader><CardTitle>{t("journey.owner.archived")}</CardTitle></CardHeader>
           <CardContent><p>{t("journey.owner.archivedBody")}</p></CardContent></Card>}
-        {tab === "inherit" && isMyVault && !vaultIdentity?.released && inviteCard}
         {tab === "inherit" && showOwnerPlanSettings && <OwnerPlanSettings
           heirLabel={commonManagedSettings ? unsettledOwnedPlans[0].heir.toLowerCase() === account.toLowerCase() ? t("journey.stage.cancelled") : homeHeirUsername ? `@${homeHeirUsername}` : unsettledOwnedPlans[0].heir : ""}
           period={ownerSettingsPeriod} onPeriod={onPeriodChange} heir={newHeir} onHeir={onNewHeirInput}
@@ -4743,6 +4775,7 @@ export default function App() {
           onConfirm={() => void runWalletAction(confirmPlanSettings, true)} onDismiss={() => setSettingsReview(null)}
           pending={settingsPending} onResume={() => void runWalletAction(resumePlanSettings)}
           onCheckIn={() => { navigationChosenFor.current = account.toLowerCase(); setTab("vault"); void runWalletAction(() => checkInAllPlans(), true); }} inconsistent={!commonManagedSettings} />}
+        {tab === "inherit" && isMyVault && !vaultIdentity?.released && inviteCard}
         {tab === "inherit" && settingsPending && !showOwnerPlanSettings && <Card><CardHeader><CardTitle>{t("journey.owner.settings")}</CardTitle></CardHeader>
           <CardContent className="grid gap-2"><p role="status">{t("journey.owner.pending")}</p>
             <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("journey.action.resume")}</Button>
@@ -4766,7 +4799,9 @@ export default function App() {
 
         {tab === "inherit" && account && (pendingPlan || showPlanSetup || !ownVault && !linkedVault && inheritedPositions.length === 0 && !findingHeirVaults && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded) && gate2(
           <PlanSetup
-            rows={draftPlanRows.map(row => ({ ...row, walletBalance: planWalletBalances[row.symbol] ?? null }))}
+            rows={draftPlanRows.map(row => ({ ...row, walletBalance: planWalletBalances[row.symbol] ?? null,
+              balanceUnavailable: walletBalances.account.toLowerCase() === account.toLowerCase() && walletBalances.unavailable.includes(row.symbol) }))}
+            onRefreshBalances={() => void refreshBalances()}
             heir={heir}
             onHeirChange={onHeirInput}
             onPickHeir={pickHeirFromContacts}
@@ -4834,6 +4869,7 @@ export default function App() {
         {/* ===== Help 탭: 신뢰성 근거와 법적 고지 =====
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && <>
+          <Card className="help-guide-card"><CardHeader><CardTitle>{t("guide.title")}</CardTitle></CardHeader><CardContent><TransferGuide /></CardContent></Card>
           <Card className="help-fees-card"><CardHeader><CardTitle>{t("help.feeTitle")}</CardTitle></CardHeader><CardContent className="grid gap-2">
             <p>{t("help.feeDisclosure")}</p><a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
           </CardContent></Card>

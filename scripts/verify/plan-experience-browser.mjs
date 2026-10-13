@@ -22,6 +22,7 @@ function artifact(name,file=name){return JSON.parse(readFileSync(`${root}/out/${
 async function deploy(name,args,signer,file=name){const a=artifact(name,file);const c=await new ContractFactory(a.abi,a.bytecode.object,signer).deploy(...args);await c.waitForDeployment();return c;}
 async function click(p,label){await until(()=>p.ev(`const b=[...document.querySelectorAll('button')].find(x=>x.offsetParent!==null&&!x.disabled&&x.textContent.trim()===${JSON.stringify(label)});if(!b)return false;b.click();return true;`),'click '+label);}
 async function tab(p,label){assert.equal(await p.ev(`return __q.tab(${JSON.stringify(label)})`),'ok');await sleep(200);}
+async function actionVisible(p, selector){return p.ev(`const b=document.querySelector(${JSON.stringify(selector)});if(!b)return null;const r=b.getBoundingClientRect(),nav=document.querySelector('.tab-bar').getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {top:r.top,bottom:r.bottom,navTop:nav.top,visible:r.top>=80&&r.bottom<=nav.top,hit:b===hit||b.contains(hit),width:document.documentElement.scrollWidth};`);}
 async function stallNextShareRead(p,strategy,holder){await p.ev(`
  const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js'))?.name;
  if(!moduleUrl)throw Error('Ethers runtime not loaded');const {JsonRpcProvider}=await import(moduleUrl);const send=JsonRpcProvider.prototype.send;
@@ -84,6 +85,15 @@ try{
    await snap(guest,`app-entry-${width}`);
  }
  pass('320px, 390px and desktop entry keep the primary action and all touch-sized tabs visible without scrolling');
+ for(const [width,height] of [[320,640],[390,844]]){
+  await guest.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+  await guest.ev(`document.querySelector('.entry-rules').open=true;return true;`);
+  const rules=await guest.ev(`const b=document.querySelector('.entry-action .btn');const r=b.getBoundingClientRect();const nav=document.querySelector('.tab-bar').getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {steps:document.querySelectorAll('.entry-rules li').length,text:document.querySelector('.entry-rules').innerText,visible:r.bottom<=nav.top&&r.top>=0,hit:b===hit||b.contains(hit),width:document.documentElement.scrollWidth};`);
+  assert.equal(rules.steps,3);assert.ok(rules.text.includes('seven-day review')&&rules.text.includes('signing in does not count')&&rules.text.includes('The owner can check in to cancel until transfer actually executes'));
+  assert.ok(rules.visible&&rules.hit&&rules.width<=width,JSON.stringify(rules));await snap(guest,`entry-rules-${width}`);
+  await guest.ev(`document.querySelector('.entry-rules').open=false;window.scrollTo(0,0);return true;`);
+ }
+ pass('expanded transfer rules explain check-ins, recipient claims and the review while sign-in remains reachable');
  for(const name of ['Assets','Plan','Help']){await tab(guest,name);assert.equal(await guest.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),name);}
  assert.ok(await guest.ev(`return !!document.querySelector('a[href="/privacy.html"]') && !!document.querySelector('a[href="/terms.html"]')`));
  assert.equal(await guest.ev(`return performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/auth/')).length`),0);
@@ -105,6 +115,8 @@ try{
  const koreanGuest=await launch({pk:ACCOUNTS.a0.pk,url,preload:preload+`localStorage.setItem('inheritance:locale','ko');`});pages.push(koreanGuest);await koreanGuest.ev(HELPERS);
  assert.equal(await koreanGuest.ev(`return document.querySelector('.app-shell').lang`),'ko');
  assert.ok((await snap(koreanGuest,'app-entry-ko')).text.includes('플랜 잔액'));
+ await koreanGuest.ev(`document.querySelector('.entry-rules').open=true;return true;`);
+ assert.ok(await koreanGuest.ev(`return document.querySelector('.entry-rules').innerText.includes('신청일부터 7일')&&document.querySelector('.entry-rules').innerText.includes('로그인하는 것만으로는 갱신되지 않습니다')`));
  assert.equal(await koreanGuest.ev(`return performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/auth/')).length`),0);
  pass('Korean first entry uses the same app layout and localized unavailable balances');
  await koreanGuest.close();pages.splice(pages.indexOf(koreanGuest),1);
@@ -118,6 +130,79 @@ try{
  pass('background balance refresh preserves the settled Assets setup action');
  await click(empty,'Create plan');await until(()=>empty.ev(`return !!document.getElementById('heir-input')`),'empty state opens setup');
  assert.equal((await empty.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);pass('signed-in empty Home and Assets lead to actual setup without a transaction');
+ await until(()=>empty.ev(`return !!document.querySelector('.plan-funding-note')`),'known zero wallet guidance');
+ assert.ok(await empty.ev(`return document.querySelector('.plan-funding-note').innerText.includes('No available funds')&&document.querySelector('.plan-primary-actions').innerText.includes('Enter an amount')`));
+ pass('a verified empty wallet explains funding instead of leaving an unexplained disabled setup action');
+ await empty.ev(`document.getElementById('heir-input').focus();return true;`);
+ await empty.send('Emulation.setDeviceMetricsOverride',{width:390,height:460,deviceScaleFactor:1,mobile:true});
+ await until(()=>empty.ev(`return document.documentElement.hasAttribute('data-plan-keyboard')`),'keyboard-sized viewport');
+ await until(()=>empty.ev(`const a=document.querySelector('.plan-primary-actions').getBoundingClientRect(),input=document.activeElement.getBoundingClientRect();return input.top>=80&&input.bottom<=a.top-16;`),'focused recipient stays above keyboard actions');
+ const keyboard=await empty.ev(`const a=document.querySelector('.plan-primary-actions').getBoundingClientRect();const input=document.activeElement.getBoundingClientRect();return {height:visualViewport.height,top:a.top,bottom:a.bottom,inputTop:input.top,inputBottom:input.bottom,tabs:getComputedStyle(document.querySelector('.tab-bar')).display};`);
+ assert.ok(keyboard.bottom<=keyboard.height-23&&keyboard.top>0,JSON.stringify(keyboard));assert.equal(keyboard.tabs,'none');
+ assert.ok(keyboard.inputTop>=80&&keyboard.inputBottom<=keyboard.top-16,JSON.stringify(keyboard));await snap(empty,'setup-keyboard');
+ await empty.ev('document.activeElement.blur();return true;');await empty.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await until(()=>empty.ev(`return !document.documentElement.hasAttribute('data-plan-keyboard')&&document.querySelector('.tab-bar').getBoundingClientRect().height>0`),'navigation restored after keyboard');
+ pass('setup actions follow a reduced visual viewport and navigation returns when editing ends');
+ await empty.ev(`const viewport=window.visualViewport;Object.defineProperty(viewport,'height',{value:460,configurable:true});Object.defineProperty(viewport,'offsetTop',{value:0,configurable:true});document.getElementById('heir-input').focus();viewport.dispatchEvent(new Event('resize'));return true;`);
+ await until(()=>empty.ev(`const a=document.querySelector('.plan-primary-actions').getBoundingClientRect(),input=document.activeElement.getBoundingClientRect();return innerHeight===844&&input.top>=80&&input.bottom<=a.top-16&&a.bottom<=visualViewport.height-23;`),'visual-only keyboard leaves focused recipient and actions visible');
+ await snap(empty,'setup-visual-only-keyboard');
+ await empty.ev(`document.activeElement.blur();delete visualViewport.height;delete visualViewport.offsetTop;visualViewport.dispatchEvent(new Event('resize'));return true;`);
+ await until(()=>empty.ev(`return !document.documentElement.hasAttribute('data-plan-keyboard')`),'visual-only keyboard ends');
+ pass('a simulated visual-only keyboard keeps input above the action bar without shrinking the layout viewport');
+ await(await wld.mint(ACCOUNTS.a4.a,parseUnits('1',18))).wait();await(await usdc.mint(ACCOUNTS.a4.a,parseUnits('1',6))).wait();
+ await click(empty,'Refresh balances');await until(()=>empty.ev(`return [...document.querySelectorAll('.plan-asset-balance')].every(x=>x.innerText.includes('Available: 1'))`),'funded wallet balances settle');
+ await empty.ev(`return __q.setInput('plan-usdc','0.5')`);await empty.ev(`return __q.setInput('heir-input',${JSON.stringify(ACCOUNTS.a1.a)})`);
+ await empty.ev(`document.getElementById('heir-input').focus();return true;`);await empty.send('Emulation.setDeviceMetricsOverride',{width:390,height:460,deviceScaleFactor:1,mobile:true});
+ await until(()=>empty.ev(`const a=document.querySelector('.plan-primary-actions').getBoundingClientRect(),r=document.activeElement.getBoundingClientRect();return r.top>=80&&r.bottom<=a.top-16;`),'focused recipient before background failure');
+ await empty.ev(`const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js')).name;const {JsonRpcProvider}=await import(moduleUrl);window.__TOKEN_BALANCE_SEND__=JsonRpcProvider.prototype.send;JsonRpcProvider.prototype.send=async function(method,params){const data=(params?.[0]?.data||params?.[0]?.input||'').toLowerCase();if(method==='eth_call'&&params[0].to?.toLowerCase()===${JSON.stringify(usdc.target.toLowerCase())}&&data.startsWith('0x70a08231')&&data.endsWith(${JSON.stringify(ACCOUNTS.a4.a.slice(2).toLowerCase())}))throw Error('E2E token balance unavailable');return window.__TOKEN_BALANCE_SEND__.call(this,method,params);};return true;`);
+ await empty.ev(`document.dispatchEvent(new Event('visibilitychange'));return true;`);await until(()=>empty.ev(`return document.querySelectorAll('.plan-asset-balance')[1].innerText.includes('Balance unavailable')`),'failed USDC read shows retry');
+ await until(()=>empty.ev(`const a=document.querySelector('.plan-primary-actions').getBoundingClientRect(),r=document.activeElement.getBoundingClientRect();return document.activeElement.id==='heir-input'&&r.top>=80&&r.bottom<=a.top-16;`),'background error growth keeps recipient visible above keyboard actions');
+ pass('background balance errors resize the form without hiding the focused input under the keyboard action bar');
+ await empty.ev('document.activeElement.blur();return true;');await empty.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ assert.ok(await empty.ev(`return document.querySelector('.plan-primary-actions .plan-submit').disabled`));
+ assert.equal((await empty.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);
+ await empty.ev(`const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js')).name;const {JsonRpcProvider}=await import(moduleUrl);JsonRpcProvider.prototype.send=window.__TOKEN_BALANCE_SEND__;return true;`);
+ await click(empty,'Refresh balances');await until(()=>empty.ev(`return !document.querySelector('.plan-primary-actions .plan-submit').disabled`),'balance retry permits review');
+ await click(empty,'Review plan');await until(()=>empty.ev(`return !!document.querySelector('.plan-final-review')`),'reviewed safe setup');
+ assert.ok(await empty.ev(`return document.querySelector('.plan-risk').innerText.includes('independent security audit')`));
+ assert.ok(await empty.ev(`return document.querySelector('.plan-primary-actions .plan-submit').disabled`));
+ for(const [width,height] of [[320,640],[390,844]]){
+  await empty.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+  const layout=await actionVisible(empty,'.plan-primary-actions .plan-submit');assert.ok(layout.visible&&layout.hit&&layout.width<=width,JSON.stringify(layout));
+  await empty.ev(`document.getElementById('yield-consent').scrollIntoView({block:'center'});return true;`);
+  const consent=await empty.ev(`const b=document.getElementById('yield-consent'),r=b.getBoundingClientRect(),a=document.querySelector('.plan-primary-actions').getBoundingClientRect();return {top:r.top,bottom:r.bottom,actionsTop:a.top};`);assert.ok(consent.top>=80&&consent.bottom<=consent.actionsTop,JSON.stringify(consent));
+  await empty.ev(`window.scrollTo(0,document.documentElement.scrollHeight);return true;`);
+  const legal=await empty.ev(`const actions=document.querySelector('.plan-primary-actions').getBoundingClientRect();return [...document.querySelectorAll('.plan-legal-copy a')].map(b=>{const r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {text:b.textContent,top:r.top,bottom:r.bottom,visible:r.top>=80&&r.bottom<=actions.top,hit:b===hit||b.contains(hit)};});`);assert.equal(legal.length,2);assert.ok(legal.every(link=>link.visible&&link.hit),JSON.stringify(legal));
+  await snap(empty,`setup-review-${width}`);
+ }
+ pass('review controls stay reachable at 320px and 390px while mandatory risk consent can be read and reached');
+ assert.equal((await empty.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);pass('failed token reads cannot open deposit approval, retry recovers the draft and review keeps audit disclosure and unchecked consent');
+ await click(empty,'Edit plan');await empty.ev(`return __q.setInput('plan-usdc','')`);await empty.ev(`return __q.setInput('heir-input','')`);
+
+ const timed=await open(ACCOUNTS.a4.pk);await tab(timed,'Plan');await until(()=>timed.ev(`return !!document.getElementById('heir-input')`),'token timeout setup');
+ await timed.ev(`return __q.setInput('plan-wld','0.5')`);await timed.ev(`return __q.setInput('heir-input',${JSON.stringify(ACCOUNTS.a1.a)})`);
+ await until(()=>timed.ev(`return !document.querySelector('.plan-submit').disabled`),'healthy WLD draft can review');
+ await timed.ev(`const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js')).name;const {JsonRpcProvider}=await import(moduleUrl);window.__TOKEN_SEND__=JsonRpcProvider.prototype.send;window.__TOKEN_STALL__={started:0,completed:0};JsonRpcProvider.prototype.send=async function(method,params){const data=(params?.[0]?.data||params?.[0]?.input||'').toLowerCase();if(method==='eth_call'&&params[0].to?.toLowerCase()===${JSON.stringify(usdc.target.toLowerCase())}&&data.startsWith('0x70a08231')&&data.endsWith(${JSON.stringify(ACCOUNTS.a4.a.slice(2).toLowerCase())})){window.__TOKEN_STALL__.started++;await new Promise(resolve=>{window.__RELEASE_TOKEN__=resolve});try{return await window.__TOKEN_SEND__.call(this,method,params)}finally{window.__TOKEN_STALL__.completed++}}return window.__TOKEN_SEND__.call(this,method,params);};return true;`);
+ await click(timed,'Refresh balances');await until(()=>timed.ev(`return window.__TOKEN_STALL__.started===1`),'USDC token read stalls');
+ await until(()=>timed.ev(`return document.querySelectorAll('.plan-asset-balance')[1].innerText.includes('Balance unavailable')`),'only stalled token becomes unavailable',55000);
+ assert.ok(await timed.ev(`return document.querySelectorAll('.plan-asset-balance')[0].innerText.includes('Available: 1')&&!document.querySelector('.plan-submit').disabled`));
+ await timed.ev(`const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js')).name;const {JsonRpcProvider}=await import(moduleUrl);JsonRpcProvider.prototype.send=window.__TOKEN_SEND__;window.__RELEASE_TOKEN__();return true;`);
+ await until(()=>timed.ev(`return window.__TOKEN_STALL__.completed===1`),'expired token response returns');
+ assert.ok(await timed.ev(`return document.querySelectorAll('.plan-asset-balance')[1].innerText.includes('Balance unavailable')`));
+ assert.equal((await timed.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);
+ await click(timed,'Refresh balances');await until(()=>timed.ev(`return [...document.querySelectorAll('.plan-asset-balance')].every(x=>x.innerText.includes('Available: 1'))`),'fresh token retry restores both assets');
+ assert.ok(await timed.ev(`return document.getElementById('plan-wld').value==='0.5'&&!document.querySelector('.plan-submit').disabled`));
+ pass('a USDC timeout preserves a healthy WLD-only draft, ignores its late response and recovers with a fresh retry');
+ await timed.close();pages.splice(pages.indexOf(timed),1);
+
+ const usdcOnly=await open(ACCOUNTS.a4.pk);await tab(usdcOnly,'Plan');await until(()=>usdcOnly.ev(`return !!document.getElementById('heir-input')`),'healthy USDC setup');
+ await usdcOnly.ev(`return __q.setInput('plan-usdc','0.5')`);await usdcOnly.ev(`return __q.setInput('heir-input',${JSON.stringify(ACCOUNTS.a1.a)})`);
+ await usdcOnly.ev(`const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js')).name;const {JsonRpcProvider}=await import(moduleUrl);window.__WLD_READ_SEND__=JsonRpcProvider.prototype.send;JsonRpcProvider.prototype.send=async function(method,params){const data=(params?.[0]?.data||params?.[0]?.input||'').toLowerCase();if(method==='eth_call'&&params[0].to?.toLowerCase()===${JSON.stringify(wld.target.toLowerCase())}&&data.startsWith('0x70a08231')&&data.endsWith(${JSON.stringify(ACCOUNTS.a4.a.slice(2).toLowerCase())}))throw Error('E2E selected WLD balance unavailable');return window.__WLD_READ_SEND__.call(this,method,params);};return true;`);
+ await click(usdcOnly,'Refresh balances');await until(()=>usdcOnly.ev(`return document.querySelectorAll('.plan-asset-balance')[0].innerText.includes('Balance unavailable')&&document.querySelectorAll('.plan-asset-balance')[1].innerText.includes('Available: 1')&&!document.querySelector('.plan-submit').disabled`),'a failed selected WLD read leaves healthy USDC ready');
+ await click(usdcOnly,'Review plan');assert.equal((await usdcOnly.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);
+ assert.ok(await usdcOnly.ev(`return document.querySelector('.plan-review-amount').textContent==='0.5 USDC'`));
+ pass('a failed selected WLD balance cannot invalidate a healthy USDC-only draft or request a wallet approval');
+ await usdcOnly.close();pages.splice(pages.indexOf(usdcOnly),1);
  await empty.ev(`window.__ENTRY_SCAN_FETCH__=window.fetch.bind(window);window.__ENTRY_SCAN_FAILURES__=0;window.fetch=async(input,init)=>{const url=new URL(typeof input==='string'?input:input.url,location.origin);if(url.pathname==='/api/notifications'){window.__ENTRY_SCAN_FAILURES__++;throw Error('E2E heir index unavailable');}return window.__ENTRY_SCAN_FETCH__(input,init);};return true;`);
  await tab(empty,'Help');await click(empty,'Check again');await tab(empty,'Home');
  await until(()=>empty.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('Plan lookup unavailable')`),'failed heir lookup state');
@@ -142,7 +227,16 @@ try{
  assert.equal(await explicitPlan.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Plan');
  pass('sign-in from Plan preserves the chosen section when the owner registry finishes');
  await explicitPlan.close();pages.splice(pages.indexOf(explicitPlan),1);
- const op=await open(ACCOUNTS.a0.pk);await tab(op,'Plan');await until(()=>op.ev(`return !!document.getElementById('period-change')`),'owner settings');const ownerInitial=await snap(op,'owner-plan-initial');
+ const op=await open(ACCOUNTS.a0.pk);await tab(op,'Home');
+ for(const [width,height] of [[320,640],[390,844]]){
+  await op.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await op.ev('window.scrollTo(0,0);return true');
+  const layout=await actionVisible(op,'.plan-overview-card .btn-primary');assert.ok(layout.visible&&layout.hit&&layout.width<=width,JSON.stringify(layout));await snap(op,`owner-home-${width}`);
+ }
+ pass('the owner sees and can tap the due-date check-in action before scrolling on small screens');
+ await tab(op,'Plan');await until(()=>op.ev(`return !!document.getElementById('period-change')`),'owner settings');const ownerInitial=await snap(op,'owner-plan-initial');
+ assert.ok(await op.ev(`return document.getElementById('period-change').getBoundingClientRect().top<document.querySelector('.invite-disclosure').getBoundingClientRect().top&&!document.querySelector('.invite-disclosure').open`));
+ await op.ev(`document.querySelector('.invite-disclosure').open=true;return true`);assert.ok(await op.ev(`return document.querySelector('.invite-heir-card button').offsetParent!==null`));await op.ev(`document.querySelector('.invite-disclosure').open=false;return true`);
+ assert.equal((await op.ev('return window.__E2E_MINIKIT__.txLog()')).length,0);pass('settings precede the compact invitation and expanding sharing controls sends no wallet request');
  assert.ok(!ownerInitial.headings.includes('Set up your plan'));pass('owner settings do not duplicate first-time setup');
  const hp=await open(ACCOUNTS.a1.pk);await until(()=>hp.ev(`return document.querySelectorAll('.inheritance-asset').length===2`),'grouped heir discovery');const discovered=await snap(hp,'heir-entry-no-link');
  assert.equal(await hp.ev(`return document.querySelectorAll('.heir-plan-card').length`),1);
@@ -201,7 +295,13 @@ try{
  await linked.ev(`const s=document.querySelector('.locale-picker select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'ko');s.dispatchEvent(new Event('change',{bubbles:true}));return true`);const korean=await snap(linked,'heir-linked-active-ko');
  assert.ok(korean.text.includes('상속 수령 절차'));assert.ok(!korean.text.includes('Inheritance Status'));assert.ok(!korean.text.includes('Set up your plan'));pass('Korean heir path uses translated status and next steps');
  await linked.ev(`const s=document.querySelector('.locale-picker select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'en');s.dispatchEvent(new Event('change',{bubbles:true}));return true`);
- await provider.send('evm_increaseTime',[15*86400]);await provider.send('evm_mine',[]);await linked.send('Page.reload');await sleep(2200);await linked.ev(HELPERS);await click(linked,'File claim');
+ await provider.send('evm_increaseTime',[15*86400]);await provider.send('evm_mine',[]);await linked.send('Page.reload');await sleep(2200);await linked.ev(HELPERS);
+ await until(()=>linked.ev(`return !!document.querySelector('.heir-next-action .btn')`),'eligible recipient action');
+ for(const [width,height] of [[320,640],[390,844]]){
+  await linked.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await linked.ev('window.scrollTo(0,0);return true');
+  const layout=await actionVisible(linked,'.heir-next-action .btn');assert.ok(layout.visible&&layout.hit&&layout.width<=width,JSON.stringify(layout));await snap(linked,`heir-claim-${width}`);
+ }
+ pass('an eligible recipient sees the combined claim action before scrolling on small screens');await click(linked,'File claim');
  await until(async()=>await wc.claimFiledAt()>0n && await uc.claimFiledAt()>0n,'combined claim');await until(()=>linked.ev(`return document.querySelectorAll('.state-waiting').length===2`),'review window UI');assert.equal((await linked.ev('return window.__E2E_MINIKIT__.lastCalldata()')).length,2);await until(()=>linked.ev(`return document.body.innerText.includes('Claim confirmed for the listed assets.')`),'canonical claim events');pass('one wallet approval files both claims and verifies both factory events');await snap(linked,'heir-claim-wait');
  assert.equal(await linked.ev(`return [...document.querySelectorAll('button')].some(b=>b.offsetParent!==null&&b.textContent.trim()==='Complete inheritance')`),false);pass('no premature transfer action during the seven-day review');
  await provider.send('evm_increaseTime',[7*86400+10]);await provider.send('evm_mine',[]);await (await usdcStrategy.setLiquidity(0)).wait();

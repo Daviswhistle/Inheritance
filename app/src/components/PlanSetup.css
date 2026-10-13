@@ -1,4 +1,17 @@
 .plan-setup-card { overflow: hidden; background: #fffef9; }
+.plan-setup-card.plan-setup-with-actions .card-content.plan-setup-content { padding-bottom: 190px; }
+.plan-setup-card .plan-card-intro { margin-top: 7px; }
+.plan-primary-actions { position: fixed; z-index: 28; bottom: calc(89px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: calc(100% - 48px); max-width: 432px; box-sizing: border-box; padding: 12px; border: 1px solid #dbe5d4; border-radius: 16px; background: #fffef9; box-shadow: 0 -4px 24px rgba(32,59,50,.08); }
+.plan-primary-actions > .plan-submit { width: 100%; }
+.plan-primary-actions .plan-step-actions { margin: 0; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; }
+.plan-primary-actions .plan-step-actions .btn { min-width: 0; padding-inline: 9px; }
+.plan-primary-actions .btn { min-height: 48px; }
+.plan-action-hint { margin: 0 0 8px; font-size: 12px; line-height: 1.45; color: #5b6e60; }
+.plan-balance-refresh { justify-self: start; min-height: 44px; }
+.plan-funding-note { padding: 12px; border: 1px solid #dfe6d8; border-radius: 12px; background: #f5f8f0; font-size: 13px; line-height: 1.5; color: #43594a; }
+.plan-funding-note > p { margin: 5px 0 0; }
+html[data-plan-keyboard] .tab-bar { display: none; }
+html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-content { padding-bottom: 200px; }
 .plan-setup-card .card-header { padding: 17px 18px 13px; border-color: #e4e8dc; background: #fbfcf6; }
 .plan-setup-card .eyebrow { color: #5f795e; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .plan-setup-card .card-title { margin-top: 5px; color: #263e31; font-size: 20px; letter-spacing: -.45px; }

@@ -7,7 +7,7 @@ import { useLocale } from "@/locale-context";
 import "./PlanSetup.css";
 
 type PlanAsset = "WLD" | "USDC";
-type PlanRouteRow = { symbol: PlanAsset; decimals: number; mode: "morpho" | "plain"; amount: string; walletBalance: bigint | null; underlyingFeePercent?: number };
+type PlanRouteRow = { symbol: PlanAsset; decimals: number; mode: "morpho" | "plain"; amount: string; walletBalance: bigint | null; balanceUnavailable: boolean; underlyingFeePercent?: number };
 type PlanAssetProgress = { symbol: PlanAsset; amount: string; decimals: number; mode: "morpho" | "plain"; depositState: "ready" | "submitting" | "submitted" | "complete" };
 type PlanProgress = { heir: string; periodDays: number; createState: "ready" | "submitting" | "submitted" | "complete"; assets: PlanAssetProgress[];
   alignment?: { state: "submitting" | "submitted" } };
@@ -38,7 +38,7 @@ export function PlanSetup({
   rows, heir, onHeirChange, onPickHeir, resolvingHeir, heirResolved, heirUsername, shareBusy,
   period, periodValid, onPeriodChange, onPreset, onAmountChange, yieldConsent, onYieldConsent, pendingPlan,
   heirSuspicious, alignmentConflicts, onConfirmAlignment, onCancelAlignment, onCreate, onResume,
-  busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining,
+  busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining, onRefreshBalances,
 }: {
   rows: PlanRouteRow[];
   heir: string;
@@ -64,6 +64,7 @@ export function PlanSetup({
   onResume: () => void;
   canEditRemaining: boolean;
   onEditRemaining: () => void;
+  onRefreshBalances: () => void;
   busy: boolean;
   createDisabled: boolean;
   resumeDisabled: boolean;
@@ -73,6 +74,44 @@ export function PlanSetup({
   const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const wasReviewingRef = useRef(false);
   const createClickLocked = useRef(false);
+  const [keyboardOffset, setKeyboardOffset] = useState<number | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let fullHeight = window.innerHeight, width = window.innerWidth, frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (width !== window.innerWidth) { width = window.innerWidth; fullHeight = window.innerHeight; }
+        fullHeight = Math.max(fullHeight, window.innerHeight);
+        const active = document.activeElement;
+        const editing = active instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(active.type);
+        const keyboard = editing && viewport.scale === 1 && viewport.height < fullHeight - 120;
+        document.documentElement.toggleAttribute("data-plan-keyboard", keyboard);
+        setKeyboardOffset(keyboard ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : null);
+        if (keyboard && active instanceof HTMLElement) {
+          const rect = active.getBoundingClientRect();
+          const actionHeight = document.querySelector(".plan-primary-actions")?.getBoundingClientRect().height ?? 0;
+          const visibleTop = viewport.offsetTop + 80;
+          const visibleBottom = viewport.offsetTop + viewport.height - 24 - actionHeight - 16;
+          if (rect.bottom > visibleBottom) window.scrollBy(0, Math.ceil(rect.bottom - visibleBottom));
+          else if (rect.top < visibleTop) window.scrollBy(0, Math.floor(rect.top - visibleTop));
+        }
+      });
+    };
+    viewport.addEventListener("resize", update); viewport.addEventListener("scroll", update);
+    window.addEventListener("resize", update); document.addEventListener("focusin", update); document.addEventListener("focusout", update);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    for (const element of document.querySelectorAll(".plan-setup-content, .plan-primary-actions")) observer?.observe(element);
+    update();
+    return () => {
+      observer?.disconnect();
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update); document.removeEventListener("focusin", update); document.removeEventListener("focusout", update);
+      document.documentElement.removeAttribute("data-plan-keyboard");
+    };
+  }, []);
   const formatInterval = (seconds: bigint) => {
     if (locale === "en") return formatPlanInterval(seconds);
     const days = seconds / 86400n;
@@ -89,6 +128,7 @@ export function PlanSetup({
   const selectedRows = parsedRows.filter(item => item.amount !== null && item.amount > 0n);
   const invalidAmountRow = parsedRows.find(item => item.amount === null);
   const amountWithoutBalance = selectedRows.find(item => item.row.walletBalance === null);
+  const unavailableBalance = selectedRows.find(item => item.row.balanceUnavailable);
   const exceedsBalance = selectedRows.find(item => item.row.walletBalance !== null && item.amount !== null && item.amount > item.row.walletBalance);
 
   const trimmedHeir = heir.trim();
@@ -108,7 +148,7 @@ export function PlanSetup({
   const needsYieldConsent = selectedRows.some(item => item.row.mode === "morpho");
   const consentValid = !needsYieldConsent || yieldConsent;
   const hasSelectedAsset = selectedRows.length > 0;
-  const balancesValid = !amountWithoutBalance && !exceedsBalance;
+  const balancesValid = !unavailableBalance && !amountWithoutBalance && !exceedsBalance;
   const formValid = !invalidAmountRow && hasSelectedAsset && balancesValid && recipientValid && intervalValid;
 
   const currentFingerprint = JSON.stringify({
@@ -148,6 +188,7 @@ export function PlanSetup({
     if (pendingPlan) return t("plan.validation.pending");
     if (invalidAmountRow) return t("plan.validation.amount", { symbol: invalidAmountRow.row.symbol, decimals: invalidAmountRow.row.decimals });
     if (!hasSelectedAsset) return t("plan.validation.enterAmount");
+    if (unavailableBalance) return t("plan.validation.balanceUnavailable", { symbol: unavailableBalance.row.symbol });
     if (amountWithoutBalance) return t("plan.validation.balanceLoading", { symbol: amountWithoutBalance.row.symbol });
     if (exceedsBalance) return t("plan.validation.balance", { symbol: exceedsBalance.row.symbol });
     if (!trimmedHeir) return t("plan.validation.chooseHeir");
@@ -219,7 +260,7 @@ export function PlanSetup({
           <strong>{row.symbol}</strong>
         </div>
         <p id={balanceId} className="plan-asset-balance">
-          {row.walletBalance === null ? t("plan.balance.loading") : t("plan.balance.available", { amount: formatExactTokenAmount(row.walletBalance, row.decimals), symbol: row.symbol })}
+          {row.balanceUnavailable ? t("plan.balance.unavailable") : row.walletBalance === null ? t("plan.balance.loading") : t("plan.balance.available", { amount: formatExactTokenAmount(row.walletBalance, row.decimals), symbol: row.symbol })}
         </p>
         {rowError && <p id={errorId} className="plan-inline-error" role="alert">{t("plan.amount.errorPrecision", { decimals: row.decimals })}</p>}
         {!rowError && rowOverBalance && <p id={errorId} className="plan-inline-error" role="alert">{t("plan.amount.errorBalance")}</p>}
@@ -244,6 +285,7 @@ export function PlanSetup({
   const riskDisclosure = <section className="plan-risk" aria-labelledby="plan-risk-title">
     <h3 id="plan-risk-title" className={showReview ? "sr-only" : undefined}>{t("plan.risk.title")}</h3>
     <ul className="plan-risk-points">
+      <li>{t("plan.risk.audit")}</li>
       {!showReview && <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>}
       {!showReview && feeGroups(disclosedYieldRows).map(row => <li key={row.symbol}>{strategyFeeText(row)}</li>)}
       {hasYieldRoute && <li>{t("plan.risk.value")}</li>}
@@ -282,9 +324,10 @@ export function PlanSetup({
     </div>
   </section>;
 
-  return <Card className="plan-setup-card">
-    {!showReview && <CardHeader>
+  return <Card className={`plan-setup-card ${pendingPlan ? "" : "plan-setup-with-actions"}`}>
+    {!showReview && !pendingPlan && <CardHeader>
       <CardTitle>{t("plan.title")}</CardTitle>
+      <p className="plan-card-intro">{t("plan.intro")}</p>
     </CardHeader>}
     <CardContent className="plan-setup-content">
       {pendingPlan && <section className="plan-resume" aria-labelledby="plan-resume-title">
@@ -311,8 +354,12 @@ export function PlanSetup({
         </>}
       </section>}
 
-      {!showReview && <>
+      {!showReview && !pendingPlan && <>
         {amountSection}
+        <Button size="sm" variant="ghost" className="plan-balance-refresh" disabled={busy} onClick={onRefreshBalances}>{t("plan.balance.refresh")}</Button>
+        {rows.length > 0 && rows.every(row => !row.balanceUnavailable && row.walletBalance === 0n) && <div className="plan-funding-note" role="status">
+          <strong>{t("plan.balance.emptyTitle")}</strong><p>{t("plan.balance.emptyBody")}</p>
+        </div>}
 
         <div className="field-row">
           <label className="field-row-label" htmlFor="heir-input">{t("plan.recipient.label")}</label>
@@ -342,6 +389,7 @@ export function PlanSetup({
               aria-pressed={Number(period) === days} disabled={Boolean(pendingPlan) || busy} onClick={() => { setReviewSnapshot(null); onPreset(days); }}>{days} {t("plan.interval.days")}</button>)}
           </div>
           {!intervalValid && <p className="plan-inline-error" role="alert">{t("plan.interval.invalid")}</p>}
+          <p className="plan-field-help">{t("plan.interval.help")}</p>
         </div>
       </>}
 
@@ -386,6 +434,8 @@ export function PlanSetup({
       {validationReason && !pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
         && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
+      {!pendingPlan && <div className="plan-primary-actions" style={keyboardOffset === null ? undefined : { bottom: keyboardOffset + 24 }}>
+      <p className="plan-action-hint" role="status">{validationReason || t(showReview ? "plan.action.confirmHint" : "plan.action.reviewHint")}</p>
       {showReview
         ? <div className="plan-step-actions">
           <Button variant="primary" size="lg" className="plan-submit" disabled={busy || Boolean(pendingPlan) || createDisabled || !formValid || !consentValid || alignmentConflicts.length > 0} onClick={confirmPlan}>
@@ -396,6 +446,7 @@ export function PlanSetup({
         : <Button variant="primary" size="lg" className="plan-submit" disabled={busy || Boolean(pendingPlan) || !canReview} onClick={startReview}>
           {busy ? <><span className="spinner" />{t("plan.action.checking")}</> : pendingPlan ? t("plan.action.inProgress") : t("plan.action.review")}
         </Button>}
+      </div>}
     </CardContent>
   </Card>;
 }

@@ -171,7 +171,8 @@ async function captureStore(targetPage, name, selector = "") {
   if (process.env.UNIFIED_STORE_IMAGES !== "1") return;
   await targetPage.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await targetPage.ev(`const target = ${JSON.stringify(selector)} ? document.querySelector(${JSON.stringify(selector)}) : null;
-    window.scrollTo(0, target ? target.getBoundingClientRect().top + window.scrollY - 105 : 0);
+    const top = (document.querySelector('.app-header')?.getBoundingClientRect().height ?? 80) + 16;
+    window.scrollTo(0, target ? target.getBoundingClientRect().top + window.scrollY - top : 0);
     await new Promise(requestAnimationFrame); return true;`);
   const shot = await targetPage.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
   writeFileSync(path.join(SHOTS, name + ".png"), Buffer.from(shot.data, "base64"));
@@ -431,7 +432,7 @@ try {
   for (const width of [320, 360, 390]) await captureLayout(page, "create", width, ["#plan-wld", "#plan-usdc", "#period-input", ".plan-submit"]);
   const selectedPlan = JSON.parse(await page.ev("return JSON.stringify({amounts:[document.getElementById('plan-wld').value, document.getElementById('plan-usdc').value], chooserCount:document.querySelectorAll('input[name=\"vault-kind\"]').length})"));
   assert.deepEqual(selectedPlan, { amounts: ["2.5", "12.123456"], chooserCount: 0 });
-  await captureStore(page, "unified-store-create", "#plan-wld");
+  await captureStore(page, "unified-store-create", ".plan-assets");
   await clickButton(page, "Review plan");
   assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), false);
   assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"), true);

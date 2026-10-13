@@ -1,5 +1,59 @@
 # Release evidence
 
+## October 13, 2026 usable inheritance review candidate
+
+This candidate includes the app-first entry and makes the useful actions easier
+to find. Entry explains preparing assets for one trusted recipient. An optional
+three-step guide, also available in Help, distinguishes login from check-in,
+expiry from a claim, and the seven-day review from actual execution. The owner
+sees the next check-in and its action before asset totals. Plan opens with owner
+settings and an expandable invitation; eligible recipients see their next claim
+or completion action before currency details.
+
+Setup and final review keep their action above navigation. Disabled actions
+explain the missing step. Known zero wallet balances explain funding; failed
+token reads retain the draft and offer retry while blocking approval. The review
+retains exact amounts, full recipient, service and strategy fees, unchecked risk
+consent, and an explicit independent-audit disclosure. An interrupted setup
+shows saved progress and recovery controls without a disabled new-plan form.
+The editing toolbar follows a reduced visual viewport and normal navigation
+returns when editing ends.
+
+Local validation passed: complete plan experience browser **57**, unified plan
+browser **83**, canonical role recovery **5**, locale **7**, frontend typecheck,
+lint and CSS mapping. The UI and recovery suites use real local Anvil contract
+transactions and canonical receipts. No external notifications or chain writes
+were sent. The actual installed SDK production build was opened outside World
+App using the current public deployment variables: English and Korean entry,
+expanded rules, all four tabs, legal links and preserved shared paths work at
+320×640 and 390×844 without authentication requests or runtime errors.
+
+The complete-plan and unified suites were rerun after the keyboard, spacing and
+per-asset balance-read amendments:
+both reduced-layout and simulated visual-only keyboards keep the focused input
+above the action bar. Full Terms and Privacy Policy links remain visible and
+tappable at the end of review on both sizes. Failed or stalled token reads cannot
+invalidate a healthy other-token draft. Each token's precision is checked before
+publishing its amount; expired responses cannot overwrite a fresh read. Form and
+action-bar size changes trigger keyboard position correction, including a
+background error appearing during recipient input. The final wallet wait was
+bounded by its deadline and the affected entry/setup/timeout prefix was rerun.
+Native commit review found the overwritten bottom padding, cross-asset timeout
+blocking and keyboard layout growth; those findings were fixed before final
+re-review. Current UI captures were regenerated.
+
+Six store images were generated from the current app and inspected. They and
+the existing logo meet the dimensions and 500KB limit, contain no PNG metadata,
+and match their build copies. Prepared store descriptions lead with the benefit
+and retain the claim, fee, investment-risk, control and audit disclosures.
+
+Branch: `fix/usable-inheritance-experience`, task parent `bb45590`. This records
+a validated local candidate, not a production deployment or Portal submission.
+Native iOS/Android keyboard, wallet approvals and push arrival still need device
+verification. New-user task observations are needed before claiming that people
+find the app easy to use or prefer it. No independent external security audit
+has been performed; store approval remains a separate external decision.
+
 ## October 13, 2026 app entry review candidate
 
 The marketing landing page is removed. Home, Assets, Plan and Help are available

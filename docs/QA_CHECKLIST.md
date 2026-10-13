@@ -28,6 +28,9 @@ Use current evidence, not checked boxes copied from a previous release. Local re
 - Amount-first creation: “Review plan” sends no wallet request, preserves exact 18/6-decimal amounts and the full resolved heir, and “Edit plan” restores input focus. Final confirmation retains durable recovery and pending-wallet guards.
 - Home/Assets/Plan navigation: token selection retains canonical routing, earlier balances remain reachable, a shared balance identifies its owner, and income/principal controls remain separate. Asset switches clear custom income destinations and render one income card.
 - Audit both default and expanded disclosures; closed descendants must not be counted as visible controls. Inspect at 320px as well as 390px, including the final approval screen.
+- At 320×640 and 390×844, check-in and an eligible recipient claim are visible and tappable before scrolling. Settings appear before the collapsed invitation; opening it preserves all sharing controls without sending anything. Setup/review actions remain above navigation, and full recipient, fees and mandatory risk consent can be reached by scrolling.
+- Reduce the editing viewport and simulate a smaller visual viewport with the layout height retained: the focused input and setup action remain visible, navigation returns after editing, and tab changes restore normal layout. A failed token-balance read retains the draft, explains retry and blocks deposit approval; a successful retry enables review. At maximum review scroll, the full Terms and Privacy Policy links must be visible and tappable above the action bar. Distinguish these browser geometry checks from the real-device keyboard check below.
+- A stalled USDC read must preserve healthy WLD-only setup; a failed selected WLD read must preserve healthy USDC-only setup. Publish each successful balance independently, verify its token precision and invalidate only failed/timed-out tokens. Expired responses cannot clear their unavailable state; fresh retry retains the amounts. Background errors and changing action hints must not cover a focused input while the keyboard remains open.
 
 ## Remote checks
 
@@ -42,3 +45,5 @@ Use current evidence, not checked boxes copied from a previous release. Local re
 ## External evidence still needed
 
 Native World App iOS/Android wallet approvals, permission dialogs, contacts and recipient notification delivery must be tested on real devices. A local MiniKit bridge stub cannot verify those surfaces. Store approval is a separate external decision. No independent external contract audit has been performed.
+
+For first-use acceptance on a real device, ask someone unfamiliar with the app to explain who can receive funds and when, prepare a draft without assistance, find the fees and risks, locate check-in, and open a received plan. Verify they understand that login is not check-in and that missing the deadline alone does not send funds. Try amount/recipient input with the native keyboard and return from wallet cancellation. Record actual observations before claiming ease of use or user preference; automated success is not evidence that people like the app.

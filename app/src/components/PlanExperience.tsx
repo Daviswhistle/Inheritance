@@ -29,6 +29,13 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
           <p className="plan-card-intro">{t(completed ? "journey.heir.completed" : "journey.heir.description")}</p>
         </CardHeader>
         <CardContent className="grid gap-3">
+          {selected && (filed.length > 0 || ready.length > 0) && <section className="heir-next-action" aria-label={t("journey.nextStep")}>
+            <strong>{t("journey.nextStep")}</strong>
+            {filed.length > 0 && <Button variant="primary" disabled={busy || loading} onClick={() => onAction("file", filed)}>{t("journey.action.file")}</Button>}
+            {filed.length > 1 && <p>{t("journey.action.together", { assets: [...new Set(filed.map(p => p.symbol))].join(" + ") })}</p>}
+            {ready.length > 0 && <Button variant="primary" disabled={busy || loading} onClick={() => onAction("finish", ready)}>{t("journey.action.finish")}</Button>}
+            {ready.length > 1 && <p>{t("journey.action.together", { assets: [...new Set(ready.map(p => p.symbol))].join(" + ") })}</p>}
+          </section>}
           <div className="inheritance-assets">
             {group.map(p => {
               const stage = inheritanceStage(p), r = p.receipt;
@@ -57,10 +64,6 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
             })}
           </div>
           {selected ? <>
-            {filed.length > 0 && <Button variant="primary" disabled={busy || loading} onClick={() => onAction("file", filed)}>{t("journey.action.file")}</Button>}
-            {filed.length > 1 && <p className="text-xs text-gray-600">{t("journey.action.together", { assets: [...new Set(filed.map(p => p.symbol))].join(" + ") })}</p>}
-            {ready.length > 0 && <Button variant="primary" disabled={busy || loading} onClick={() => onAction("finish", ready)}>{t("journey.action.finish")}</Button>}
-            {ready.length > 1 && <p className="text-xs text-gray-600">{t("journey.action.together", { assets: [...new Set(ready.map(p => p.symbol))].join(" + ") })}</p>}
             {!completed && <p className="text-xs text-gray-600">{t("journey.heir.ownerControl")}</p>}
             {!completed && permission !== "granted" && <Button variant="outline" disabled={busy} onClick={onEnableNotifications}>{t("home.reminders.enable")}</Button>}
             <details><summary>{t("journey.heir.details")}</summary>
@@ -112,12 +115,12 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
     </CardContent></Card>;
 }
 
-export function InviteHeir({ ready, name, link, busy, readiness, onChat, onLink, onMessage, onRefresh }: {
-  ready: boolean; name: string; link: string; busy: boolean; readiness: HeirReadiness | null;
+export function InviteHeir({ ready, compact = false, name, link, busy, readiness, onChat, onLink, onMessage, onRefresh }: {
+  ready: boolean; compact?: boolean; name: string; link: string; busy: boolean; readiness: HeirReadiness | null;
   onChat: () => void; onLink: () => void; onMessage: () => void; onRefresh: () => void;
 }) {
   const { t, locale } = useLocale();
-  return <Card className={`invite-heir-card ${ready ? "plan-ready-card" : ""}`}><CardHeader>
+  const content = <Card className={`invite-heir-card ${ready ? "plan-ready-card" : ""}`}><CardHeader>
     <span className="eyebrow">{t(ready ? "journey.invite.ready" : "journey.invite.eyebrow")}</span>
     <CardTitle>{t("journey.invite.title")}</CardTitle><p className="plan-card-intro">{t("journey.invite.description")}</p>
   </CardHeader><CardContent className="grid gap-2">
@@ -130,4 +133,6 @@ export function InviteHeir({ ready, name, link, busy, readiness, onChat, onLink,
       <small>{t("journey.invite.lastObserved")}</small><Button size="sm" variant="ghost" disabled={busy} onClick={onRefresh}>{t("journey.action.refresh")}</Button>
     </div>
   </CardContent></Card>;
+  return compact ? <details className="invite-disclosure"><summary>{t("journey.invite.title")}
+    <span>{t(readiness ? "journey.invite.visited" : "journey.invite.shareHint")}</span></summary>{content}</details> : content;
 }
