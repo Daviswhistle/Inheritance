@@ -99,7 +99,8 @@ function render(state) {
     const reject = document.createElement("button"); reject.textContent = "Reject";
     reject.onclick = () => { controller.reject(entry.id); dialog.close(); };
     const row = document.createElement("div"); row.className = "row"; row.append(approve, reject);
-    item.append(title, payload, row); return item;
+    // Keep decisions above the potentially long payload in short native views.
+    item.append(title, row, payload); return item;
   }));
   if (state.pending.length) show();
 }

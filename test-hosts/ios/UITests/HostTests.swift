@@ -160,6 +160,11 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(saved.waitForExistence(timeout: 60), "Unconfirmed setup must survive native process death")
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "pending"]), pendingNonce, "Restart must not submit another transaction")
         _ = try hostJSON("/__host/control", body: ["action": "mine"])
+        // Mining the first EIP-7702 delegation consumes an authorization nonce
+        // as well as the outer transaction nonce. Compare recovery against the
+        // mined baseline, not Anvil's pre-execution pending nonce estimate.
+        let minedNonce = try rpcString("eth_getTransactionCount", [account, "latest"])
+        XCTAssertNotEqual(minedNonce, nonceBefore)
         let resume = web.buttons["Resume remaining setup"].firstMatch
         XCTAssertTrue(resume.waitForExistence(timeout: 20))
         for _ in 0..<5 {
@@ -176,8 +181,8 @@ final class HostTests: XCTestCase {
         XCTAssertNotEqual(vault, "0x" + String(repeating: "0", count: 40))
         let basis = try rpcString("eth_call", [["to": vault, "data": "0x53e3cb5f"], "latest"])
         XCTAssertEqual(UInt64(basis.dropFirst(2), radix: 16), 1_000_001)
-        XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "latest"]), pendingNonce)
-        XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "pending"]), pendingNonce, "Recovery must not replay an already submitted deposit")
+        XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "latest"]), minedNonce)
+        XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "pending"]), minedNonce, "Recovery must not replay an already submitted deposit")
         capture("pending-deposit-recovered-without-resubmission", app)
     }
 
