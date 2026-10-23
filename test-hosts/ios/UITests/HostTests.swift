@@ -228,24 +228,27 @@ final class HostTests: XCTestCase {
         var observations = 0
         var lastInvalidGeometry = ""
         let status = app.staticTexts["test-host-status"]
+        let keyboard = app.keyboards.firstMatch
         let visibleAndStable = NSPredicate { _, _ in
             // Snapshot values are truncated at 512 characters by XCTest. Read
             // the complete telemetry directly, then take one coherent snapshot
-            // for all native frames. Both must agree across stable samples.
+            // for app frames. All values must agree across stable samples.
             let raw = status.value as? String ?? ""
+            // A keyboard inside app.snapshot() retains portrait coordinates
+            // after rotation. The direct element frame is screen-oriented.
+            let keyboardFrame = keyboard.frame
             guard let snapshot = try? app.snapshot() else {
                 stableSince = nil; observations = 0; return false
             }
             let nodes = self.flattenedSnapshots(snapshot)
             guard let inputSnapshot = nodes.first(where: { $0.elementType == .textField && $0.label == inputLabel }),
                   let webSnapshot = nodes.first(where: { $0.elementType == .webView && !$0.frame.isEmpty }),
-                  let keyboardSnapshot = nodes.first(where: { $0.elementType == .keyboard && !$0.frame.isEmpty }),
-                  let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty }) else {
+                  let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty }),
+                  !keyboardFrame.isEmpty else {
                 stableSince = nil; observations = 0; return false
             }
             let field = inputSnapshot.frame
             let webFrame = webSnapshot.frame
-            let keyboardFrame = keyboardSnapshot.frame
             let doneFrame = doneSnapshot.frame
             guard let data = raw.data(using: .utf8),
                   let metrics = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
