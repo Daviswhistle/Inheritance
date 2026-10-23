@@ -142,6 +142,40 @@ try {
   }
   assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 1);
   pass('Actual iOS SDK login and one approved atomic WLD/USDC setup preserve exact amounts and require consent');
+  // Hold real RPC responses during a fresh read. An empty in-memory overview is
+  // not evidence that this funded owner has no active inheritance plan.
+  let releasePositions;
+  const positionGate = new Promise(resolve => { releasePositions = resolve; });
+  const positionSelector = new Contract(wldVault, ['function position()'], provider).interface.getFunction('position').selector;
+  let heldPositions = 0;
+  const delayPositions = async route => {
+    const body = route.request().postDataJSON();
+    const requests = Array.isArray(body) ? body : [body];
+    if (requests.some(request => request?.method === 'eth_call'
+      && [wldVault.toLowerCase(), usdcVault.toLowerCase()].includes(request.params?.[0]?.to?.toLowerCase())
+      && (request.params[0].data || request.params[0].input || '').startsWith(positionSelector))) {
+      heldPositions++;
+      await positionGate;
+    }
+    await route.continue();
+  };
+  await page.route('**/__host/rpc', delayPositions);
+  try {
+    await page.reload();
+    await tab(page, 0);
+    await until(() => heldPositions > 0, 'delayed owned-position RPC');
+    const overview = page.locator('.plan-overview-card');
+    await overview.getByRole('status').filter({ hasText: '플랜 확인 중…' }).waitFor();
+    assert.equal((await overview.innerText()).includes('활성 상속 플랜이 없습니다'), false);
+    assert.deepEqual(await overview.locator('.plan-overview-asset strong').allTextContents(), ['업데이트 중…', '업데이트 중…']);
+  } finally {
+    releasePositions();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+  await page.locator('.plan-common-settings strong').first().waitFor();
+  assert.equal((await page.locator('.plan-common-settings strong').first().getAttribute('title')).toLowerCase(), config.heir.toLowerCase());
+  assert.deepEqual(await page.locator('.plan-overview-asset strong').allTextContents(), ['10.0', '12.345678']);
+  pass('A funded owner sees checking status while position RPC is delayed, then the real heir and balances; no false empty-plan state');
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (let i = 0; i < 4; i++) {

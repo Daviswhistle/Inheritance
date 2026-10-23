@@ -95,6 +95,14 @@ These are host controls, not the actual World App approval UI.
 Ten storage tests cover delayed/failed commits, migration and deletion. A browser
 without strict IndexedDB support blocks setup instead of pretending persistence.
 
+Final screenshot review also caught Home briefly claiming no active plan while
+its positions were still loading. Home now prioritizes loading (including an
+account mismatch) over empty-state copy and balances. A WebKit regression holds
+the actual position RPC, verifies checking placeholders without the false empty
+state, then releases it and checks the exact funded balances and recipient.
+The iOS recovery test now also waits for the rendered `1.000001` USDC balance and
+enabled check-in before capturing its final screenshot.
+
 Independent agent review also found same-tab legal links losing unsubmitted
 forms and ambiguous principal wording. Terms/privacy now open in an in-app modal;
 WebKit checks document return links, iframe Escape, focus return and preservation
