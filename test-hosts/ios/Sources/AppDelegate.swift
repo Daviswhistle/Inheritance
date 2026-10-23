@@ -45,7 +45,26 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                 const element = document.activeElement;
                 const rect = element?.getBoundingClientRect();
                 const viewport = window.visualViewport;
+                const editing = rect && element?.matches('input,textarea');
+                const hidden = selector => {
+                  const node = document.querySelector(selector);
+                  return !node || getComputedStyle(node).display === 'none';
+                };
+                // getBoundingClientRect and elementFromPoint use CSS viewport
+                // coordinates. Interior samples avoid the input's rounded border.
+                const hits = editing ? [rect.top + Math.min(12, rect.height / 4),
+                  rect.top + rect.height / 2, rect.bottom - Math.min(12, rect.height / 4)]
+                  .flatMap(y => [rect.left + Math.min(12, rect.width / 4),
+                    rect.left + rect.width / 2, rect.right - Math.min(12, rect.width / 4)].map(x => {
+                      const hit = document.elementFromPoint(x, y);
+                      return {x, y, input: hit === element || element.contains(hit),
+                        target: hit ? hit.tagName + '#' + hit.id + '.' + hit.className : null};
+                    })) : [];
                 const metrics = {innerHeight, innerWidth, scrollY,
+                  actionsHidden: hidden('.plan-primary-actions'),
+                  navigationHidden: hidden('.tab-bar'),
+                  inputUnobscured: hits.length === 9 && hits.every(hit => hit.input),
+                  inputHitTargets: hits,
                   viewport: viewport ? {height: viewport.height, width: viewport.width,
                     offsetTop: viewport.offsetTop, pageTop: viewport.pageTop, scale: viewport.scale} : null,
                   input: rect && element?.matches('input,textarea') ? {top: rect.top,

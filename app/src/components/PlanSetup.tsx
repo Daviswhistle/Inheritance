@@ -146,12 +146,16 @@ export function PlanSetup({
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
-    let fullHeight = window.innerHeight, width = window.innerWidth, frame = 0;
+    // Keep each width's unoccluded height when rotating with the keyboard open.
+    // Returning to portrait can still have a resized layout viewport.
+    const fullHeights = new Map([[window.innerWidth, window.innerHeight]]);
+    let frame = 0;
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        if (width !== window.innerWidth) { width = window.innerWidth; fullHeight = window.innerHeight; }
-        fullHeight = Math.max(fullHeight, window.innerHeight);
+        const width = window.innerWidth;
+        const fullHeight = Math.max(fullHeights.get(width) ?? 0, window.innerHeight);
+        fullHeights.set(width, fullHeight);
         const active = document.activeElement;
         const editing = active instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(active.type);
         // A native host may resize its WKWebView while rotating with the
@@ -178,6 +182,7 @@ export function PlanSetup({
     // an input, without emitting visualViewport.scroll.
     window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update); document.addEventListener("focusin", update); document.addEventListener("focusout", update);
+    document.addEventListener("visibilitychange", update);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     for (const element of document.querySelectorAll(".plan-setup-content, .plan-primary-actions")) observer?.observe(element);
     update();
@@ -187,6 +192,7 @@ export function PlanSetup({
       viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update);
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update); document.removeEventListener("focusin", update); document.removeEventListener("focusout", update);
+      document.removeEventListener("visibilitychange", update);
       document.documentElement.removeAttribute("data-plan-keyboard");
     };
   }, []);

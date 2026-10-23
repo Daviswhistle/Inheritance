@@ -250,7 +250,11 @@ final class HostTests: XCTestCase {
             // accessibility rectangle with only the top border is not a pass.
             let fullTop = CGFloat(native[1] + (cssTop - offset) * scale)
             let fullBottom = CGFloat(native[1] + (cssBottom - offset) * scale)
-            let valid = field.height >= height - 1
+            let editingControlsHidden = metrics["keyboard"] is String
+                && (metrics["actionsHidden"] as? Bool == true)
+                && (metrics["navigationHidden"] as? Bool == true)
+            let valid = editingControlsHidden && (metrics["inputUnobscured"] as? Bool == true)
+                && field.height >= height - 1
                 && cssHeight >= Double(height - 1) && field.minY >= web.frame.minY
                 && field.maxY <= occlusion && fullTop >= web.frame.minY
                 && fullBottom <= occlusion && cssTop >= offset
@@ -272,6 +276,10 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visibleAndStable, object: nil)], timeout: 20), .completed,
                        "Entire input must remain visible after native and DOM geometry settle")
         print("INPUT GEOMETRY \(name): \(app.staticTexts["test-host-status"].value ?? "missing")")
+        XCTAssertFalse(web.buttons["Review plan"].exists, "Review actions must remain hidden during every keyboard phase")
+        for label in ["Home", "Assets", "Plan", "Help"] {
+            XCTAssertFalse(web.buttons[label].exists, "Tab navigation must not cover the focused input: " + label)
+        }
         capture(name, app)
         XCTAssertTrue(visibleAndStable.evaluate(with: nil), "Input geometry must stay valid through screenshot capture")
         print("INPUT GEOMETRY AFTER \(name): \(app.staticTexts["test-host-status"].value ?? "missing")")
