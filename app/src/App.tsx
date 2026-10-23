@@ -984,6 +984,7 @@ export default function App() {
   const isVaultOwner = Boolean(vaultOwner) && account.toLowerCase() === vaultOwner.toLowerCase();
   const isMyVault = isVaultOwner && !vaultIdentity?.released;
   const planRouteFor = (symbol: PlanAssetSymbol) => APP_PLAN_ROUTES.find(route => route.symbol === symbol) ?? null;
+  const ownedPlanLoading = ownedPlanRead.loading || ownedPlanRead.account !== account.toLowerCase();
   const activeOwnedPlans = ownedPlanRead.account === account.toLowerCase()
     ? ownedPlanRead.items.filter(item => item.active === true) : [];
   const unsettledOwnedPlans = ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items.filter(item => item.settled === false) : [];
@@ -4356,18 +4357,20 @@ export default function App() {
               {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
                 const total = ownedPlanTotal(symbol);
                 const decimals = symbol === "USDC" ? 6 : 18;
-                const value = ownedPlanRead.loading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
+                const value = ownedPlanLoading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
                   : formatYieldAmount(total.amount, decimals);
                 return <div className="plan-overview-asset" key={symbol}>
                   <span>{symbol}</span><strong>{value}</strong>
-                  <small>{ownedPlanRead.loading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
+                  <small>{ownedPlanLoading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
                     : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
                 </div>;
               })}
             </div>
             {activeOwnedPlans.some(item => item.symbol === "USDC" && (item.additionalWld ?? 0n) > 0n)
               && <p className="text-xs text-gray-600">{t("home.additionalWld")}</p>}
-            {ownedPlanRead.incomplete
+            {ownedPlanLoading
+              ? <p className="text-sm text-gray-600" role="status">{t("entry.loading")}</p>
+              : ownedPlanRead.incomplete
               ? <p className="plan-settings-differ" role="status">{t("home.incomplete")}</p>
               : activeOwnedPlans.length > 0 ? commonPlanSettings
                 ? <p className="plan-common-settings">{t("home.heir")} <strong title={activeOwnedPlans[0].heir}>{homeHeirUsername ? `@${homeHeirUsername}` : short(activeOwnedPlans[0].heir)}</strong><span>·</span> {t("home.checkin.every")} <strong>{activeOwnedPlans[0].period} {t("home.days")}</strong></p>

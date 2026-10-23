@@ -181,6 +181,30 @@ final class HostTests: XCTestCase {
         XCTAssertNotEqual(vault, "0x" + String(repeating: "0", count: 40))
         let basis = try rpcString("eth_call", [["to": vault, "data": "0x53e3cb5f"], "latest"])
         XCTAssertEqual(UInt64(basis.dropFirst(2), radix: 16), 1_000_001)
+        // Removing the recovery panel alone does not prove that Home has loaded
+        // the recovered position. Wait for the actual balance and active plan.
+        // formatYieldAmount preserves all six USDC decimal places for this value.
+        let displayedBalance = web.staticTexts["1.000001"].firstMatch
+        let checkIn = web.buttons["Check in"].firstMatch
+        let noActivePlan = web.staticTexts["No active inheritance plan. You can manage existing balances in Assets."].firstMatch
+        let settledHome = NSPredicate { _, _ in
+            web.staticTexts["Assets in your plan"].firstMatch.exists
+                && web.staticTexts["USDC"].firstMatch.exists
+                && displayedBalance.exists
+                && web.staticTexts["Next check-in"].firstMatch.exists
+                && checkIn.exists && checkIn.isEnabled
+                && !web.staticTexts["Updating…"].firstMatch.exists
+                && !web.staticTexts["Checking status…"].firstMatch.exists
+                && !noActivePlan.exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settledHome, object: nil)], timeout: 60), .completed,
+                       "Recovery must render the funded USDC position and an active check-in, not a loading or empty Home")
+        for _ in 0..<4 {
+            if displayedBalance.isHittable && displayedBalance.frame.maxY <= web.frame.maxY - 80 { break }
+            web.swipeUp()
+        }
+        XCTAssertTrue(displayedBalance.isHittable, "The verified balance must be visible in the recovery screenshot")
+        XCTAssertFalse(noActivePlan.exists)
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "latest"]), minedNonce)
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "pending"]), minedNonce, "Recovery must not replay an already submitted deposit")
         capture("pending-deposit-recovered-without-resubmission", app)
