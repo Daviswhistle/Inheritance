@@ -1,12 +1,19 @@
 import XCTest
 
 final class HostTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     override func tearDown() {
         if (testRun?.failureCount ?? 0) > 0 {
             let app = XCUIApplication()
+            print("FAILURE VIEWPORT: \(app.staticTexts["test-host-status"].value ?? "missing")")
             capture("failure-screen", app)
             print(app.debugDescription)
         }
+        XCUIDevice.shared.orientation = .portrait
         super.tearDown()
     }
 
@@ -16,6 +23,8 @@ final class HostTests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1"]
         app.launch()
+        let initialPortrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initialPortrait, object: nil)], timeout: 20), .completed)
         defer { XCUIDevice.shared.orientation = .portrait }
         let web = app.webViews.firstMatch
         XCTAssertTrue(web.waitForExistence(timeout: 60))
@@ -103,6 +112,8 @@ final class HostTests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                "-testURL", "http://localhost:7777/?platform=ios&account=heir&approval=auto"]
         app.launch()
+        let initialPortrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initialPortrait, object: nil)], timeout: 20), .completed)
         defer {
             _ = try? hostJSON("/__host/control", body: ["action": "mining", "enabled": true])
             app.terminate()
@@ -214,6 +225,7 @@ final class HostTests: XCTestCase {
         var lastGeometry = ""
         var stableSince: Date?
         var observations = 0
+        var lastInvalidGeometry = ""
         let visibleAndStable = NSPredicate { _, _ in
             let field = input.frame
             let keyboard = app.keyboards.firstMatch
@@ -230,6 +242,7 @@ final class HostTests: XCTestCase {
                   let visibleHeight = viewport["height"] as? Double,
                   let scale = viewport["scale"] as? Double,
                   keyboard.exists, done.exists else {
+                if raw != lastInvalidGeometry { print("INPUT METRICS NOT READY \(name): \(raw)"); lastInvalidGeometry = raw }
                 stableSince = nil; observations = 0; return false
             }
             let occlusion = min(min(keyboard.frame.minY, done.frame.minY), web.frame.maxY)
@@ -237,13 +250,19 @@ final class HostTests: XCTestCase {
             // accessibility rectangle with only the top border is not a pass.
             let fullTop = CGFloat(native[1] + (cssTop - offset) * scale)
             let fullBottom = CGFloat(native[1] + (cssBottom - offset) * scale)
-            let valid = input.isHittable && field.height >= height - 1
+            let valid = field.height >= height - 1
                 && cssHeight >= Double(height - 1) && field.minY >= web.frame.minY
                 && field.maxY <= occlusion && fullTop >= web.frame.minY
                 && fullBottom <= occlusion && cssTop >= offset
                 && cssBottom <= offset + visibleHeight
             let geometry = "\(field)|\(keyboard.frame)|\(done.frame)|\(raw)"
-            guard valid else { stableSince = nil; observations = 0; return false }
+            guard valid else {
+                if geometry != lastInvalidGeometry { print("INPUT GEOMETRY INVALID \(name): \(geometry)"); lastInvalidGeometry = geometry }
+                stableSince = nil; observations = 0; return false
+            }
+            // XCTest may throw when asking hittability of a fully occluded
+            // element. Check bounds first so rotation can settle before asking.
+            guard input.isHittable else { stableSince = nil; observations = 0; return false }
             if geometry != lastGeometry || stableSince == nil {
                 lastGeometry = geometry; stableSince = Date(); observations = 1; return false
             }

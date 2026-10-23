@@ -25,6 +25,9 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
     private let address = UITextField()
     private let status = UILabel()
     private var allowedURL: URL?
+    private var webBottom: NSLayoutConstraint!
+    private var keyboardScreenFrame: CGRect?
+    private var lastViewportMetrics: [String: Any]?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -93,6 +96,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             $0.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview($0)
         }
+        webBottom = webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
         NSLayoutConstraint.activate([
             status.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
             status.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
@@ -106,10 +110,93 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             webView.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 4),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            // Keep the embedded web viewport above UIKit keyboard/accessory views.
-            webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
+            // The layout guide can omit WKWebView's accessory toolbar. Its
+            // measured public inputAccessoryView supplies any extra clearance.
+            webBottom
         ])
+        for name in [UIResponder.keyboardWillChangeFrameNotification,
+                     UIResponder.keyboardDidChangeFrameNotification,
+                     UIResponder.keyboardDidHideNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardFrameChanged(_:)), name: name, object: nil)
+        }
         openTestURL()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateKeyboardClearance()
+        updateViewportTrace()
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            self?.view.setNeedsLayout()
+        }
+    }
+
+    @objc private func keyboardFrameChanged(_ notification: Notification) {
+        keyboardScreenFrame = notification.name == UIResponder.keyboardDidHideNotification ? nil
+            : (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        view.setNeedsLayout()
+    }
+
+    private func firstResponder(in parent: UIView) -> UIView? {
+        if parent.isFirstResponder { return parent }
+        for child in parent.subviews {
+            if let responder = firstResponder(in: child) { return responder }
+        }
+        return nil
+    }
+
+    private func accessoryFrame() -> CGRect? {
+        guard let window = view.window,
+              let accessory = firstResponder(in: webView)?.inputAccessoryView,
+              !accessory.isHidden, accessory.alpha > 0, !accessory.bounds.isEmpty,
+              let accessoryWindow = accessory.window else { return nil }
+        let inAccessoryWindow = accessory.convert(accessory.bounds, to: accessoryWindow)
+        let inWindow = window.convert(inAccessoryWindow, from: accessoryWindow)
+        return view.convert(inWindow, from: window)
+    }
+
+    private func updateKeyboardClearance() {
+        guard webBottom != nil, let window = view.window else { return }
+        let guideTop = view.keyboardLayoutGuide.layoutFrame.minY
+        var visibleBottom = guideTop
+        var obstructions: [CGRect] = []
+        if let frame = keyboardScreenFrame {
+            // Keyboard notifications use screen coordinates; account for the
+            // app window before comparing them with this view's layout guide.
+            obstructions.append(view.convert(window.convert(frame, from: nil), from: window))
+        }
+        if let frame = accessoryFrame() { obstructions.append(frame) }
+        for obstruction in obstructions {
+            let overlap = view.bounds.intersection(obstruction)
+            if !overlap.isNull && !overlap.isEmpty && overlap.minY >= webView.frame.minY {
+                visibleBottom = min(visibleBottom, overlap.minY)
+            }
+        }
+        let clearance = min(0, visibleBottom - guideTop)
+        if abs(webBottom.constant - clearance) > 0.5 {
+            webBottom.constant = clearance
+            view.setNeedsLayout()
+        }
+    }
+
+    private func updateViewportTrace() {
+        guard var metrics = lastViewportMetrics, let webView = webView else { return }
+        let frame = webView.convert(webView.bounds, to: view.window)
+        metrics["nativeWebView"] = [frame.minX, frame.minY, frame.width, frame.height]
+        let keyboardFrame = view.keyboardLayoutGuide.layoutFrame
+        metrics["keyboardGuide"] = [keyboardFrame.minX, keyboardFrame.minY, keyboardFrame.width, keyboardFrame.height]
+        if let accessory = accessoryFrame() {
+            metrics["accessoryFrame"] = [accessory.minX, accessory.minY, accessory.width, accessory.height]
+        }
+        metrics["accessoryClearance"] = -(webBottom?.constant ?? 0)
+        if let data = try? JSONSerialization.data(withJSONObject: metrics, options: [.sortedKeys]),
+           let value = String(data: data, encoding: .utf8), status.accessibilityValue != value {
+            status.accessibilityValue = value
+        }
     }
 
     @objc private func openTestURL() {
@@ -157,13 +244,9 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                                didReceive message: WKScriptMessage) {
         if message.name == "viewportMetrics" {
             guard message.frameInfo.isMainFrame, sameOrigin(message.frameInfo.request.url),
-                  sameOrigin(webView.url), var metrics = message.body as? [String: Any] else { return }
-            let frame = webView.convert(webView.bounds, to: view.window)
-            metrics["nativeWebView"] = [frame.minX, frame.minY, frame.width, frame.height]
-            let keyboardFrame = view.keyboardLayoutGuide.layoutFrame
-            metrics["keyboardGuide"] = [keyboardFrame.minX, keyboardFrame.minY, keyboardFrame.width, keyboardFrame.height]
-            if let data = try? JSONSerialization.data(withJSONObject: metrics, options: [.sortedKeys]),
-               let value = String(data: data, encoding: .utf8) { status.accessibilityValue = value }
+                  sameOrigin(webView.url), let metrics = message.body as? [String: Any] else { return }
+            lastViewportMetrics = metrics
+            updateViewportTrace()
             return
         }
         guard message.name == "minikit", message.frameInfo.isMainFrame,
