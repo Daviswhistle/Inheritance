@@ -20,6 +20,13 @@ final class HostTests: XCTestCase {
         login.tap()
         let recipient = web.textFields.matching(NSPredicate(format: "label CONTAINS %@ OR placeholderValue == %@", "Who should receive", "@username or wallet address")).firstMatch
         XCTAssertTrue(recipient.waitForExistence(timeout: 60), "SDK login must reveal the setup form\n\(app.debugDescription)")
+        let amount = web.textFields["USDC"].firstMatch
+        XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        amount.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        amount.typeText("12.345678")
+        XCTAssertEqual(amount.value as? String, "12.345678")
+        capture("decimal-keyboard", app)
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         recipient.typeText("@sam")
@@ -32,6 +39,7 @@ final class HostTests: XCTestCase {
         app.activate()
         XCTAssertTrue(recipient.waitForExistence(timeout: 15))
         XCTAssertEqual(recipient.value as? String, "@sam")
+        XCTAssertEqual(amount.value as? String, "12.345678")
         capture("foreground-input-preserved", app)
     }
 

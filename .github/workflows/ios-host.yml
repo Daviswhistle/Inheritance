@@ -49,11 +49,19 @@ jobs:
         run: |
           xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
           DEVICE=$(python3 -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/devices.json")); print(next(x["udid"] for k,v in d["devices"].items() if "iOS" in k for x in v if "iPhone" in x["name"]))')
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
           xcodebuild test -project test-hosts/ios/InheritanceTestHost.xcodeproj \
             -scheme InheritanceTestHost -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE" \
             -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/iOS.xcresult" \
             CODE_SIGNING_ALLOWED=NO
+      - name: Export screenshots and test summary
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/iOS.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/iOS.xcresult" --output-path "$RUNNER_TEMP/ios-attachments"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/iOS.xcresult" > "$RUNNER_TEMP/ios-summary.json"
+          fi
       - name: Save native evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -64,3 +72,5 @@ jobs:
             ${{ runner.temp }}/iOS.xcresult
             ${{ runner.temp }}/host.log
             ${{ runner.temp }}/devices.json
+            ${{ runner.temp }}/ios-attachments
+            ${{ runner.temp }}/ios-summary.json

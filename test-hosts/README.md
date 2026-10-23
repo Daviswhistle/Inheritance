@@ -53,8 +53,25 @@ system Back, rotation, app background/resume, and reload after pending commands.
 
 ## iOS / iPhone
 
-Building and running the iOS host requires **macOS and Xcode**. Linux/Windows can
-run the shared harness and browser checks, but cannot build Apple's WKWebView app.
+Building and running the iOS host requires **macOS and Xcode**. A local Mac is
+not required: `.github/workflows/ios-host.yml` runs the host on a standard GitHub
+macOS runner, using an iPhone simulator and XCTest. From Linux/Windows:
+
+```sh
+gh workflow run ios-host.yml
+gh run list --workflow ios-host.yml --limit 1
+# Use the returned run ID to watch or download its evidence:
+gh run watch RUN_ID --exit-status
+gh run download RUN_ID --name ios-native-evidence
+```
+
+The workflow installs the app's locked MiniKit dependency, starts a fresh local
+Anvil chain and the existing shared host, generates the debug Xcode project, and
+runs native UI automation. It preserves the `.xcresult` (including screenshots),
+host log and available simulator list for seven days. Test failures fail the job.
+No Apple signing account, production credentials or real funds are used.
+Linux/Windows alone can run the shared harness and browser checks, but cannot
+build Apple's WKWebView app.
 A connected iPhone needs an Apple development team and Developer Mode. A simulator
 does not need a paid developer account.
 
