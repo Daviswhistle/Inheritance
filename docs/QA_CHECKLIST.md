@@ -46,7 +46,7 @@ and [app guidelines](https://docs.world.org/mini-apps/guidelines/app-guidelines)
 | Distinct Home, Assets, Plan and Help tasks with consistent navigation; unauthenticated browsing | `test:product-ui`: 68 layouts including EN/KO guest/owner, 320/390px and desktop; no wallet request from guest browsing |
 | Accessible controls, expanded content and modal focus | 37 axe states with zero reported violations; 44px controls, action hit tests, native dialog containment, Escape/Cancel focus return |
 | Exact amounts, explicit consent and clear principal/income separation | Actual SDK setup and exact USDC withdrawal; review checks full recipient and initially unchecked consent; balance appears before income |
-| Native keyboard and lifecycle behavior | `test:android-ui`: 17 Android 15 layouts and seven scenario groups; actual IME, Back, rotation, Home/foreground, force-stop/relogin and font scale 1.3 |
+| Native keyboard and lifecycle behavior | `test:android-ui`: 17 Android 15 layouts and eight scenario groups; actual IME, Back, rotation, Home/foreground, force-stop/relogin while an actual submitted transaction remains unmined, recovery with zero new transaction requests, and font scale 1.3 |
 | Native iOS keyboard and lifecycle | Xcode 16.4 / iPhone 16 Pro simulator / iOS 18.5: actual WKWebView, four guest tabs, real SDK sign-in, exact decimal input, native keyboard, full input visibility in portrait/landscape, Home/foreground preservation and review-action restoration after keyboard dismissal; [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/39907972022) |
 | Second engine and interruption recovery | `test:webkit-ui`: 29 Linux WebKit layouts; offline/reconnect, rejection, pending-approval reload, history return, and a committed deposit recovered after losing its SDK callback without another transaction |
 | Current storefront artwork | `store-host-shots.mjs` captures actual current UI using local contracts; `make-store-images.mjs` produces the checked-in images with illustrative-value disclosures; dimensions and <=500KB limits verified |
@@ -64,7 +64,7 @@ notification services, and first-use understanding by an unfamiliar person.
 Native iOS simulator checks are now available through `ios-host.yml`; a local Mac
 is not required. Screenshot inspection found an iOS keyboard/action overlap that
 automated value assertions alone missed. Plan actions now hide while the keyboard
-is open. Android (17 layouts / seven groups) and WebKit (29 layouts) passed again,
+is open. Android (17 layouts / eight groups) and WebKit (29 layouts) passed again,
 and the iOS regression explicitly checks that the fixed action is hidden and the
 entire input stays above the native keyboard/accessory toolbar. The native host
 now resizes WKWebView with `keyboardLayoutGuide`; the app preserves scroll
@@ -73,8 +73,23 @@ were inspected, including the fully visible recipient input in landscape.
 Artifacts (five screenshots, test summary, `.xcresult`, host log) are attached to
 the linked GitHub run for seven days and can be regenerated using `ios-host.yml`.
 The Android run uses the AOSP image's WebView 124.0.6367.219; Linux WebKit is not
-an iPhone. Process-death recovery was verified for confirmed plans after explicit
-sign-in, not for preservation of an unconfirmed session-storage journal.
+an iPhone. Android process-death recovery now also covers an unconfirmed request:
+mining is paused, the actual SDK operation ID is saved, the app is force-stopped
+immediately, and explicit sign-in restores the same request. After mining, Resume
+verifies the original receipt; WLD/USDC amounts remain exact and no new transaction
+request is made. LocalStorage readback alone failed this test by restoring an older
+ready record. Setup journals now await strict IndexedDB transaction completion
+before handing off to the wallet. Legacy local/session records migrate on first
+read; durable tombstones prevent stale mirrors from reviving completed requests.
+Ten storage tests cover delayed/failed commits, migration and deletion. A browser
+without strict IndexedDB support blocks setup instead of pretending persistence.
+
+Independent agent review also found same-tab legal links losing unsubmitted
+forms and ambiguous principal wording. Terms/privacy now open in an in-app modal;
+WebKit checks document return links, iframe Escape, focus return and preservation
+of exact amounts/consent. Withdrawal inputs identify pre-fee amounts, and income
+copy explicitly acknowledges investment losses. Agent review does not substitute
+for a human comprehension study.
 
 ## Remote checks
 

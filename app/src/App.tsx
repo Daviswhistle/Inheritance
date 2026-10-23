@@ -3181,6 +3181,10 @@ export default function App() {
   const createPlan = () => continuePlan(false, { ...consentedStrategyFees.current });
   const editRemainingPlan = async () => {
     if (actionInFlight.current || !account || !pendingPlan) return;
+    // Editing now awaits durable storage. Hold the same lock as wallet actions
+    // so Resume cannot submit while this path is reading or clearing the journal.
+    actionInFlight.current = true;
+    setPendingAction(true);
     try {
       const saved = await readStoredPlan(account) ?? pendingPlan;
       if (planAccountRef.current !== account.toLowerCase()) return;
@@ -3206,6 +3210,9 @@ export default function App() {
       void refreshBalances();
     } catch (error) {
       setStatus("Plan setup: " + errorText(error));
+    } finally {
+      actionInFlight.current = false;
+      setPendingAction(false);
     }
   };
 

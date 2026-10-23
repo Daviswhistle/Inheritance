@@ -174,3 +174,20 @@ native iOS behavior, but do not establish physical-iPhone or actual World App pa
 Build references: [AGP 8.9 compatibility](https://developer.android.com/build/releases/agp-8-9-0-release-notes),
 [Apple WKScriptMessage](https://developer.apple.com/documentation/webkit/wkscriptmessage),
 [Gradle wrapper verification](https://docs.gradle.org/current/userguide/gradle_wrapper.html#sec:verification).
+
+
+### Pending transaction and crash recovery
+
+`npm run test-host:pending` verifies real Anvil pending/success/revert states.
+The host supports controlled mining (`action: "mining", enabled: false`, then
+`action: "mine"`) so a native app can receive an operation ID before confirmation.
+`test:android-ui` now force-stops the app in that interval, signs in again, mines
+the original transaction and verifies exact WLD/USDC deposits with no resubmission.
+Recovery uses strict IndexedDB commits; localStorage is only a compatibility
+mirror. This test reproduced loss of recent localStorage writes on process death
+before the durable journal fix. Clearing app/site data still removes recovery
+records and is not equivalent to process termination.
+
+The iOS workflow now also triggers on app and contract changes. Each disposable
+real-SDK host uses its own Vite optimizer cache so stubbed E2E modules cannot leak
+into native tests. The cache is removed with that host's temporary fixture.
