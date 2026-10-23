@@ -154,7 +154,7 @@ emulator on Linux/WSL with KVM. See [Android validation](android/README.md) for 
 reusable command, exact runtime versions, native lifecycle checks and evidence.
 The iOS project has also been compiled and run with Xcode 16.4 on a GitHub macOS
 15 runner. The verified native run used iPhone 16 Pro / iOS 18.5:
-[run 39941107575](https://github.com/Daviswhistle/Inheritance/actions/runs/39941107575).
+[run 39953168957](https://github.com/Daviswhistle/Inheritance/actions/runs/39953168957).
 It exercised all four guest tabs, real MiniKit wallet authentication through
 WKScriptMessageHandler, the decimal keyboard with exact `12.345678` USDC input,
 recipient typing, portrait/landscape input visibility above the actual keyboard
@@ -165,9 +165,19 @@ the keyboard was open; the app now hides plan actions while editing with the
 keyboard visible. The linked native regression asserts that the action is hidden;
 Android and Linux WebKit regression checks also passed after that fix. The app
 retains scroll clearance when the keyboard obscures the layout viewport and fits
-focused fields into short landscape viewports. The iOS shell uses UIKit's
-`keyboardLayoutGuide` to resize its embedded WKWebView above the keyboard and
-accessory toolbar. This is the test host's viewport policy; it does not establish
+focused fields into short landscape viewports. The app remembers the maximum
+viewport height for each width so rotating back
+to portrait with the keyboard still open retains the original baseline. It also
+rechecks input clearance after layout scroll and foreground visibility changes.
+The WebKit regression exercises this without dismissing the keyboard.
+The iOS shell combines UIKit's `keyboardLayoutGuide`, the keyboard notification
+frame, and the actual responder accessory-view frame to resize its embedded
+WKWebView above measured occlusion; it does not assume a toolbar height.
+The strengthened native assertions check nine DOM hit-test points within the
+input, hidden fixed actions/navigation, and full native/DOM input geometry over
+stable samples before and after screenshots. The linked run at `93472b8` passed
+both XCTest methods, and portrait, landscape, foreground and recovery screenshots
+were independently inspected. This is the test host's viewport policy; it does not establish
 World App's private host implementation. Simulator tests verify
 native iOS behavior, but do not establish physical-iPhone or actual World App parity.
 

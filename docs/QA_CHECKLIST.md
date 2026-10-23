@@ -31,7 +31,7 @@ Use current evidence, not checked boxes copied from a previous release. Local re
 - At 320×640 and 390×844, check-in and an eligible recipient claim are visible and tappable before scrolling. Settings appear before the collapsed invitation; opening it preserves all sharing controls without sending anything. Setup/review actions remain above navigation, and full recipient, fees and mandatory risk consent can be reached by scrolling.
 - For a recipient with plans from multiple owners, each shared link puts its selected owner's plan and eligible claim action first at both mobile sizes. Opening either link sends no wallet request.
 - A no-wallet-request assertion must use a functioning recorder: a deliberately rejected request increases its count, and a successful multi-call batch counts as one request. Recheck setup, navigation and receipt recovery with this recorder.
-- Reduce the editing viewport and simulate a smaller visual viewport with the layout height retained: the focused input and setup action remain visible, navigation returns after editing, and tab changes restore normal layout. A failed token-balance read retains the draft, explains retry and blocks deposit approval; a successful retry enables review. At maximum review scroll, the full Terms and Privacy Policy links must be visible and tappable above the action bar. Distinguish these browser geometry checks from the real-device keyboard check below.
+- Reduce the editing viewport and simulate a smaller visual viewport with the layout height retained: the focused input remains visible while fixed setup actions and navigation hide during keyboard editing; both return after editing, and tab changes restore normal layout. A failed token-balance read retains the draft, explains retry and blocks deposit approval; a successful retry enables review. At maximum review scroll, the full Terms and Privacy Policy links must be visible and tappable above the action bar. Distinguish these browser geometry checks from the real-device keyboard check below.
 - A stalled USDC read must preserve healthy WLD-only setup; a failed selected WLD read must preserve healthy USDC-only setup. Publish each successful balance independently, verify its token precision and invalidate only failed/timed-out tokens. Expired responses cannot clear their unavailable state; fresh retry retains the amounts. Background errors and changing action hints must not cover a focused input while the keyboard remains open.
 
 ## UI evidence recorded on 2026-10-23 KST
@@ -47,7 +47,7 @@ and [app guidelines](https://docs.world.org/mini-apps/guidelines/app-guidelines)
 | Accessible controls, expanded content and modal focus | 37 axe states with zero reported violations; 44px controls, action hit tests, native dialog containment, Escape/Cancel focus return |
 | Exact amounts, explicit consent and clear principal/income separation | Actual SDK setup and exact USDC withdrawal; review checks full recipient and initially unchecked consent; balance appears before income |
 | Native keyboard and lifecycle behavior | `test:android-ui`: 17 Android 15 layouts and eight scenario groups; actual IME, Back, rotation, Home/foreground, force-stop/relogin while an actual submitted transaction remains unmined, recovery with zero new transaction requests, and font scale 1.3 |
-| Native iOS keyboard and lifecycle | Xcode 16.4 / iPhone 16 Pro simulator / iOS 18.5: actual WKWebView, four guest tabs, real SDK sign-in, exact decimal input, native keyboard, full input visibility in portrait/landscape, Home/foreground preservation and review-action restoration after keyboard dismissal; manual sign-in rejection/restart and pending USDC process-death recovery (two XCTest methods, zero failures); [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/39941107575) |
+| Native iOS keyboard and lifecycle | Xcode 16.4 / iPhone 16 Pro simulator / iOS 18.5: actual WKWebView, four guest tabs, real SDK sign-in, exact decimal input, native keyboard, full input visibility in portrait/landscape, Home/foreground preservation and review-action restoration after keyboard dismissal; manual sign-in rejection/restart and pending USDC process-death recovery (two XCTest methods, zero failures); [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/39953168957) |
 | Durable setup and financial regression | `unified-plan-browser.mjs`: 84 checks, including strict-write failure before wallet handoff, delayed Edit/Resume locking, partial setup, canonical/ID-less receipt recovery, strategy-fee changes and principal/income accounting |
 | Second engine and interruption recovery | `test:webkit-ui`: 29 Linux WebKit layouts; offline/reconnect, rejection, pending-approval reload, history return, and a committed deposit recovered after losing its SDK callback without another transaction |
 | Current storefront artwork | `store-host-shots.mjs` captures actual current UI using local contracts; `make-store-images.mjs` produces the checked-in images with illustrative-value disclosures; dimensions and <=500KB limits verified |
@@ -68,9 +68,19 @@ automated value assertions alone missed. Plan actions now hide while the keyboar
 is open. Android (17 layouts / eight groups) and WebKit (29 layouts) passed again,
 and the iOS regression explicitly checks that the fixed action is hidden and the
 entire input stays above the native keyboard/accessory toolbar. The native host
-now resizes WKWebView with `keyboardLayoutGuide`; the app preserves scroll
-clearance and handles very short editing viewports. The final native screenshots
-were inspected, including the fully visible recipient input in landscape.
+resizes WKWebView using `keyboardLayoutGuide`, the keyboard notification frame,
+and the actual responder accessory-view frame in the same view coordinates.
+This measured clearance avoids assuming a fixed toolbar height. The app preserves
+a maximum viewport-height baseline for each width across rotation with the keyboard
+open, and rechecks clearance after layout scrolling and foreground visibility changes.
+The WebKit regression covers portrait 844 → keyboard 362 → landscape 70 → portrait
+362 without blurring the field, including hidden actions/navigation and retained input.
+The strengthened native regression additionally checks nine DOM hit-test points
+inside the input, hidden actions/navigation, full native and DOM input geometry,
+and stable samples before and after screenshots. Run `39953168957` at `93472b8`
+passed both XCTest methods; portrait, landscape, foreground and recovered-balance
+screenshots were independently inspected. Earlier green runs do not replace this
+stronger evidence.
 Artifacts (screenshots, test summary, `.xcresult`, host log) are attached to
 the linked GitHub run for seven days and can be regenerated using `ios-host.yml`.
 The Android run uses the AOSP image's WebView 124.0.6367.219; Linux WebKit is not

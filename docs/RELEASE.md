@@ -2,6 +2,32 @@
 
 ## October 23, 2026 independent release and design review
 
+### Final deployment and review submission
+
+Re-submitted app `app_28c40a2a42b7f6c95789c2d5231b1314` through the developer
+portal on **2026-10-23 at 12:41 UTC (21:41 KST)**. Submission returned
+`awaiting_review`, and an independent configuration readback at 12:41:38 UTC
+confirmed that status for metadata `meta_9cf3b324ec9a1838a56c5b6d98be8674`.
+Developer listing remains enabled. This is a submitted review, not an approval.
+All seven store images and the updated descriptions were verified before submission.
+
+- Runtime `fbd69847ff8a1e779c377705a175be88639005f8` deployed successfully in
+  [deployment 39948853311](https://github.com/Daviswhistle/Inheritance/actions/runs/39948853311).
+  Public JS/CSS bytes match release `https://93626753.inheritance.pages.dev`;
+  production and legal pages were checked live.
+- Final native verification `93472b8435786b9d39a442bccf3f7ecf8da5523b` passed
+  [iOS 39953168957](https://github.com/Daviswhistle/Inheritance/actions/runs/39953168957)
+  and [CI 39953168941](https://github.com/Daviswhistle/Inheritance/actions/runs/39953168941).
+  The commits after the runtime deployment change tests/documentation only.
+  Both XCTest methods passed; portrait, landscape, foreground and recovered
+  `1.000001` USDC screenshots were independently inspected. Input values and
+  complete bounds remained visible, fixed controls stayed hidden during editing,
+  and recovery did not submit the deposit again.
+- Final Android verification passed **17 layouts / 8 groups / zero reported errors**;
+  Linux WebKit passed **13 groups / 29 layouts**. Financial checks passed
+  **225 unit/fuzz tests and 8 current-block fork tests**.
+
+
 The user authorized continued independent agent review, improvements and review
 submission. Portal readback confirmed the October 21 feedback: "follow design
 and app guideliens. improve UX. tabs have the same UI." The response and concrete
@@ -43,6 +69,14 @@ this. The browser regression covers that complete rotation/foreground sequence;
 the native regression additionally requires hidden fixed controls and nine
 unobstructed points inside the input. Earlier green runs whose screenshots
 exposed these problems are not evidence that those cases were already correct.
+
+The stronger regression also exposed test-instrumentation limitations: repeated
+accessibility queries exhausted the original sample deadline, snapshot values
+truncated the telemetry at 512 characters, and snapshot keyboard frames retained
+portrait coordinates after rotation. The final sampler reads full telemetry and
+the oriented keyboard frame directly, then samples the app frames together.
+Full bounds, all nine unobstructed points, hidden fixed controls, retained text,
+three stable observations and the post-capture check remain required.
 
 Store artwork was regenerated from current app captures. The income showcase
 now explicitly describes loss recovery, investment losses and cash liquidity;
