@@ -47,7 +47,8 @@ and [app guidelines](https://docs.world.org/mini-apps/guidelines/app-guidelines)
 | Accessible controls, expanded content and modal focus | 37 axe states with zero reported violations; 44px controls, action hit tests, native dialog containment, Escape/Cancel focus return |
 | Exact amounts, explicit consent and clear principal/income separation | Actual SDK setup and exact USDC withdrawal; review checks full recipient and initially unchecked consent; balance appears before income |
 | Native keyboard and lifecycle behavior | `test:android-ui`: 17 Android 15 layouts and eight scenario groups; actual IME, Back, rotation, Home/foreground, force-stop/relogin while an actual submitted transaction remains unmined, recovery with zero new transaction requests, and font scale 1.3 |
-| Native iOS keyboard and lifecycle | Xcode 16.4 / iPhone 16 Pro simulator / iOS 18.5: actual WKWebView, four guest tabs, real SDK sign-in, exact decimal input, native keyboard, full input visibility in portrait/landscape, Home/foreground preservation and review-action restoration after keyboard dismissal; [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/39907972022) |
+| Native iOS keyboard and lifecycle | Xcode 16.4 / iPhone 16 Pro simulator / iOS 18.5: actual WKWebView, four guest tabs, real SDK sign-in, exact decimal input, native keyboard, full input visibility in portrait/landscape, Home/foreground preservation and review-action restoration after keyboard dismissal; manual sign-in rejection/restart and pending USDC process-death recovery (two XCTest methods, zero failures); [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/39939617278) |
+| Durable setup and financial regression | `unified-plan-browser.mjs`: 84 checks, including strict-write failure before wallet handoff, delayed Edit/Resume locking, partial setup, canonical/ID-less receipt recovery, strategy-fee changes and principal/income accounting |
 | Second engine and interruption recovery | `test:webkit-ui`: 29 Linux WebKit layouts; offline/reconnect, rejection, pending-approval reload, history return, and a committed deposit recovered after losing its SDK callback without another transaction |
 | Current storefront artwork | `store-host-shots.mjs` captures actual current UI using local contracts; `make-store-images.mjs` produces the checked-in images with illustrative-value disclosures; dimensions and <=500KB limits verified |
 | Build and separation from test tools | Frontend typecheck, lint and production build pass; test-host command markers and fixture signing keys absent from generated JS; Android debug APK compiled successfully |
@@ -70,7 +71,7 @@ entire input stays above the native keyboard/accessory toolbar. The native host
 now resizes WKWebView with `keyboardLayoutGuide`; the app preserves scroll
 clearance and handles very short editing viewports. The final native screenshots
 were inspected, including the fully visible recipient input in landscape.
-Artifacts (five screenshots, test summary, `.xcresult`, host log) are attached to
+Artifacts (screenshots, test summary, `.xcresult`, host log) are attached to
 the linked GitHub run for seven days and can be regenerated using `ios-host.yml`.
 The Android run uses the AOSP image's WebView 124.0.6367.219; Linux WebKit is not
 an iPhone. Android process-death recovery now also covers an unconfirmed request:
@@ -81,6 +82,16 @@ request is made. LocalStorage readback alone failed this test by restoring an ol
 ready record. Setup journals now await strict IndexedDB transaction completion
 before handing off to the wallet. Legacy local/session records migrate on first
 read; durable tombstones prevent stale mirrors from reviving completed requests.
+The iOS run also confirms an unmined `1.000001` USDC deposit survives actual
+terminate/launch and re-authentication. After mining and Resume, `costBasis` is
+exactly `1000001` and the mined account nonce is unchanged by recovery. The other
+native test rejects sign-in, terminates a second pending approval, then explicitly
+signs in and runs the keyboard/lifecycle checks. The host handles stationary
+trusted touches as well as clicks; dragged/cancelled gestures do not approve, and
+the modal stays briefly in place to prevent click-through. Native event tracing
+exposed a touch-up without a synthesized click in the host's shadow dialog.
+These are host controls, not the actual World App approval UI.
+
 Ten storage tests cover delayed/failed commits, migration and deletion. A browser
 without strict IndexedDB support blocks setup instead of pretending persistence.
 

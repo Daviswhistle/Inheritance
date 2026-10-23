@@ -154,7 +154,7 @@ emulator on Linux/WSL with KVM. See [Android validation](android/README.md) for 
 reusable command, exact runtime versions, native lifecycle checks and evidence.
 The iOS project has also been compiled and run with Xcode 16.4 on a GitHub macOS
 15 runner. The verified native run used iPhone 16 Pro / iOS 18.5:
-[run 39907972022](https://github.com/Daviswhistle/Inheritance/actions/runs/39907972022).
+[run 39939617278](https://github.com/Daviswhistle/Inheritance/actions/runs/39939617278).
 It exercised all four guest tabs, real MiniKit wallet authentication through
 WKScriptMessageHandler, the decimal keyboard with exact `12.345678` USDC input,
 recipient typing, portrait/landscape input visibility above the actual keyboard
@@ -191,3 +191,13 @@ records and is not equivalent to process termination.
 The iOS workflow now also triggers on app and contract changes. Each disposable
 real-SDK host uses its own Vite optimizer cache so stubbed E2E modules cannot leak
 into native tests. The cache is removed with that host's temporary fixture.
+
+The current native run above passed both XCTest methods (zero failures). It also
+covers manual sign-in rejection, termination while approval waits, explicit
+re-authentication, and an unmined `1.000001` USDC deposit across process termination.
+After mining, Resume verifies the original deposit with unchanged account nonce;
+no second deposit is submitted. The initial EIP-7702 authorization nonce is
+accounted for by comparing recovery against the mined baseline. The test-host
+approval buttons preserve their DOM nodes across unrelated bridge events and
+accept stationary trusted touches; drag/cancellation never approves, and a short
+modal shield prevents compatibility clicks from reaching the app underneath.
