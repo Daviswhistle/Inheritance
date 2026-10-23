@@ -95,6 +95,9 @@ async function clickButton(targetPage, label) {
     .find(item => item.textContent.trim() === ${quoted} && !item.disabled);
     if (!button) return false;
     return /^clicked /.test(__q.click(${quoted}));`), `enabled button ${label}`);
+  if (label === "Edit remaining setup") {
+    await until(() => targetPage.ev("return !!document.querySelector('.plan-amount-control input:not(:disabled)') && !document.querySelector('.plan-resume')"), "durable clear completes before editing remaining setup");
+  }
 }
 
 async function clickMatchingButton(targetPage, matcher) {
@@ -593,6 +596,7 @@ try {
     await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "interrupted deposit restored");
     await chooseTab(page, "Assets");
     await clickMatchingButton(page, label => label === "WLD");
+    await page.ev("return __q.revealButton('Deposit')");
     await until(() => page.ev("return !!document.getElementById('deposit-amount') && /Resume your saved setup in Plan/.test(document.body.innerText)"), "Send recovery guard");
     assert.equal(await page.ev("return __q.btns().find(button => button.t === 'Deposit')?.d"), true);
     await installBridgeRecorder(page);
@@ -685,9 +689,11 @@ try {
   assert.equal(resumedCalls.length, 1, "structured-failure retry should make exactly one asset wallet request");
   assert.deepEqual(resumedCalls[0].targets, [(await usdc.getAddress()).toLowerCase(), (await usdcFactory.getAddress()).toLowerCase()]);
   assert.equal(await wldStrategy.balanceOf(await wldFactory.vaultOf(ACCOUNTS.a0.a)), parseUnits("2.5", 18), "WLD amount changed during USDC-only resume");
-  await until(() => page.ev(`return document.querySelector('.plan-overview-card') !== null && !/Updating…/.test(document.querySelector('.plan-overview-card')?.innerText || '')
-    && /2\.5 WLD/.test(document.querySelector('.plan-overview-card')?.innerText || '')
-    && /12\.123456 USDC/.test(document.querySelector('.plan-overview-card')?.innerText || '')`), "combined plan overview discovery", 35_000);
+  const overviewAmounts = () => page.ev("return Object.fromEntries([...document.querySelectorAll('.plan-overview-asset')].map(row => [row.querySelector('span')?.textContent.trim(), row.querySelector('strong')?.textContent.trim()]))");
+  await until(async () => {
+    const amounts = await overviewAmounts();
+    return amounts.WLD === '2.5' && amounts.USDC === '12.123456';
+  }, "combined plan overview discovery", 35_000);
 
   const owner = ACCOUNTS.a0.a;
   const wldVaultAddress = await wldFactory.vaultOf(owner);
@@ -721,7 +727,7 @@ try {
   assert.equal(wldPosition.gross, parseUnits("2.5", 18)); assert.equal(usdcPosition.gross, parseUnits("12.123456", 6));
   assert.equal(wldOwnerBalance, parseUnits("97.5", 18)); assert.equal(usdcOwnerBalance, parseUnits("87.876544", 6));
   const overviewState = await page.ev("return document.querySelector('.plan-overview-card')?.innerText || ''");
-  assert.match(overviewState, /2\.5 WLD/); assert.match(overviewState, /12\.123456 USDC/);
+  assert.deepEqual(await overviewAmounts(), { WLD: "2.5", USDC: "12.123456" });
   assert.equal(await page.ev("return document.querySelectorAll('input[name=\"vault-kind\"]').length"), 0);
   assert.doesNotMatch(overviewState, /choose (a )?vault|primary vault|vault count/i);
   assert.equal(await page.ev("return document.querySelectorAll('.plan-overview-asset').length"), 2);
@@ -991,8 +997,11 @@ try {
   await until(() => page.ev(`return document.querySelector('.plan-common-settings')?.innerText.includes(${JSON.stringify(`@${expectedHomeHeirName}`)})`), "human-readable heir name");
   assert.equal(await page.ev(`return document.querySelector('.plan-common-settings strong')?.title.toLowerCase() === ${JSON.stringify(currentHomeHeir.toLowerCase())}`), true);
   pass("Home resolves the heir username while preserving the full canonical recipient address");
+  await chooseTab(page, "Help");
   await page.ev("const select=document.querySelector('.locale-picker select'); select.value='ko'; select.dispatchEvent(new Event('change',{bubbles:true})); return true;");
-  await until(() => page.ev("return document.querySelector('.locale-picker select')?.value === 'ko' && /상속인/.test(document.body.innerText)"), "Korean Home");
+  assert.equal(await page.ev("return document.querySelector('.locale-picker select')?.value"), "ko");
+  await chooseTab(page, "홈");
+  await until(() => page.ev("return /상속인/.test(document.body.innerText)"), "Korean Home");
   await until(() => page.ev("const labels=[...document.querySelectorAll('.plan-overview-asset small')];return labels.length===2 && labels.every(element => element.innerText.includes('서비스 수수료 차감 전'))"), "localized refreshed yield valuation labels");
   await chooseTab(page, "자산");
   assert.match(await page.ev("return document.querySelector('.asset-money-card').innerText"), /서비스 수수료 차감 전 운용 가치/);
@@ -1003,7 +1012,9 @@ try {
   await captureLayout(page, "home-ko", 320, [".tab-item"]);
   assert.equal(await page.ev("return localStorage.getItem('inheritance:locale')"), "ko");
   pass("explicit Korean selection translates Home and persists the preference");
+  await chooseTab(page, "도움말");
   await page.ev("const select=document.querySelector('.locale-picker select'); select.value='en'; select.dispatchEvent(new Event('change',{bubbles:true})); return true;");
+  await chooseTab(page, "Home");
   await until(() => page.ev("return /Your plan/.test(document.body.innerText)"), "restored English Home");
   pass("switching back restores the existing English navigation and launch copy");
 
@@ -1426,13 +1437,42 @@ try {
   assert.equal(await wldStrategy.balanceOf(monitoredWld), parseUnits("0.1", 18));
   assert.equal(await usdcStrategy.balanceOf(monitoredUsdc), 0n);
   assert.equal(await monitoredPage.ev(`return window.__MONITOR_REGISTERED__[${JSON.stringify(monitoredWld.toLowerCase())}]`), true);
-  await clickButton(monitoredPage, "Edit remaining setup");
+  // Delay the journal read so Edit and Resume overlap before React can disable
+  // their buttons. The action lock must win before either async storage step.
+  await monitoredPage.ev(`
+    window.__E2E_BRIDGE_CALLS__ = [];
+    const original = IDBDatabase.prototype.transaction;
+    const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
+    window.__EDIT_READ_DELAYED__ = false;
+    IDBDatabase.prototype.transaction = function(...args) {
+      const transaction = original.apply(this, args);
+      if (this.name === 'inheritance-plan-recovery' && args[1] === 'readonly') {
+        IDBDatabase.prototype.transaction = original;
+        window.__EDIT_READ_DELAYED__ = true;
+        Object.defineProperty(transaction, 'oncomplete', { configurable: true,
+          set(callback) { complete.set.call(this, event => setTimeout(() => callback.call(this, event), 250)); },
+          get() { return complete.get.call(this); } });
+      }
+      return transaction;
+    };
+    const buttons = [...document.querySelectorAll('.plan-resume button')];
+    const edit = buttons.find(button => button.textContent.trim() === 'Edit remaining setup');
+    const resume = buttons.find(button => button.textContent.trim() === 'Resume remaining setup');
+    if (!edit || !resume || edit.disabled || resume.disabled) throw Error('Expected both ready-plan actions');
+    edit.click(); resume.click(); return true;
+  `);
+  await until(() => monitoredPage.ev("return !!document.querySelector('.plan-amount-control input:not(:disabled)') && !document.querySelector('.plan-resume')"), "delayed edit finishes without a competing resume");
+  assert.equal(await monitoredPage.ev("return window.__EDIT_READ_DELAYED__"), true);
+  assert.equal(JSON.parse(await monitoredPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
+  pass("editing an unsent plan locks Resume while the durable read is delayed, with no wallet request");
   assert.equal(await monitoredPage.ev("return document.getElementById('plan-wld').value"), "");
   assert.equal(await monitoredPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(monitoredKey)})`), null);
   await monitoredPage.ev("window.__E2E_REJECTED_TARGET__ = ''; window.__E2E_BRIDGE_CALLS__ = []; return true;");
   const manualDepositSnapshot = await provider.send("evm_snapshot", []);
   await chooseTab(monitoredPage, "Assets");
   await clickMatchingButton(monitoredPage, label => label === "USDC");
+  await until(() => monitoredPage.ev("return !!document.getElementById('deposit-amount')"), "USDC deposit control mounted");
+  await monitoredPage.ev("__q.reveal('#deposit-amount'); return true;");
   await until(() => monitoredPage.ev("return !!document.getElementById('deposit-amount') && /Amount to deposit \\(USDC\\)/.test(document.body.innerText)"), "manual USDC management");
   await installBridgeRecorder(monitoredPage);
   await monitoredPage.ev("return __q.setInput('deposit-amount', '0.1')");
@@ -1729,8 +1769,8 @@ try {
   await chooseTab(page, "Home");
   const expectedCombinedWld = (await wldVault.position()).gross + await wld.balanceOf(usdcVaultAddress);
   await until(() => page.ev(`return /WLD includes rewards and gifts/.test(document.querySelector('.plan-overview-card')?.innerText || '')
-    && / WLD$/.test(document.querySelector('.plan-overview-asset strong')?.innerText || '')`), "WLD includes USDC-held cash");
-  const displayedWld = parseUnits((await page.ev("return document.querySelector('.plan-overview-asset strong').innerText")).split(" ")[0], 18);
+    && [...document.querySelectorAll('.plan-overview-asset')].some(row => row.querySelector('span')?.textContent === 'WLD' && /^[0-9]+(?:[.][0-9]+)?$/.test(row.querySelector('strong')?.innerText || ''))`), "WLD includes USDC-held cash");
+  const displayedWld = parseUnits(await page.ev("return [...document.querySelectorAll('.plan-overview-asset')].find(row => row.querySelector('span')?.textContent === 'WLD').querySelector('strong').innerText"), 18);
   assert.ok(displayedWld <= expectedCombinedWld && expectedCombinedWld - displayedWld < 10n ** 12n);
   assert.match(await page.ev("return document.querySelector('.plan-overview-card').innerText"), /WLD includes rewards and gifts/);
   evidence.plan.additionalWld = { usdcVault: usdcVaultAddress, held: String(await wld.balanceOf(usdcVaultAddress)),
