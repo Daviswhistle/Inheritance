@@ -47,10 +47,14 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(recipient.value as? String, "@sam")
         XCTAssertEqual(amount.value as? String, "12.345678")
         capture("foreground-input-preserved", app)
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10), "Dismissal restores review action")
+        XCTAssertEqual(amount.value as? String, "12.345678")
+        capture("keyboard-dismissed-actions-restored", app)
     }
 
     private func capture(_ name: String, _ app: XCUIApplication) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
