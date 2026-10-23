@@ -75,16 +75,21 @@ try{
  assert.deepEqual(await guest.ev('return __q.tabs()'),['Home','Assets','Plan','Help']);
  assert.equal(await guest.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Home');
  assert.equal(await guest.ev(`return document.querySelector('.account-row')`),null);
- assert.deepEqual(await guest.ev(`return [...document.querySelectorAll('.entry-asset strong')].map(x=>x.textContent)`),['—','—']);
- pass('first entry opens the actual app navigation and shows unavailable balances before sign-in');
+ assert.equal(await guest.ev(`return document.querySelectorAll('.entry-shortcut').length`),2);
+ await tab(guest,'Assets');
+ assert.deepEqual(await guest.ev(`return [...document.querySelectorAll('.entry-balance')].map(x=>x.textContent)`),['—','—']);
+ await tab(guest,'Plan');
+ assert.equal(await guest.ev(`return document.querySelectorAll('.entry-plan-steps li').length`),3);
+ await tab(guest,'Home');
+ pass('guest tabs show distinct overview, unavailable asset balances and plan setup steps');
  for(const [width,height] of [[320,640],[390,844],[1280,900]]){
    await guest.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600});
    const layout=await guest.ev(`const action=document.querySelector('.entry-action .btn').getBoundingClientRect();const nav=document.querySelector('.tab-bar').getBoundingClientRect();return {width:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,actionBottom:action.bottom,navTop:nav.top,tabs:[...document.querySelectorAll('.tab-item')].map(x=>x.getBoundingClientRect().height)};`);
-   assert.ok(layout.width<=width,JSON.stringify(layout));assert.ok(layout.scrollHeight<=height,JSON.stringify(layout));
+   assert.ok(layout.width<=width,JSON.stringify(layout));
    assert.ok(layout.actionBottom<=layout.navTop,JSON.stringify(layout));assert.ok(layout.tabs.every(h=>h>=44));
    await snap(guest,`app-entry-${width}`);
  }
- pass('320px, 390px and desktop entry keep the primary action and all touch-sized tabs visible without scrolling');
+ pass('320px, 390px and desktop entry keep the primary action and all touch-sized tabs visible while explanatory content remains scrollable');
  for(const [width,height] of [[320,640],[390,844]]){
   await guest.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
   await guest.ev(`document.querySelector('.entry-rules').open=true;return true;`);
@@ -116,7 +121,9 @@ try{
  await linkedGuest.close();pages.splice(pages.indexOf(linkedGuest),1);
  const koreanGuest=await launch({pk:ACCOUNTS.a0.pk,url,preload:preload+`localStorage.setItem('inheritance:locale','ko');`});pages.push(koreanGuest);await koreanGuest.ev(HELPERS);
  assert.equal(await koreanGuest.ev(`return document.querySelector('.app-shell').lang`),'ko');
+ await tab(koreanGuest,'자산');
  assert.ok((await snap(koreanGuest,'app-entry-ko')).text.includes('플랜 잔액'));
+ await tab(koreanGuest,'홈');
  await koreanGuest.ev(`document.querySelector('.entry-rules').open=true;return true;`);
  assert.ok(await koreanGuest.ev(`return document.querySelector('.entry-rules').innerText.includes('신청일부터 7일')&&document.querySelector('.entry-rules').innerText.includes('로그인하는 것만으로는 갱신되지 않습니다')`));
  assert.equal(await koreanGuest.ev(`return performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/auth/')).length`),0);
@@ -318,9 +325,11 @@ try{
  assert.equal(await provider.send('evm_revert',[multiOwnerSnapshot]),true);
  pass('a shared link puts its selected owner and tappable claim first among multiple received plans at 320px and 390px');
  const linked=await open(ACCOUNTS.a1.pk,`?vault=${ua}`);await until(()=>linked.ev(`return document.querySelectorAll('.inheritance-asset').length===2`),'linked whole-plan');await snap(linked,'heir-linked-active');pass('a single asset link opens all assets left to the same heir');
- await linked.ev(`const s=document.querySelector('.locale-picker select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'ko');s.dispatchEvent(new Event('change',{bubbles:true}));return true`);const korean=await snap(linked,'heir-linked-active-ko');
+ await tab(linked,'Help');
+ await linked.ev(`const s=document.querySelector('.locale-picker select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'ko');s.dispatchEvent(new Event('change',{bubbles:true}));return true`);await tab(linked,'플랜');const korean=await snap(linked,'heir-linked-active-ko');
  assert.ok(korean.text.includes('상속 수령 절차'));assert.ok(!korean.text.includes('Inheritance Status'));assert.ok(!korean.text.includes('Set up your plan'));pass('Korean heir path uses translated status and next steps');
- await linked.ev(`const s=document.querySelector('.locale-picker select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'en');s.dispatchEvent(new Event('change',{bubbles:true}));return true`);
+ await tab(linked,'도움말');
+ await linked.ev(`const s=document.querySelector('.locale-picker select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,'en');s.dispatchEvent(new Event('change',{bubbles:true}));return true`);await tab(linked,'Plan');
  await provider.send('evm_increaseTime',[15*86400]);await provider.send('evm_mine',[]);await linked.send('Page.reload');await sleep(2200);await linked.ev(HELPERS);
  await until(()=>linked.ev(`return !!document.querySelector('.heir-next-action .btn')`),'eligible recipient action');
  for(const [width,height] of [[320,640],[390,844]]){

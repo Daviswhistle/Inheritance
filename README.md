@@ -62,6 +62,14 @@ pnpm --dir app dev
 World App 열기 링크를 표시합니다. `scripts/verify/run.sh all`은 별도 E2E 설정으로
 Anvil 테스트 체인, 실제 Pages 서명 검증 핸들러와 브라우저를 실행합니다.
 
+실제 MiniKit SDK를 유지하는 자체 테스트 호스트도 있습니다. `npm run test-host`로
+독립 로컬 체인과 WLD·USDC 테스트 자산을 시작하면 브라우저에서 승인·거절, 시간 이동,
+모의 수익과 소유자·상속인 전환을 시험할 수 있습니다.
+[공통 환경 실행법](scripts/test-host/README.md)과
+[Android Studio·iOS 기기용 WebView 호스트](test-hosts/README.md)를 참고하세요.
+`npm run test-host:check`는 SDK·브라우저·로컬 체인 통합 검증입니다.
+네이티브 프로젝트 빌드와 실제 World App 검증은 별도로 수행해야 합니다.
+
 ## 검증과 배포
 
 ```sh

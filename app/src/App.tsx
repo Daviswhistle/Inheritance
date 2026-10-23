@@ -10,6 +10,7 @@ import { AccountEntry } from "@/components/AccountEntry";
 import { TransferGuide } from "@/components/TransferGuide";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { PlanSetup } from "@/components/PlanSetup";
+import { ReleasePlanDialog } from "@/components/ReleasePlanDialog";
 import { HeirPlans, OwnerPlanSettings, InviteHeir } from "@/components/PlanExperience";
 import { readInheritancePosition, ownerInheritancePositions, inheritanceStage, rememberedInheritances, rememberInheritances, readSettingsRequest, saveSettingsRequest, clearSettingsRequest, settingsFingerprint, verifySettingsReceipt, SETTING_EVENTS } from "@/inheritance";
 import type { InheritancePosition, HeirReadiness, SettingsTarget, SettingsRequest } from "@/inheritance";
@@ -529,7 +530,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>(() => new URLSearchParams(window.location.search).has("vault") ? "inherit" : "vault");
   useEffect(() => {
     window.scrollTo(0, 0);
-    document.querySelector<HTMLElement>(".page-intro h1")?.focus({ preventScroll: true });
+    document.querySelector<HTMLElement>("main h1")?.focus({ preventScroll: true });
   }, [tab]);
 
   // Navigation stays available before sign-in and when a plan has no assets.
@@ -637,6 +638,11 @@ export default function App() {
   const depositEntryValid = depositAmount !== null && depositAmount > 0n && walletBalanceKnown && depositAmount <= walletWld;
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
+  const withdrawAmount = parseAssetAmount(withdrawAmountStr.trim() || "0", wldDecimals);
+  const withdrawRecipientValid = Boolean(withdrawTo && ethers.isAddress(withdrawTo)
+    && ethers.getAddress(withdrawTo) !== ethers.ZeroAddress);
+  const withdrawEntryValid = withdrawRecipientValid && withdrawAmount !== null
+    && withdrawAmount > 0n && withdrawAmount <= vaultWldForWithdrawal;
   useEffect(() => {
     setAmountStr("");
     setWithdrawAmountStr("");
@@ -674,11 +680,9 @@ export default function App() {
    * 계속 보이므로 정보는 사라지지 않고(3단계 · 금고 1개 · 기한 전 취소 가능), 규칙을
    * 아는 사람은 펼치면 된다.
    */
-  /** 모달 안의 포커스 대상을 순환시키기 위한 ref (Tab 가두기). */
-  const releaseDialogRef = useRef<HTMLDivElement | null>(null);
   const [releasing, setReleasing] = useState<boolean>(false);
+  const [releaseMessage, setReleaseMessage] = useState("");
   const [sweeping, setSweeping] = useState<boolean>(false);
-  const [releaseAcknowledge, setReleaseAcknowledge] = useState<boolean>(false);
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
   const [creating, setCreating] = useState(false);
   const [pendingAction, setPendingAction] = useState(false);
@@ -954,9 +958,10 @@ export default function App() {
     if (miniInstalled) return node;
     return (
       <Card>
-        <CardHeader><CardTitle>Open in World App</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("entry.connect.open")}</CardTitle></CardHeader>
         <CardContent className="text-sm text-gray-700">
-          This mini app runs only inside World App. Please open it in World App to continue.
+          <p>{t("entry.worldAppRequired")}</p>
+          <a className="btn btn-primary" href={`https://world.org/mini-app?app_id=${encodeURIComponent(document.querySelector('meta[name="minikit:app-id"]')?.getAttribute("content") || "")}&path=${encodeURIComponent(vault ? `/?vault=${vault}` : "/")}`}>{t("entry.connect.open")}</a>
         </CardContent>
       </Card>
     );
@@ -1112,7 +1117,7 @@ export default function App() {
     };
     return (
       <span className={`inline-flex items-center text-xs px-2 py-0.5 rounded border ${clsMap[color]}`}>
-        {text}
+        {localizeAppMessage(locale, text)}
       </span>
     );
   };
@@ -1320,11 +1325,11 @@ export default function App() {
 
   const registerHeirAlert = async () => {
     if (!NOTIFY_BACKEND_ENABLED) {
-      pushToast("error", "Set VITE_NOTIFY_BACKEND_URL first.");
+      pushToast("error", "Notifications are unavailable. Contact support if this continues.");
       return;
     }
     if (!account || !vault || !vaultHeir || !vaultOwner) {
-      pushToast("error", "Load vault details first.");
+      pushToast("error", "Please wait for the plan details to load.");
       return;
     }
     if (![vaultOwner, vaultHeir].some(address => address.toLowerCase() === account.toLowerCase())) {
@@ -1343,7 +1348,7 @@ export default function App() {
 
   const sendNotifyTestToMe = async () => {
     if (!NOTIFY_BACKEND_ENABLED) {
-      pushToast("error", "Set VITE_NOTIFY_BACKEND_URL first.");
+      pushToast("error", "Notifications are unavailable. Contact support if this continues.");
       return;
     }
     if (!account) {
@@ -3207,7 +3212,7 @@ export default function App() {
     const timer = setInterval(() => { if (document.visibilityState === "visible") void refreshInvite(); }, 30_000);
     return () => clearInterval(timer);
   }, [inviteVault, tab, refreshInvite]);
-  const inviteCard = heirLink && <InviteHeir ready={justCreatedPlan} compact={tab === "inherit"} name={heirUsername ?? ""} link={heirLink}
+  const inviteCard = heirLink && <InviteHeir ready={justCreatedPlan} compact name={heirUsername ?? ""} link={heirLink}
     busy={pendingAction || shareBusy} readiness={observedHeirReadiness}
     onChat={() => void tellHeirInChat()} onLink={() => void copyHeirLink()} onMessage={() => void copyHeirMessage()}
     onRefresh={() => void refreshInvite()} />;
@@ -3411,7 +3416,7 @@ export default function App() {
   const deposit = async () => {
     if (!vault) return;
     if (hasPendingPlanDeposit(readStoredPlan(account) ?? pendingPlan, account, vaultFactory, vault)) {
-      setStatus("Resume your saved setup in Inherit before adding more to this asset.");
+      setStatus("Resume your saved setup in Plan before adding more to this asset.");
       return;
     }
     if (!amountStr) { setStatus("Enter amount"); return; }
@@ -3824,10 +3829,10 @@ export default function App() {
   const ownerWithdraw = async () => {
     if (!vaultCtr) return;
     if (!withdrawTo) { setStatus("Enter recipient address"); return; }
-    if (!ethers.isAddress(withdrawTo)) { setStatus("Invalid recipient address"); return; }
-    if (!withdrawAmountStr) { setStatus("Enter amount"); return; }
-    if (!validDecimalInput(withdrawAmountStr)) { setStatus("Enter a valid decimal amount"); return; }
-    const amt = parseAmount(withdrawAmountStr);
+    if (!withdrawRecipientValid) { setStatus("Invalid recipient address"); return; }
+    if (!withdrawAmountStr.trim()) { setStatus("Enter amount"); return; }
+    if (withdrawAmount === null) { setStatus("Enter a valid decimal amount"); return; }
+    const amt = withdrawAmount;
     if (amt <= 0n) { setStatus("Enter amount greater than 0"); return; }
     if (amt > vaultWldForWithdrawal) { setStatus("Amount exceeds vault balance"); return; }
     try {
@@ -4081,17 +4086,18 @@ export default function App() {
 
   const releaseSlot = async () => {
     if (!factory) return;
+    const report = (message: string) => { setStatus(message); setReleaseMessage(message); };
     setReleasing(true);
     let ok = false;
     try {
-      if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      if (!miniInstalled) { report("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
       const sent = await sendWorldChainTx([{  address: vaultFactory, abi: FACTORY_ABI, functionName: "releaseMyVault", args: []  }]);
       if (!sent.ok) {
-        setStatus(sent.error);
+        report(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
         return;
       }
-      setStatus("Pending… awaiting confirmation");
+      report("Pending… awaiting confirmation");
       const prov = getRwProvider();
       const txh = sent.tx.hash;
       await waitForTxOrEvent(prov, {
@@ -4103,7 +4109,7 @@ export default function App() {
           return !v || v === ethers.ZeroAddress;
         },
       });
-      setStatus("Released. You can create a new vault.");
+      report("Released. You can create a new vault.");
         /* 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
            화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
 
@@ -4130,14 +4136,13 @@ export default function App() {
       await loadVault();
       ok = true;
     } catch (e: unknown) {
-      setStatus("Release error: " + errorText(e));
+      report("Release error: " + errorText(e));
       pushToast('error', errorText(e));
     } finally {
       setReleasing(false);
       // 실패했을 때 모달을 닫으면 오류 문맥이 사라지고 사용자는 이유를 알 수 없다.
       if (ok) {
         setShowReleaseConfirm(false);
-        setReleaseAcknowledge(false);
       }
     }
   };
@@ -4212,15 +4217,16 @@ export default function App() {
         <div className="container-narrow px-4 py-4">
           <Card>
             <CardHeader>
-              <CardTitle>Configuration required</CardTitle>
+              <CardTitle>{t("entry.configurationTitle")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre
+              <p>{t("entry.configurationBody")}</p>
+              <details><summary>{t("entry.configurationDetails")}</summary><pre
                 className="text-xs text-gray-700"
                 style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
               >
                 {CONFIG_ERROR}
-              </pre>
+              </pre></details>
             </CardContent>
           </Card>
         </div>
@@ -4228,15 +4234,10 @@ export default function App() {
       <header className="app-header">
         <div className="container-narrow header-content">
           <Brand />
-          <div className="header-actions"><LanguagePicker /></div>
         </div>
-      </header>
-      {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
-          콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
-      <main id="main-content" className={`container-narrow app-content tab-pb grid gap-4 ${!account && tab !== "support" ? "app-content-entry" : ""}`}>
         {/* 헤더. 로그인 상태와 탭마다 반복되므로 카드 한 장을 쓰지 않고 한 줄로 줄인다.
             카드 4개(헤더/타이머/입금/고객센터)를 한 화면에 넣으려면 이게 전부 필요했다. */}
-        {account && <div className="account-row flex items-center justify-between gap-2">
+        {account && <div className="container-narrow account-row flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate">
               {username ? `@${username}` : short(account)}
@@ -4259,9 +4260,13 @@ export default function App() {
             </Button>
           )}
         </div>}
-        <div className="page-intro"><span className="eyebrow">{t(tab === "vault" ? "home.intro.vault" : tab === "money" ? "home.intro.money" : tab === "support" ? "home.intro.support" : "home.intro.inherit")}</span><h1 tabIndex={-1}>{tab === "inherit" && (iAmHeir || receivedYieldInheritance || !ownVault && inheritedPositions.length > 0) ? t("journey.heir.heading") : t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>
+      </header>
+      {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
+          콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
+      <main id="main-content" className={`container-narrow app-content tab-pb grid gap-4 ${!account && tab !== "support" ? "app-content-entry" : ""}`}>
+        {(account || tab === "support") && <div className="page-intro"><h1 tabIndex={-1}>{tab === "inherit" && (iAmHeir || receivedYieldInheritance || !ownVault && inheritedPositions.length > 0) ? t("journey.heir.heading") : t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>}
         {!account && !CONFIG_ERROR && tab !== "support" && <AccountEntry view={tab} installed={miniInstalled} busy={ctaLoading}
-          onConnect={continueWorldApp2} linkedVault={linkedVault} />}
+          onConnect={continueWorldApp2} onNavigate={next => { navigationChosenFor.current = account.toLowerCase(); setTab(next); }} linkedVault={linkedVault} />}
         {status && (account || !/Open in World App.*bridge unavailable/i.test(status)) && (
           <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
             {localizeAppMessage(locale, status)}
@@ -4275,21 +4280,22 @@ export default function App() {
         </section>}
         {account && <>
         {tab === "inherit" && account && (notifyHeirWorthShowing || inheritedPositions.length > 0) && heirStatusCard}
-        {account && tab === "vault" && justCreatedPlan && inviteCard}
         {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
-          <CardHeader>
-            <span className="eyebrow">{t("home.overview.eyebrow")}</span>
-            <CardTitle>{t("home.overview.title")}</CardTitle>
-            <p className="plan-card-intro">{t("home.overview.description")}</p>
-          </CardHeader>
           <CardContent className="grid gap-3">
             {nextCheckIn !== null && <div className="home-checkin-date">
               <span>{chainNow > 0 && nextCheckIn <= chainNow ? t("home.checkin.overdue") : t("home.checkin.next")}</span>
-              <strong>{new Date(nextCheckIn * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en", { year: "numeric", month: "short", day: "numeric" })}</strong>
+              {chainNow > 0 && <strong>{nextCheckIn <= chainNow ? t("home.checkin.direct") : t("home.checkin.remaining", { days: Math.ceil((nextCheckIn - chainNow) / 86400) })}</strong>}
+              <time dateTime={new Date(nextCheckIn * 1000).toISOString()}>{new Date(nextCheckIn * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}</time>
               {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
-            {unsettledOwnedPlans.length > 0 && !checkinReview && <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
-              onClick={() => void runWalletAction(() => checkInAllPlans(), true)}>{t("home.checkin.direct")}</Button>}
+            {unsettledOwnedPlans.length > 0 && !checkinReview && <div className="home-checkin-action">
+              <Button variant="primary" aria-describedby="home-checkin-help" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
+                onClick={() => void runWalletAction(() => checkInAllPlans(), true)}>{t("home.checkin.direct")}</Button>
+              <p id="home-checkin-help">{t(!miniInstalled ? "home.checkin.openApp" : ownedPlanRead.loading ? "home.checkin.loading"
+                : ownedPlanRead.incomplete ? "home.checkin.unavailable" : "home.checkin.explainer")}</p>
+              {miniInstalled && ownedPlanRead.incomplete && !ownedPlanRead.loading && <Button disabled={pendingAction}
+                onClick={() => void loadVault()}>{t("entry.unavailable.action")}</Button>}
+            </div>}
             {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
               <h3 id="checkin-review-title">{t("home.checkin.title")}</h3>
               <p>{t("home.checkin.claimBody", { count: checkinReview.claimCount })}</p>
@@ -4307,12 +4313,13 @@ export default function App() {
               </div>
             </section>}
 
+            <h2 className="home-assets-heading">{t("home.overview.title")}</h2>
             <div className="plan-overview-assets">
               {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
                 const total = ownedPlanTotal(symbol);
                 const decimals = symbol === "USDC" ? 6 : 18;
                 const value = ownedPlanRead.loading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
-                  : `${formatYieldAmount(total.amount, decimals)} ${symbol}`;
+                  : formatYieldAmount(total.amount, decimals);
                 return <div className="plan-overview-asset" key={symbol}>
                   <span>{symbol}</span><strong>{value}</strong>
                   <small>{ownedPlanRead.loading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
@@ -4350,9 +4357,10 @@ export default function App() {
             </div>
           </CardContent>
         </Card>}
+        {account && tab === "vault" && justCreatedPlan && inviteCard}
         {HAS_YIELD_ROUTES && account && vaultLookupIncomplete && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
-          Some vault registries could not be refreshed. Previously found vaults stay visible; their availability may be out of date. We will retry automatically.
-          <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>Retry vault lookup</Button>
+          {t("assets.registryUnavailable")}
+          <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>{t("assets.retryLookup")}</Button>
         </div>}
         {account && ownedVaults.length > 0 && tab === "money" && <AssetNavigation
           accounts={assetAccounts} selected={vault} busy={pendingAction}
@@ -4361,16 +4369,16 @@ export default function App() {
           {t("home.archived.note")}
         </p>}
         {isArchivedOwner && vaultHasAssets && ["vault", "money", "inherit"].includes(tab) && <Card>
-          <CardHeader><CardTitle>Recover archived assets</CardTitle></CardHeader><CardContent className="grid gap-2">
-            <p>Return this archived vault’s idle {wldSymbol}, receipt shares{isUsdcVault ? " and other WLD" : ""} to your wallet. Your current vault stays separate. Any positive net gain pays the same 10% service fee.</p>
+          <CardHeader><CardTitle>{t("assets.recoverTitle")}</CardTitle></CardHeader><CardContent className="grid gap-2">
+            <p>{t("assets.recoverBody", { symbol: wldSymbol, rewards: isUsdcVault ? t("assets.recoverRewards") : "" })}</p>
             <p className="text-xs text-gray-600">{isSettledClaim
-              ? "Inheritance has completed. Only other assets received here can be recovered; late campaign rewards still go to the fixed inheritance recipient."
-              : "This renews the archived timer and cancels any pending inheritance claim. It works without Morpho cash liquidity; you can redeem wallet-held shares as liquidity permits."}</p>
-            <Button variant="primary" disabled={pendingAction || !miniInstalled || !identityMatchesVault} onClick={() => void runVaultAction(recoverArchivedYieldAssets)}>Recover archived assets to me</Button>
+              ? t("assets.recoverCompleted")
+              : t("assets.recoverActive")}</p>
+            <Button variant="primary" disabled={pendingAction || !miniInstalled || !identityMatchesVault} onClick={() => void runVaultAction(recoverArchivedYieldAssets)}>{t("assets.recoverAction")}</Button>
           </CardContent></Card>}
         {HAS_YIELD_ROUTES && yieldReadError?.scope === balanceScope && yieldReadError.failed && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
-          Some Morpho balances could not be refreshed. The last available values may be out of date.
-          <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>Refresh yield balances</Button>
+          {t("assets.yieldUnavailable")}
+          <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>{t("assets.refreshYield")}</Button>
         </div>}
         {isMyVault && tab === "money" && !isSettledClaim && (vaultLookupIncomplete || ownedPlanRead.incomplete) && <Card>
           <CardHeader><CardTitle>{t("journey.owner.recoveryTitle", { symbol: wldSymbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
@@ -4379,27 +4387,6 @@ export default function App() {
             <Button disabled={pendingAction} onClick={() => void runVaultAction(() => renewSelectedAsset(Boolean(singleCheckinReview)), true)}>{t(singleCheckinReview ? "journey.owner.singleConfirm" : "journey.owner.singleRenew", { symbol: wldSymbol })}</Button>
             {singleCheckinReview && <Button disabled={pendingAction} onClick={() => setSingleCheckinReview("")}>{t("home.checkin.cancel")}</Button>}
           </CardContent></Card>}
-        {isMyVault && tab === "money" && <IncomePositionCard key={`income:${balanceScope}`}
-          state={selectedIncome?.state ?? "loading"}
-          position={selectedIncome?.state === "available" ? selectedIncome : null}
-          symbol={wldSymbol as "WLD" | "USDC"} decimals={wldDecimals} to={incomeTo} recipientValid={incomeRecipientValid}
-          canCollect={Boolean(miniInstalled && selectedIncome?.state === "available" && selectedIncome.valued
-            && incomeRecipientValid && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled))}
-          busy={pendingAction} onToChange={setIncomeTo} onCollect={() => void runVaultAction(ownerWithdrawIncome)}
-          account={account}
-          disabledReason={!miniInstalled ? t("income.openWorldApp")
-            : isSettledClaim ? t("income.inheritanceComplete")
-          : isExpiredOrLater && !inheritanceCancelled ? t("income.checkInBeforeCollect")
-            : ""}
-          onRefresh={() => { void refreshIncome(); void refreshIncomeHistory(); }}
-          onUseMyAddress={() => setIncomeTo(account)} />}
-        {isVaultOwner && identityMatchesVault && tab === "money" && <IncomeHistoryCard
-          data={selectedIncomeHistory}
-          symbol={wldSymbol as "WLD" | "USDC"}
-          decimals={wldDecimals}
-          busy={pendingAction}
-          onRefresh={() => void refreshIncomeHistory()}
-          onLoadOlder={() => void refreshIncomeHistory("older")} />}
         {isYieldVault && (tab === "inherit" && !isMyVault && hasRewardAction || tab === "money" && hasRewardAction) && <YieldRewardsCard
           usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
@@ -4466,8 +4453,8 @@ export default function App() {
             </CardHeader>
             <CardContent className="grid gap-3">
               {!isVaultOwner && vaultOwner && <p className="shared-asset-note" role="status">
-                This balance belongs to {short(vaultOwner)}.
-                {iAmHeir ? " You are the named heir; open Plan to follow its inheritance." : " You cannot deposit or withdraw from this shared plan."}
+                {t("assets.sharedOwner", { address: short(vaultOwner) })}{" "}
+                {t(iAmHeir ? "assets.sharedHeir" : "assets.sharedVisitor")}
               </p>}
                 {/* 이 탭의 질문은 "내 지갑에 얼마가 있고, 금고에 얼마가 들어갔는가" 다.
                     메타데이터(누가/언제/어느 체인)가 그 앞에 오는 동안 화면은 이 질문에
@@ -4483,7 +4470,7 @@ export default function App() {
                   </div>
                 </div>
               {isMyVault && (
-                <>
+                <details className="deposit-controls"><summary>{t("assets.action.deposit")}</summary><div className="deposit-controls-content">
                   <div className="field-row">
                     <label className="field-row-label" htmlFor="deposit-amount">{t("assets.depositAmount", { symbol: wldSymbol })}</label>
                     <div className="field-row-controls">
@@ -4514,7 +4501,8 @@ export default function App() {
                   {pendingDeposit && <p className="text-xs text-gray-600" role="status">
                     {t("assets.resumeSetup")}
                   </p>}
-                </>
+                  <p className="deposit-availability">{t("assets.depositNetwork", { symbol: wldSymbol })}</p>
+                </div></details>
               )}
               {/* 정산된 금고에서 입금을 막는다. 계약을 막을 수는 없다 — 누군가 주소로
                   직접 보낼 수 있으므로 sweep 이 여전히 필요하다 — 하지만 앱이 직접
@@ -4523,8 +4511,8 @@ export default function App() {
               {isSettledClaim && (
                 <div className="text-xs text-gray-600">
                   {vaultIdentity?.released
-                    ? "This archived vault is closed. Claimable campaign rewards still go to its fixed inheritance recipient. Use a current vault for new deposits."
-                    : "This vault is closed, so deposits are turned off here — create a new vault first. If you already sent funds to this vault address, the owner can sweep them from Plan."}
+                    ? t("assets.archivedClosed")
+                    : t("assets.completedClosed")}
                 </div>
               )}
               {/* 마감 이후에도 입금을 막는다. 상속인이 이미 수령할 수 있는 상태에서
@@ -4538,18 +4526,15 @@ export default function App() {
                     /* 상속인이 없다(heir == owner). "당신의 상속인이 가져간다" 는 이
                        자리에서 명제가 아니다 — 유일한 당사자는 읽는 사람 자신이고,
                        꺼낼 방법도 있으므로 위험이 아니다. */
-                    ? "This vault's inheritance is cancelled, so nothing is inheriting it. Deposits are turned off because a cancelled vault is finished — withdraw what is here, or release your slot."
+                    ? t("assets.cancelledClosed")
                     : !isMyVault
                       /* 소유자 전용 지시다. "당신의 상속인이 가져간다", "Deposit only into
                          a fresh vault" 를 상속인이나 타인에게 말하면 그들이 할 수 있는 일이
                          아니다. 사실을 말하되 지시하지 않는다. */
-                      ? "The countdown has ended, so deposits are turned off for this vault."
-                      : "Your plan is overdue, so deposits are paused. Check in before inheritance executes to renew it. Your heir must file a claim and wait through the review before funds can move."}
+                      ? t("assets.sharedOverdue")
+                      : t("assets.ownerOverdue")}
                 </div>
               )}
-              <div className="text-xs text-gray-500">
-                Deposit {wldSymbol} on World Chain (480) using this app. {isUsdcVault ? "WLD campaign rewards are handled separately. " : ""}Do not send ETH or unrelated tokens. Review any transaction fees shown by World App.
-              </div>
 
               {isMyVault && (
                 <>
@@ -4564,30 +4549,33 @@ export default function App() {
                         없었다(계약이 `claimedAt == 0` 이므로 sweep 도 불가능).
                         그 상태에서 사용자는 앱을 나가지 않는 한 자금을 꺼낼 수 없다. */}
                     {inheritanceCancelled
-                      ? "Withdraw principal (inheritance was cancelled — this stays yours)"
-                      : "Withdraw principal (before the countdown ends)"}
+                      ? t("assets.withdrawCancelled")
+                      : t("assets.withdrawBeforeDeadline")}
                   </div>
                   <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-to">Send withdrawn {wldSymbol} to</label>
+                    <label className="field-row-label" htmlFor="withdraw-to">{t("assets.withdrawTo", { symbol: wldSymbol })}</label>
                     <div className="field-row-controls">
-                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)} />
-                      <Button onClick={setWithdrawToMe}>My address</Button>
+                      <Input id="withdraw-to" placeholder="0x..." value={withdrawTo} onChange={e => setWithdrawTo(e.target.value)}
+                        aria-invalid={Boolean(withdrawTo && !withdrawRecipientValid)} aria-describedby={withdrawTo && !withdrawRecipientValid ? "withdraw-address-error" : undefined} />
+                      <Button onClick={setWithdrawToMe}>{t("assets.myAddress")}</Button>
                     </div>
                   </div>
-                  {withdrawTo && !ethers.isAddress(withdrawTo) && (
-                    <div className="text-xs text-red-600">Invalid recipient address.</div>
+                  {withdrawTo && !withdrawRecipientValid && (
+                    <div id="withdraw-address-error" className="text-xs text-red-600" role="alert">{t("assets.invalidAddress")}</div>
                   )}
                   <div className="field-row">
-                    <label className="field-row-label" htmlFor="withdraw-amount">Principal amount to withdraw</label>
+                    <label className="field-row-label" htmlFor="withdraw-amount">{t("assets.withdrawAmount")}</label>
                     <div className="field-row-controls">
                       <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
-                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)} />
-                      <Button onClick={setWithdrawMax}>All</Button>
+                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)}
+                        aria-invalid={withdrawAmount === null || withdrawAmount > vaultWldForWithdrawal}
+                        aria-describedby="withdraw-amount-help" />
+                      <Button onClick={setWithdrawMax}>{t("assets.all")}</Button>
                       {/* 라벨이 실제 수신자를 말한다. 예전엔 "Withdraw to myself" 가
                           고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
                           라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
                           이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
-                      <Button onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || isExpiredOrLater && !inheritanceCancelled}>
+                      <Button className="principal-submit" onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || !withdrawEntryValid || isExpiredOrLater && !inheritanceCancelled}>
                         {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
                           ? t("assets.action.withdrawMyself")
                           : withdrawTo
@@ -4596,13 +4584,17 @@ export default function App() {
                       </Button>
                     </div>
                   </div>
+                  <p id="withdraw-amount-help" className="plan-field-help" role="status">{withdrawAmount === null
+                    ? t("assets.amountInvalid", { symbol: wldSymbol, decimals: wldDecimals })
+                    : withdrawAmount > vaultWldForWithdrawal ? t("status.overBalance")
+                    : t("plan.balance.available", { amount: formatYieldAmount(vaultWldForWithdrawal, wldDecimals), symbol: wldSymbol })}</p>
                   {isYieldVault && <p className="text-xs text-gray-600">{t("assets.principalBody")}{isUsdcVault && <> {t("assets.fullExitWld")}</>}</p>}
                   </div></details>
                 </>
               )}
               <details className="money-metadata"><summary>{t("assets.metadata")}</summary><div className="text-sm grid gap-1">
                 <div className="flex items-center gap-2">
-                  <div>Owner:</div>
+                  <div>{t("assets.ownerLabel")}</div>
                   <div>
                     <b>
                       {/* 여기서 로그인한 사람의 username 을 쓰면 안 된다. 상속인이 이 탭을
@@ -4617,12 +4609,12 @@ export default function App() {
                           : "-"}
                     </b>
                     {!isMyVault && vaultOwner && (
-                      <span className="text-xs text-gray-500"> (not you)</span>
+                      <span className="text-xs text-gray-500">{t("assets.notYou")}</span>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div>Heir:</div>
+                  <div>{t("assets.heirLabel")}</div>
                   {/* 정산이 끝나면 계약이 heir 를 0x0 으로 지운다. 그래서 이 자리가
                       "Heir: 0x0000…0000" 이 되는데, 사람처럼 보이는 주소라
                       "누군가의 금고" 로 읽힌다. 상태를 말하는 게 아니라 이 앱의
@@ -4630,11 +4622,11 @@ export default function App() {
                   <div>
                     <b>
                       {!vaultHeir
-                        ? "Checking vault identity…"
+                        ? t("assets.identityLoading")
                         : vaultHeir === ethers.ZeroAddress
-                          ? "nobody — the inheritance has already completed"
+                          ? t("assets.heirCompleted")
                         : vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()
-                          ? "nobody — inheritance was cancelled"
+                          ? t("assets.heirCancelled")
                           : short(vaultHeir)}
                     </b>
                   </div>
@@ -4647,38 +4639,38 @@ export default function App() {
                     aria-controls="advanced-details"
                     onClick={() => setShowAdvanced(v => !v)}
                   >
-                    {showAdvanced ? 'Hide details' : 'Show addresses & explorer links'}
+                    {t(showAdvanced ? "assets.hideDetails" : "assets.showDetails")}
                   </button>
                 </div>
                 {showAdvanced && (
                   <div id="advanced-details" className="grid gap-1 text-xs">
                     <div>
-                      Vault:
+                      {t("assets.vaultLabel")}
                       {vault ? (
                         <>
                           <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vault, "vault")}>{short(vault)}</button>
-                          {copied === "vault" && <span className="ml-2 text-green-700">Copied</span>}
-                          {vault && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vault}`} target="_blank" rel="noreferrer">View</a>}
+                          {copied === "vault" && <span className="ml-2 text-green-700">{t("common.copied")}</span>}
+                          {vault && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vault}`} target="_blank" rel="noreferrer">{t("common.view")}</a>}
                         </>
                       ) : <b className="break-all">-</b>}
                     </div>
                     <div>
-                      Owner:
+                      {t("assets.ownerLabel")}
                       {vaultOwner ? (
                         <>
                           <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vaultOwner, "owner")}>{short(vaultOwner)}</button>
-                          {copied === "owner" && <span className="ml-2 text-green-700">Copied</span>}
-                          {vaultOwner && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultOwner}`} target="_blank" rel="noreferrer">View</a>}
+                          {copied === "owner" && <span className="ml-2 text-green-700">{t("common.copied")}</span>}
+                          {vaultOwner && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultOwner}`} target="_blank" rel="noreferrer">{t("common.view")}</a>}
                         </>
                       ) : <b className="break-all">-</b>}
                     </div>
                     <div>
-                      Heir:
+                      {t("assets.heirLabel")}
                       {vaultHeir ? (
                         <>
                           <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(vaultHeir, "heir")}>{short(vaultHeir)}</button>
-                          {copied === "heir" && <span className="ml-2 text-green-700">Copied</span>}
-                          {vaultHeir && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultHeir}`} target="_blank" rel="noreferrer">View</a>}
+                          {copied === "heir" && <span className="ml-2 text-green-700">{t("common.copied")}</span>}
+                          {vaultHeir && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${vaultHeir}`} target="_blank" rel="noreferrer">{t("common.view")}</a>}
                         </>
                       ) : <b className="break-all">-</b>}
                     </div>
@@ -4687,33 +4679,33 @@ export default function App() {
                 <div>
                   {/* "1 days" 는 사소해 보이지만 이 앱에서 기한은 돈과 맞닿아 있다.
                       1일 주기면 하루라고 쓰는 게 맞다. */}
-                  Heartbeat:{" "}
+                  {t("plan.review.interval")}{" "}
                   <b>
                     {(() => {
                       const d = vaultHeartbeat ? Math.floor(vaultHeartbeat / 86400) : 0;
-                      return `${d} ${d === 1 ? "day" : "days"}`;
+                      return t("plan.interval.daysOnly", { days: d });
                     })()}
                   </b>
                 </div>
-                <div>Last ping: <b>{vaultLastPing ? new Date(vaultLastPing * 1000).toLocaleString() : "-"}</b></div>
+                <div>{t("assets.lastCheckin")} <b>{vaultLastPing ? new Date(vaultLastPing * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en-US") : "-"}</b></div>
                 <div>
-                  Token ({wldSymbol}):
+                  {t("assets.tokenLabel", { symbol: wldSymbol })}
                   {selectedAssetAddress ? (
                     <>
                       <button className="ml-1 underline text-blue-700 break-all" onClick={() => copyText(selectedAssetAddress, "wld")}>{short(selectedAssetAddress)}</button>
-                      {copied === "wld" && <span className="ml-2 text-green-700">Copied</span>}
+                      {copied === "wld" && <span className="ml-2 text-green-700">{t("common.copied")}</span>}
                     </>
                   ) : <b className="break-all">-</b>}
-                  {selectedAssetAddress && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${selectedAssetAddress}`} target="_blank" rel="noreferrer">View</a>}
+                  {selectedAssetAddress && <a className="ml-2 text-blue-600 underline" href={`${EXPLORER}/address/${selectedAssetAddress}`} target="_blank" rel="noreferrer">{t("common.view")}</a>}
                 </div>
                 {/* 블록 번호는 탐색기에 "View" 링크로만 제공. 숫자를 그대로 노출하면
                     사용자에게 의미가 없고 테스트 체인에서 "4" 같은 값이 오히려
                     완성되지 않은 화면처럼 보인다. */}
                 {vaultCreatedBlock !== null ? (
                   <div>
-                    Created at:{" "}
+                    {t("assets.createdAt")}{" "}
                     <b>
-                      {vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}
+                      {vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en-US") : "-"}
                     </b>{" "}
                     <a
                       className="text-blue-600 underline"
@@ -4721,14 +4713,14 @@ export default function App() {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      View
+                      {t("common.view")}
                     </a>
                   </div>
                 ) : (
                   <div>
-                    Created at:{" "}
+                    {t("assets.createdAt")}{" "}
                     <b>
-                      {vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString() : "-"}
+                      {vaultCreatedTime ? new Date(vaultCreatedTime * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en-US") : "-"}
                     </b>
                   </div>
                 )}
@@ -4737,6 +4729,27 @@ export default function App() {
           </Card>
         )}
 
+        {isMyVault && tab === "money" && <IncomePositionCard key={`income:${balanceScope}`}
+          state={selectedIncome?.state ?? "loading"}
+          position={selectedIncome?.state === "available" ? selectedIncome : null}
+          symbol={wldSymbol as "WLD" | "USDC"} decimals={wldDecimals} to={incomeTo} recipientValid={incomeRecipientValid}
+          canCollect={Boolean(miniInstalled && selectedIncome?.state === "available" && selectedIncome.valued
+            && incomeRecipientValid && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled))}
+          busy={pendingAction} onToChange={setIncomeTo} onCollect={() => void runVaultAction(ownerWithdrawIncome)}
+          account={account}
+          disabledReason={!miniInstalled ? t("income.openWorldApp")
+            : isSettledClaim ? t("income.inheritanceComplete")
+          : isExpiredOrLater && !inheritanceCancelled ? t("income.checkInBeforeCollect")
+            : ""}
+          onRefresh={() => { void refreshIncome(); void refreshIncomeHistory(); }}
+          onUseMyAddress={() => setIncomeTo(account)} />}
+        {isVaultOwner && identityMatchesVault && tab === "money" && <IncomeHistoryCard
+          data={selectedIncomeHistory}
+          symbol={wldSymbol as "WLD" | "USDC"}
+          decimals={wldDecimals}
+          busy={pendingAction}
+          onRefresh={() => void refreshIncomeHistory()}
+          onLoadOlder={() => void refreshIncomeHistory("older")} />}
         {isYieldVault && tab === "money" && <details className="asset-details" key={`yield:${balanceScope}`}>
           <summary>{t("assets.yieldDetails")}</summary>
           <p>{t("assets.yieldBody")}</p>
@@ -4787,7 +4800,7 @@ export default function App() {
         </CardContent></Card>}
         {tab === "inherit" && isMyVault && !vaultIdentity?.released && supportsRelease && !vaultHasAssets && (isSettledClaim || isExpiredOrLater) && <details className="plan-service-details">
           <summary>{t("journey.owner.release")}</summary><p>{t("journey.owner.emptyClose")}</p>
-          <Button disabled={pendingAction || !miniInstalled || releasing} onClick={() => { setReleaseAcknowledge(false); setShowReleaseConfirm(true); }}>{t("journey.owner.release")}</Button>
+          <Button disabled={pendingAction || !miniInstalled || releasing} onClick={event => { event.currentTarget.focus(); setReleaseMessage(""); setShowReleaseConfirm(true); }}>{t("journey.owner.release")}</Button>
         </details>}
         {tab === "inherit" && linkedVault && identityMatchesVault && !iAmInvolved && !receivedYieldInheritance && !inheritedPositions.some(p => p.address.toLowerCase() === linkedVault.toLowerCase())
           && <p role="status">{t("journey.heir.notRecipient")}</p>}
@@ -4854,7 +4867,7 @@ export default function App() {
             </>
             : <>
               <Icon name={tab === "money" ? "assets" : "inherit"} size={28} />
-              <h2>{t(inheritedPositions.length > 0 ? "entry.received.title" : "entry.empty.title")}</h2>
+              <h2>{t(inheritedPositions.length > 0 ? "entry.received.title" : tab === "money" ? "entry.empty.assetsTitle" : "entry.empty.title")}</h2>
               <p>{t(inheritedPositions.length > 0 ? "entry.received.body" : tab === "money" ? "entry.empty.assets" : "entry.empty.body")}</p>
               {inheritedPositions.length === 0 && <Button variant="primary" disabled={pendingAction} onClick={() => {
                 navigationChosenFor.current = account.toLowerCase();
@@ -4869,20 +4882,24 @@ export default function App() {
         {/* ===== Help 탭: 신뢰성 근거와 법적 고지 =====
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && <>
-          <Card className="help-guide-card"><CardHeader><CardTitle>{t("guide.title")}</CardTitle></CardHeader><CardContent><TransferGuide /></CardContent></Card>
-          <Card className="help-fees-card"><CardHeader><CardTitle>{t("help.feeTitle")}</CardTitle></CardHeader><CardContent className="grid gap-2">
-            <p>{t("help.feeDisclosure")}</p><a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
-          </CardContent></Card>
-          <Card><CardHeader><CardTitle>{t("help.journey.title")}</CardTitle></CardHeader><CardContent className="grid gap-3">
-            <p>{t("help.journey.custody")}</p>
-            {(["income", "heir", "receiving", "shares"] as const).map(subject => <details key={subject}>
-              <summary>{t(`help.journey.${subject}Title`)}</summary><p>{t(`help.journey.${subject}`)}</p>
-            </details>)}
-          </CardContent></Card>
-          {account && <Card><CardHeader><CardTitle>{t("help.journey.find")}</CardTitle></CardHeader><CardContent className="grid gap-2">
+          <div className="help-language"><span>{t("language.label")} · Language</span><LanguagePicker /></div>
+          <section className="help-topics" aria-labelledby="help-topics-title">
+            <h2 id="help-topics-title">{t("help.questions")}</h2>
+            <div className="help-topic-list">
+              <details className="help-topic"><summary>{t("guide.title")}</summary><div><TransferGuide /></div></details>
+              <details className="help-topic"><summary>{t("help.feeTitle")}</summary><div>
+                <p>{t("help.feeDisclosure")}</p><a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
+              </div></details>
+              <details className="help-topic"><summary>{t("help.custodyQuestion")}</summary><div><p>{t("help.journey.custody")}</p></div></details>
+              {(["income", "heir", "receiving", "shares"] as const).map(subject => <details className="help-topic" key={subject}>
+                <summary>{t(`help.journey.${subject}Title`)}</summary><div><p>{t(`help.journey.${subject}`)}</p></div>
+              </details>)}
+            </div>
+          </section>
+          {account && <details className="help-topic help-setting"><summary>{t("help.journey.find")}</summary><div className="grid gap-2">
             <p>{t("help.journey.findBody")}</p><Button disabled={pendingAction || findingHeirVaults} onClick={() => { void findHeirVaults(); setTab("inherit"); }}>{t("help.journey.checkAgain")}</Button>
-          </CardContent></Card>}
-          {account && NOTIFY_BACKEND_ENABLED && <Card><CardHeader><CardTitle>{t("help.journey.notifications")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+          </div></details>}
+          {account && NOTIFY_BACKEND_ENABLED && <details className="help-topic help-setting"><summary>{t("help.journey.notifications")}</summary><div className="grid gap-3">
             <p>{t("help.journey.notificationsBody")}</p><p>{localizeAppMessage(locale, notifyHealth.text)}</p>
             <div className="flex gap-2 flex-wrap"><Button disabled={pendingAction || !miniInstalled || notifyBusy} onClick={requestNotifyPermission}>{t("home.reminders.enable")}</Button>
               {(isMyVault || iAmHeir) && !isSettledClaim && <Button disabled={pendingAction || watchBusy} onClick={registerHeirAlert}>{t("help.journey.register")}</Button>}</div>
@@ -4891,7 +4908,7 @@ export default function App() {
               <Button size="sm" disabled={pendingAction || watchBusy} onClick={sendNotifyTestToMe}>{t("help.journey.test")}</Button>
               <Button size="sm" disabled={pendingAction || notifyBusy || watchBusy} onClick={refreshNotifyState}>{t("help.journey.refresh")}</Button>
             </div></details>
-          </CardContent></Card>}
+          </div></details>}
           <Card><CardHeader><CardTitle>{t("help.journey.legal")}</CardTitle></CardHeader><CardContent className="grid gap-2 text-xs">
             <p>{t("help.journey.legalBody")}</p><div className="flex gap-3 flex-wrap"><a href="/privacy.html" target="_blank" rel="noreferrer">{t("help.journey.privacy")}</a>
               <a href="/terms.html" target="_blank" rel="noreferrer">{t("help.journey.terms")}</a><a href="mailto:daviswhistle@naver.com">{t("help.journey.support")}</a></div>
@@ -4923,78 +4940,8 @@ export default function App() {
           <div key={t.id} className={`toast toast-${t.type}`}>{localizeAppMessage(locale, t.msg)}</div>
         ))}
       </div>
-      {showReleaseConfirm && (
-        /* 슬롯을 놓는 Confirm 은 되돌릴 수 없다(팩토리의 1인 1금고 매핑이 사라진다).
-           그럼에도 이 모달은 (1) 열려도 포커스를 안 받고(activeElement = BODY)
-           (2) Escape 로 닫히지 않고 (3) Tab 이 뒤쪽 탭 바로 빠져나간다.
-           키보드·스크린리더 사용자는 지금 어디가 모달인지, 어디서 나갈 수 있는지를
-           알 수 없다. `aria-modal="true"` 를 붙여놓고 그 수단을 안 하면 거짓말이다. */
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              setShowReleaseConfirm(false);
-              return;
-            }
-            /* Tab 을 모달 안에 가둔다. `aria-modal="true"` 는 "나머지 내용은
-               보조기구에 숨겨진다" 는 약속인데, 실제로는 모달 뒤의 탭 바로로
-               포커스가 넘어갔다. 약속한 대로 만들지 않으면 그 속성은 거짓말이다.
-               모달 안의 유일한 포커스 대상(체크박스, Cancel, Confirm)을 순환시킨다. */
-            if (e.key === "Tab") {
-              const focusables = releaseDialogRef.current?.querySelectorAll<HTMLElement>(
-                'input:not([disabled]), button:not([disabled])',
-              );
-              if (!focusables || focusables.length === 0) return;
-              const first = focusables[0];
-              const last = focusables[focusables.length - 1];
-              const activeEl = document.activeElement;
-              if (e.shiftKey && (activeEl === first || !releaseDialogRef.current?.contains(activeEl))) {
-                e.preventDefault();
-                last.focus();
-              } else if (!e.shiftKey && activeEl === last) {
-                e.preventDefault();
-                first.focus();
-              }
-            }
-          }}
-        >
-          <div
-            className="bg-white rounded-md shadow-lg max-w-sm w-full p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="release-modal-title"
-            aria-describedby="release-modal-desc"
-            /* 열릴 때 첫 조작 요소로 포커스를 옮긴다. 그래야 Enter/Space 가 곧바로
-               동작하고 스크린리더가 제목을 읽어 준다. */
-            ref={(el) => {
-              releaseDialogRef.current = el;
-              if (!el) return;
-              el.querySelector<HTMLElement>("input, button")?.focus();
-            }}
-          >
-            <div id="release-modal-title" className="text-lg font-semibold mb-2">Release vault slot?</div>
-            <div id="release-modal-desc" className="text-sm text-gray-700 mb-3">
-              You can release only after expiry or settlement and when the vault holds no cash, receipt shares or WLD rewards. Releasing keeps the vault contract on-chain and clears only this factory's one-per-owner mapping. It cannot be undone.
-            </div>
-            <label className="flex items-start gap-2 text-sm text-gray-700 mb-3">
-              {/* 기본 체크박스는 13x13 이라 손가락으로 누르기엔 작다(권장 44px 면적).
-                 20px 로 키우고 label 전체가 눌리는 면적이 되게 한다. */}
-              <input
-                type="checkbox"
-                className="release-ack"
-                checked={releaseAcknowledge}
-                onChange={e => setReleaseAcknowledge(e.target.checked)}
-              />
-              <span>I understand the conditions and want to proceed.</span>
-            </label>
-            <div className="flex justify-end gap-2">
-              <Button onClick={() => setShowReleaseConfirm(false)} disabled={pendingAction || releasing}>Cancel</Button>
-              <Button variant="primary" onClick={() => void runVaultAction(releaseSlot, true)} disabled={pendingAction || !miniInstalled || releasing || !releaseAcknowledge}>Confirm</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showReleaseConfirm && <ReleasePlanDialog busy={pendingAction || releasing} disabled={!miniInstalled} symbol={wldSymbol} message={localizeAppMessage(locale, releaseMessage)}
+        onClose={() => setShowReleaseConfirm(false)} onConfirm={() => void runVaultAction(releaseSlot, true)} />}
     </div>
   );
 }

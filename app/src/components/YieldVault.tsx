@@ -133,18 +133,18 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, acco
               <div className="stat-value">{fmt(position.withdrawableNet)} {symbol}</div>
             </div>
           </div>
-          <dl className="yield-values">
+          {position.withdrawableNet > 0n && <dl className="yield-values">
             <div><dt>{t("income.gross")}</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
             <div><dt>{t("income.fee")}</dt><dd>{fmt(position.fee)} {symbol}</dd></div>
             <div><dt>{t("income.net")}</dt><dd>{fmt(position.net)} {symbol}</dd></div>
-          </dl>
-          <p className="income-explainer">{t("income.explainer")}</p>
-          <p className="income-destination">{recipientValid
+          </dl>}
+          {position.withdrawableNet > 0n && <p className="income-explainer">{t("income.explainer")}</p>}
+          {position.withdrawableNet > 0n && <p className="income-destination">{recipientValid
             ? to.toLowerCase() === account.toLowerCase() ? t("income.toWallet") : t("income.toAddress", { address: `${to.slice(0, 6)}…${to.slice(-4)}` })
-            : t("income.chooseRecipient")}</p>
-          <Button className="income-collect" variant="primary" disabled={busy || !canCollect || position.withdrawableNet <= 0n || !position.valued} onClick={onCollect}>
+            : t("income.chooseRecipient")}</p>}
+          {position.withdrawableNet > 0n && <Button className="income-collect" variant="primary" disabled={busy || !canCollect || !position.valued} onClick={onCollect}>
             {t("income.collect", { amount: fmt(position.withdrawableNet), symbol })}
-          </Button>
+          </Button>}
           {disabledReason && <p className="income-explainer" role="status">{disabledReason}</p>}
           {!disabledReason && position.withdrawableNet <= 0n && <p className="income-explainer" role="status">{position.net > 0n
             ? t("income.withdrawable")
@@ -160,6 +160,12 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, acco
           </div>
           </div></details>
           <details className="income-recipient"><summary>{t("income.feeDetails")}</summary><div>
+            {position.withdrawableNet <= 0n && <dl className="yield-values">
+              <div><dt>{t("income.gross")}</dt><dd>{fmt(position.gross)} {symbol}</dd></div>
+              <div><dt>{t("income.fee")}</dt><dd>{fmt(position.fee)} {symbol}</dd></div>
+              <div><dt>{t("income.net")}</dt><dd>{fmt(position.net)} {symbol}</dd></div>
+            </dl>}
+            <p className="income-explainer">{t("income.explainer")}</p>
             <p className="income-explainer">{t("income.feeDisclosure")}</p>
           </div></details>
         </> : <div className="grid gap-2"><p role="status">{t("income.noValue")}</p><Button disabled={busy} onClick={onRefresh}>{t("income.refresh")}</Button></div>}

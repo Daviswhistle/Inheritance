@@ -1,0 +1,48 @@
+name: InheritanceTestHost
+options:
+  deploymentTarget:
+    iOS: '16.0'
+configs:
+  Debug: debug
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    PRODUCT_BUNDLE_IDENTIFIER: org.inheritance.testhost
+    TARGETED_DEVICE_FAMILY: '1,2'
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+targets:
+  InheritanceTestHost:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Inheritance TEST
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: Connect to your computer's local Inheritance test server.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoadsInWebContent: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+schemes:
+  InheritanceTestHost:
+    build:
+      targets:
+        InheritanceTestHost: all
+    run:
+      config: Debug

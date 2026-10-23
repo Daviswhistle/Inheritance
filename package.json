@@ -8,6 +8,12 @@
     "preview": "pnpm --dir app preview",
     "lint": "pnpm --dir app lint",
     "typecheck": "pnpm --dir app typecheck",
+    "test-host": "node scripts/test-host/start.mjs",
+    "test-host:setup": "node scripts/test-host/setup.mjs",
+    "test-host:unit": "node --test scripts/test-host/bridge.test.mjs",
+    "test-host:check": "node scripts/test-host/smoke.mjs",
+    "test:product-ui": "node scripts/verify/product-ui.mjs",
+    "test:webkit-ui": "node scripts/verify/webkit-ui.mjs",
     "contracts:build": "forge build",
     "contracts:test": "forge test -vvv",
     "contracts:fmt": "forge fmt",
@@ -19,7 +25,8 @@
     "notify:d1:local": "npx wrangler d1 migrations apply world-inheritance-notify --local --config backend/wrangler.toml",
     "notify:d1:remote": "npx wrangler d1 migrations apply world-inheritance-notify --remote --config backend/wrangler.toml",
     "notify:tail": "npx wrangler tail --config backend/wrangler.toml",
-    "finalizer:test": "forge build && node scripts/test-finalizer.mjs"
+    "finalizer:test": "forge build && node scripts/test-finalizer.mjs",
+    "test:android-ui": "node scripts/verify/android-ui.mjs"
   },
   "dependencies": {
     "@worldcoin/minikit-js": "^1.9.6",

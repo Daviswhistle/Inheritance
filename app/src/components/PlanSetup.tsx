@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent, CardHeader } from "./ui/card";
 import { Input } from "./ui/input";
 import { formatPlanInterval, parseAssetAmount } from "@/plan";
 import { useLocale } from "@/locale-context";
+import { useActionClearance } from "@/use-action-clearance";
 import "./PlanSetup.css";
 
 type PlanAsset = "WLD" | "USDC";
@@ -70,6 +71,7 @@ export function PlanSetup({
   resumeDisabled: boolean;
 }) {
   const { t, locale } = useLocale();
+  const actionRef = useActionClearance(!pendingPlan);
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(null);
   const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const wasReviewingRef = useRef(false);
@@ -283,7 +285,7 @@ export function PlanSetup({
     && asset.mode === "morpho" && asset.depositState === "ready")) : selectedRows.map(item => item.row)).filter(row => row.mode === "morpho");
   const hasYieldRoute = disclosedYieldRows.length > 0;
   const riskDisclosure = <section className="plan-risk" aria-labelledby="plan-risk-title">
-    <h3 id="plan-risk-title" className={showReview ? "sr-only" : undefined}>{t("plan.risk.title")}</h3>
+    <h3 id="plan-risk-title">{t("plan.risk.title")}</h3>
     <ul className="plan-risk-points">
       <li>{t("plan.risk.audit")}</li>
       {!showReview && <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>}
@@ -325,8 +327,11 @@ export function PlanSetup({
   </section>;
 
   return <Card className={`plan-setup-card ${pendingPlan ? "" : "plan-setup-with-actions"}`}>
+    {!pendingPlan && <ol className="plan-steps" aria-label={t("plan.steps.label")}>
+      <li aria-current={!showReview ? "step" : undefined}><span aria-hidden="true">1</span>{t("plan.steps.details")}</li>
+      <li aria-current={showReview ? "step" : undefined}><span aria-hidden="true">2</span>{t("plan.steps.review")}</li>
+    </ol>}
     {!showReview && !pendingPlan && <CardHeader>
-      <CardTitle>{t("plan.title")}</CardTitle>
       <p className="plan-card-intro">{t("plan.intro")}</p>
     </CardHeader>}
     <CardContent className="plan-setup-content">
@@ -381,7 +386,7 @@ export function PlanSetup({
           <label className="field-row-label" htmlFor="period-input">{t("plan.interval.label")}</label>
           <div className="field-row-controls">
             <Input id="period-input" type="text" inputMode="numeric" className="plan-period-input" value={period} placeholder="30"
-              disabled={Boolean(pendingPlan) || busy} onChange={event => { setReviewSnapshot(null); onPeriodChange(event.target.value); }} />
+              disabled={Boolean(pendingPlan) || busy} aria-describedby="plan-interval-help" onChange={event => { setReviewSnapshot(null); onPeriodChange(event.target.value); }} />
             <span className="field-suffix">{t("plan.interval.days")}</span>
           </div>
           <div className="period-presets" aria-label={t("plan.interval.suggested")}>
@@ -389,7 +394,11 @@ export function PlanSetup({
               aria-pressed={Number(period) === days} disabled={Boolean(pendingPlan) || busy} onClick={() => { setReviewSnapshot(null); onPreset(days); }}>{days} {t("plan.interval.days")}</button>)}
           </div>
           {!intervalValid && <p className="plan-inline-error" role="alert">{t("plan.interval.invalid")}</p>}
-          <p className="plan-field-help">{t("plan.interval.help")}</p>
+          <p id="plan-interval-help" className="plan-field-help">{intervalValid
+            ? t("plan.interval.example", { days: periodDays }) : t("plan.interval.help")}</p>
+          <details className="plan-timing-help"><summary>{t("plan.review.missedTitle")}</summary>
+            <p>{t("plan.review.missedBody")}</p>
+          </details>
         </div>
       </>}
 
@@ -410,20 +419,16 @@ export function PlanSetup({
             </dd>
           </div>
           <div><dt>{t("plan.review.interval")}</dt><dd>{t("plan.review.every", { days: reviewSnapshot.periodDays })}</dd></div>
-          <div>
-            <dt>{t("plan.review.feeRisk")}</dt>
-            <dd>
-              {reviewSnapshot.assets.some(asset => asset.mode === "morpho")
-                ? t("plan.review.yieldFee")
-                : t("plan.review.basicFee")}
-            </dd>
-          </div>
-          {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <div>
-            <dt>{t("plan.review.strategyFee")}</dt>
-            <dd>{feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(asset => <span className="plan-review-amount" key={asset.symbol}>{strategyFeeText(asset)}</span>)}</dd>
-          </div>}
-          <div><dt>{t("plan.review.missedTitle")}</dt><dd>{t("plan.review.missedBody")}</dd></div>
         </dl>
+        <section className="plan-review-terms">
+          <h4>{t("plan.review.feeRisk")}</h4>
+          <p>{t(reviewSnapshot.assets.some(asset => asset.mode === "morpho") ? "plan.review.yieldFee" : "plan.review.basicFee")}</p>
+          {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <>
+            <h4>{t("plan.review.strategyFee")}</h4>
+            {feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(asset => <p key={asset.symbol}>{strategyFeeText(asset)}</p>)}
+          </>}
+          <h4>{t("plan.review.missedTitle")}</h4><p>{t("plan.review.missedBody")}</p>
+        </section>
         {riskDisclosure}
       </section>}
 
@@ -431,10 +436,10 @@ export function PlanSetup({
       {pendingPlan && hasYieldRoute && riskDisclosure}
 
       {showReview && <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html">{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html">{t("plan.legal.privacy")}</a>.</p>}
-      {validationReason && !pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
+      {validationReason && pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
         && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
-      {!pendingPlan && <div className="plan-primary-actions" style={keyboardOffset === null ? undefined : { bottom: keyboardOffset + 24 }}>
+      {!pendingPlan && <div className="plan-primary-actions" ref={actionRef} style={keyboardOffset === null ? undefined : { bottom: keyboardOffset + 24 }}>
       <p className="plan-action-hint" role="status">{validationReason || t(showReview ? "plan.action.confirmHint" : "plan.action.reviewHint")}</p>
       {showReview
         ? <div className="plan-step-actions">

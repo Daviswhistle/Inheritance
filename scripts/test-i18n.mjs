@@ -86,6 +86,9 @@ await test("completed transaction messages reproject when language changes witho
     assert.match(i18n.localizeAppMessage("ko", "Pending… verifying USDC deposit"), /USDC 예치/);
     assert.equal(i18n.localizeAppMessage("ko", "Deposit error: RPC diagnostic 0x1234"), "예치 오류: RPC diagnostic 0x1234");
     assert.equal(i18n.localizeAppMessage("ko", "unrecognized provider diagnostic"), "unrecognized provider diagnostic");
+    assert.equal(i18n.localizeAppMessage("ko", "Link copied."), "링크를 복사했습니다.");
+    assert.equal(i18n.localizeAppMessage("ko", "Message copied."), "메시지를 복사했습니다.");
+    assert.equal(i18n.localizeAppMessage("ko", "Not delivered: Check your World App notification settings."), "알림이 전달되지 않았습니다: World App의 알림 설정을 확인해 주세요.");
     assert.match(i18n.translate("ko", "automation.ready"), /직접 수령/);
     assert.match(i18n.translate("en", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 }), /USDC.*12%.*before our service fee/);
 });
@@ -98,6 +101,24 @@ await test("locale provider uses React context without mutating the document", (
     assert.match(source, /LocaleProvider/);
     assert.match(source, /LanguagePicker/);
     assert.doesNotMatch(`${source}\n${context}`, /document\.|MutationObserver|translate\.google/);
+});
+
+await test("every fixed app transaction status and toast has a Korean translation", () => {
+    const source = ts.createSourceFile("App.tsx", readFileSync(new URL("../app/src/App.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const missing = new Set();
+    function visit(node) {
+      if (ts.isCallExpression(node)) {
+        const name = node.expression.getText(source);
+        const argument = node.arguments[name === "pushToast" ? 1 : 0];
+        if (["setStatus", "pushToast", "report"].includes(name) && argument && ts.isStringLiteral(argument)) {
+          const message = argument.text;
+          if (message && i18n.localizeAppMessage("ko", message) === message) missing.add(message);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    assert.deepEqual([...missing], []);
 });
 
 console.log(`${passed} passed, 0 failed`);

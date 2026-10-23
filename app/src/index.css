@@ -768,9 +768,8 @@ body {
 /* Toasts */
 .toast-container {
   position: fixed;
-  /* viewport-fit=cover + 노치 기기에서는 top:12px 가 상태바에 가려진다.
-     안전한 영역을 더한 뒤 최소 12px 를 확보한다. */
-  top: max(12px, env(safe-area-inset-top, 0px));
+  /* World design guidance: center transient feedback below the identity header. */
+  top: calc(104px + env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
@@ -784,8 +783,8 @@ body {
   /* 뷰포트를 넘지 않게 한다. `max-width: 420px` 만 두면 390px 기기에서 토스트가
      좌우로 넘쳐서 **앱 전체가 옆으로 밀린다**(측정: clientWidth 390 → scrollWidth 594).
      좌우 여백 24px 을 뺀 값과 420px 중 작은 쪽을 쓴다. */
-  min-width: min(240px, calc(100vw - 24px));
-  max-width: min(420px, calc(100vw - 24px));
+  min-width: min(240px, calc(100vw - 48px));
+  max-width: min(420px, calc(100vw - 48px));
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
@@ -1223,8 +1222,29 @@ input::placeholder {
   height: 20px;
   margin-top: 1px;
   flex: 0 0 auto;
-  accent-color: #0284c7;
+  accent-color: var(--accent);
 }
+
+.release-dialog {
+  width: min(420px, calc(100% - 48px));
+  max-height: calc(100dvh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  margin: auto;
+  padding: 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 24px 80px #142d2733;
+}
+.release-dialog::backdrop { background: #102a24a6; }
+.release-dialog h2 { margin: 0 0 16px; font-size: 20px; line-height: 1.35; }
+.release-dialog p { margin: 0 0 24px; font-size: 14px; line-height: 1.65; color: var(--muted); }
+.release-consent { display: flex; gap: 12px; align-items: flex-start; min-height: 44px; font-size: 14px; line-height: 1.6; }
+.release-actions { display: flex; gap: 12px; margin-top: 24px; }
+.release-actions .btn { flex: 1; }
+.release-dialog .release-message { margin: 16px 0 0; color: var(--ink); overflow-wrap: anywhere; }
 
 /* ===== "How this works" 접기 =====
 
@@ -1408,7 +1428,7 @@ input::placeholder {
 /* Inheritance: a calm, readable mobile interface. All assets are local. */
 :root {
   --ink: #203b32;
-  --muted: #66766d;
+  --muted: #596b60;
   --accent: #235743;
   --paper: #f7f8f2;
   --line: #dfe6dc;
@@ -1439,11 +1459,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 .card-title { margin: 0; font-size: 16px; font-weight: 650; line-height: 1.4; letter-spacing: -.4px; }
 .card-content { padding: 4px 20px 20px; }
 .card-header .flex { flex-wrap: wrap; }
-.text-gray-500, .text-slate-500 { color: #69786d; }
+.text-gray-500, .text-slate-500 { color: var(--muted); }
 .text-gray-600, .text-slate-600 { color: #5f6f64; }
 .text-gray-700, .text-slate-700 { color: #43564b; }
 .text-blue-600, .text-blue-700 { color: #235743; }
-.btn { min-height: 46px; border-radius: 12px; font-size: 13px; font-weight: 600; padding: 11px 14px; gap: 8px; box-shadow: none; transition: background-color 140ms, border-color 140ms; }
+.btn { min-height: 46px; border-radius: 12px; font-size: 13px; font-weight: 600; padding: 11px 14px; gap: 8px; box-shadow: none; transition: border-color 140ms; }
 .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-primary:hover:not(:disabled) { background: #1b4535; border-color: #1b4535; }
 .btn-outline { color: var(--ink); border-color: var(--line); background: #fff; }
@@ -1480,9 +1500,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 .tab-bar { left: 50%; right: auto; transform: translateX(-50%); width: 100%; max-width: 480px; border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; background: rgba(255,255,255,.94); box-shadow: 0 -5px 24px rgba(30,57,37,.04); padding: 9px 8px calc(12px + env(safe-area-inset-bottom, 0px)); }
 .tab-bar > .tab-item { min-width: 0; max-width: none; flex: 1; }
 .tab-bar::before, .tab-bar::after { display: none; }
-.tab-item { display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; padding: 7px 4px; min-height: 55px; font-size: 10px; color: #738277; border-radius: 12px; }
+.tab-item { display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; padding: 7px 4px; min-height: 55px; font-size: 12px; color: #5d7063; border-radius: 12px; }
 .tab-item-active { color: var(--accent); background: #edf3e7; box-shadow: none; font-weight: 650; }
-.toast-container { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
 .toast { border-radius: 12px; box-shadow: 0 5px 25px #203b3220; }
 .spinner { border-top-color: currentColor; }
 @media (max-width: 360px) {

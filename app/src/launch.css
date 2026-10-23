@@ -81,6 +81,9 @@
 .checkin-review .checkin-addresses { margin-top: 8px; }
 .checkin-addresses > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
 .app-content { scroll-padding-top: 96px; }
+/* Tab changes move screen-reader focus here; headings are not tab stops.
+   Keep focus rings on interactive controls, without boxing the page title. */
+main h1[tabindex="-1"]:focus { outline: none; }
 @media (max-width: 360px) {
   .header-content { padding: 14px 16px; }
   .app-content { padding-left: 14px; padding-right: 14px; }
@@ -123,17 +126,38 @@
 .plan-service-details { padding: 12px 16px; font-size: .8rem; color: #59665c; }
 .plan-service-details .automation-note { margin-top: 12px; }
 
-/* App entry shares the same shell and navigation as signed-in screens. */
-.account-entry { display: grid; gap: 24px; }
-.entry-assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px; }
-.entry-asset { display: grid; grid-template-columns: 24px 1fr; gap: 10px; padding: 20px 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
-.entry-asset > span { align-self: center; font-size: 14px; font-weight: 600; }
-.entry-asset > strong, .entry-asset > small { grid-column: 1 / -1; }
-.entry-asset > strong { font-size: 28px; font-weight: 550; }
-.entry-asset > small { font-size: 12px; color: var(--muted); }
-.entry-access { display: grid; justify-items: center; gap: 12px; padding: 12px 8px; text-align: center; }
-.entry-access h2 { margin: 4px 0 0; font-size: 20px; font-weight: 600; }
-.entry-access p { margin: 0; max-width: 300px; font-size: 14px; line-height: 1.6; color: var(--muted); word-break: keep-all; overflow-wrap: anywhere; }
+/* One task per tab, using the same spacing, surfaces and primary action. */
+.account-entry { display: grid; gap: 16px; min-width: 0; }
+.entry-access { display: grid; gap: 8px; }
+.entry-access h1 { margin: 0; font-size: 28px; font-weight: 650; line-height: 1.2; letter-spacing: -.8px; white-space: pre-line; }
+.entry-access p, .entry-context { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; word-break: keep-all; overflow-wrap: anywhere; }
+.entry-vault .entry-access { gap: 16px; }
+.entry-vault .entry-access h1 { font-size: clamp(30px, 8.5vw, 38px); max-width: 360px; letter-spacing: -1.2px; }
+.entry-access .entry-yield-note { font-size: 13px; color: var(--accent); line-height: 1.5; }
+.entry-shortcuts { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.entry-shortcut.btn { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; justify-items: start; gap: 8px; padding: 14px 16px; background: #fff; text-align: left; border: 0; border-radius: 0; }
+.entry-shortcut + .entry-shortcut { border-top: 1px solid var(--line); }
+.entry-shortcut > svg:last-child { grid-column: 2; grid-row: 1; color: var(--muted); }
+.entry-shortcut > span { display: grid; gap: 4px; min-width: 0; }
+.entry-shortcut strong { font-size: 14px; line-height: 1.4; }
+.entry-shortcut small { color: var(--muted); font-size: 12px; line-height: 1.5; font-weight: 400; word-break: keep-all; overflow-wrap: anywhere; }
+.entry-assets { display: grid; list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.entry-asset { display: flex; align-items: center; gap: 12px; padding: 20px 16px; }
+.entry-asset + .entry-asset { border-top: 1px solid var(--line); }
+.entry-asset > div { display: grid; gap: 4px; flex: 1; }
+.entry-asset strong { font-size: 16px; font-weight: 600; }
+.entry-asset small { font-size: 12px; color: var(--muted); }
+.entry-balance { font-size: 24px; color: var(--muted); }
+.entry-plan-steps { display: grid; list-style: none; margin: 0; padding: 0 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; counter-reset: setup; }
+.entry-plan-steps li { position: relative; padding: 16px 0 16px 36px; counter-increment: setup; }
+.entry-plan-steps li + li { border-top: 1px solid var(--line); }
+.entry-plan-steps li::before { content: counter(setup); position: absolute; left: 0; top: 16px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: var(--accent); background: #edf3e7; font-size: 12px; font-weight: 650; }
+.entry-plan-steps strong, .entry-shared-plan strong { font-size: 14px; line-height: 1.5; }
+.entry-plan-steps p, .entry-shared-plan p { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
+.entry-shared-plan { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 16px; padding: 20px 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.entry-shared-plan > div { display: grid; gap: 8px; }
+.entry-shared-plan span { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; color: var(--muted); }
+.entry-shared-plan p { grid-column: 1 / -1; }
 .transfer-guide, .plan-card-intro, .plan-field-help { word-break: keep-all; overflow-wrap: anywhere; }
 .entry-rules { width: 100%; text-align: left; font-size: 13px; }
 .entry-rules > summary { display: flex; min-height: 44px; align-items: center; justify-content: center; color: var(--accent); cursor: pointer; }
@@ -155,8 +179,10 @@
 .heir-next-action > p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
 .heir-next-action .btn { min-height: 50px; }
 .home-checkin-date { border-left: 3px solid var(--accent); }
+.home-checkin-action { display: grid; gap: 8px; }
+.home-checkin-action > p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .entry-action { display: grid; gap: 10px; position: fixed; z-index: 28; bottom: calc(89px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: calc(100% - 48px); max-width: 432px; padding: 12px 0 0; background: var(--canvas, #f7f8f2); }
-.app-content-entry { padding-bottom: calc(176px + env(safe-area-inset-bottom, 0px)); }
+.app-content-entry { padding-bottom: calc(216px + env(safe-area-inset-bottom, 0px)); }
 .entry-action .btn { width: 100%; min-height: 52px; text-decoration: none; }
 .entry-action > p { margin: 0; text-align: center; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .app-empty-state { display: grid; justify-items: center; gap: 16px; padding: 32px 16px; text-align: center; }
@@ -164,12 +190,111 @@
 .app-empty-state p { margin: 0; max-width: 300px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .app-empty-state .btn { min-height: 48px; }
 @media (max-height: 740px) {
-  .app-content-entry { padding-top: 16px; padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)); }
-  .account-entry { gap: 16px; }
-  .entry-asset { padding: 16px; gap: 8px; }
-  .entry-asset > strong { font-size: 24px; }
-  .entry-access { padding: 12px 8px; gap: 8px; }
-  .entry-access-icon { width: 36px; height: 36px; }
-  .entry-access h2 { margin-top: 0; }
+  .app-content-entry { padding-top: 16px; padding-bottom: calc(216px + env(safe-area-inset-bottom, 0px)); }
+  .account-entry { gap: 12px; }
+  .entry-vault { gap: 16px; }
+
+  .entry-shortcut.btn { padding: 12px; gap: 8px; }
   .entry-action { gap: 8px; }
 }
+
+/* Product hierarchy: identity, task, useful content, then the primary action. */
+.app-header { position: relative; border-bottom: 0; background: var(--paper); backdrop-filter: none; }
+.header-content { min-height: 64px; padding: 16px 24px 8px; padding-right: 100px; }
+.brand-mark { width: 30px; height: 30px; flex-basis: 30px; border-radius: 10px; }
+.brand-mark svg { width: 20px; height: 20px; }
+.brand-name { font-size: 16px; letter-spacing: -.4px; }
+.app-content { padding-top: 24px; gap: 24px; }
+.page-intro { padding: 0; }
+.page-intro h1 { margin: 0; font-size: 30px; font-weight: 650; letter-spacing: -.8px; }
+.account-row { order: -1; padding: 0; }
+.account-row .text-sm { font-size: 13px; }
+.entry-asset-badges { display: flex; gap: 8px; }
+.entry-asset-badges > span { display: flex; align-items: center; gap: 7px; padding: 5px 10px 5px 5px; background: #fff; border: 1px solid var(--line); border-radius: 24px; font-size: 12px; font-weight: 600; }
+.entry-promise { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px 12px; padding: 16px; background: #eaf0e6; border-radius: 16px; }
+.entry-promise > svg { color: var(--accent); margin-top: 2px; }
+.entry-promise strong { font-size: 14px; line-height: 1.5; font-weight: 650; }
+.entry-promise p { margin: 4px 0 0; font-size: 13px; line-height: 1.6; color: #4c6355; word-break: keep-all; overflow-wrap: anywhere; }
+.entry-promise > .entry-yield-note { grid-column: 1 / -1; margin: 2px 0 0; padding-top: 12px; border-top: 1px solid #cddac8; }
+.entry-rules > summary { justify-content: space-between; padding-inline: 4px; }
+.entry-rules > summary::after { content: '+'; font-size: 20px; }
+.entry-rules[open] > summary::after { content: '−'; }
+.entry-action { padding-top: 16px; box-shadow: 0 -12px 20px var(--paper); }
+.home-assets-heading { margin: 12px 0 0; font-size: 15px; font-weight: 650; }
+.plan-overview-card > .card-content { padding-top: 20px; }
+.home-checkin-date { border: 0; border-radius: 0; background: transparent; padding: 0 0 4px; gap: 8px; }
+.home-checkin-date > span { font-size: 13px; }
+.home-checkin-date > strong { font-size: 25px; line-height: 1.4; letter-spacing: -.6px; }
+.home-checkin-action > .btn { width: 100%; min-height: 52px; font-size: 15px; }
+.home-checkin-action > p { font-size: 13px; }
+.plan-overview-asset small { font-size: 12px; line-height: 1.5; }
+.plan-common-settings { font-size: 13px; line-height: 1.7; }
+.help-language { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+#main-content > .card-surface p { line-height: 1.65; }
+#main-content > .card-surface details > summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
+#main-content a:not(:where(p a)) { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
+
+/* Secondary actions must remain usable by touch when their details are opened.
+   Inline links in prose retain normal text flow. Component styles keep their
+   own larger spacing; these defaults cover otherwise unstyled controls. */
+#main-content button:not(.btn) { min-height: 44px; min-width: 44px; }
+:where(#main-content) summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
+select:focus-visible { outline: 3px solid #639b7c; outline-offset: 3px; }
+@media (max-width: 360px) {
+  .header-content { padding-left: 16px; }
+  .entry-vault .entry-access { gap: 12px; }
+  .entry-promise { padding: 14px; }
+  .entry-shortcut small { font-size: 12px; }
+}
+
+.entry-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.entry-shortcut + .entry-shortcut { border-top: 0; border-left: 1px solid var(--line); }
+@media (max-height: 740px) {
+  .entry-vault .entry-access h1 { font-size: 28px; }
+  .entry-vault .entry-access { gap: 8px; }
+  .entry-promise { padding: 12px; }
+  .entry-promise p { font-size: 12px; }
+  .entry-promise > .entry-yield-note { padding-top: 8px; }
+}
+.app-content:has(.plan-primary-actions) { padding-bottom: calc(216px + env(safe-area-inset-bottom, 0px)); }
+.deposit-controls { border: 1px solid var(--line); border-radius: 14px; background: #f3f6ef; }
+.deposit-controls > summary { display: flex; align-items: center; justify-content: space-between; min-height: 50px; padding: 14px 16px; cursor: pointer; list-style: none; font-size: 14px; font-weight: 650; }
+.deposit-controls > summary::-webkit-details-marker { display: none; }
+.deposit-controls > summary::after { content: '+'; font-size: 20px; font-weight: 400; }
+.deposit-controls[open] > summary::after { content: '−'; }
+.deposit-controls-content { display: grid; gap: 12px; padding: 0 16px 16px; }
+.asset-money-card .stat-row { display: flex; flex-direction: column-reverse; gap: 0; }
+.asset-money-card .stat { background: transparent; padding: 0; }
+.asset-money-card .stat + .stat { padding-bottom: 16px; }
+.asset-money-card .stat-label { min-height: 0; font-size: 12px; letter-spacing: 0; }
+.asset-money-card .stat-value { font-size: 30px; font-weight: 650; margin-top: 4px; }
+.asset-money-card .stat:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding: 12px 0 4px; }
+.asset-money-card .stat:first-child .stat-value { font-size: 15px; font-weight: 500; letter-spacing: 0; }
+.asset-money-card .card-header { padding-bottom: 20px; }
+.app-header .account-row { padding: 6px 24px 0; }
+.home-checkin-date > time { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.home-checkin-date > strong { font-size: 30px; }
+.entry-shortcut strong { word-break: keep-all; overflow-wrap: anywhere; }
+@media (max-width: 360px) { .app-header .account-row { padding-inline: 16px; } }
+
+.help-topics { min-width: 0; }
+.help-topics > h2 { margin: 0 0 16px; font-size: 16px; font-weight: 650; }
+.help-topic-list { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.help-topic + .help-topic { border-top: 1px solid var(--line); }
+.help-topic > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; padding: 16px; color: var(--ink); font-size: 14px; font-weight: 550; line-height: 1.5; cursor: pointer; list-style: none; }
+.help-topic > summary::-webkit-details-marker { display: none; }
+.help-topic > summary::after { content: '+'; flex: 0 0 18px; text-align: center; font-size: 20px; font-weight: 400; color: var(--muted); }
+.help-topic[open] > summary::after { content: '−'; }
+.help-topic > div { padding: 0 16px 16px; font-size: 14px; line-height: 1.65; color: var(--muted); }
+.help-topic > div > p { margin: 0 0 12px; }
+.help-topic > div > p:last-child { margin-bottom: 0; }
+.help-topic a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; }
+.help-setting { border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.help-setting details > summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
+.money-metadata button { min-height: 44px; }
+.principal-controls input[aria-invalid="true"] { border-color: #ad5842; }
+.principal-controls #withdraw-amount { flex: 1 1 calc(100% - 80px); min-width: 0; }
+.principal-controls .principal-submit { flex-basis: 100%; width: 100%; min-height: 50px; }
+.heir-plan-card .inheritance-next { margin: 0; line-height: 1.6; }
+.heir-shared-next { padding: 12px 14px; border-radius: 12px; background: #f3f6ef; }
+.heir-estimate { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }

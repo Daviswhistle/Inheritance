@@ -1,0 +1,143 @@
+# Inheritance device test hosts
+
+These small debug apps run the **real MiniKit SDK** inside Android WebView and iOS
+WKWebView. They implement only the native message transport. The shared test page
+and local server provide test identities, command responses, and the local chain.
+No wallet keys belong in these native projects.
+
+Start the local environment using the [test harness](../scripts/test-host/README.md).
+The default app URL is `http://localhost:7777/`. Both shells have an editable URL
+bar, an Open button, and Reload; the last URL is saved on the device. A permanent
+`TEST HOST` label distinguishes them from World App.
+
+## Android Studio / Android device
+
+Prerequisites: Android Studio, Android SDK 35, JDK 17, and a connected device with
+USB debugging or an Android emulator. The checked-in Gradle wrapper uses Gradle
+8.11.1 and Android Gradle Plugin 8.9.2. The wrapper distribution has a pinned
+SHA-256 checksum. First sync downloads standard Android build dependencies.
+
+1. Open `test-hosts/android` in Android Studio and allow Gradle sync.
+2. Start the test harness on the same computer as `adb`.
+3. Forward the device's localhost port to the computer:
+
+   ```sh
+   adb reverse tcp:7777 tcp:7777
+   ```
+
+4. Select the **app** debug run configuration and your device, then Run.
+5. Leave the URL at `http://localhost:7777/` and tap Open.
+
+If multiple devices are connected, use `adb -s DEVICE_SERIAL reverse ...`.
+Using reverse forwarding keeps the page on a localhost secure context, including
+on a physical phone. The reverse mapping may need to be reapplied after disconnect.
+Android Emulator can also reach the host via `http://10.0.2.2:7777/` when the server
+is bound appropriately, but localhost with `adb reverse` is preferred.
+
+Command-line equivalent, after configuring `ANDROID_HOME` or local `sdk.dir`:
+
+```sh
+cd test-hosts/android
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n org.inheritance.testhost/.MainActivity
+```
+
+Windows uses `gradlew.bat`. When the harness runs inside WSL and Android Studio /
+`adb` run on Windows, first confirm Windows can open `http://localhost:7777/`;
+`adb reverse` forwards to the machine running `adb`. Do not expose the Anvil RPC
+port to work around a host networking issue: the harness proxies chain traffic.
+
+Inspect WebView with desktop Chrome's `chrome://inspect/#devices`. Test keyboard,
+system Back, rotation, app background/resume, and reload after pending commands.
+
+## iOS / iPhone
+
+Building and running the iOS host requires **macOS and Xcode**. Linux/Windows can
+run the shared harness and browser checks, but cannot build Apple's WKWebView app.
+A connected iPhone needs an Apple development team and Developer Mode. A simulator
+does not need a paid developer account.
+
+The project is described by `ios/project.yml`; generate it using
+[XcodeGen](https://github.com/yonaskolb/XcodeGen):
+
+```sh
+brew install xcodegen
+cd test-hosts/ios
+xcodegen generate
+open InheritanceTestHost.xcodeproj
+```
+
+Select the **InheritanceTestHost** scheme and a simulator, then Run. A harness
+running on the same Mac is reachable at `http://localhost:7777/`.
+
+For a physical iPhone:
+
+1. Start the harness with `node scripts/test-host/start.mjs --lan` on the host
+   computer. Put the computer and iPhone on the same trusted local network.
+2. In Xcode, choose your development team under Signing & Capabilities and select
+   your iPhone. If the bundle identifier is already taken, change it locally.
+3. Run the app. Enter the private LAN URL printed by the harness, such as
+   `http://192.168.1.20:7777/`, and allow local-network access when prompted.
+
+LAN HTTP is not a browser secure context. The MiniKit commands exercised here do
+not currently depend on browser APIs restricted to secure contexts, and the bridge
+does not install a general compatibility polyfill. This does **not** test production
+secure-context behavior. HTTPS can be used if the device trusts the development certificate;
+the host never bypasses TLS errors. Public tunnel domains are deliberately refused.
+App features such as clipboard copying still require a secure context and can fail
+on LAN HTTP; validate those with trusted HTTPS and in actual World App.
+
+To compile for Simulator without signing after project generation:
+
+```sh
+xcodebuild -project InheritanceTestHost.xcodeproj -scheme InheritanceTestHost \
+  -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
+```
+
+Enable Safari Web Inspector on the phone, then inspect from Safari's Develop menu
+on the Mac (WKWebView inspection is enabled on iOS 16.4+). Test the actual iPhone
+keyboard, viewport/safe area, background/resume, rotation, and persisted state.
+
+## Shared transport contract
+
+The test page installs `window.__INHERITANCE_TEST_HOST_RECEIVE__` before booting
+the app. MiniKit still uses its original transport:
+
+| Platform | SDK sends | Native host returns to shared emulator |
+| --- | --- | --- |
+| Android | `window.Android.postMessage(JSON.stringify(payload))` | `window.__INHERITANCE_TEST_HOST_RECEIVE__(payload)` |
+| iOS | `window.webkit.messageHandlers.minikit.postMessage(payload)` | `window.__INHERITANCE_TEST_HOST_RECEIVE__(payload)` |
+
+iOS injects `window.__INHERITANCE_TEST_NATIVE_HOST__ = { platform: 'ios' }` at
+document start. Android exposes the synchronous `Android.getPlatform()` returning
+`'android'`; the shared test page uses it to establish the marker before app boot.
+Both transports parse/serialize JSON rather than executing received strings.
+The shared emulator emits the official SDK response events after fixture handling.
+
+Only localhost, loopback, and private IPv4 ranges (10/8, 172.16/12, 192.168/16)
+may be opened. Native navigation stays on the selected origin. Android also blocks
+cross-origin resource loads because JavaScript interfaces are visible to frames;
+the harness proxies required APIs and RPC on one origin. iOS accepts bridge messages
+only from the main frame on the selected origin. Cleartext access is enabled only
+to support this local environment. Android has no release build variant; iOS has
+only a Debug configuration and a compile-time release guard.
+
+## What this does and does not verify
+
+This tests our app, the installed real SDK's request/response wiring, and the OS
+WebView behavior. It enables repeatable local-chain flows without real funds.
+Approval/rejection responses are test-host responses. It does not reproduce World
+App's native approval UI, account-abstraction bundler/paymaster, transaction policy,
+World ID proof generation, real contacts/chat delivery, or APNs/FCM notification
+delivery. Keep a small real World App acceptance run for those integrations.
+
+The Android shell has now been compiled and exercised in an actual Android 15
+emulator on Linux/WSL with KVM. See [Android validation](android/README.md) for the
+reusable command, exact runtime versions, native lifecycle checks and evidence.
+The iOS project has not been compiled or run in Xcode. Linux WebKit browser checks
+exercise that engine and SDK transport but do not establish iPhone/WKWebView parity.
+
+Build references: [AGP 8.9 compatibility](https://developer.android.com/build/releases/agp-8-9-0-release-notes),
+[Apple WKScriptMessage](https://developer.apple.com/documentation/webkit/wkscriptmessage),
+[Gradle wrapper verification](https://docs.gradle.org/current/userguide/gradle_wrapper.html#sec:verification).

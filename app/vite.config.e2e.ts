@@ -27,7 +27,7 @@ process.env.VITE_YIELD_FACTORY_DEPLOY_BLOCK ??= "";
  * 그래서 이 스텁은 "로그인이 된 것처럼 보이게 하는 것"이 아니라, 서명이 실제로
  * 틀리면 여기서 거부된다.
  */
-function localAuth(): Plugin {
+export function localAuth(): Plugin {
   // A test-only in-memory D1 adapter. The real Pages handlers issue and consume
   // nonces and return the same signed session contract as production.
   const db = new DatabaseSync(":memory:");

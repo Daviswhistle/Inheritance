@@ -660,7 +660,7 @@ try {
   await page.ev("return __q.tab('Plan')");
   await clickReady("Close this empty plan");
   await page.ev("[...document.querySelectorAll('label')].find(l => l.textContent.includes('I understand the conditions')).querySelector('input').click(); return true;");
-  await clickReady("Confirm");
+  await clickReady("Close WLD plan");
   await until(async () => await yieldFactory.vaultOf(ACCOUNTS.a0.a) === "0x0000000000000000000000000000000000000000");
   assert.ok(await page.ev("return window.__E2E_RPC_FAULT_MATCHES__") > 0);
   pass("An empty expired yield vault releases its slot with verified raw holdings despite an initial position failure");

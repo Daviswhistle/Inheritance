@@ -14,6 +14,13 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
 }) {
   const { t, locale } = useLocale();
   const date = (stamp: bigint | number) => new Date(Number(stamp) * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const nextStep = (p: InheritancePosition) => {
+    const stage = inheritanceStage(p);
+    return stage === "active" ? t("journey.heir.nextActive", { date: date(p.deadline) })
+      : stage === "waiting" ? t("journey.heir.nextWaiting", { date: date(p.challengeEndsAt) })
+        : stage === "expired" ? t(p.hasAssets ? "journey.heir.nextExpired" : "journey.heir.empty")
+          : stage === "ready" ? t(p.hasAssets ? "journey.heir.nextReady" : "journey.heir.empty") : t("journey.heir.cancelled");
+  };
   const groups = groupInheritances(positions);
   const selectedGroup = groups.findIndex(group => group[0].owner.toLowerCase() === selectedOwner.toLowerCase());
   if (selectedGroup > 0) groups.unshift(...groups.splice(selectedGroup, 1));
@@ -25,6 +32,12 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
       const filed = group.filter(p => inheritanceStage(p) === "expired" && p.hasAssets);
       const ready = group.filter(p => inheritanceStage(p) === "ready" && p.hasAssets);
       const completed = group.every(p => p.claimedAt > 0n);
+      const allUnclaimed = group.every(p => p.claimedAt === 0n);
+      // Only combine explanations when every asset has the same actual state
+      // and deadlines. Mixed or partially completed plans keep per-asset detail.
+      const sharedNext = group.length > 1 && allUnclaimed && group.every(p =>
+        inheritanceStage(p) === inheritanceStage(group[0]) && p.deadline === group[0].deadline
+        && p.challengeEndsAt === group[0].challengeEndsAt && p.hasAssets === group[0].hasAssets);
       return <Card key={owner} className="heir-plan-card" data-owner={owner}>
         <CardHeader><span className="eyebrow">{t(completed ? "journey.receipt.title" : "journey.heir.title")}</span>
           <CardTitle>{t("journey.heir.from", { name })}</CardTitle>
@@ -34,10 +47,11 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
           {selected && (filed.length > 0 || ready.length > 0) && <section className="heir-next-action" aria-label={t("journey.nextStep")}>
             <strong>{t("journey.nextStep")}</strong>
             {filed.length > 0 && <Button variant="primary" disabled={busy || loading} onClick={() => onAction("file", filed)}>{t("journey.action.file")}</Button>}
-            {filed.length > 1 && <p>{t("journey.action.together", { assets: [...new Set(filed.map(p => p.symbol))].join(" + ") })}</p>}
+            {filed.length > 0 && <p>{t("journey.action.together", { assets: [...new Set(filed.map(p => p.symbol))].join(" + ") })}</p>}
             {ready.length > 0 && <Button variant="primary" disabled={busy || loading} onClick={() => onAction("finish", ready)}>{t("journey.action.finish")}</Button>}
-            {ready.length > 1 && <p>{t("journey.action.together", { assets: [...new Set(ready.map(p => p.symbol))].join(" + ") })}</p>}
+            {ready.length > 0 && <p>{t("journey.action.together", { assets: [...new Set(ready.map(p => p.symbol))].join(" + ") })}</p>}
           </section>}
+          {sharedNext && <p className="inheritance-next heir-shared-next">{nextStep(group[0])}</p>}
           <div className="inheritance-assets">
             {group.map(p => {
               const stage = inheritanceStage(p), r = p.receipt;
@@ -54,17 +68,15 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
                   </> : <p role="status">{t("journey.receipt.unavailable")}</p>
                   : <>
                     <p className="inheritance-amount">{p.amount === null ? t("home.value.unavailable") : `${formatYieldAmount(p.amount, p.decimals)} ${p.symbol}`}</p>
-                    <small>{t("journey.heir.estimate")}</small>
+                    {!allUnclaimed && <small>{t("journey.heir.estimate")}</small>}
                     {p.additionalWld !== null && p.additionalWld > 0n && <small>{t("journey.heir.additionalWld", { amount: formatYieldAmount(p.additionalWld) })}</small>}
-                    <p className="inheritance-next">{stage === "active" ? t("journey.heir.nextActive", { date: date(p.deadline) })
-                      : stage === "waiting" ? t("journey.heir.nextWaiting", { date: date(p.challengeEndsAt) })
-                        : stage === "expired" ? t(p.hasAssets ? "journey.heir.nextExpired" : "journey.heir.empty")
-                          : stage === "ready" ? t(p.hasAssets ? "journey.heir.nextReady" : "journey.heir.empty") : t("journey.heir.cancelled")}</p>
+                    {!sharedNext && <p className="inheritance-next">{nextStep(p)}</p>}
                   </>}
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => onOpen(p.address, true)}>{t("journey.action.openAsset", { symbol: p.symbol })}</Button>
               </div>;
             })}
           </div>
+          {allUnclaimed && <p className="heir-estimate">{t("journey.heir.estimate")}</p>}
           {selected ? <>
             {!completed && <p className="text-xs text-gray-600">{t("journey.heir.ownerControl")}</p>}
             {!completed && permission !== "granted" && <Button variant="outline" disabled={busy} onClick={onEnableNotifications}>{t("home.reminders.enable")}</Button>}
@@ -136,5 +148,5 @@ export function InviteHeir({ ready, compact = false, name, link, busy, readiness
     </div>
   </CardContent></Card>;
   return compact ? <details className="invite-disclosure"><summary>{t("journey.invite.title")}
-    <span>{t(readiness ? "journey.invite.visited" : "journey.invite.shareHint")}</span></summary>{content}</details> : content;
+    <span>{t(ready ? "journey.invite.ready" : readiness ? "journey.invite.visited" : "journey.invite.shareHint")}</span></summary>{content}</details> : content;
 }

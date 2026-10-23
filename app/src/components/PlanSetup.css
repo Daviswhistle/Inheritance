@@ -98,3 +98,60 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
 @media (prefers-reduced-motion: reduce) {
   .plan-setup-card *, .plan-setup-card *::before, .plan-setup-card *::after { scroll-behavior: auto; transition-duration: .01ms; }
 }
+.plan-steps { display: flex; gap: 16px; list-style: none; margin: 0; padding: 16px 20px 0; }
+.plan-steps li { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.plan-steps li > span { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; background: #f1f4ed; }
+.plan-steps li[aria-current="step"] { color: var(--accent); font-weight: 650; }
+.plan-steps li[aria-current="step"] > span { color: #fff; background: var(--accent); }
+.plan-timing-help { font-size: 12px; line-height: 1.6; }
+.plan-timing-help summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; cursor: pointer; color: var(--accent); list-style: none; }
+.plan-timing-help summary::-webkit-details-marker { display: none; }
+.plan-timing-help summary::after { content: '+'; font-size: 18px; }
+.plan-timing-help[open] summary::after { content: '−'; }
+.plan-timing-help p { margin: 0; color: var(--muted); }
+
+/* Review uses a readable receipt, with fees and risks at full line width. */
+.plan-setup-card { background: #fff; }
+.plan-setup-card .card-header { background: #fff; padding: 20px 20px 12px; }
+.plan-setup-card .card-content.plan-setup-content { padding-inline: 20px; gap: 24px; }
+.plan-setup-card .card-title { font-size: 18px; margin-top: 0; }
+.plan-setup-card .plan-card-intro { font-size: 13px; }
+.plan-setup-card .field-row-label, .plan-assets legend { font-size: 14px; }
+.plan-field-help, .plan-timing-help, .plan-validation-message { font-size: 13px; line-height: 1.65; }
+.plan-setup-card .plan-final-review { padding: 0; border: 0; background: transparent; }
+.plan-final-review > h3 { font-size: 21px; font-weight: 650; margin-bottom: 20px; letter-spacing: -.5px; }
+.plan-review-list { gap: 16px; margin: 0; padding: 20px; border-radius: 16px; background: #f3f6ef; }
+.plan-review-list > div { grid-template-columns: 1fr; gap: 6px; padding: 0; border: 0; }
+.plan-review-list dt { font-size: 12px; font-weight: 500; }
+.plan-review-list dd { font-size: 16px; font-weight: 600; line-height: 1.5; }
+.plan-review-amount { font-size: 21px; letter-spacing: -.4px; }
+.plan-review-address { font-size: 13px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 400; }
+.plan-review-terms { margin-top: 24px; font-size: 13px; line-height: 1.65; }
+.plan-review-terms h4 { font-size: 14px; margin: 20px 0 6px; color: var(--ink); }
+.plan-review-terms p { margin: 0; }
+.plan-final-review > .plan-risk { margin-top: 24px; padding: 16px; border: 1px solid #e9dcc0; background: #fffbf2; border-radius: 14px; font-size: 13px; }
+.plan-setup-card .plan-risk-points { padding-left: 18px; gap: 8px; }
+.plan-setup-card .plan-risk .yield-consent { margin-top: 16px; padding-top: 16px; font-size: 14px; align-items: flex-start; }
+.plan-setup-card .plan-risk .yield-consent input { accent-color: var(--accent); }
+.plan-more-details summary, .plan-legal-copy { font-size: 12px; }
+.plan-primary-actions { padding: 12px 0 0; background: var(--paper); border: 0; border-radius: 0; box-shadow: 0 -12px 20px var(--paper); }
+.plan-primary-actions .plan-step-actions { grid-template-columns: minmax(0, 1fr) auto; }
+.plan-steps { padding-top: 20px; gap: 12px; }
+.plan-steps li { flex: 1; font-size: 12px; }
+.plan-setup-card .plan-assets { gap: 12px; }
+.plan-asset-heading { flex-wrap: wrap; gap: 4px; }
+@media (max-width: 360px) {
+  .plan-setup-card .card-content.plan-setup-content { padding-inline: 16px; }
+  .plan-review-list { padding: 16px; }
+  .plan-final-review > .plan-risk { padding: 14px; }
+  .plan-setup-card .plan-assets { grid-template-columns: 1fr; }
+  .plan-asset-row { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); column-gap: 12px; }
+  .plan-asset-heading { flex-direction: column; align-items: flex-start; justify-content: center; margin: 0; }
+  .plan-asset-balance, .plan-asset-row .plan-inline-error { grid-column: 1 / -1; }
+}
+
+.plan-setup-card.plan-setup-with-actions .card-content.plan-setup-content,
+html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-content { padding-bottom: 24px; }
+.plan-setup-card .plan-recipient-controls { flex-wrap: wrap; }
+.plan-setup-card .plan-recipient-controls > .input-control { flex-basis: 100%; }
+.plan-setup-card .plan-recipient-controls > .btn { background: #f3f6ef; }

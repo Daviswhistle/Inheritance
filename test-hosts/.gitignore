@@ -1,0 +1,8 @@
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/**/build/
+ios/*.xcodeproj/
+ios/Info.plist
+ios/build/
+ios/DerivedData/

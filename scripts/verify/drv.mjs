@@ -43,7 +43,7 @@ export async function launch({ pk, url, profile, preload = "" } = {}) {
     : "";
   const PROFILE = profile || mkdtempSync(path.join(RUNDIR, "prof-"));
   if (profile) rmSync(PROFILE, { recursive: true, force: true });
-  const chrome = spawn("google-chrome", [
+  const chrome = spawn(process.env.CHROME_BIN || "google-chrome", [
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${PROFILE}`,
     "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--no-first-run",
     "--hide-scrollbars", "--window-size=390,844", "about:blank",
