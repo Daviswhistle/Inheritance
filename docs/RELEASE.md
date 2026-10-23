@@ -33,6 +33,17 @@ geometry against the keyboard/accessory, waits for stable measurements and
 rechecks after screenshot capture. Read-only trace telemetry records the
 measurements; it does not move inputs or scroll the page for the test.
 
+The native trace then separated two additional issues. In landscape, UIKit's
+keyboard guide omitted WKWebView's 44px accessory toolbar; the test host now
+uses the actual public accessory-view and keyboard-notification frames rather
+than a hard-coded subtraction. On return to portrait with the keyboard still
+open, the app lost its original height baseline and restored fixed controls
+over the input. Per-width height baselines and foreground recalculation correct
+this. The browser regression covers that complete rotation/foreground sequence;
+the native regression additionally requires hidden fixed controls and nine
+unobstructed points inside the input. Earlier green runs whose screenshots
+exposed these problems are not evidence that those cases were already correct.
+
 Store artwork was regenerated from current app captures. The income showcase
 now explicitly describes loss recovery, investment losses and cash liquidity;
 it does not imply guaranteed principal. All seven PNGs meet their dimensions,

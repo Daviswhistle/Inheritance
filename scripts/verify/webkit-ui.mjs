@@ -122,10 +122,38 @@ try {
     assert.equal(await editingPage.evaluate(() => scrollY), settledScroll, 'corrective layout scroll must settle instead of oscillating');
     assert.equal(await editingPage.locator('#heir-input').inputValue(), config.heir);
     assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), false);
+    // A native host can resize the layout viewport too. Keep the keyboard open
+    // throughout portrait -> landscape -> portrait and foreground restoration.
+    for (const [width, height] of [[390, 362], [844, 70], [390, 362]]) {
+      await editingPage.setViewportSize({ width, height });
+      await editingPage.evaluate(({ width, height }) => {
+        Object.assign(visualViewport, { width, height });
+        visualViewport.dispatchEvent(new Event('resize'));
+      }, { width, height });
+      await editingPage.waitForFunction(() => {
+        const input = document.getElementById('heir-input');
+        const r = input.getBoundingClientRect();
+        return document.activeElement === input
+          && document.documentElement.hasAttribute('data-plan-keyboard')
+          && r.top >= 0 && r.bottom <= visualViewport.height;
+      });
+      assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), false);
+      assert.equal(await editingPage.locator('.tab-bar').isVisible(), false);
+    }
+    await editingPage.evaluate(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await sleep(300);
+    assert.equal(await editingPage.evaluate(() => document.documentElement.hasAttribute('data-plan-keyboard')), true,
+      'foreground portrait retains its unoccluded baseline while the keyboard remains open');
+    assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), false);
+    assert.equal(await editingPage.locator('.tab-bar').isVisible(), false);
+    assert.equal(await editingPage.locator('#heir-input').inputValue(), config.heir);
     await editingPage.locator('#heir-input').blur();
     await editingPage.waitForFunction(() => !document.documentElement.hasAttribute('data-plan-keyboard'));
   } finally { await editingContext.close(); }
-  pass('A late layout scroll preserves full input visibility in a simulated 70px editing viewport and settles without oscillation');
+  pass('Keyboard clearance settles after layout scrolling and preserves hidden actions across resized portrait/landscape/foreground transitions');
   await tab(page, 2); await tap(page, 'World App으로 계속하기');
   await page.locator('#heir-input').fill(config.heir);
   await page.locator('#plan-wld').fill('10');
