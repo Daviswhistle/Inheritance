@@ -87,7 +87,10 @@ export function PlanSetup({
         fullHeight = Math.max(fullHeight, window.innerHeight);
         const active = document.activeElement;
         const editing = active instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(active.type);
-        const keyboard = editing && viewport.scale === 1 && viewport.height < fullHeight - 120;
+        // A native host may resize its WKWebView while rotating with the
+        // keyboard already open, leaving no unoccluded height baseline yet.
+        const keyboard = editing && viewport.scale === 1
+          && (viewport.height < fullHeight - 120 || viewport.height < 200);
         document.documentElement.toggleAttribute("data-plan-keyboard", keyboard);
         if (keyboard && active instanceof HTMLElement) {
           const rect = active.getBoundingClientRect();

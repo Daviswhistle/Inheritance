@@ -52,7 +52,7 @@ final class HostTests: XCTestCase {
         recipient.typeText("@sam")
         XCTAssertFalse(web.buttons["Review plan"].exists, "Fixed review action must not cover keyboard input")
         let inputAboveKeyboard = NSPredicate { _, _ in
-            recipient.frame.minY >= web.frame.minY && recipient.frame.maxY <= app.keyboards.firstMatch.frame.minY - 44
+            recipient.frame.minY >= web.frame.minY && recipient.frame.maxY <= min(app.keyboards.firstMatch.frame.minY, app.buttons["Done"].firstMatch.frame.minY)
         }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: inputAboveKeyboard, object: nil)], timeout: 10), .completed, "Recipient must be fully above keyboard and accessory toolbar")
         capture("native-keyboard", app)

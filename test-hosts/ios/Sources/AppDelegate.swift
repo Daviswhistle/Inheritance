@@ -78,7 +78,8 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             webView.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 4),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            // Keep the embedded web viewport above UIKit keyboard/accessory views.
+            webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
         ])
         openTestURL()
     }
