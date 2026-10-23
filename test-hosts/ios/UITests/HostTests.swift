@@ -1,6 +1,15 @@
 import XCTest
 
 final class HostTests: XCTestCase {
+    override func tearDown() {
+        if (testRun?.failureCount ?? 0) > 0 {
+            let app = XCUIApplication()
+            capture("failure-screen", app)
+            print(app.debugDescription)
+        }
+        super.tearDown()
+    }
+
     func testRealSDKLoginAndNativeLifecycle() {
         continueAfterFailure = false
         let app = XCUIApplication()
