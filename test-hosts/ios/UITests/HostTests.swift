@@ -227,9 +227,12 @@ final class HostTests: XCTestCase {
         var stableSince: Date?
         var observations = 0
         var lastInvalidGeometry = ""
+        let status = app.staticTexts["test-host-status"]
         let visibleAndStable = NSPredicate { _, _ in
-            // One AX snapshot per sample keeps geometry coherent and avoids
-            // spending the entire waiter deadline on repeated remote queries.
+            // Snapshot values are truncated at 512 characters by XCTest. Read
+            // the complete telemetry directly, then take one coherent snapshot
+            // for all native frames. Both must agree across stable samples.
+            let raw = status.value as? String ?? ""
             guard let snapshot = try? app.snapshot() else {
                 stableSince = nil; observations = 0; return false
             }
@@ -237,15 +240,13 @@ final class HostTests: XCTestCase {
             guard let inputSnapshot = nodes.first(where: { $0.elementType == .textField && $0.label == inputLabel }),
                   let webSnapshot = nodes.first(where: { $0.elementType == .webView && !$0.frame.isEmpty }),
                   let keyboardSnapshot = nodes.first(where: { $0.elementType == .keyboard && !$0.frame.isEmpty }),
-                  let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty }),
-                  let statusSnapshot = nodes.first(where: { $0.identifier == "test-host-status" }) else {
+                  let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty }) else {
                 stableSince = nil; observations = 0; return false
             }
             let field = inputSnapshot.frame
             let webFrame = webSnapshot.frame
             let keyboardFrame = keyboardSnapshot.frame
             let doneFrame = doneSnapshot.frame
-            let raw = statusSnapshot.value as? String ?? ""
             guard let data = raw.data(using: .utf8),
                   let metrics = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                   let rect = metrics["input"] as? [String: Any],
