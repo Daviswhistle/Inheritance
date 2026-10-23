@@ -23,6 +23,16 @@ WebKit regression verifies the complete recovery action at 320px, unchanged
 on-chain balances after rejection and the exact `1.000001` amount after editing.
 The complete WebKit suite passed **12 groups / 29 layouts** after the fix.
 
+Final native screenshot inspection then exposed a landscape input partly
+covered by the keyboard even though the old accessibility-bound assertion
+passed. A late layout-scroll regression reproduced an input extending to
+93.3px in a 70px editing viewport. Subscribing to window scrolling restored the
+full input to 10.3–58.3px without oscillation; the complete WebKit suite passed
+**13 groups / 29 layouts**. The native test now checks full DOM and native input
+geometry against the keyboard/accessory, waits for stable measurements and
+rechecks after screenshot capture. Read-only trace telemetry records the
+measurements; it does not move inputs or scroll the page for the test.
+
 Store artwork was regenerated from current app captures. The income showcase
 now explicitly describes loss recovery, investment losses and cash liquidity;
 it does not imply guaranteed principal. All seven PNGs meet their dimensions,

@@ -85,6 +85,47 @@ try {
   }
   assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => ['wallet-auth', 'send-transaction'].includes(x.command)).length), 0);
   pass('Both languages and all four guest tabs reflow at 320/390px without requesting a wallet');
+  // Simulate a keyboard-reduced visual viewport while retaining the layout
+  // viewport, then deliver a separate layout scroll as WKWebView can do after
+  // rotation. This is an event/geometry regression, not native-keyboard proof.
+  const editingContext = await browser.newContext({ ...devices['iPhone 13'], viewport: { width: 390, height: 844 } });
+  await editingContext.addInitScript(() => {
+    localStorage.setItem('inheritance:locale', 'en');
+    const viewport = new EventTarget();
+    Object.assign(viewport, { height: 844, width: 390, offsetTop: 0, offsetLeft: 0, scale: 1 });
+    Object.defineProperty(window, 'visualViewport', { value: viewport });
+  });
+  const editingPage = await editingContext.newPage();
+  try {
+    await editingPage.goto(origin + '/?platform=ios&approval=auto');
+    await tab(editingPage, 2); await tap(editingPage, 'Continue with World App');
+    await editingPage.locator('#heir-input').fill(config.heir);
+    for (const [width, height, visible] of [[390, 844, 350], [844, 390, 70]]) {
+      await editingPage.setViewportSize({ width, height });
+      await editingPage.evaluate(({ width, visible }) => {
+        Object.assign(visualViewport, { width, height: visible });
+        visualViewport.dispatchEvent(new Event('resize'));
+        document.getElementById('heir-input').focus();
+      }, { width, visible });
+      await editingPage.waitForFunction(() => {
+        const r = document.getElementById('heir-input').getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= visualViewport.height;
+      });
+    }
+    await editingPage.evaluate(() => scrollBy(0, -35));
+    await editingPage.waitForFunction(() => {
+      const r = document.getElementById('heir-input').getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= visualViewport.height;
+    });
+    const settledScroll = await editingPage.evaluate(() => scrollY);
+    await sleep(300);
+    assert.equal(await editingPage.evaluate(() => scrollY), settledScroll, 'corrective layout scroll must settle instead of oscillating');
+    assert.equal(await editingPage.locator('#heir-input').inputValue(), config.heir);
+    assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), false);
+    await editingPage.locator('#heir-input').blur();
+    await editingPage.waitForFunction(() => !document.documentElement.hasAttribute('data-plan-keyboard'));
+  } finally { await editingContext.close(); }
+  pass('A late layout scroll preserves full input visibility in a simulated 70px editing viewport and settles without oscillation');
   await tab(page, 2); await tap(page, 'World App으로 계속하기');
   await page.locator('#heir-input').fill(config.heir);
   await page.locator('#plan-wld').fill('10');
