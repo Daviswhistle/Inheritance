@@ -27,6 +27,16 @@ final class HostTests: XCTestCase {
         amount.typeText("12.345678")
         XCTAssertEqual(amount.value as? String, "12.345678")
         capture("decimal-keyboard", app)
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10))
+        // WKWebView's accessibility tree includes offscreen inputs. Bring the
+        // recipient above the fixed actions before tapping; do not type through
+        // a still-visible decimal keyboard using stale element coordinates.
+        for _ in 0..<4 {
+            if recipient.frame.maxY < app.frame.maxY - 180 && recipient.frame.minY > web.frame.minY + 20 { break }
+            web.swipeUp()
+        }
+        XCTAssertTrue(recipient.isHittable)
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         recipient.typeText("@sam")
