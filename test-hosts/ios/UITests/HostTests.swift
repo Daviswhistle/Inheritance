@@ -14,7 +14,7 @@ final class HostTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual"]
+                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1"]
         app.launch()
         defer { XCUIDevice.shared.orientation = .portrait }
         let web = app.webViews.firstMatch
@@ -30,7 +30,7 @@ final class HostTests: XCTestCase {
         login.tap()
         let reject = web.buttons["Reject"].firstMatch
         XCTAssertTrue(reject.waitForExistence(timeout: 20))
-        reject.tap()
+        reject.press(forDuration: 0.15)
         let canRetry = NSPredicate { _, _ in login.exists && login.isEnabled }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: canRetry, object: nil)], timeout: 20), .completed)
         login.tap()

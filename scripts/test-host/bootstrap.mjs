@@ -45,7 +45,7 @@ shadow.innerHTML = `
     :host { color-scheme: light; font: 14px/1.5 system-ui,sans-serif; color: #17251b; }
     * { box-sizing: border-box; }
     button, select { font: inherit; min-height: 44px; border: 1px solid #9aab9e; border-radius: 10px; padding: 8px 12px; background: white; color: inherit; }
-    button { cursor: pointer; } button:disabled { opacity: .5; } button:focus-visible,select:focus-visible { outline: 3px solid #4773e0; outline-offset: 2px; }
+    button { cursor: pointer; touch-action: manipulation; } button:disabled { opacity: .5; } button:focus-visible,select:focus-visible { outline: 3px solid #4773e0; outline-offset: 2px; }
     #toggle { position: fixed; left: 8px; top: max(4px,env(safe-area-inset-top)); z-index: 10001; min-height: 32px; padding: 3px 8px; background: #fff4c4; font-size: 11px; font-weight: 700; box-shadow: 0 1px 4px #0002; }
     dialog { position: fixed; inset: 0; width: min(100% - 24px,560px); max-height: 85dvh; padding: 20px; background: #f8faf7; color: inherit; border: 1px solid #9aab9e; border-radius: 18px; overflow-y: auto; }
     dialog::backdrop { background: #10261999; } h2 { font-size: 20px; margin: 0 0 8px; } p { margin: 8px 0; }
@@ -83,6 +83,13 @@ query("#address").textContent = `${account}: ${config[account]}\nRecipient fixtu
 query("#account").value = account;
 query("#approval").value = approval;
 let controller;
+let pendingSignature = "";
+if (parameters.get("trace") === "1") {
+  for (const type of ["pointerdown", "pointerup", "click"]) shadow.addEventListener(type, event => {
+    const target = event.composedPath().find(node => node instanceof HTMLButtonElement);
+    query("#status").textContent = `${type}: ${target?.textContent || "non-button"} · trusted=${event.isTrusted} · ${Math.round(event.clientX)},${Math.round(event.clientY)}`;
+  }, true);
+}
 function render(state) {
   query("#runtime").textContent = `${state.platform} · ${state.native ? "native WebView bridge" : "browser bridge simulation"} · chain 480 (local)`;
   query("#log").replaceChildren(...state.history.slice(-12).reverse().map(entry => {
@@ -90,7 +97,10 @@ function render(state) {
     item.textContent = `${entry.command} v${entry.version} · ${entry.state}`;
     return item;
   }));
-  query("#pending").replaceChildren(...state.pending.map(entry => {
+  const signature = state.pending.map(entry => entry.id).join(",");
+  // History/permission updates must not detach a button between pointer down
+  // and click. Pending command payloads are immutable for a given request ID.
+  if (signature !== pendingSignature) query("#pending").replaceChildren(...state.pending.map(entry => {
     const item = document.createElement("div");
     const title = document.createElement("strong"); title.textContent = `Approve ${entry.command}?`;
     const payload = document.createElement("pre"); payload.textContent = JSON.stringify(entry.payload, null, 2);
@@ -102,6 +112,7 @@ function render(state) {
     // Keep decisions above the potentially long payload in short native views.
     item.append(title, row, payload); return item;
   }));
+  pendingSignature = signature;
   if (state.pending.length) show();
 }
 controller = installTestHost({ platform, walletAddress: config[account],
