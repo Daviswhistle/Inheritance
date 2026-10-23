@@ -10,6 +10,7 @@ final class HostTests: XCTestCase {
         defer { XCUIDevice.shared.orientation = .portrait }
         let web = app.webViews.firstMatch
         XCTAssertTrue(web.waitForExistence(timeout: 60))
+        XCTAssertTrue(web.buttons["Home"].firstMatch.waitForExistence(timeout: 120), "Wait for initial JS bootstrap, not merely the WKWebView container\n\(app.debugDescription)")
         for label in ["Assets", "Help", "Home", "Plan"] {
             let tab = web.buttons[label].firstMatch
             XCTAssertTrue(tab.waitForExistence(timeout: 30), "Missing tab: \(label)\n\(app.debugDescription)")

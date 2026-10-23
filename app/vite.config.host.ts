@@ -127,6 +127,7 @@ export default defineConfig(({ command }) => {
     envDir: false,
     plugins: [react(), tsconfigPaths({ projects: [path.resolve(__dirname, "tsconfig.app.json")] }), localAuth(), hostServer()],
     resolve: { alias: { "@": path.resolve(__dirname, "src") } },
-    server: { host: "127.0.0.1", port: 7777, strictPort: true, allowedHosts: ["localhost"], cors: false },
+    server: { host: "127.0.0.1", port: 7777, strictPort: true, allowedHosts: ["localhost"], cors: false,
+      warmup: { clientFiles: ["./src/main.tsx"] } },
   };
 });
