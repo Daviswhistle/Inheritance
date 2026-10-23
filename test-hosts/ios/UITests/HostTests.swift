@@ -244,7 +244,7 @@ final class HostTests: XCTestCase {
                 && cssBottom <= offset + visibleHeight
             let geometry = "\(field)|\(keyboard.frame)|\(done.frame)|\(raw)"
             guard valid else { stableSince = nil; observations = 0; return false }
-            if geometry != lastGeometry {
+            if geometry != lastGeometry || stableSince == nil {
                 lastGeometry = geometry; stableSince = Date(); observations = 1; return false
             }
             observations += 1
