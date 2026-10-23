@@ -152,8 +152,17 @@ delivery. Keep a small real World App acceptance run for those integrations.
 The Android shell has now been compiled and exercised in an actual Android 15
 emulator on Linux/WSL with KVM. See [Android validation](android/README.md) for the
 reusable command, exact runtime versions, native lifecycle checks and evidence.
-The iOS project has not been compiled or run in Xcode. Linux WebKit browser checks
-exercise that engine and SDK transport but do not establish iPhone/WKWebView parity.
+The iOS project has also been compiled and run with Xcode 16.4 on a GitHub macOS
+15 runner. The verified native run used iPhone 16 Pro / iOS 18.5:
+[run 39902664302](https://github.com/Daviswhistle/Inheritance/actions/runs/39902664302).
+It exercised all four guest tabs, real MiniKit wallet authentication through
+WKScriptMessageHandler, the decimal keyboard with exact `12.345678` USDC input,
+recipient typing, rotation and Home/foreground input preservation. Screenshot
+review of the preceding run exposed a fixed action covering recipient input while
+the keyboard was open; the app now hides plan actions while editing with the
+keyboard visible. The linked native regression asserts that the action is hidden;
+Android and Linux WebKit regression checks also passed after that fix. Simulator tests verify
+native iOS behavior, but do not establish physical-iPhone or actual World App parity.
 
 Build references: [AGP 8.9 compatibility](https://developer.android.com/build/releases/agp-8-9-0-release-notes),
 [Apple WKScriptMessage](https://developer.apple.com/documentation/webkit/wkscriptmessage),
