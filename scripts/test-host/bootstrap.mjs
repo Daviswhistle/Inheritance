@@ -86,6 +86,13 @@ let controller;
 let pendingSignature = "";
 function decisionButton(button, decide) {
   let start = null;
+  const activate = touch => {
+    if (!decide()) return; // The bridge consumes each pending ID once.
+    // Keep the modal shield through any compatibility click so a touch cannot
+    // fall through to the app's sign-in/transaction button underneath.
+    if (touch) setTimeout(() => dialog.close(), 300);
+    else dialog.close();
+  };
   button.addEventListener("pointerdown", event => {
     start = event.isPrimary && event.pointerType === "touch" && event.isTrusted
       ? { x: event.clientX, y: event.clientY } : null;
@@ -103,9 +110,9 @@ function decisionButton(button, decide) {
     // WKWebView can deliver a trusted touch without synthesizing click inside
     // this host's shadow dialog. A stationary completed touch is sufficient;
     // dragged/cancelled gestures never approve. Click still serves keyboards.
-    event.preventDefault(); decide();
+    event.preventDefault(); activate(true);
   });
-  button.onclick = decide;
+  button.onclick = () => activate(false);
 }
 if (parameters.get("trace") === "1") {
   for (const type of ["pointerdown", "pointerup", "click"]) shadow.addEventListener(type, event => {
@@ -128,9 +135,9 @@ function render(state) {
     const title = document.createElement("strong"); title.textContent = `Approve ${entry.command}?`;
     const payload = document.createElement("pre"); payload.textContent = JSON.stringify(entry.payload, null, 2);
     const approve = document.createElement("button"); approve.textContent = "Approve"; approve.className = "primary";
-    decisionButton(approve, () => { if (controller.approve(entry.id)) dialog.close(); });
+    decisionButton(approve, () => controller.approve(entry.id));
     const reject = document.createElement("button"); reject.textContent = "Reject";
-    decisionButton(reject, () => { if (controller.reject(entry.id)) dialog.close(); });
+    decisionButton(reject, () => controller.reject(entry.id));
     const row = document.createElement("div"); row.className = "row"; row.append(approve, reject);
     // Keep decisions above the potentially long payload in short native views.
     item.append(title, row, payload); return item;
