@@ -120,8 +120,29 @@ export function PlanSetup({
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(null);
   const [legalDocument, setLegalDocument] = useState<"terms" | "privacy" | null>(null);
   const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
+  const resumeHeadingRef = useRef<HTMLHeadingElement>(null);
+  const resumeAttention = useRef({ pending: false, busy: false });
+  const hasPendingPlan = Boolean(pendingPlan);
   const wasReviewingRef = useRef(false);
   const createClickLocked = useRef(false);
+  useEffect(() => {
+    const previous = resumeAttention.current;
+    resumeAttention.current = { pending: hasPendingPlan, busy };
+    // A returned wallet request may replace the form below existing settings.
+    // Show the recovery action once; background reads must not move the reader.
+    if (!hasPendingPlan || busy || previous.pending && !previous.busy) return;
+    let focused = false;
+    const frame = requestAnimationFrame(() => {
+      focused = true;
+      resumeHeadingRef.current?.focus({ preventScroll: true });
+      resumeHeadingRef.current?.scrollIntoView({ block: "start" });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      // StrictMode may replay mount effects before the frame has run.
+      if (!focused) resumeAttention.current = previous;
+    };
+  }, [hasPendingPlan, busy]);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -388,7 +409,7 @@ export function PlanSetup({
     <CardContent className="plan-setup-content">
       {pendingPlan && <section className="plan-resume" aria-labelledby="plan-resume-title">
         <div>
-          <h3 id="plan-resume-title">{t("plan.pending.title")}</h3>
+          <h3 id="plan-resume-title" tabIndex={-1} ref={resumeHeadingRef}>{t("plan.pending.title")}</h3>
           <p>{t("plan.pending.body")}</p>
           {(pendingPlan.createState === "submitting" || pendingPlan.createState === "submitted")
             && <p role="status">{t("plan.pending.checkCreate")}</p>}

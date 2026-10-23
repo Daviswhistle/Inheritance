@@ -40,7 +40,7 @@ contract OwnerIncomeWorldChainForkTest is Test {
             vm.skip(true);
             return;
         }
-        vm.createSelectFork(rpc, 35_837_437);
+        vm.createSelectFork(rpc, vm.envOr("INCOME_FORK_BLOCK", uint256(35_837_437)));
         assertEq(block.chainid, 480);
         usdcFactory = new InheritanceVaultUSDCFactory(USDC, RE7_USDC, WLD, FEE, 1000);
         vm.prank(OWNER);

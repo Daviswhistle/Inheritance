@@ -4924,7 +4924,7 @@ export default function App() {
         {/* ===== Help 탭: 신뢰성 근거와 법적 고지 =====
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && <>
-          <div className="help-language"><span>{t("language.label")} · Language</span><LanguagePicker /></div>
+          <div className="help-language"><span>{locale === "en" ? t("language.label") : `${t("language.label")} · Language`}</span><LanguagePicker /></div>
           <section className="help-topics" aria-labelledby="help-topics-title">
             <h2 id="help-topics-title">{t("help.questions")}</h2>
             <div className="help-topic-list">

@@ -64,7 +64,8 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
 .plan-setup-card .plan-final-review { border-color: #b7cbb3; background: #f1f6ed; }
 .plan-final-review > .plan-risk { margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px solid #dfe6d8; background: transparent; }
 .plan-setup-card .plan-alignment-review { border-color: #d5bd7d; background: #fff9e9; }
-.plan-review h3:focus { outline: 2px solid #86a97f; outline-offset: 4px; border-radius: 2px; }
+.plan-review h3:focus, .plan-resume h3:focus { outline: 2px solid #86a97f; outline-offset: 4px; border-radius: 2px; }
+.plan-resume h3 { scroll-margin-top: 24px; }
 .plan-review-list { display: grid; margin: 8px 0 0; }
 .plan-review-list > div { display: grid; grid-template-columns: minmax(95px, .72fr) minmax(0, 1.5fr); gap: 10px; padding: 9px 0; border-top: 1px solid #eee4c8; }
 .plan-review-list dt { color: #5c6654; font-size: 11px; font-weight: 650; }

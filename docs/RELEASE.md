@@ -1,5 +1,46 @@
 # Release evidence
 
+## October 23, 2026 independent release and design review
+
+The user authorized continued independent agent review, improvements and review
+submission. Portal readback confirmed the October 21 feedback: "follow design
+and app guideliens. improve UX. tabs have the same UI." The response and concrete
+review steps are in [reviewer notes](REVIEW_NOTES.md).
+
+Independent UX inspection captured current English/Korean guest and owner flows
+at 390px and owner flows at 320px. Home prioritizes check-in; Assets manages
+balances and income; Plan manages recipients and intervals; Help contains rules
+and support. Empty balances, risk consent and recovery remain explicit. Final
+320px review checks included full legal-link/CTA clearance, exact amounts,
+over-balance/self-recipient errors and rejected-approval recovery. The English
+Help language label no longer repeats "Language".
+
+Store artwork was regenerated from current app captures. The income showcase
+now explicitly describes loss recovery, investment losses and cash liquidity;
+it does not imply guaranteed principal. All seven PNGs meet their dimensions,
+500KB limit and no-metadata requirements. Portal metadata explains the different
+tab purposes and retains the existing fee, risk and custody disclosures.
+
+Financial verification at World Chain block **36,708,856** found matching runtime
+bytecode for both current factories and deployers (excluding immutable slots).
+Both Re7 strategies reported a 10% performance fee; the service fee remained
+1,000bps. Direct deposit/redeem previews matched share conversion without an
+additional entry/exit deduction. This is evidence for the configured direct V1
+routes, not a statement about fees charged by a separate wallet interface.
+Financial unit/fuzz checks: **225 passed**. Current-block fork checks: **8 passed**,
+covering deposits, withdrawals, inheritance, share redemption and both assets'
+income collection. No production financial transaction was sent.
+
+Before this final polish, commit `1f6dc508` passed CI `39941868921`, deployment
+`39941869016` and native iOS `39941869001`. Its live Pages HTML matched release
+`2a7abd7f`; legal pages returned HTTP 200. Independent automation-health reads
+advanced from 11:01:59 to 11:03:59 UTC with ready, funded, fresh, not-halted
+Durable Object execution. These observations do not prove a future payout.
+
+Actual World App approval/notification services, physical-iPhone acceptance,
+unfamiliar-person comprehension and an independent external security audit are
+not established by these agent, browser, emulator or fork checks.
+
 ## October 13, 2026 app-first production and resubmission
 
 The user authorized production deployment and review resubmission. Main was

@@ -4,6 +4,35 @@ App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`
 URL: https://inheritance.pages.dev/
 Languages: English and Korean. Platform: World App iOS and Android.
 
+## Response to the October 21 design review
+
+The review asked us to follow the app/design guidelines, improve UX and make
+the tabs distinct. The four tabs now serve different tasks while sharing the
+same navigation and visual style:
+
+- **Home:** next check-in, its primary action and combined plan balances.
+- **Assets:** token balances, deposits, withdrawals and available income.
+- **Plan:** recipient, check-in interval, invitation and received-plan actions.
+- **Help:** language, rules, fees, risks, reminders and support.
+
+Before sign-in, each tab also has its own content: Home introduces the plan,
+Assets explains the balance view without inventing a balance, Plan explains the
+three setup steps, and Help is fully available. Browsing does not ask for a
+wallet signature.
+
+Suggested review: browse all four tabs before signing in; after signing in,
+compare Home's check-in with Assets' money controls and Plan's settings. In
+setup, use **Review plan** to inspect exact amounts, the recipient and fees before
+any wallet request. Open and close the Terms or Privacy Policy to verify the
+draft survives. The risk consent starts unchecked. The three-step explanation
+in Help distinguishes expiry, the heir's claim and the seven-day review period.
+
+Native Android WebView and iOS WKWebView tests cover keyboard handling,
+background/foreground, rejected approval and process-death recovery of a
+submitted but unmined deposit. The hosts use the real MiniKit SDK and disposable
+local funds; their simulated approvals do not establish actual World App
+approval-service or notification-delivery behavior.
+
 ## Sign-in and custody
 
 Tap **Continue with World App** to sign in; opening the app initializes the bridge without requesting a signature. World ID verification is not required. Pages verifies the MiniKit SIWE signature, origin, statement, chain and address, consumes a one-use random nonce in D1, and issues a one-hour session. The notification Worker independently verifies this session and current vault permissions. Expired sessions retain app navigation and ask the user to reconnect before viewing personal balances or acting on funds.
