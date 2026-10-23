@@ -84,6 +84,29 @@ query("#account").value = account;
 query("#approval").value = approval;
 let controller;
 let pendingSignature = "";
+function decisionButton(button, decide) {
+  let start = null;
+  button.addEventListener("pointerdown", event => {
+    start = event.isPrimary && event.pointerType === "touch" && event.isTrusted
+      ? { x: event.clientX, y: event.clientY } : null;
+  });
+  button.addEventListener("pointermove", event => {
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) start = null;
+  });
+  button.addEventListener("pointercancel", () => { start = null; });
+  button.addEventListener("pointerup", event => {
+    const origin = start; start = null;
+    if (!origin || !event.isTrusted || event.pointerType !== "touch") return;
+    const bounds = button.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom
+      || Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 8) return;
+    // WKWebView can deliver a trusted touch without synthesizing click inside
+    // this host's shadow dialog. A stationary completed touch is sufficient;
+    // dragged/cancelled gestures never approve. Click still serves keyboards.
+    event.preventDefault(); decide();
+  });
+  button.onclick = decide;
+}
 if (parameters.get("trace") === "1") {
   for (const type of ["pointerdown", "pointerup", "click"]) shadow.addEventListener(type, event => {
     const target = event.composedPath().find(node => node instanceof HTMLButtonElement);
@@ -105,9 +128,9 @@ function render(state) {
     const title = document.createElement("strong"); title.textContent = `Approve ${entry.command}?`;
     const payload = document.createElement("pre"); payload.textContent = JSON.stringify(entry.payload, null, 2);
     const approve = document.createElement("button"); approve.textContent = "Approve"; approve.className = "primary";
-    approve.onclick = () => { controller.approve(entry.id); dialog.close(); };
+    decisionButton(approve, () => { if (controller.approve(entry.id)) dialog.close(); });
     const reject = document.createElement("button"); reject.textContent = "Reject";
-    reject.onclick = () => { controller.reject(entry.id); dialog.close(); };
+    decisionButton(reject, () => { if (controller.reject(entry.id)) dialog.close(); });
     const row = document.createElement("div"); row.className = "row"; row.append(approve, reject);
     // Keep decisions above the potentially long payload in short native views.
     item.append(title, row, payload); return item;
