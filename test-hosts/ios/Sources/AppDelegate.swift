@@ -31,6 +31,34 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
         view.backgroundColor = UIColor(red: 1, green: 0.965, blue: 0.843, alpha: 1)
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "minikit")
+        configuration.userContentController.add(self, name: "viewportMetrics")
+        // Read-only debug telemetry: accessibility exposes actual DOM geometry,
+        // because XCTest can report only the clipped visible part of an input.
+        configuration.userContentController.addUserScript(WKUserScript(source: """
+            (() => {
+              if (new URLSearchParams(location.search).get('trace') !== '1') return;
+              let previous = '';
+              const report = () => {
+                const element = document.activeElement;
+                const rect = element?.getBoundingClientRect();
+                const viewport = window.visualViewport;
+                const metrics = {innerHeight, innerWidth, scrollY,
+                  viewport: viewport ? {height: viewport.height, width: viewport.width,
+                    offsetTop: viewport.offsetTop, pageTop: viewport.pageTop, scale: viewport.scale} : null,
+                  input: rect && element?.matches('input,textarea') ? {top: rect.top,
+                    bottom: rect.bottom, left: rect.left, right: rect.right, height: rect.height,
+                    width: rect.width, id: element.id} : null,
+                  keyboard: document.documentElement.dataset.planKeyboard ?? null};
+                const serialized = JSON.stringify(metrics);
+                if (serialized !== previous) {
+                  previous = serialized;
+                  window.webkit.messageHandlers.viewportMetrics.postMessage(metrics);
+                }
+                requestAnimationFrame(report);
+              };
+              requestAnimationFrame(report);
+            })();
+            """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         configuration.userContentController.addUserScript(WKUserScript(
             source: "window.__INHERITANCE_TEST_NATIVE_HOST__ = { platform: 'ios' };",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -127,6 +155,16 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
+        if message.name == "viewportMetrics" {
+            guard message.frameInfo.isMainFrame, sameOrigin(message.frameInfo.request.url),
+                  sameOrigin(webView.url), var metrics = message.body as? [String: Any] else { return }
+            let frame = webView.convert(webView.bounds, to: view.window)
+            metrics["nativeWebView"] = [frame.minX, frame.minY, frame.width, frame.height]
+            metrics["keyboardGuide"] = NSStringFromCGRect(view.keyboardLayoutGuide.layoutFrame)
+            if let data = try? JSONSerialization.data(withJSONObject: metrics, options: [.sortedKeys]),
+               let value = String(data: data, encoding: .utf8) { status.accessibilityValue = value }
+            return
+        }
         guard message.name == "minikit", message.frameInfo.isMainFrame,
               sameOrigin(message.frameInfo.request.url), sameOrigin(webView.url),
               JSONSerialization.isValidJSONObject(message.body),

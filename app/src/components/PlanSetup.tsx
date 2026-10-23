@@ -174,6 +174,9 @@ export function PlanSetup({
       });
     };
     viewport.addEventListener("resize", update); viewport.addEventListener("scroll", update);
+    // WKWebView may scroll the layout viewport again after rotating or focusing
+    // an input, without emitting visualViewport.scroll.
+    window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update); document.addEventListener("focusin", update); document.addEventListener("focusout", update);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     for (const element of document.querySelectorAll(".plan-setup-content, .plan-primary-actions")) observer?.observe(element);
@@ -182,6 +185,7 @@ export function PlanSetup({
       observer?.disconnect();
       cancelAnimationFrame(frame);
       viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update); document.removeEventListener("focusin", update); document.removeEventListener("focusout", update);
       document.documentElement.removeAttribute("data-plan-keyboard");
     };

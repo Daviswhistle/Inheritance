@@ -68,18 +68,15 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         recipient.typeText("@sam")
         XCTAssertFalse(web.buttons["Review plan"].exists, "Fixed review action must not cover keyboard input")
-        let inputAboveKeyboard = NSPredicate { _, _ in
-            recipient.frame.minY >= web.frame.minY && recipient.frame.maxY <= min(app.keyboards.firstMatch.frame.minY, app.buttons["Done"].firstMatch.frame.minY)
-        }
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: inputAboveKeyboard, object: nil)], timeout: 10), .completed, "Recipient must be fully above keyboard and accessory toolbar")
-        capture("native-keyboard", app)
+        let fullInputHeight = max(44, recipient.frame.height)
+        assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
+                           text: "@sam", screenshot: "native-keyboard")
         XCUIDevice.shared.orientation = .landscapeLeft
         let landscape = NSPredicate { _, _ in app.frame.width > app.frame.height }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
-        Thread.sleep(forTimeInterval: 1) // Finish UIKit rotation before recording the screen.
         XCTAssertEqual(recipient.value as? String, "@sam")
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: inputAboveKeyboard, object: nil)], timeout: 10), .completed, "Landscape input must remain above keyboard")
-        capture("landscape-input-preserved", app)
+        assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
+                           text: "@sam", screenshot: "landscape-input-preserved")
         XCUIDevice.shared.orientation = .portrait
         let portrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: portrait, object: nil)], timeout: 10), .completed)
@@ -88,7 +85,8 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(recipient.waitForExistence(timeout: 15))
         XCTAssertEqual(recipient.value as? String, "@sam")
         XCTAssertEqual(amount.value as? String, "12.345678")
-        capture("foreground-input-preserved", app)
+        assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
+                           text: "@sam", screenshot: "foreground-input-preserved")
         app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10), "Dismissal restores review action")
         XCTAssertEqual(amount.value as? String, "12.345678")
@@ -210,6 +208,56 @@ final class HostTests: XCTestCase {
         capture("pending-deposit-recovered-without-resubmission", app)
     }
 
+    private func assertVisibleInput(_ input: XCUIElement, in web: XCUIElement,
+                                    app: XCUIApplication, height: CGFloat,
+                                    text: String, screenshot name: String) {
+        var lastGeometry = ""
+        var stableSince: Date?
+        var observations = 0
+        let visibleAndStable = NSPredicate { _, _ in
+            let field = input.frame
+            let keyboard = app.keyboards.firstMatch
+            let done = app.buttons["Done"].firstMatch
+            let raw = app.staticTexts["test-host-status"].value as? String ?? ""
+            guard let data = raw.data(using: .utf8),
+                  let metrics = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let rect = metrics["input"] as? [String: Any],
+                  let viewport = metrics["viewport"] as? [String: Any],
+                  let native = metrics["nativeWebView"] as? [Double], native.count == 4,
+                  let cssTop = rect["top"] as? Double, let cssBottom = rect["bottom"] as? Double,
+                  let cssHeight = rect["height"] as? Double,
+                  let offset = viewport["offsetTop"] as? Double,
+                  let visibleHeight = viewport["height"] as? Double,
+                  let scale = viewport["scale"] as? Double,
+                  keyboard.exists, done.exists else {
+                stableSince = nil; observations = 0; return false
+            }
+            let occlusion = min(min(keyboard.frame.minY, done.frame.minY), web.frame.maxY)
+            // Both full CSS geometry and native geometry must fit. A clipped
+            // accessibility rectangle with only the top border is not a pass.
+            let fullTop = CGFloat(native[1] + (cssTop - offset) * scale)
+            let fullBottom = CGFloat(native[1] + (cssBottom - offset) * scale)
+            let valid = input.isHittable && field.height >= height - 1
+                && cssHeight >= Double(height - 1) && field.minY >= web.frame.minY
+                && field.maxY <= occlusion && fullTop >= web.frame.minY
+                && fullBottom <= occlusion && cssTop >= offset
+                && cssBottom <= offset + visibleHeight
+            let geometry = "\(field)|\(keyboard.frame)|\(done.frame)|\(raw)"
+            guard valid else { stableSince = nil; observations = 0; return false }
+            if geometry != lastGeometry {
+                lastGeometry = geometry; stableSince = Date(); observations = 1; return false
+            }
+            observations += 1
+            return observations >= 3 && Date().timeIntervalSince(stableSince ?? Date()) >= 0.8
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visibleAndStable, object: nil)], timeout: 20), .completed,
+                       "Entire input must remain visible after native and DOM geometry settle")
+        print("INPUT GEOMETRY \(name): \(app.staticTexts["test-host-status"].value ?? "missing")")
+        capture(name, app)
+        XCTAssertTrue(visibleAndStable.evaluate(with: nil), "Input geometry must stay valid through screenshot capture")
+        print("INPUT GEOMETRY AFTER \(name): \(app.staticTexts["test-host-status"].value ?? "missing")")
+    }
+
     private func hostJSON(_ path: String, body: [String: Any]? = nil) throws -> [String: Any] {
         var request = URLRequest(url: URL(string: "http://localhost:7777" + path)!)
         request.timeoutInterval = 10
@@ -241,10 +289,13 @@ final class HostTests: XCTestCase {
         return try XCTUnwrap(response["result"] as? String)
     }
 
-    private func capture(_ name: String, _ app: XCUIApplication) {
-        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    @discardableResult
+    private func capture(_ name: String, _ app: XCUIApplication) -> XCUIScreenshot {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+        return screenshot
     }
 }
