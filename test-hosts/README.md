@@ -154,14 +154,21 @@ emulator on Linux/WSL with KVM. See [Android validation](android/README.md) for 
 reusable command, exact runtime versions, native lifecycle checks and evidence.
 The iOS project has also been compiled and run with Xcode 16.4 on a GitHub macOS
 15 runner. The verified native run used iPhone 16 Pro / iOS 18.5:
-[run 39902664302](https://github.com/Daviswhistle/Inheritance/actions/runs/39902664302).
+[run 39907972022](https://github.com/Daviswhistle/Inheritance/actions/runs/39907972022).
 It exercised all four guest tabs, real MiniKit wallet authentication through
 WKScriptMessageHandler, the decimal keyboard with exact `12.345678` USDC input,
-recipient typing, rotation and Home/foreground input preservation. Screenshot
+recipient typing, portrait/landscape input visibility above the actual keyboard
+and accessory toolbar, Home/foreground input preservation, and restoration of
+review actions after dismissing the keyboard. Screenshot
 review of the preceding run exposed a fixed action covering recipient input while
 the keyboard was open; the app now hides plan actions while editing with the
 keyboard visible. The linked native regression asserts that the action is hidden;
-Android and Linux WebKit regression checks also passed after that fix. Simulator tests verify
+Android and Linux WebKit regression checks also passed after that fix. The app
+retains scroll clearance when the keyboard obscures the layout viewport and fits
+focused fields into short landscape viewports. The iOS shell uses UIKit's
+`keyboardLayoutGuide` to resize its embedded WKWebView above the keyboard and
+accessory toolbar. This is the test host's viewport policy; it does not establish
+World App's private host implementation. Simulator tests verify
 native iOS behavior, but do not establish physical-iPhone or actual World App parity.
 
 Build references: [AGP 8.9 compatibility](https://developer.android.com/build/releases/agp-8-9-0-release-notes),

@@ -47,7 +47,7 @@ and [app guidelines](https://docs.world.org/mini-apps/guidelines/app-guidelines)
 | Accessible controls, expanded content and modal focus | 37 axe states with zero reported violations; 44px controls, action hit tests, native dialog containment, Escape/Cancel focus return |
 | Exact amounts, explicit consent and clear principal/income separation | Actual SDK setup and exact USDC withdrawal; review checks full recipient and initially unchecked consent; balance appears before income |
 | Native keyboard and lifecycle behavior | `test:android-ui`: 17 Android 15 layouts and seven scenario groups; actual IME, Back, rotation, Home/foreground, force-stop/relogin and font scale 1.3 |
-| Native iOS keyboard and lifecycle | Xcode 16.4 / iPhone 16 Pro simulator / iOS 18.5: actual WKWebView, four guest tabs, real SDK sign-in, exact decimal input, native keyboard, orientation and Home/foreground preservation; [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/39902664302) |
+| Native iOS keyboard and lifecycle | Xcode 16.4 / iPhone 16 Pro simulator / iOS 18.5: actual WKWebView, four guest tabs, real SDK sign-in, exact decimal input, native keyboard, full input visibility in portrait/landscape, Home/foreground preservation and review-action restoration after keyboard dismissal; [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/39907972022) |
 | Second engine and interruption recovery | `test:webkit-ui`: 29 Linux WebKit layouts; offline/reconnect, rejection, pending-approval reload, history return, and a committed deposit recovered after losing its SDK callback without another transaction |
 | Current storefront artwork | `store-host-shots.mjs` captures actual current UI using local contracts; `make-store-images.mjs` produces the checked-in images with illustrative-value disclosures; dimensions and <=500KB limits verified |
 | Build and separation from test tools | Frontend typecheck, lint and production build pass; test-host command markers and fixture signing keys absent from generated JS; Android debug APK compiled successfully |
@@ -65,7 +65,13 @@ Native iOS simulator checks are now available through `ios-host.yml`; a local Ma
 is not required. Screenshot inspection found an iOS keyboard/action overlap that
 automated value assertions alone missed. Plan actions now hide while the keyboard
 is open. Android (17 layouts / seven groups) and WebKit (29 layouts) passed again,
-and the iOS regression explicitly checks that the fixed action is hidden.
+and the iOS regression explicitly checks that the fixed action is hidden and the
+entire input stays above the native keyboard/accessory toolbar. The native host
+now resizes WKWebView with `keyboardLayoutGuide`; the app preserves scroll
+clearance and handles very short editing viewports. The final native screenshots
+were inspected, including the fully visible recipient input in landscape.
+Artifacts (five screenshots, test summary, `.xcresult`, host log) are attached to
+the linked GitHub run for seven days and can be regenerated using `ios-host.yml`.
 The Android run uses the AOSP image's WebView 124.0.6367.219; Linux WebKit is not
 an iPhone. Process-death recovery was verified for confirmed plans after explicit
 sign-in, not for preservation of an unconfirmed session-storage journal.
