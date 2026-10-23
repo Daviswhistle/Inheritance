@@ -59,3 +59,7 @@ schemes:
       targets: [InheritanceHostUITests]
     run:
       config: Debug
+    profile:
+      config: Debug
+    archive:
+      config: Debug
