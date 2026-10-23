@@ -8,6 +8,7 @@ export function createExecutor({ provider, accounts, batchWallet }) {
   const receipts = new Map();
   let queue = Promise.resolve();
   let sequence = 0;
+  let automine = true;
   async function assertLocal() {
     const connection = provider._getConnection?.();
     if (!connection || !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(connection.url).hostname)) throw new Error('Test signer requires a loopback RPC.');
@@ -47,24 +48,20 @@ export function createExecutor({ provider, accounts, batchWallet }) {
     const authorization = code === '0x' ? await signer.authorize({ address: batchWallet, chainId, nonce: nonce + 1 }) : null;
     // A single outer transaction preserves World App batch rollback semantics.
     // Approve + deposit must never silently become independent transactions.
-    let receipt;
-    let transaction;
-    try {
-      transaction = await signer.sendTransaction({
-        to: address, nonce, data: batch.encodeFunctionData('execute', [calls]),
-        gasLimit: 12_000_000n,
-        ...(authorization ? { type: 4, authorizationList: [authorization] } : {}),
-      });
-      receipt = await transaction.wait();
-    } catch (error) {
-      if (error.receipt?.status === 0) receipt = error.receipt;
-      else throw error;
+    const transaction = await signer.sendTransaction({
+      to: address, nonce, data: batch.encodeFunctionData('execute', [calls]),
+      gasLimit: 12_000_000n,
+      ...(authorization ? { type: 4, authorizationList: [authorization] } : {}),
+    });
+    // The operation identifier exists before confirmation. With controlled
+    // mining disabled, release the signing queue now so a test can mine/restart
+    // its native client while this real transaction is still pending.
+    const userOpHash = keccak256(toUtf8Bytes(`inheritance-test-host:${++sequence}:${transaction.hash}`));
+    receipts.set(userOpHash.toLowerCase(), transaction.hash);
+    if (automine) {
+      try { await transaction.wait(); }
+      catch (error) { if (error.receipt?.status !== 0) throw error; }
     }
-    if (!receipt?.hash) throw new Error('Local transaction has no receipt.');
-    // Deliberately distinct from the transaction hash: exercises the app's
-    // real user-operation -> canonical receipt resolution path.
-    const userOpHash = keccak256(toUtf8Bytes(`inheritance-test-host:${++sequence}:${receipt.hash}`));
-    receipts.set(userOpHash.toLowerCase(), { status: 'success', transaction_hash: receipt.hash });
     return { status: 'success', version: 2, userOpHash, from: address, timestamp: new Date().toISOString() };
   }
   return {
@@ -74,6 +71,23 @@ export function createExecutor({ provider, accounts, batchWallet }) {
       queue = task.catch(() => {});
       return task;
     },
-    lookup(hash) { return receipts.get(String(hash).toLowerCase()) ?? { status: 'pending' }; },
+    async lookup(hash) {
+      const transactionHash = receipts.get(String(hash).toLowerCase());
+      if (!transactionHash) return { status: 'pending' };
+      const receipt = await provider.getTransactionReceipt(transactionHash);
+      if (!receipt) return { status: 'pending' };
+      return { status: receipt.status === 0 ? 'failed' : 'success', transaction_hash: receipt.hash };
+    },
+    get automine() { return automine; },
+    async setAutomine(enabled) {
+      if (typeof enabled !== 'boolean') throw new Error('Mining enabled must be a boolean.');
+      await assertLocal();
+      await provider.send('evm_setAutomine', [enabled]);
+      automine = enabled;
+    },
+    async mine() {
+      await assertLocal();
+      await provider.send('evm_mine', []);
+    },
   };
 }

@@ -29,6 +29,7 @@ import { FinalityUnavailableError, mergeBlockRanges, mergeIncomeReceipts, readFi
 import type { BlockRange } from "@/income-history";
 import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetAmount } from "@/plan";
 import type { PlanAssetSymbol, PlanRoute } from "@/plan";
+import { readPlanJournal, writePlanJournal, clearPlanJournal } from "@/plan-storage";
 import { ConfirmedTransactionFailure, confirmTransaction, verifyIncomeWithdrawalReceipt } from "@/transactions";
 import type { ReactElement } from "react";
 import {
@@ -174,10 +175,12 @@ function nextIncomeHistoryRange(coverage: readonly BlockRange[], failed: readonl
   return { fromBlock: Math.max(target.fromBlock, toBlock - INCOME_HISTORY_PAGE_BLOCKS + 1), toBlock };
 }
 
-function readStoredPlan(address: string): StoredPlan | null {
+async function readStoredPlan(address: string): Promise<StoredPlan | null> {
+  return readPlanJournal(storedPlanKey(address), raw => parseStoredPlan(raw, address), localStorage, sessionStorage);
+}
+
+function parseStoredPlan(raw: string, address: string): StoredPlan | null {
   try {
-    const raw = sessionStorage.getItem(storedPlanKey(address));
-    if (!raw) return null;
     const value = JSON.parse(raw) as Partial<StoredPlan>;
     if (value.version !== 1 || typeof value.account !== "string" || value.account.toLowerCase() !== address.toLowerCase()
       || typeof value.heir !== "string" || !ethers.isAddress(value.heir)
@@ -415,6 +418,9 @@ export default function App() {
   const [walletBalances, setWalletBalances] = useState<{ account: string; amounts: Partial<Record<AssetSymbol, bigint>>; unavailable: AssetSymbol[] }>({ account: "", amounts: {}, unavailable: [] });
   const planWalletBalances = walletBalances.account.toLowerCase() === account.toLowerCase() ? walletBalances.amounts : {};
   const [pendingPlan, setPendingPlan] = useState<StoredPlan | null>(null);
+  const planAccountRef = useRef(account.toLowerCase());
+  planAccountRef.current = account.toLowerCase();
+  const [planHydratedAccount, setPlanHydratedAccount] = useState("");
   const pendingDeposit = hasPendingPlanDeposit(pendingPlan, account, vaultFactory, vault);
   const [alignmentReview, setAlignmentReview] = useState<string>("");
   const [alignmentConflicts, setAlignmentConflicts] = useState<PlanAlignmentConflict[]>([]);
@@ -701,39 +707,38 @@ export default function App() {
     actionInFlight.current = true;
     setPendingAction(true);
     try { await action(); }
+    catch (error) { setStatus(errorText(error)); }
     finally { actionInFlight.current = false; setPendingAction(false); }
   };
-  const savePendingPlan = (next: StoredPlan) => {
-    const key = storedPlanKey(next.account);
-    const serialized = JSON.stringify(next);
-    try {
-      sessionStorage.setItem(key, serialized);
-      if (sessionStorage.getItem(key) !== serialized) throw new Error("Recovery record was not retained.");
-    } catch {
-      throw new Error("Your browser could not save the plan recovery record. Restore session storage and reopen the app before continuing.");
-    }
-    setPendingPlan(next);
+  const savePendingPlan = async (next: StoredPlan) => {
+    await writePlanJournal(storedPlanKey(next.account), JSON.stringify(next), localStorage, sessionStorage);
+    if (planAccountRef.current === next.account.toLowerCase()) setPendingPlan(next);
   };
-  const clearPendingPlan = (address: string) => {
-    try {
-      sessionStorage.removeItem(storedPlanKey(address));
-      if (sessionStorage.getItem(storedPlanKey(address)) !== null) throw new Error("Recovery record was not cleared.");
-    } catch {
-      throw new Error("Your browser could not clear the saved setup. Restore session storage and reopen the app before continuing.");
-    }
-    setPendingPlan(null);
+  const clearPendingPlan = async (address: string) => {
+    await clearPlanJournal(storedPlanKey(address), localStorage, sessionStorage);
+    if (planAccountRef.current === address.toLowerCase()) setPendingPlan(null);
   };
   useEffect(() => {
-    if (!account) { setPendingPlan(null); return; }
-    const restored = readStoredPlan(account);
-    setPendingPlan(restored);
-    if (restored) {
-      navigationChosenFor.current = account.toLowerCase();
-      setTab("inherit");
-    }
-    if (!restored) {
-      try { sessionStorage.removeItem(storedPlanKey(account)); } catch { /* session storage may be unavailable */ }
-    }
+    let cancelled = false;
+    const owner = account.toLowerCase();
+    setPlanHydratedAccount("");
+    setPendingPlan(null);
+    if (!owner) return;
+    void (async () => {
+      try {
+        const restored = await readStoredPlan(account);
+        if (cancelled || planAccountRef.current !== owner) return;
+        setPendingPlan(restored);
+        setPlanHydratedAccount(owner);
+        if (restored) {
+          navigationChosenFor.current = owner;
+          setTab("inherit");
+        }
+      } catch (error) {
+        if (!cancelled && planAccountRef.current === owner) setStatus(errorText(error));
+      }
+    })();
+    return () => { cancelled = true; };
   }, [account]);
   const runVaultAction = async (action: () => Promise<void>, needsResolvedSettings = false) => {
     if (actionInFlight.current) return;
@@ -2611,7 +2616,7 @@ export default function App() {
   };
 
   const confirmSavedAlignment = async (plan: StoredPlan, original: StoredPlanAlignment,
-    recordReceipt: (alignment: StoredPlanAlignment) => void) => {
+    recordReceipt: (alignment: StoredPlanAlignment) => Promise<void>) => {
     if (!provider) throw new Error("World Chain is unavailable. The prior settings request was not repeated.");
     const verifyTargets = async () => {
       for (const target of original.targets) {
@@ -2635,7 +2640,7 @@ export default function App() {
         candidate => candidate.status === 1 && verifyAlignmentReceipt(candidate, plan, alignment));
       if (!receipt) throw new Error("The prior settings request has no verifiable result yet. It was not repeated; editing remains paused.");
       alignment = { ...alignment, state: "submitted", txHash: receipt.hash, hashType: "transaction" };
-      recordReceipt(alignment);
+      await recordReceipt(alignment);
     }
     await waitForTxOrEvent(getRwProvider(), {
       txHash: alignment.txHash, hashType: alignment.hashType,
@@ -2645,7 +2650,7 @@ export default function App() {
   };
 
   const confirmSavedPlanDeposit = async (plan: StoredPlan, storedStep: StoredPlanAsset, route: AppPlanRoute,
-    recordReceipt?: (step: StoredPlanAsset) => void) => {
+    recordReceipt?: (step: StoredPlanAsset) => Promise<void>) => {
     if (!provider || !storedStep.vault) throw new Error(`${storedStep.symbol} original deposit target is unavailable. No request was repeated.`);
     const original = await readPlanVaultIdentity(route, plan.account, storedStep.vault);
     if (!original) throw new Error(`${storedStep.symbol} original vault could not be verified. No request was repeated.`);
@@ -2675,7 +2680,7 @@ export default function App() {
       );
       if (!receipt) throw new Error(`The prior ${step.symbol} request has no verifiable result yet. It was not repeated.`);
       step = { ...step, depositState: "submitted", txHash: receipt.hash, hashType: "transaction" };
-      recordReceipt?.(step);
+      await recordReceipt?.(step);
     }
     if (step.depositState !== "submitted" || !step.txHash) {
       throw new Error(`The prior ${step.symbol} request has no transaction ID. It was not repeated.`);
@@ -2694,7 +2699,7 @@ export default function App() {
   };
 
   const confirmSetupRequest = async (plan: StoredPlan, original: StoredSetupRequest,
-    recordRequest: (request: StoredSetupRequest) => void) => {
+    recordRequest: (request: StoredSetupRequest) => Promise<void>) => {
     if (!provider) throw new Error("World Chain is unavailable. The saved setup request was not repeated.");
     const steps = original.assets.map(target => {
       const asset = plan.assets.find(item => item.symbol === target.symbol);
@@ -2736,7 +2741,7 @@ export default function App() {
         candidate => candidate.status === 1 && verifyReceipt(candidate));
       if (!receipt) throw new Error("The prior setup request has no verifiable result yet. It was not repeated.");
       request = { ...request, txHash: receipt.hash, hashType: "transaction" };
-      recordRequest(request);
+      await recordRequest(request);
     }
     await waitForTxOrEvent(getRwProvider(), {
       txHash: request.txHash, hashType: request.hashType, verifyReceipt,
@@ -2758,6 +2763,10 @@ export default function App() {
     if (!account || !factory) { setStatus("Connect first"); return; }
     if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast("error", "Open in World App"); return; }
     if (!provider) { setStatus("World Chain is still connecting. Try again shortly."); return; }
+    if (planHydratedAccount !== account.toLowerCase()) { setStatus("Please wait for the plan details to load."); return; }
+    const ensurePlanAccount = () => {
+      if (planAccountRef.current !== account.toLowerCase()) throw new Error("The saved plan account no longer matches this wallet.");
+    };
     setCreating(true);
     const acceptedStrategyFees = { ...(reviewedStrategyFees ?? consentedStrategyFees.current) };
     const verifyAcceptedStrategyFee = async (route: AppPlanRoute) => {
@@ -2784,14 +2793,30 @@ export default function App() {
         await registerWatcher(identity.address, ownerAddress, identity.heir, true);
       })().catch(() => { watcherFailed = true; }));
     };
-    const persist = (update: (current: StoredPlan) => StoredPlan) => {
+    const persist = async (update: (current: StoredPlan) => StoredPlan) => {
       if (!workingPlan) return;
       const next = update(workingPlan);
-      savePendingPlan(next);
+      await savePendingPlan(next);
       workingPlan = next;
     };
+    const persistBeforeSend = async (update: (current: StoredPlan) => StoredPlan,
+      send: () => ReturnType<typeof sendWorldChainTx>) => {
+      ensurePlanAccount();
+      if (!workingPlan) throw new Error("Please wait for the plan details to load.");
+      const previous = workingPlan;
+      await persist(update);
+      try { ensurePlanAccount(); }
+      catch (error) {
+        // No wallet request has been made. Restore the prior state durably so
+        // switching accounts during the commit cannot strand an unsent request.
+        await persist(() => previous);
+        throw error;
+      }
+      return send();
+    };
     try {
-      const existingPending = pendingPlan ?? readStoredPlan(account);
+      const existingPending = await readStoredPlan(account);
+      ensurePlanAccount();
       if (existingPending && existingPending.account.toLowerCase() !== account.toLowerCase()) {
         throw new Error("The saved plan belongs to another wallet. Switch wallets to resume it.");
       }
@@ -2831,7 +2856,7 @@ export default function App() {
       const finishSetupRequest = async (request: StoredSetupRequest) => {
         const observed = await confirmSetupRequest(workingPlan!, request, recovered =>
           persist(current => ({ ...current, setupRequest: recovered })));
-        persist(current => ({ ...current, setupRequest: undefined, createState: "complete", createTargets: [],
+        await persist(current => ({ ...current, setupRequest: undefined, createState: "complete", createTargets: [],
           createBeforeBlock: undefined, createTxHash: undefined, createHashType: undefined,
           assets: current.assets.map(asset => observed.has(asset.symbol)
             ? { ...asset, vault: observed.get(asset.symbol)!, depositState: "complete", beforeBlock: undefined,
@@ -2849,7 +2874,7 @@ export default function App() {
 
       if (plan.alignment) {
         await confirmSavedAlignment(plan, plan.alignment, recovered => persist(current => ({ ...current, alignment: recovered })));
-        persist(current => ({ ...current, alignment: undefined }));
+        await persist(current => ({ ...current, alignment: undefined }));
         for (const target of plan.alignment.targets) {
           const route = trustedPlanRoute(target.factory);
           if (route) monitorConfirmedVault(route, target.vault, plan.account);
@@ -2869,7 +2894,7 @@ export default function App() {
           .filter((route): route is AppPlanRoute => Boolean(route));
         if (submittedRoutes.length !== plan.createTargets.length) throw new Error("The saved create route could not be matched. No retry was sent.");
         await confirmPlanCreation(plan, submittedRoutes);
-        persist(current => ({ ...current, createState: "ready", createTargets: [], createTxHash: undefined, createHashType: undefined }));
+        await persist(current => ({ ...current, createState: "ready", createTargets: [], createTxHash: undefined, createHashType: undefined }));
       } else if (workingPlan.createState === "submitting" || (workingPlan.createState === "submitted" && !workingPlan.createTxHash)) {
         const uncertain = plan.createTargets.map(factoryAddress => planRoutes.find(route => route.factory.toLowerCase() === factoryAddress.toLowerCase()))
           .filter((route): route is AppPlanRoute => Boolean(route));
@@ -2886,9 +2911,9 @@ export default function App() {
               && observed.size === uncertain.length;
           });
         if (!receipt) throw new Error("A create request was interrupted before its transaction ID was saved. No duplicate create was sent; reopen the app after the wallet request settles.");
-        persist(current => ({ ...current, createState: "submitted", createTxHash: receipt.hash, createHashType: "transaction" }));
+        await persist(current => ({ ...current, createState: "submitted", createTxHash: receipt.hash, createHashType: "transaction" }));
         await confirmPlanCreation(workingPlan!, uncertain);
-        persist(current => ({ ...current, createState: "complete", createTargets: [], createTxHash: undefined, createHashType: undefined }));
+        await persist(current => ({ ...current, createState: "complete", createTargets: [], createTxHash: undefined, createHashType: undefined }));
       }
 
       // Resolve prior sends against their original targets before any new wallet
@@ -2896,7 +2921,7 @@ export default function App() {
       for (const asset of workingPlan.assets.filter(item => item.depositState === "submitting" || item.depositState === "submitted")) {
         await confirmSavedPlanDeposit(plan, asset, routeForStep(asset), recovered =>
           persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === recovered.symbol ? recovered : item) })));
-        persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === asset.symbol
+        await persist(current => ({ ...current, assets: current.assets.map(item => item.symbol === asset.symbol
           ? { ...item, depositState: "complete", txHash: undefined, hashType: undefined } : item) }));
         monitorConfirmedVault(routeForStep(asset), asset.vault, plan.account);
       }
@@ -2975,20 +3000,20 @@ export default function App() {
             return { factory: route.factory, vault: conflict.address, heir: conflict.currentHeir,
               periodSeconds: conflict.currentPeriodSeconds.toString(), checkIn: conflict.currentPeriodSeconds !== periodSeconds };
           });
-          persist(current => ({ ...current, alignment: { state: "submitting", beforeBlock, targets } }));
-          const sent = await sendWorldChainTx(alignCalls);
+          const sent = await persistBeforeSend(current => ({ ...current, alignment: { state: "submitting", beforeBlock, targets } }),
+            () => sendWorldChainTx(alignCalls));
           if (!sent.ok) {
-            if (sent.definitelyNotSubmitted) persist(current => ({ ...current, alignment: undefined }));
+            if (sent.definitelyNotSubmitted) await persist(current => ({ ...current, alignment: undefined }));
             setStatus(sent.error);
             if (sent.userFacing) pushToast("error", sent.error);
             return;
           }
-          persist(current => ({ ...current, alignment: { ...current.alignment!, state: "submitted",
+          await persist(current => ({ ...current, alignment: { ...current.alignment!, state: "submitted",
             txHash: sent.tx.hash, hashType: sent.tx.hashType } }));
           setStatus("Pending… aligning the reviewed plan settings");
           await confirmSavedAlignment(workingPlan!, workingPlan!.alignment!, recovered =>
             persist(current => ({ ...current, alignment: recovered })));
-          persist(current => ({ ...current, alignment: undefined }));
+          await persist(current => ({ ...current, alignment: undefined }));
           for (const target of targets) {
             const route = trustedPlanRoute(target.factory);
             if (route) monitorConfirmedVault(route, target.vault, plan.account);
@@ -3058,21 +3083,20 @@ export default function App() {
             ? { ...asset, depositState: "ready", vault: request.assets.find(target => target.symbol === asset.symbol)!.vault,
               beforeBlock: undefined, beforeBalance: undefined, txHash: undefined, hashType: undefined } : asset),
         });
-        persist(current => ({ ...current, setupRequest: request,
+        const sent = await persistBeforeSend(current => ({ ...current, setupRequest: request,
           createState: createdFactories.length ? "submitting" : "complete", createTargets: createdFactories,
           createBeforeBlock: request.beforeBlock,
           assets: current.assets.map(asset => symbols.has(asset.symbol)
             ? { ...asset, vault: request.assets.find(target => target.symbol === asset.symbol)!.vault, depositState: "submitting" } : asset),
-        }));
-        const sent = await sendWorldChainTx(calls);
+        }), () => sendWorldChainTx(calls));
         if (!sent.ok) {
-          if (sent.definitelyNotSubmitted) persist(resetRequest);
+          if (sent.definitelyNotSubmitted) await persist(resetRequest);
           setStatus(sent.error);
           if (sent.userFacing) pushToast("error", sent.error);
           return;
         }
         const submitted = { ...request, txHash: sent.tx.hash, hashType: sent.tx.hashType };
-        persist(current => ({ ...current, setupRequest: submitted,
+        await persist(current => ({ ...current, setupRequest: submitted,
           createState: createdFactories.length ? "submitted" : "complete",
           assets: current.assets.map(asset => symbols.has(asset.symbol) ? { ...asset, depositState: "submitted" } : asset),
         }));
@@ -3096,7 +3120,8 @@ export default function App() {
       const allPositionsUnchanged = currentPositions.every(({ asset, identity }) => identity
         && identity.address.toLowerCase() === asset.vault.toLowerCase() && identity.claimedAt === 0n
         && identity.heir.toLowerCase() === completedPlan.heir.toLowerCase() && identity.periodSeconds === periodSeconds);
-      clearPendingPlan(completedPlan.account);
+      await clearPendingPlan(completedPlan.account);
+      ensurePlanAccount();
       setPlanWldAmount("");
       setPlanUsdcAmount("");
       setYieldConsent(false);
@@ -3116,7 +3141,7 @@ export default function App() {
         const failedHash = error.txHash.toLowerCase();
         if (workingPlan.setupRequest?.txHash?.toLowerCase() === failedHash) {
           const failed = workingPlan.setupRequest;
-          persist(current => ({ ...current, setupRequest: undefined,
+          await persist(current => ({ ...current, setupRequest: undefined,
             createState: failed.createdFactories.length ? "ready" : "complete", createTargets: [], createBeforeBlock: undefined,
             createTxHash: undefined, createHashType: undefined,
             assets: current.assets.map(asset => {
@@ -3126,18 +3151,19 @@ export default function App() {
             }),
           }));
         } else if (workingPlan.alignment?.txHash?.toLowerCase() === failedHash) {
-          persist(current => ({ ...current, alignment: undefined }));
+          await persist(current => ({ ...current, alignment: undefined }));
         } else if (workingPlan.createState === "submitted" && workingPlan.createTxHash?.toLowerCase() === failedHash) {
-          persist(current => ({ ...current, createState: "ready", createTargets: [], createBeforeBlock: undefined,
+          await persist(current => ({ ...current, createState: "ready", createTargets: [], createBeforeBlock: undefined,
             createTxHash: undefined, createHashType: undefined }));
         } else if (workingPlan.assets.some(asset => asset.depositState === "submitted" && asset.txHash?.toLowerCase() === failedHash)) {
-          persist(current => ({ ...current, assets: current.assets.map(asset =>
+          await persist(current => ({ ...current, assets: current.assets.map(asset =>
             asset.depositState === "submitted" && asset.txHash?.toLowerCase() === failedHash
               ? { ...asset, depositState: "ready", beforeBalance: undefined, beforeBlock: undefined,
                 txHash: undefined, hashType: undefined }
               : asset) }));
         }
       }
+      if (planAccountRef.current !== account.toLowerCase()) return;
       const message = errorText(error);
       setStatus("Plan setup: " + message);
       if (!/cancelled the transaction/i.test(message)) pushToast("error", message);
@@ -3153,15 +3179,17 @@ export default function App() {
 
 
   const createPlan = () => continuePlan(false, { ...consentedStrategyFees.current });
-  const editRemainingPlan = () => {
+  const editRemainingPlan = async () => {
     if (actionInFlight.current || !account || !pendingPlan) return;
-    const saved = readStoredPlan(account) ?? pendingPlan;
-    if (saved.account.toLowerCase() !== account.toLowerCase() || !canEditStoredPlan(saved)) {
-      setStatus("An earlier wallet request still needs verification. Resume it before editing.");
-      return;
-    }
     try {
-      clearPendingPlan(account);
+      const saved = await readStoredPlan(account) ?? pendingPlan;
+      if (planAccountRef.current !== account.toLowerCase()) return;
+      if (saved.account.toLowerCase() !== account.toLowerCase() || !canEditStoredPlan(saved)) {
+        setStatus("An earlier wallet request still needs verification. Resume it before editing.");
+        return;
+      }
+      await clearPendingPlan(account);
+      if (planAccountRef.current !== account.toLowerCase()) return;
       setShowPlanSetup(true);
       setAlignmentReview("");
       setAlignmentConflicts([]);
@@ -3415,10 +3443,11 @@ export default function App() {
   // ---- deposit WLD
   const deposit = async () => {
     if (!vault) return;
-    if (hasPendingPlanDeposit(readStoredPlan(account) ?? pendingPlan, account, vaultFactory, vault)) {
+    if (hasPendingPlanDeposit(await readStoredPlan(account) ?? pendingPlan, account, vaultFactory, vault)) {
       setStatus("Resume your saved setup in Plan before adding more to this asset.");
       return;
     }
+    if (planAccountRef.current !== account.toLowerCase()) return;
     if (!amountStr) { setStatus("Enter amount"); return; }
     if (!validDecimalInput(amountStr)) { setStatus("Enter a valid decimal amount"); return; }
     const amt = parseAmount(amountStr);
@@ -3603,7 +3632,8 @@ export default function App() {
   };
   const reviewPlanSettings = async (kind: "period" | "heir" | "cancel", value: string) => {
     try {
-      if (pendingPlan || readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
+      if (pendingPlan || await readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
+      if (planAccountRef.current !== account.toLowerCase()) return;
       const targets = await readSettingsTargets(kind, value);
       if (targets.every(t => t.heir.toLowerCase() === t.nextHeir.toLowerCase() && t.period === t.nextPeriod)) {
         setStatus(t("journey.owner.unchanged")); return;
@@ -3675,7 +3705,8 @@ export default function App() {
     if (!provider || !settingsReview) return;
     let saved = false;
     try {
-      if (pendingPlan || readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
+      if (pendingPlan || await readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
+      if (planAccountRef.current !== account.toLowerCase()) return;
       const targets = await readSettingsTargets(settingsReview.kind, settingsReview.value);
       if (settingsFingerprint(targets) !== settingsFingerprint(settingsReview.targets)) {
         setSettingsReview({ ...settingsReview, targets }); throw new Error(t("journey.owner.changed"));
@@ -4569,7 +4600,7 @@ export default function App() {
                       <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
                         value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)}
                         aria-invalid={withdrawAmount === null || withdrawAmount > vaultWldForWithdrawal}
-                        aria-describedby="withdraw-amount-help" />
+                        aria-describedby={isYieldVault ? "withdraw-amount-fee withdraw-amount-help" : "withdraw-amount-help"} />
                       <Button onClick={setWithdrawMax}>{t("assets.all")}</Button>
                       {/* 라벨이 실제 수신자를 말한다. 예전엔 "Withdraw to myself" 가
                           고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
@@ -4584,6 +4615,7 @@ export default function App() {
                       </Button>
                     </div>
                   </div>
+                  {isYieldVault && <p id="withdraw-amount-fee" className="plan-field-help">{t("assets.withdrawBeforeFee")}</p>}
                   <p id="withdraw-amount-help" className="plan-field-help" role="status">{withdrawAmount === null
                     ? t("assets.amountInvalid", { symbol: wldSymbol, decimals: wldDecimals })
                     : withdrawAmount > vaultWldForWithdrawal ? t("status.overBalance")

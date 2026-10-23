@@ -106,6 +106,8 @@ for (const platform of ['android', 'ios']) test(`native ${platform} bridge is re
 test('signer rejects a remote RPC and mismatched SIWE origin', async () => {
   const remote = createExecutor({ provider: { ...provider, _getConnection: () => ({ url: 'https://worldchain-mainnet.example/' }) }, accounts: { owner } });
   await assert.rejects(remote.execute({ command: 'wallet-auth' }, { origin }), /loopback RPC/);
+  await assert.rejects(remote.setAutomine(false), /loopback RPC/);
+  await assert.rejects(remote.mine(), /loopback RPC/);
   await assert.rejects(executor.execute({ command: 'wallet-auth', payload: { siweMessage: 'https://other.example wants you to sign in' } }, { origin }), /origin/);
 });
 

@@ -85,3 +85,15 @@ system Back, rotation, Home/foreground transitions, force-stop/relaunch and font
 scale 1.3 were exercised. The test shell's rotation state loss, initial URL-field
 keyboard activation and enlarged Open-button truncation were reproduced and fixed.
 These results use AOSP WebView 124.0.6367.219, not World App's native approval UI.
+
+### Deterministic pending transactions
+
+The fresh local host also supports `POST /__host/control` with JSON bodies:
+
+- `{"action":"mining","enabled":false}` disables Anvil automining. Approved transactions return their operation ID before a receipt exists.
+- `{"action":"mine"}` mines one real block. `GET /__host/userop/<id>` then reports `success` or `failed` from the actual receipt, with its canonical `transaction_hash`.
+- `{"action":"mining","enabled":true}` restores automining and the default receipt-complete submission behavior.
+
+While mining is paused, repeated operation lookups remain `pending`; restarting a native client does not restart the host or forget its operation mapping. This permits deterministic timeout and process-restart tests without production funds. A failed result requires an actual reverted transaction; it is not an injected success/failure flag. Mock-yield changes are rejected while automining is paused to avoid blocking the host mutation queue. Mining controls retain the same-origin and loopback-Anvil restrictions.
+
+Run `node scripts/test-host/pending.mjs` to verify pending-to-success, pending-to-revert with atomic rollback, default behavior restoration, and cross-origin control rejection against a fresh disposable chain. This is host/chain integration evidence, not World App service or native-client recovery evidence.

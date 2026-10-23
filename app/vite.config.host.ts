@@ -88,11 +88,16 @@ function hostServer(): Plugin {
           }
           if (url.pathname === "/__host/control") {
             return reply(200, await serial(async () => {
-              if (body.action === "time") {
+              if (body.action === "mining") {
+                await executor.setAutomine(body.enabled);
+              } else if (body.action === "mine") {
+                await executor.mine();
+              } else if (body.action === "time") {
                 if (![1, 7, 31, 91, 181].includes(body.days)) throw new Error("Unsupported time step");
                 await provider.send("evm_increaseTime", [body.days * 86400]);
                 await provider.send("evm_mine", []);
               } else if (body.action === "yield") {
+                if (!executor.automine) throw new Error("Enable automining before changing mock yield");
                 const signer = await provider.getSigner(0);
                 for (const address of [fixture.wldStrategy, fixture.usdcStrategy]) {
                   const strategy = new Contract(address, ["function setRate(uint256)", "function rate() view returns(uint256)"], signer);
@@ -100,7 +105,7 @@ function hostServer(): Plugin {
                   await (await strategy.setRate(rate * 110n / 100n)).wait();
                 }
               } else throw new Error("Unknown test control");
-              return { ok: true, timestamp: Number((await provider.getBlock("latest")).timestamp) };
+              return { ok: true, automine: executor.automine, timestamp: Number((await provider.getBlock("latest")).timestamp) };
             }));
           }
           // Explicit notification simulation, with no remote registration or delivery.
@@ -125,6 +130,9 @@ export default defineConfig(({ command }) => {
   if (command !== "serve") throw new Error("The test host is development-only and cannot be built for deployment.");
   return {
     envDir: false,
+    // Real-SDK hosts must not reuse the stubbed E2E optimizer output or another
+    // disposable host's cache. The launcher removes this directory on shutdown.
+    cacheDir: path.join(path.dirname(fixtureFile), "vite-cache"),
     plugins: [react(), tsconfigPaths({ projects: [path.resolve(__dirname, "tsconfig.app.json")] }), localAuth(), hostServer()],
     resolve: { alias: { "@": path.resolve(__dirname, "src") } },
     server: { host: "127.0.0.1", port: 7777, strictPort: true, allowedHosts: ["localhost"], cors: false,

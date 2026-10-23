@@ -156,8 +156,8 @@ async function captureLayout(targetPage, name, width, criticalSelectors = []) {
   assert.equal(metrics.viewport, width);
   assert.ok(metrics.documentWidth <= width, `${name} ${width}px document overflows horizontally: ${JSON.stringify(metrics)}`);
   assert.ok(metrics.bodyWidth <= width, `${name} ${width}px body overflows horizontally: ${JSON.stringify(metrics)}`);
-  const header = JSON.parse(await targetPage.ev("const brand=document.querySelector('.brand').getBoundingClientRect(); const actions=document.querySelector('.header-actions').getBoundingClientRect(); return JSON.stringify({brandRight:brand.right,actionsLeft:actions.left})"));
-  assert.ok(header.brandRight <= header.actionsLeft + 1, `${name} ${width}px header controls overlap the brand`);
+  const header = JSON.parse(await targetPage.ev("const brand=document.querySelector('.brand').getBoundingClientRect(); const container=document.querySelector('.header-content').getBoundingClientRect(); return JSON.stringify({left:brand.left,right:brand.right,containerLeft:container.left,containerRight:container.right})"));
+  assert.ok(header.left >= header.containerLeft - 1 && header.right <= header.containerRight + 1, `${name} ${width}px brand overflows its header`);
   for (const target of metrics.targets) {
     assert.ok(!target.missing && target.height >= 40 && target.width >= 36,
       `${name} ${width}px target is missing or too small: ${JSON.stringify(target)}`);
@@ -191,7 +191,7 @@ async function installBridgeRecorder(targetPage, rejectTarget = "") {
     fixture.MiniKit.sendTransaction = async request => {
       const { Wallet } = await import('/node_modules/.vite/deps/ethers.js');
       const ownerAddress = new Wallet(window.__E2E_SIGNER__.privateKey).address;
-      window.__E2E_SETUP_SNAPSHOT__ = JSON.parse(sessionStorage.getItem('inheritance:pending-plan:' + ownerAddress.toLowerCase()) || 'null');
+      window.__E2E_SETUP_SNAPSHOT__ = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))('inheritance:pending-plan:' + ownerAddress.toLowerCase()) || 'null');
       const targets = request.transactions.map(tx => tx.to.toLowerCase());
       const reject = !!(window.__E2E_REJECTED_TARGET__ && targets.includes(window.__E2E_REJECTED_TARGET__));
       let result;
@@ -475,39 +475,39 @@ try {
   pass("plan review shows exact amounts and recipient without a wallet request; editing restores focus and rejects excess USDC precision");
 
 
-  // A browser that cannot retain the crash-recovery journal must never hand a
-  // create/deposit request to the wallet, including when writes silently vanish.
-  for (const failure of ["throw", "discard"]) {
+  // Strict journal writes must complete before any wallet handoff.
+  for (const failure of ["throw", "abort"]) {
     await page.ev(`
-      window.__E2E_STORAGE_SET__ = Storage.prototype.setItem;
-      Storage.prototype.setItem = function(key, value) {
-        if (key.startsWith('inheritance:pending-plan:')) {
+      window.__E2E_STORAGE_PUT__ = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function(value, key) {
+        if (this.name === 'plans') {
           if (${JSON.stringify(failure)} === 'throw') throw new DOMException('fixture quota', 'QuotaExceededError');
-          return;
+          this.transaction.abort();
+          throw new DOMException('fixture abort', 'AbortError');
         }
-        return window.__E2E_STORAGE_SET__.call(this, key, value);
+        return window.__E2E_STORAGE_PUT__.call(this, value, key);
       };
       return true;
     `);
     await clickButton(page, "Create plan and deposit");
-    await until(() => page.ev("return /could not save the plan recovery record/.test(document.body.innerText) && !document.querySelector('.plan-submit')?.disabled"), "failed recovery storage blocks submission");
+    await until(() => page.ev("return /could not retain the plan recovery record/.test(document.body.innerText) && !document.querySelector('.plan-submit')?.disabled"), "failed recovery storage blocks submission");
     assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length, 0);
     assert.equal(await wldFactory.vaultOf(ACCOUNTS.a0.a), ZeroAddress);
     assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a), ZeroAddress);
-    assert.equal(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`), null);
-    await page.ev("Storage.prototype.setItem = window.__E2E_STORAGE_SET__; return true;");
+    await page.ev("IDBObjectStore.prototype.put = window.__E2E_STORAGE_PUT__; return true;");
+    assert.equal(await page.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)})`), null);
   }
-  evidence.plan.recoveryStorageFailure = { throws: "blocked", silentDiscard: "blocked", walletRequests: 0 };
-  pass("failed or discarded recovery writes stop before any wallet request");
+  evidence.plan.recoveryStorageFailure = { throws: "blocked", aborts: "blocked", walletRequests: 0 };
+  pass("failed or aborted durable recovery writes stop before any wallet request");
 
   await page.ev(`window.__E2E_REJECTED_TARGET__ = ${JSON.stringify(wldFactoryAddress)};
     window.__E2E_REJECT_ERROR_CODE__ = 'simulation_failed'; window.__E2E_REJECT_THROWS__ = true; return true;`);
   await clickButton(page, "Create plan and deposit");
   await until(() => page.ev(`
-    const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(pendingKey)}) || 'null');
+    const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)}) || 'null');
     return saved?.createState === 'ready' && window.__E2E_BRIDGE_CALLS__?.length === 1;
   `), "structured create simulation rejection returns to ready");
-  const createSimulationSaved = JSON.parse(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`));
+  const createSimulationSaved = JSON.parse(await page.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)})`));
   const createSimulationCalls = JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])"));
   assert.deepEqual(createSimulationSaved.assets.map(item => item.depositState), ["ready", "ready"]);
   assert.equal(createSimulationSaved.createTxHash, undefined);
@@ -543,7 +543,7 @@ try {
       beforeBlock:asset.symbol === 'WLD' ? legacyWldBeforeBlock : legacyUncertainBlock}))};
   legacyPending.assets[0].vault=await wldFactory.vaultOf(ACCOUNTS.a0.a);
   legacyPending.assets[1].vault=await usdcFactory.vaultOf(ACCOUNTS.a0.a);
-  await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)},${JSON.stringify(JSON.stringify(legacyPending))});window.__E2E_REJECTED_TARGET__=${JSON.stringify((await usdc.getAddress()).toLowerCase())};return true;`);
+  await page.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(pendingKey)},${JSON.stringify(JSON.stringify(legacyPending))});window.__E2E_REJECTED_TARGET__=${JSON.stringify((await usdc.getAddress()).toLowerCase())};return true;`);
   await sendLegacyFixture([
     {to:await usdc.getAddress(),data:usdc.interface.encodeFunctionData('approve',[usdcFactoryAddress,parseUnits('12.123456',6)])},
     {to:usdcFactoryAddress,data:usdcFactory.interface.encodeFunctionData('depositWithMinShares',[parseUnits('12.123456',6),1])},
@@ -564,7 +564,7 @@ try {
   assert.equal(firstPageCalls[3].success, false);
   assert.ok(firstPageCalls[3].targets.includes((await usdc.getAddress()).toLowerCase()), "rejection did not target the USDC deposit route");
   assert.equal(await usdcStrategy.balanceOf(await usdcFactory.vaultOf(ACCOUNTS.a0.a)), 0n, "rejected USDC deposit changed the vault");
-  const storedAfterReject = JSON.parse(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`));
+  const storedAfterReject = JSON.parse(await page.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)})`));
   assert.deepEqual(storedAfterReject.assets.map(item => [item.symbol, item.depositState]), [["WLD", "complete"], ["USDC", "submitting"]]);
   assert.equal(storedAfterReject.assets[1].txHash, undefined, "ID-less bridge failure was misclassified as safe to retry");
   assert.equal(storedAfterReject.assets[0].amount, parseUnits("2.5", 18).toString());
@@ -588,7 +588,7 @@ try {
     interrupted.assets[0].depositState = state;
     interrupted.assets[0].txHash = state === "submitted" ? firstPageCalls[2].hash : undefined;
     interrupted.assets[0].hashType = state === "submitted" ? "transaction" : undefined;
-    await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(interrupted))}); return true;`);
+    await page.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(interrupted))}); return true;`);
     await page.send("Page.reload", { ignoreCache: true });
     await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "interrupted deposit restored");
     await chooseTab(page, "Assets");
@@ -600,12 +600,12 @@ try {
     await sleep(300);
     assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
     assert.equal(await wldStrategy.balanceOf(fundedWldAddress), parseUnits("2.5", 18));
-    assert.equal(JSON.parse(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`)).assets[0].depositState, state);
+    assert.equal(JSON.parse(await page.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)})`)).assets[0].depositState, state);
   }
   await chooseTab(page, "Plan");
   await acceptYieldTerms(page);
   await clickButton(page, "Resume remaining setup");
-  await until(() => page.ev(`const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(pendingKey)}) || 'null');
+  await until(() => page.ev(`const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)}) || 'null');
     return saved?.assets?.[0]?.depositState === 'complete' && /prior USDC request has no verifiable result/.test(document.body.innerText);`), "original deposit recovers uniquely");
   assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
   evidence.plan.sendRecoveryGuard = { states: ["submitting", "submitted"], additionalWalletRequests: 0,
@@ -618,7 +618,7 @@ try {
   await chooseTab(page, "Plan");
   await until(() => page.ev("return __q.btns().some(button => button.t === 'Resume remaining setup')"), "saved plan resume affordance");
   await installBridgeRecorder(page);
-  const savedAfterReload = JSON.parse(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`));
+  const savedAfterReload = JSON.parse(await page.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)})`));
   assert.deepEqual(savedAfterReload.assets.map(item => [item.symbol, item.depositState]), [["WLD", "complete"], ["USDC", "submitting"]]);
 
   // Exercise the persisted crash window between wallet handoff and transaction hash.
@@ -630,7 +630,7 @@ try {
   savedAfterReload.assets[1].beforeBlock = ambiguousBlock;
   delete savedAfterReload.assets[1].txHash;
   delete savedAfterReload.assets[1].hashType;
-  await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(savedAfterReload))}); return true;`);
+  await page.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(savedAfterReload))}); return true;`);
   await page.send("Page.reload", { ignoreCache: true });
   await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
   await until(() => page.ev("return !!document.querySelector('.account-row')"), "session restored with ambiguous progress");
@@ -650,7 +650,7 @@ try {
   savedAfterReload.assets[1].depositState = "ready";
   delete savedAfterReload.assets[1].beforeBalance;
   delete savedAfterReload.assets[1].beforeBlock;
-  await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(savedAfterReload))}); return true;`);
+  await page.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(savedAfterReload))}); return true;`);
   await page.send("Page.reload", { ignoreCache: true });
   await until(async () => { await page.ev(HELPERS); return page.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
   await until(() => page.ev("return !!document.querySelector('.account-row')"), "session restored for USDC retry");
@@ -661,10 +661,10 @@ try {
     window.__E2E_REJECT_ERROR_CODE__ = 'simulation_failed'; return true;`);
   await clickButton(page, "Resume remaining setup");
   await until(() => page.ev(`
-    const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(pendingKey)}) || 'null');
+    const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)}) || 'null');
     return saved?.assets?.[1]?.depositState === 'ready' && window.__E2E_BRIDGE_CALLS__?.length === 1;
   `), "structured USDC simulation rejection returns to ready");
-  const depositSimulationSaved = JSON.parse(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`));
+  const depositSimulationSaved = JSON.parse(await page.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)})`));
   const depositSimulationCalls = JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])"));
   assert.equal(depositSimulationSaved.assets[0].depositState, "complete");
   assert.equal(depositSimulationSaved.assets[1].depositState, "ready");
@@ -757,7 +757,7 @@ try {
   const freshKey=`inheritance:pending-plan:${ACCOUNTS.a10.a.toLowerCase()}`;
   await freshPage.ev(`window.__E2E_REJECTED_TARGET__=${JSON.stringify((await usdc.getAddress()).toLowerCase())};window.__E2E_REJECT_ERROR_CODE__='user_rejected';return true;`);
   await clickButton(freshPage,'Confirm and deposit');
-  await until(()=>freshPage.ev(`const p=JSON.parse(sessionStorage.getItem(${JSON.stringify(freshKey)})||'null');return p?.createState==='ready' && !p.setupRequest && p.assets.every(a=>a.depositState==='ready');`),'whole setup rejection stays editable');
+  await until(()=>freshPage.ev(`const p=JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(freshKey)})||'null');return p?.createState==='ready' && !p.setupRequest && p.assets.every(a=>a.depositState==='ready');`),'whole setup rejection stays editable');
   assert.equal(await wldFactory.vaultOf(ACCOUNTS.a10.a),ZeroAddress);
   assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a10.a),ZeroAddress);
   pass('one-request wallet cancellation creates neither asset and leaves both amounts ready');
@@ -768,7 +768,7 @@ try {
   await freshPage.ev(`const fixture=await import('/src/test/minikit-stub.ts');window.__FRESH_NORMAL_SEND__=fixture.MiniKit.sendTransaction;
     fixture.MiniKit.sendTransaction=async request=>{const transactions=[...request.transactions];transactions[transactions.length-1]={...transactions.at(-1),data:${JSON.stringify(badUsdc)}};return window.__FRESH_NORMAL_SEND__({...request,transactions});};window.__E2E_BRIDGE_CALLS__=[];return true;`);
   await clickButton(freshPage,'Resume remaining setup');
-  await until(()=>freshPage.ev(`const p=JSON.parse(sessionStorage.getItem(${JSON.stringify(freshKey)})||'null');return /transaction reverted/i.test(document.body.innerText) && !p?.setupRequest && p?.assets.every(a=>a.depositState==='ready');`),'canonical batch revert returns entire setup to ready');
+  await until(()=>freshPage.ev(`const p=JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(freshKey)})||'null');return /transaction reverted/i.test(document.body.innerText) && !p?.setupRequest && p?.assets.every(a=>a.depositState==='ready');`),'canonical batch revert returns entire setup to ready');
   const revertedCalls=JSON.parse(await freshPage.ev('return JSON.stringify(window.__E2E_BRIDGE_CALLS__)'));
   assert.equal(revertedCalls.length,1);
   const revertedReceipt=await provider.getTransactionReceipt(revertedCalls[0].hash);
@@ -780,7 +780,7 @@ try {
   pass('last-call real EVM failure rolls back both creations, allowances and all deposits');
   await freshPage.ev("const fixture=await import('/src/test/minikit-stub.ts');fixture.MiniKit.sendTransaction=window.__FRESH_NORMAL_SEND__;window.__E2E_BRIDGE_CALLS__=[];return true;");
   await clickButton(freshPage,'Resume remaining setup');
-  await until(()=>freshPage.ev(`return sessionStorage.getItem(${JSON.stringify(freshKey)})===null && /Your inheritance plan is ready/.test(document.body.innerText);`),'one-request setup completes',75000);
+  await until(()=>freshPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(freshKey)})===null && /Your inheritance plan is ready/.test(document.body.innerText);`),'one-request setup completes',75000);
   const freshCalls=JSON.parse(await freshPage.ev('return JSON.stringify(window.__E2E_BRIDGE_CALLS__)'));
   assert.equal(freshCalls.length,1);
   assert.equal(freshCalls[0].transactions.length,6);
@@ -795,13 +795,13 @@ try {
   for(const identified of [false,true]) {
     const saved=structuredClone(freshSnapshot);
     if(identified) {saved.setupRequest.txHash=freshReceipt.hash;saved.setupRequest.hashType='transaction';}
-    await freshPage.ev(`sessionStorage.setItem(${JSON.stringify(freshKey)},${JSON.stringify(JSON.stringify(saved))});return true;`);
+    await freshPage.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(freshKey)},${JSON.stringify(JSON.stringify(saved))});return true;`);
     await freshPage.send('Page.reload',{ignoreCache:true});
     await until(async()=>{await freshPage.ev(HELPERS);return freshPage.ev("return !!document.querySelector('.account-row')");},'single setup receipt restored');
     await chooseTab(freshPage,'Plan');
     await installBridgeRecorder(freshPage);
     await clickButton(freshPage,'Resume remaining setup');
-    await until(()=>freshPage.ev(`return sessionStorage.getItem(${JSON.stringify(freshKey)})===null;`),'entire setup recovered without resend',75000);
+    await until(()=>freshPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(freshKey)})===null;`),'entire setup recovered without resend',75000);
     assert.equal(JSON.parse(await freshPage.ev('return JSON.stringify(window.__E2E_BRIDGE_CALLS__)')).length,0);
     assert.equal(await wldStrategy.balanceOf(freshWld),parseUnits('0.8',18));
     assert.equal(await usdcStrategy.balanceOf(freshUsdc),parseUnits('3',18));
@@ -1132,7 +1132,7 @@ try {
   `);
   await clickButton(alignmentPage, "Create plan and deposit");
   await until(() => alignmentPage.ev("return /No output is currently available/.test(document.body.innerText) && !document.querySelector('.plan-submit').disabled"), "zero quote leaves the reviewed draft editable");
-  const zeroQuoteSaved = JSON.parse(await alignmentPage.ev(`return sessionStorage.getItem(${JSON.stringify(alignPendingKey)})`));
+  const zeroQuoteSaved = JSON.parse(await alignmentPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(alignPendingKey)})`));
   assert.equal(zeroQuoteSaved, null, "a quote failure before handoff must not create a pending wallet request");
   assert.equal(JSON.parse(await alignmentPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length, 0,
     "zero quote happened after a wallet request");
@@ -1143,7 +1143,7 @@ try {
   await sleep(350);
   await clickButton(alignmentPage, "Create plan and deposit");
   await until(() => alignmentPage.ev("return window.__REVIEW_PREVIEW_FAILURE_READS__ > 0 && /Plan setup:/.test(document.body.innerText) && !/No output is currently available/.test(document.body.innerText) && !document.querySelector('.plan-submit').disabled"), "preview RPC failure leaves the reviewed draft editable");
-  const previewFailureSaved = JSON.parse(await alignmentPage.ev(`return sessionStorage.getItem(${JSON.stringify(alignPendingKey)})`));
+  const previewFailureSaved = JSON.parse(await alignmentPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(alignPendingKey)})`));
   assert.equal(previewFailureSaved, null);
   assert.equal(JSON.parse(await alignmentPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length, 0,
     "preview RPC failure happened after a wallet request");
@@ -1185,11 +1185,11 @@ try {
   `);
   await clickButton(alignmentPage, "Create plan and deposit");
   await until(() => alignmentPage.ev(`return window.__REVIEW_FAILED_HASH__
-    && JSON.parse(sessionStorage.getItem(${JSON.stringify(alignPendingKey)}) || 'null')?.createState === 'ready'
+    && JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(alignPendingKey)}) || 'null')?.createState === 'ready'
     && /transaction reverted/i.test(document.body.innerText)`), "definitive create revert");
   const failedCreateHash = await alignmentPage.ev("return window.__REVIEW_FAILED_HASH__");
   assert.equal((await provider.getTransactionReceipt(failedCreateHash)).status, 0);
-  let createFailureSaved = JSON.parse(await alignmentPage.ev(`return sessionStorage.getItem(${JSON.stringify(alignPendingKey)})`));
+  let createFailureSaved = JSON.parse(await alignmentPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(alignPendingKey)})`));
   assert.equal(createFailureSaved.createState, "ready");
   assert.equal(createFailureSaved.createTxHash, undefined);
   assert.deepEqual(createFailureSaved.createTargets, []);
@@ -1249,12 +1249,12 @@ try {
     return true;
   `);
   await clickButton(alignmentPage, "Resume remaining setup");
-  await until(() => alignmentPage.ev(`const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(alignPendingKey)}) || 'null');
+  await until(() => alignmentPage.ev(`const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(alignPendingKey)}) || 'null');
     return window.__REVIEW_FAILED_HASH__ && saved?.assets?.[0]?.depositState === 'complete'
       && saved?.assets?.[1]?.depositState === 'ready' && /transaction reverted/i.test(document.body.innerText);`), "definitive USDC deposit revert");
   const failedDepositHash = await alignmentPage.ev("return window.__REVIEW_FAILED_HASH__");
   assert.equal((await provider.getTransactionReceipt(failedDepositHash)).status, 0);
-  const depositFailureSaved = JSON.parse(await alignmentPage.ev(`return sessionStorage.getItem(${JSON.stringify(alignPendingKey)})`));
+  const depositFailureSaved = JSON.parse(await alignmentPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(alignPendingKey)})`));
   assert.deepEqual(depositFailureSaved.assets.map(item => [item.symbol, item.depositState]), [["WLD", "complete"], ["USDC", "ready"]]);
   assert.equal(depositFailureSaved.assets[1].txHash, undefined);
   assert.equal(await wldStrategy.balanceOf(terminalWldVault), terminalWldBefore + parseUnits("0.1", 18));
@@ -1304,7 +1304,7 @@ try {
     beforeBalance: beforeSubmittedShares.toString(), beforeBlock: submittedDeposit.beforeBlock,
     txHash: submittedDeposit.receipt.hash, hashType: "transaction",
   }] };
-  await alignmentPage.ev(`sessionStorage.setItem(${JSON.stringify(alignPendingKey)}, ${JSON.stringify(JSON.stringify(submittedReceiptPlan))}); return true;`);
+  await alignmentPage.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(alignPendingKey)}, ${JSON.stringify(JSON.stringify(submittedReceiptPlan))}); return true;`);
   await alignmentPage.send("Page.reload", { ignoreCache: true });
   await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
   await until(() => alignmentPage.ev("return !!document.querySelector('.account-row')"), "session restored for saved deposit receipt");
@@ -1333,7 +1333,7 @@ try {
     amount: noIdAmount.toString(), vault: recoveryVaultAddress, depositState: "submitting",
     beforeBlock: noIdDeposit.beforeBlock,
   }] };
-  await alignmentPage.ev(`sessionStorage.setItem(${JSON.stringify(alignPendingKey)}, ${JSON.stringify(JSON.stringify(noIdPlan))}); return true;`);
+  await alignmentPage.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(alignPendingKey)}, ${JSON.stringify(JSON.stringify(noIdPlan))}); return true;`);
   await alignmentPage.send("Page.reload", { ignoreCache: true });
   await until(async () => { await alignmentPage.ev(HELPERS); return alignmentPage.ev("return !!document.querySelector('.account-row')"); }, "restored session helpers");
   await until(() => alignmentPage.ev("return !!document.querySelector('.account-row')"), "session restored for old no-ID deposit");
@@ -1388,7 +1388,7 @@ try {
   };
   async function restorePlan(targetPage, saved) {
     const key = `inheritance:pending-plan:${saved.account.toLowerCase()}`;
-    await targetPage.ev(`sessionStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(JSON.stringify(saved))}); return true;`);
+    await targetPage.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(key)}, ${JSON.stringify(JSON.stringify(saved))}); return true;`);
     await targetPage.send("Page.reload", { ignoreCache: true });
     await until(async () => {
       await targetPage.ev(HELPERS);
@@ -1418,7 +1418,7 @@ try {
   await restorePlan(monitoredPage,monitoredHistoricalPlan);
   await monitoredPage.ev(`window.__E2E_REJECTED_TARGET__=${JSON.stringify((await usdc.getAddress()).toLowerCase())};window.__E2E_REJECT_ERROR_CODE__='simulation_failed';return true;`);
   await clickButton(monitoredPage,'Resume remaining setup');
-  await until(() => monitoredPage.ev(`const plan = JSON.parse(sessionStorage.getItem(${JSON.stringify(monitoredKey)}) || 'null');
+  await until(() => monitoredPage.ev(`const plan = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(monitoredKey)}) || 'null');
     return plan?.assets?.[0]?.depositState === 'complete' && plan.assets[1].depositState === 'ready'
       && __q.btns().some(button => button.t === 'Edit remaining setup' && !button.d);`), "funded WLD and editable unsent USDC");
   const monitoredWld = await wldFactory.vaultOf(ACCOUNTS.a2.a);
@@ -1428,7 +1428,7 @@ try {
   assert.equal(await monitoredPage.ev(`return window.__MONITOR_REGISTERED__[${JSON.stringify(monitoredWld.toLowerCase())}]`), true);
   await clickButton(monitoredPage, "Edit remaining setup");
   assert.equal(await monitoredPage.ev("return document.getElementById('plan-wld').value"), "");
-  assert.equal(await monitoredPage.ev(`return sessionStorage.getItem(${JSON.stringify(monitoredKey)})`), null);
+  assert.equal(await monitoredPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(monitoredKey)})`), null);
   await monitoredPage.ev("window.__E2E_REJECTED_TARGET__ = ''; window.__E2E_BRIDGE_CALLS__ = []; return true;");
   const manualDepositSnapshot = await provider.send("evm_snapshot", []);
   await chooseTab(monitoredPage, "Assets");
@@ -1446,7 +1446,7 @@ try {
   assert.equal(JSON.parse(await monitoredPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 1);
   const manualRegistrations = JSON.parse(await monitoredPage.ev("return JSON.stringify(window.__MONITOR_REGISTRATIONS__)"));
   assert.equal(manualRegistrations.filter(item => item.vaultAddress.toLowerCase() === monitoredUsdc.toLowerCase()).length, 1);
-  assert.equal(await monitoredPage.ev(`return sessionStorage.getItem(${JSON.stringify(monitoredKey)})`), null);
+  assert.equal(await monitoredPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(monitoredKey)})`), null);
   evidence.plan.manualDepositMonitoring = { vault: monitoredUsdc, walletRequests: 1,
     registrations: manualRegistrations.filter(item => item.vaultAddress.toLowerCase() === monitoredUsdc.toLowerCase()) };
   pass("Send registers a new vault after a cancelled unified deposit is completed through ordinary deposit");
@@ -1470,7 +1470,7 @@ try {
   await monitoredPage.ev("window.__MONITOR_UNRESPONSIVE__ = true; return true;");
   await clickButton(monitoredPage, "Create plan and deposit");
   await until(() => monitoredPage.ev("return /Some reminders could not be enabled/.test(document.body.innerText)"), "unresponsive monitoring request finishes without repeating funds");
-  assert.equal(await monitoredPage.ev(`return sessionStorage.getItem(${JSON.stringify(monitoredKey)})`), null);
+  assert.equal(await monitoredPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(monitoredKey)})`), null);
   assert.equal(await wldStrategy.balanceOf(monitoredWld), parseUnits("0.101", 18));
   assert.equal(JSON.parse(await monitoredPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 1);
   assert.equal(await monitoredPage.ev("return __q.btns().some(button => button.t === 'Resume remaining setup')"), false);
@@ -1524,13 +1524,13 @@ try {
   await restorePlan(monitoredPage, missingCheckInPlan);
   await clickButton(monitoredPage, "Resume remaining setup");
   await until(() => monitoredPage.ev("return /expected on-chain record could not be verified/.test(document.body.innerText)"), "period-only receipt cannot prove a requested check-in");
-  assert.deepEqual(JSON.parse(await monitoredPage.ev(`return sessionStorage.getItem(${JSON.stringify(monitoredKey)})`)), missingCheckInPlan);
+  assert.deepEqual(JSON.parse(await monitoredPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(monitoredKey)})`)), missingCheckInPlan);
   assert.equal(JSON.parse(await monitoredPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
   assert.equal(await monitoredPage.ev("return __q.btns().some(button => button.t === 'Edit remaining setup')"), false);
   assert.equal(await usdcStrategy.balanceOf(monitoredUsdc), parseUnits("0.11", 18));
   evidence.settingsAlignment.missingCheckIn = { receipt: periodOnlyReceipt.hash, journalPreserved: true, newWalletRequests: 0 };
   pass("a period-only receipt cannot resolve a journaled interval change that also requires a check-in");
-  await monitoredPage.ev(`sessionStorage.removeItem(${JSON.stringify(monitoredKey)}); return true;`);
+  await monitoredPage.ev(`await (async key => (await import('/src/plan-storage.ts')).clearPlanJournal(key))(${JSON.stringify(monitoredKey)}); return true;`);
   assert.equal(await provider.send("evm_revert", [alignmentSnapshot]), true);
   await monitoredPage.send("Page.reload", { ignoreCache: true });
   await until(async () => { await monitoredPage.ev(HELPERS); return monitoredPage.ev("return !!document.querySelector('.account-row')"); }, "restored original chain-time scenario");
@@ -1624,7 +1624,7 @@ try {
   const releasedCalls = JSON.parse(await releasedPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)"));
   assert.equal(releasedCalls.length, 1);
   assert.deepEqual(releasedCalls[0].targets, [(await usdc.getAddress()).toLowerCase(), usdcFactoryAddress.toLowerCase()]);
-  assert.equal(await releasedPage.ev(`return sessionStorage.getItem(${JSON.stringify(releasedKey)})`), null);
+  assert.equal(await releasedPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(releasedKey)})`), null);
   evidence.plan.completedReleased = { original: releasedWldVault, replacement: ZeroAddress,
     remainingDeposit: "USDC", walletRequests: releasedCalls.length };
   pass("a released completed WLD step is preserved as history; resume deposits only USDC and creates no replacement WLD vault");
@@ -1670,7 +1670,7 @@ try {
     const writes = JSON.parse(await submittedPage.ev("return JSON.stringify(window.__PLAN_WRITES__)"));
     assert.ok(writes.length > 0);
     assert.ok(writes.every(plan => plan.assets[0].vault.toLowerCase() === originalSubmittedVault.toLowerCase()));
-    assert.equal(await submittedPage.ev(`return sessionStorage.getItem(${JSON.stringify(key)})`), null);
+    assert.equal(await submittedPage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(key)})`), null);
     assert.equal(JSON.parse(await submittedPage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
     assert.equal(await wldFactory.vaultOf(submittedOwner), replacementSubmittedVault);
     assert.equal(await wldStrategy.balanceOf(replacementSubmittedVault), 0n);
@@ -1689,7 +1689,7 @@ try {
   assert.equal(await balancePage.ev("return document.getElementById('plan-wld').matches(':disabled')"), false);
   assert.equal(await wldFactory.vaultOf(ACCOUNTS.a4.a), ZeroAddress);
   const balanceKey = `inheritance:pending-plan:${ACCOUNTS.a4.a.toLowerCase()}`;
-  assert.equal(await balancePage.ev(`return sessionStorage.getItem(${JSON.stringify(balanceKey)})`), null);
+  assert.equal(await balancePage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)})`), null);
   pass("an amount above wallet balance stays editable and cannot create an empty vault");
   await balancePage.ev("return __q.setInput('plan-wld', '0.9')");
   await until(() => balancePage.ev("return !document.querySelector('.plan-submit').disabled"), "affordable cached draft");
@@ -1701,7 +1701,7 @@ try {
   await clickButton(balancePage, "Create plan and deposit");
   await until(() => balancePage.ev("return /Not enough WLD/.test(document.body.innerText)"), "fresh insufficient-balance preflight");
   assert.equal(await wldFactory.vaultOf(ACCOUNTS.a4.a), ZeroAddress);
-  assert.equal(await balancePage.ev(`return sessionStorage.getItem(${JSON.stringify(balanceKey)})`), null);
+  assert.equal(await balancePage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)})`), null);
   assert.equal(JSON.parse(await balancePage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
   pass("a fresh wallet-balance drop stops before any create, alignment or deposit wallet request");
   const editablePlan = { version: 1, account: ACCOUNTS.a4.a, heir: ACCOUNTS.a5.a, periodDays: 30,
@@ -1711,7 +1711,7 @@ try {
     }] };
   await restorePlan(balancePage, editablePlan);
   await clickButton(balancePage, "Edit remaining setup");
-  assert.equal(await balancePage.ev(`return sessionStorage.getItem(${JSON.stringify(balanceKey)})`), null);
+  assert.equal(await balancePage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)})`), null);
   assert.equal(await balancePage.ev("return document.getElementById('plan-wld').matches(':disabled')"), false);
   await balancePage.ev("return __q.setInput('plan-wld', '0.1')");
   await acceptYieldTerms(balancePage);
@@ -1746,13 +1746,13 @@ try {
   await dailyPage.ev(`window.__E2E_REJECTED_TARGET__ = ${JSON.stringify(usdcFactoryAddress.toLowerCase())};
     window.__E2E_REJECT_ERROR_CODE__ = 'daily_tx_limit_reached'; window.__E2E_REJECT_THROWS__ = true; return true;`);
   await clickButton(dailyPage, "Create plan and deposit");
-  await until(() => dailyPage.ev(`return JSON.parse(sessionStorage.getItem(${JSON.stringify(dailyKey)}) || 'null')?.createState === 'ready'
+  await until(() => dailyPage.ev(`return JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(dailyKey)}) || 'null')?.createState === 'ready'
     && __q.btns().some(button => button.t === 'Edit remaining setup' && !button.d)`), "daily create policy leaves editable ready plan");
   assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a5.a), ZeroAddress);
   await dailyPage.ev(`window.__E2E_REJECTED_TARGET__ = ${JSON.stringify((await usdc.getAddress()).toLowerCase())};
     window.__E2E_REJECT_ERROR_CODE__ = 'daily_tx_limit_reached'; window.__E2E_REJECT_THROWS__ = false; return true;`);
   await clickButton(dailyPage, "Resume remaining setup");
-  await until(() => dailyPage.ev(`const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(dailyKey)}) || 'null');
+  await until(() => dailyPage.ev(`const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(dailyKey)}) || 'null');
     return saved?.createState === 'ready' && saved.assets[0].depositState === 'ready'
       && __q.btns().some(button => button.t === 'Edit remaining setup' && !button.d);`), "daily batch policy leaves every call unsent");
   assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a5.a), ZeroAddress);
@@ -1774,8 +1774,8 @@ try {
   await until(() => balancePage.ev("return !!document.querySelector('.plan-alignment-review')"), "alignment pending regression review");
   await balancePage.ev(`window.__E2E_REJECTED_TARGET__ = ${JSON.stringify(wldFactoryAddress)}; return true;`);
   await clickButton(balancePage, "Confirm and align settings");
-  await until(() => balancePage.ev(`return JSON.parse(sessionStorage.getItem(${JSON.stringify(balanceKey)}) || 'null')?.alignment?.state === 'submitting'`), "ambiguous alignment journal retained");
-  const uncertainAlignmentPlan = JSON.parse(await balancePage.ev(`return sessionStorage.getItem(${JSON.stringify(balanceKey)})`));
+  await until(() => balancePage.ev(`return JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)}) || 'null')?.alignment?.state === 'submitting'`), "ambiguous alignment journal retained");
+  const uncertainAlignmentPlan = JSON.parse(await balancePage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)})`));
   assert.equal(await balancePage.ev("return __q.btns().some(button => button.t === 'Edit remaining setup')"), false);
   assert.equal(uncertainAlignmentPlan.alignment.targets[0].vault.toLowerCase(), editedWldVault.toLowerCase());
   await restorePlan(balancePage, uncertainAlignmentPlan);
@@ -1787,11 +1787,11 @@ try {
   const unavailableAlignmentPlan = { ...uncertainAlignmentPlan, alignment: { ...uncertainAlignmentPlan.alignment,
     targets: uncertainAlignmentPlan.alignment.targets.map(target => ({ ...target, factory: ACCOUNTS.a9.a })) } };
   await restorePlan(balancePage, unavailableAlignmentPlan);
-  assert.deepEqual(JSON.parse(await balancePage.ev(`return sessionStorage.getItem(${JSON.stringify(balanceKey)})`)), unavailableAlignmentPlan);
+  assert.deepEqual(JSON.parse(await balancePage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)})`)), unavailableAlignmentPlan);
   assert.equal(await balancePage.ev("return __q.btns().some(button => button.t === 'Edit remaining setup')"), false);
   await clickButton(balancePage, "Resume remaining setup");
   await until(() => balancePage.ev("return /prior settings request has no verifiable result|original settings route is unavailable/.test(document.body.innerText)"), "unavailable original alignment route stays unresolved");
-  assert.deepEqual(JSON.parse(await balancePage.ev(`return sessionStorage.getItem(${JSON.stringify(balanceKey)})`)), unavailableAlignmentPlan);
+  assert.deepEqual(JSON.parse(await balancePage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)})`)), unavailableAlignmentPlan);
   assert.equal(JSON.parse(await balancePage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
   assert.equal(await balancePage.ev("return __q.btns().some(button => button.t === 'Edit remaining setup')"), false);
   evidence.plan.unavailableAlignment = { originalFactory: ACCOUNTS.a9.a, journalPreserved: true, walletRequests: 0, editable: false };
@@ -1806,7 +1806,7 @@ try {
   assert.equal(recoveredAlignmentCalls.length, 1);
   assert.deepEqual(recoveredAlignmentCalls[0].targets, [wldAddress.toLowerCase(), wldFactoryAddress]);
   assert.equal(await wldStrategy.balanceOf(editedWldVault), parseUnits("0.11", 18));
-  assert.equal(await balancePage.ev(`return sessionStorage.getItem(${JSON.stringify(balanceKey)})`), null);
+  assert.equal(await balancePage.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)})`), null);
   evidence.plan.uncertainAlignment = { original: uncertainAlignmentPlan.alignment,
     receipt: delayedAlignmentReceipt.hash, onlyDepositSentAfterRecovery: true };
   pass("a verified delayed settings receipt clears the journal and resumes only the remaining deposit");
@@ -1838,7 +1838,7 @@ try {
     }; return true;
   `);
   await clickButton(balancePage, "Confirm and align settings");
-  await until(() => balancePage.ev(`const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(balanceKey)}) || 'null');
+  await until(() => balancePage.ev(`const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(balanceKey)}) || 'null');
     return window.__ALIGN_FAILED_HASH__ && saved && !saved.alignment
       && /transaction reverted/i.test(document.body.innerText) && __q.btns().some(button => button.t === 'Edit remaining setup');`), "reverted alignment becomes editable");
   const revertedAlignmentHash = await balancePage.ev("return window.__ALIGN_FAILED_HASH__");
@@ -1914,14 +1914,14 @@ try {
   await clickButton(unavailablePage, "Create plan and deposit");
   await until(() => unavailablePage.ev(`return window.__UNAVAILABLE_ERROR__ === 'CommandUnavailableError'
     && window.__UNAVAILABLE_REASON__ === 'oldAppVersion'
-    && JSON.parse(sessionStorage.getItem(${JSON.stringify(unavailableKey)}) || 'null')?.createState === 'ready'
+    && JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(unavailableKey)}) || 'null')?.createState === 'ready'
     && __q.btns().some(button => button.t === 'Edit remaining setup' && !button.d)`), "unsupported native command remains editable");
   assert.deepEqual(await unavailablePage.ev("return window.__UNAVAILABLE_HANDOFFS__"), []);
   assert.equal(await usdcFactory.vaultOf(submittedOwner), ZeroAddress);
   await restoreAvailableSdk();
   await clickButton(unavailablePage, "Resume remaining setup");
   await until(() => unavailablePage.ev(`return /Your inheritance plan is ready/.test(document.body.innerText)
-    && sessionStorage.getItem(${JSON.stringify(unavailableKey)}) === null`), "available bridge resumes unsent creation");
+    && await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(unavailableKey)}) === null`), "available bridge resumes unsent creation");
   const sdkUsdcVault = await usdcFactory.vaultOf(submittedOwner);
   assert.equal(await usdcStrategy.balanceOf(sdkUsdcVault), parseUnits("0.01", 18));
   assert.equal(JSON.parse(await unavailablePage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 1);
@@ -1930,7 +1930,7 @@ try {
   await preparePlanForm(unavailablePage, ACCOUNTS.a5.a, 1, "USDC", "0.002");
   await useUnavailableSdk(false);
   await clickButton(unavailablePage, "Create plan and deposit");
-  await until(() => unavailablePage.ev(`const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(unavailableKey)}) || 'null');
+  await until(() => unavailablePage.ev(`const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(unavailableKey)}) || 'null');
     return window.__UNAVAILABLE_ERROR__ === 'CommandUnavailableError' && window.__UNAVAILABLE_REASON__ === 'notInWorldApp'
       && saved?.assets[0].depositState === 'ready'
       && __q.btns().some(button => button.t === 'Edit remaining setup' && !button.d);`), "unavailable browser command leaves deposit unsent");
@@ -1939,7 +1939,7 @@ try {
   await restoreAvailableSdk();
   await clickButton(unavailablePage, "Resume remaining setup");
   await until(() => unavailablePage.ev(`return /Your inheritance plan is ready/.test(document.body.innerText)
-    && sessionStorage.getItem(${JSON.stringify(unavailableKey)}) === null`), "available bridge resumes unsent deposit");
+    && await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(unavailableKey)}) === null`), "available bridge resumes unsent deposit");
   assert.equal(await usdcStrategy.balanceOf(sdkUsdcVault), parseUnits("0.012", 18));
   assert.equal(JSON.parse(await unavailablePage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 1);
   evidence.plan.sdkAvailability = { nativeHandoffs: 0, creationEditable: true, depositEditable: true,
@@ -1982,7 +1982,7 @@ try {
   await until(() => unavailablePage.ev("return window.__FAILED_COMPLETED_TERMS__ > 0 && __q.btns().some(button => button.t === 'Resume remaining setup' && !button.d)"), "completed terms outage does not gate USDC");
   await clickButton(unavailablePage, "Resume remaining setup");
   await until(() => unavailablePage.ev(`return /Remaining setup is complete/.test(document.body.innerText)
-    && sessionStorage.getItem(${JSON.stringify(unavailableKey)}) === null`), "USDC completes despite completed WLD terms outage");
+    && await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(unavailableKey)}) === null`), "USDC completes despite completed WLD terms outage");
   assert.equal(await usdcStrategy.balanceOf(sdkUsdcVault), parseUnits("0.017", 18));
   assert.equal(await wldStrategy.balanceOf(replacementSubmittedVault), 0n);
   assert.equal(JSON.parse(await unavailablePage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 1);
@@ -1998,7 +1998,7 @@ try {
   await restorePlan(unavailablePage, receiptFirstPlan);
   await unavailablePage.ev("const checkbox = document.getElementById('yield-consent'); if (checkbox.checked) checkbox.click(); return true;");
   await clickButton(unavailablePage, "Resume remaining setup");
-  await until(() => unavailablePage.ev(`const saved = JSON.parse(sessionStorage.getItem(${JSON.stringify(unavailableKey)}) || 'null');
+  await until(() => unavailablePage.ev(`const saved = JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(unavailableKey)}) || 'null');
     return saved?.assets[0].depositState === 'complete' && saved.assets[1].depositState === 'ready'
       && /accept the Morpho fee and risk terms before sending/.test(document.body.innerText);`), "original receipt resolves before fresh consent");
   assert.equal(JSON.parse(await unavailablePage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 0);
@@ -2006,7 +2006,7 @@ try {
   await acceptYieldTerms(unavailablePage);
   await clickButton(unavailablePage, "Resume remaining setup");
   await until(() => unavailablePage.ev(`return /Remaining setup is complete/.test(document.body.innerText)
-    && sessionStorage.getItem(${JSON.stringify(unavailableKey)}) === null`), "consent resumes only fresh remaining deposit");
+    && await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(unavailableKey)}) === null`), "consent resumes only fresh remaining deposit");
   assert.equal(await usdcStrategy.balanceOf(sdkUsdcVault), parseUnits("0.018", 18));
   assert.equal(JSON.parse(await unavailablePage.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__)" )).length, 1);
   evidence.plan.remainingTerms = { completedWldTermsUnavailable: true, remainingUsdcCompleted: true,
@@ -2082,7 +2082,7 @@ try {
       { symbol: "USDC", factory: await usdcFactory.getAddress(), asset: await usdc.getAddress(), decimals: 6, mode: "morpho",
         amount: parseUnits("0.05", 6).toString(), vault: usdcVaultAddress, depositState: "ready" },
     ] };
-  await page.ev(`sessionStorage.setItem(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(rotatedPlan))}); return true;`);
+  await page.ev(`await (async (key, raw) => (await import('/src/plan-storage.ts')).writePlanJournal(key, raw))(${JSON.stringify(pendingKey)}, ${JSON.stringify(JSON.stringify(rotatedPlan))}); return true;`);
   const replacementWldFactory = await deploy("InheritanceVaultMorphoFactory", [await wld.getAddress(), await wldStrategy.getAddress(), ACCOUNTS.a2.a, 1000], deployer);
   await vite.close();
   Object.assign(process.env, { VITE_YIELD_FACTORY_ADDRESS: await replacementWldFactory.getAddress(),
@@ -2104,7 +2104,7 @@ try {
   assert.equal(await wldStrategy.balanceOf(wldVaultAddress), originalWldShares);
   assert.equal(await usdcStrategy.balanceOf(usdcVaultAddress), originalUsdcShares + parseUnits("0.05", 18));
   assert.equal(await replacementWldFactory.vaultOf(owner), ZeroAddress);
-  assert.equal(await page.ev(`return sessionStorage.getItem(${JSON.stringify(pendingKey)})`), null);
+  assert.equal(await page.ev(`return await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(pendingKey)})`), null);
   evidence.plan.factoryRotation = { original: await wldFactory.getAddress(), replacement: await replacementWldFactory.getAddress(),
     remainingAsset: "USDC", walletRequests: 1, completedWldRepeated: false };
   pass("factory rotation preserves the saved original route and resumes only the remaining asset");
@@ -2191,7 +2191,7 @@ try {
   if (page) {
     try { evidence.failurePage = await page.ev("return document.body.innerText"); } catch {}
     try { evidence.failureBridge = JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")); } catch {}
-    try { evidence.failurePlan = JSON.parse(await page.ev(`return JSON.stringify(JSON.parse(sessionStorage.getItem(${JSON.stringify('inheritance:pending-plan:0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266')}) || 'null'))`)); } catch {}
+    try { evidence.failurePlan = JSON.parse(await page.ev(`return JSON.stringify(JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify('inheritance:pending-plan:0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266')}) || 'null'))`)); } catch {}
     try { evidence.failureScreenshot = await page.shot("unified-plan-failure"); } catch {}
   }
   evidence.failureContexts = {};

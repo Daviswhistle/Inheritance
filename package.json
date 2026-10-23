@@ -11,6 +11,7 @@
     "test-host": "node scripts/test-host/start.mjs",
     "test-host:setup": "node scripts/test-host/setup.mjs",
     "test-host:unit": "node --test scripts/test-host/bridge.test.mjs",
+    "test-host:pending": "node scripts/test-host/pending.mjs",
     "test-host:check": "node scripts/test-host/smoke.mjs",
     "test:product-ui": "node scripts/verify/product-ui.mjs",
     "test:webkit-ui": "node scripts/verify/webkit-ui.mjs",

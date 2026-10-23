@@ -105,6 +105,31 @@ try {
   assert.deepEqual(await page.locator('.plan-review-amount').allTextContents(), ['10 WLD', '12.345678 USDC']);
   assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);
   await page.locator('#yield-consent').check();
+  // Reading the required documents must not replace the app and lose the draft.
+  for (const document of ['terms', 'privacy']) {
+    const link = page.locator(`.plan-legal-copy a[href="/${document}.html"]`);
+    await link.tap();
+    await page.locator('.plan-legal-dialog[open]').waitFor();
+    const frame = page.frameLocator('.plan-legal-dialog iframe');
+    await frame.locator('h1').waitFor();
+    assert.ok(await page.locator('.plan-legal-dialog iframe').getAttribute('title'));
+    await tap(page, '닫기');
+    await page.locator('.plan-legal-dialog').waitFor({ state: 'detached' });
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('href')), `/${document}.html`);
+    assert.equal(page.url(), origin + '/?platform=ios&approval=auto');
+    assert.ok(await page.locator('#yield-consent').isChecked());
+  }
+  await page.locator('.plan-legal-copy a[href="/terms.html"]').tap();
+  await page.frameLocator('.plan-legal-dialog iframe').getByRole('link', { name: 'Back to Inheritance', exact: true }).tap();
+  await page.locator('.plan-legal-dialog').waitFor({ state: 'detached' });
+  await page.locator('.plan-legal-copy a[href="/privacy.html"]').tap();
+  await page.frameLocator('.plan-legal-dialog iframe').locator('a').first().focus();
+  await page.keyboard.press('Escape');
+  await page.locator('.plan-legal-dialog').waitFor({ state: 'detached' });
+  assert.deepEqual(await page.locator('.plan-review-amount').allTextContents(), ['10 WLD', '12.345678 USDC']);
+  assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);
+  assert.ok(await page.locator('#yield-consent').isChecked());
+  pass('Terms/privacy close, document return link and Escape preserve the review, exact amounts and consent; focus returns to the opener');
   await layout(page, 'review-ko', 390);
   await page.screenshot({ path: out + '/review-ko.png' });
   await tap(page, '승인하고 예치');
@@ -216,7 +241,7 @@ try {
   await tap(heir, 'Confirm and deposit');
   await until(async () => committed, 'deposit mined before callback');
   const recoveryKey = 'inheritance:pending-plan:' + config.heir.toLowerCase();
-  const journal = await heir.evaluate(key => JSON.parse(sessionStorage.getItem(key)), recoveryKey);
+  const journal = await heir.evaluate(async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, JSON.parse), recoveryKey);
   assert.ok(journal.setupRequest && !journal.setupRequest.txHash, 'receipt ID has not reached the app');
   assert.ok(journal.assets.every(asset => asset.depositState === 'submitting'));
   const recoveredVaults = await Promise.all([wf.vaultOf(config.heir), uf.vaultOf(config.heir)]);
@@ -231,7 +256,7 @@ try {
   assert.equal(await heir.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 0);
   await heir.screenshot({ path: out + '/interrupted-deposit-recovery.png' });
   await heir.locator('.plan-resume .btn-primary').tap();
-  await until(() => heir.evaluate(key => !sessionStorage.getItem(key), recoveryKey), 'historical receipt recovery');
+  await until(() => heir.evaluate(async key => !(await (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw)), recoveryKey), 'historical receipt recovery');
   assert.deepEqual(await amounts(), [4n * 10n ** 18n, 5_000001n]);
   assert.equal(submittedCommands, 1);
   assert.equal(await heir.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 0);

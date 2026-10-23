@@ -3,11 +3,19 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'app/**'
+      - 'contracts/**'
+      - 'test/mocks/**'
+      - 'foundry.toml'
       - 'test-hosts/ios/**'
       - 'scripts/test-host/**'
       - '.github/workflows/ios-host.yml'
   pull_request:
     paths:
+      - 'app/**'
+      - 'contracts/**'
+      - 'test/mocks/**'
+      - 'foundry.toml'
       - 'test-hosts/ios/**'
       - 'scripts/test-host/**'
       - '.github/workflows/ios-host.yml'
@@ -36,6 +44,8 @@ jobs:
           brew install xcodegen
           cd test-hosts/ios
           xcodegen generate
+      - name: Verify pending and reverted local transactions
+        run: node scripts/test-host/pending.mjs
       - name: Start isolated chain and mini app
         run: |
           node scripts/test-host/start.mjs > "$RUNNER_TEMP/host.log" 2>&1 &

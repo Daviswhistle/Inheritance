@@ -92,7 +92,9 @@ jobs:
         run: node ../scripts/test-yield-rates.mjs
 
       - name: Resolve user operations and verify canonical transaction outcomes
-        run: node ../scripts/test-transaction-confirmation.mjs
+        run: |
+          node ../scripts/test-transaction-confirmation.mjs
+          node ../scripts/test-plan-storage.mjs
 
       - name: Verify unified plans, protected income receipts and legacy route configuration
         run: |

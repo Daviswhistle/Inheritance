@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Input } from "./ui/input";
@@ -33,6 +33,51 @@ function formatExactTokenAmount(amount: bigint, decimals: number): string {
 
 function isWalletAddress(value: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
+function PlanLegalDialog({ document: legalDocument, onClose }: { document: "terms" | "privacy"; onClose: () => void }) {
+  const { t } = useLocale();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [visibleDocument, setVisibleDocument] = useState<"terms" | "privacy" | "yield">(legalDocument);
+  const title = t(visibleDocument === "terms" ? "plan.legal.terms" : visibleDocument === "privacy" ? "plan.legal.privacy" : "plan.more.link");
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current!;
+    const opener = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => {
+      dialog.close();
+      document.body.style.overflow = overflow;
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, []);
+  return <dialog ref={dialogRef} className="plan-legal-dialog" aria-labelledby="plan-legal-title"
+    onCancel={event => { event.preventDefault(); onClose(); }}>
+    <header><h2 id="plan-legal-title">{title}</h2><Button onClick={onClose}>{t("common.close")}</Button></header>
+    <iframe src={`/${legalDocument}.html`} title={title}
+      onLoad={event => {
+        // Reuse the published documents while keeping their return links inside
+        // this review: reloading the app would discard the unsubmitted draft.
+        const frameDocument = event.currentTarget.contentDocument;
+        if (frameDocument) setVisibleDocument(frameDocument.location.pathname === "/privacy.html" ? "privacy"
+          : frameDocument.location.pathname === "/yield-terms.html" ? "yield" : "terms");
+        frameDocument?.addEventListener("keydown", event => {
+          if (event.key === "Escape") { event.preventDefault(); onClose(); }
+        });
+        frameDocument?.addEventListener("click", event => {
+          // iframe nodes belong to another realm, so parent Element instanceof
+          // checks would miss their links.
+          const link = (event.target as Element | null)?.closest?.("a");
+          if (!link) return;
+          const destination = new URL(link.href, window.location.href);
+          if (destination.origin === window.location.origin && destination.pathname === "/") {
+            event.preventDefault(); onClose();
+          }
+        });
+      }} />
+  </dialog>;
 }
 
 export function PlanSetup({
@@ -73,6 +118,7 @@ export function PlanSetup({
   const { t, locale } = useLocale();
   const actionRef = useActionClearance(!pendingPlan);
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(null);
+  const [legalDocument, setLegalDocument] = useState<"terms" | "privacy" | null>(null);
   const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const wasReviewingRef = useRef(false);
   const createClickLocked = useRef(false);
@@ -383,7 +429,7 @@ export function PlanSetup({
           <p id="heir-help" className="plan-field-help">{t("plan.recipient.help")}</p>
           {heir && (resolvingHeir ? <p className="plan-field-help" role="status">{t("plan.recipient.checking")}</p>
             : recipientValid ? <p className="resolved-heir">{heirUsername ? `@${heirUsername}` : t("plan.recipient.wallet")}<span>{heirResolved.slice(0, 6)}…{heirResolved.slice(-4)}</span></p>
-              : <p className="plan-inline-error" role="alert">{t("plan.recipient.notFound")}</p>)}
+              : !heirSuspicious && <p className="plan-inline-error" role="alert">{t("plan.recipient.notFound")}</p>)}
           {heirSuspicious && <p className="plan-inline-error" role="alert">{t("plan.recipient.self")}</p>}
         </div>
 
@@ -440,7 +486,8 @@ export function PlanSetup({
       {alignmentReview}
       {pendingPlan && hasYieldRoute && riskDisclosure}
 
-      {showReview && <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html">{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html">{t("plan.legal.privacy")}</a>.</p>}
+      {showReview && <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("terms"); }}>{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("privacy"); }}>{t("plan.legal.privacy")}</a>.</p>}
+      {legalDocument && <PlanLegalDialog document={legalDocument} onClose={() => setLegalDocument(null)} />}
       {validationReason && pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
         && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
