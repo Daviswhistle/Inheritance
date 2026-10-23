@@ -222,15 +222,30 @@ final class HostTests: XCTestCase {
     private func assertVisibleInput(_ input: XCUIElement, in web: XCUIElement,
                                     app: XCUIApplication, height: CGFloat,
                                     text: String, screenshot name: String) {
+        let inputLabel = input.label
         var lastGeometry = ""
         var stableSince: Date?
         var observations = 0
         var lastInvalidGeometry = ""
         let visibleAndStable = NSPredicate { _, _ in
-            let field = input.frame
-            let keyboard = app.keyboards.firstMatch
-            let done = app.buttons["Done"].firstMatch
-            let raw = app.staticTexts["test-host-status"].value as? String ?? ""
+            // One AX snapshot per sample keeps geometry coherent and avoids
+            // spending the entire waiter deadline on repeated remote queries.
+            guard let snapshot = try? app.snapshot() else {
+                stableSince = nil; observations = 0; return false
+            }
+            let nodes = self.flattenedSnapshots(snapshot)
+            guard let inputSnapshot = nodes.first(where: { $0.elementType == .textField && $0.label == inputLabel }),
+                  let webSnapshot = nodes.first(where: { $0.elementType == .webView && !$0.frame.isEmpty }),
+                  let keyboardSnapshot = nodes.first(where: { $0.elementType == .keyboard && !$0.frame.isEmpty }),
+                  let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty }),
+                  let statusSnapshot = nodes.first(where: { $0.identifier == "test-host-status" }) else {
+                stableSince = nil; observations = 0; return false
+            }
+            let field = inputSnapshot.frame
+            let webFrame = webSnapshot.frame
+            let keyboardFrame = keyboardSnapshot.frame
+            let doneFrame = doneSnapshot.frame
+            let raw = statusSnapshot.value as? String ?? ""
             guard let data = raw.data(using: .utf8),
                   let metrics = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                   let rect = metrics["input"] as? [String: Any],
@@ -240,12 +255,11 @@ final class HostTests: XCTestCase {
                   let cssHeight = rect["height"] as? Double,
                   let offset = viewport["offsetTop"] as? Double,
                   let visibleHeight = viewport["height"] as? Double,
-                  let scale = viewport["scale"] as? Double,
-                  keyboard.exists, done.exists else {
+                  let scale = viewport["scale"] as? Double else {
                 if raw != lastInvalidGeometry { print("INPUT METRICS NOT READY \(name): \(raw)"); lastInvalidGeometry = raw }
                 stableSince = nil; observations = 0; return false
             }
-            let occlusion = min(min(keyboard.frame.minY, done.frame.minY), web.frame.maxY)
+            let occlusion = min(min(keyboardFrame.minY, doneFrame.minY), webFrame.maxY)
             // Both full CSS geometry and native geometry must fit. A clipped
             // accessibility rectangle with only the top border is not a pass.
             let fullTop = CGFloat(native[1] + (cssTop - offset) * scale)
@@ -254,27 +268,26 @@ final class HostTests: XCTestCase {
                 && (metrics["actionsHidden"] as? Bool == true)
                 && (metrics["navigationHidden"] as? Bool == true)
             let valid = editingControlsHidden && (metrics["inputUnobscured"] as? Bool == true)
+                && (inputSnapshot.value as? String == text)
                 && field.height >= height - 1
-                && cssHeight >= Double(height - 1) && field.minY >= web.frame.minY
-                && field.maxY <= occlusion && fullTop >= web.frame.minY
+                && cssHeight >= Double(height - 1) && field.minY >= webFrame.minY
+                && field.maxY <= occlusion && fullTop >= webFrame.minY
                 && fullBottom <= occlusion && cssTop >= offset
                 && cssBottom <= offset + visibleHeight
-            let geometry = "\(field)|\(keyboard.frame)|\(done.frame)|\(raw)"
+            let geometry = "\(field)|\(webFrame)|\(keyboardFrame)|\(doneFrame)|\(raw)"
             guard valid else {
                 if geometry != lastInvalidGeometry { print("INPUT GEOMETRY INVALID \(name): \(geometry)"); lastInvalidGeometry = geometry }
                 stableSince = nil; observations = 0; return false
             }
-            // XCTest may throw when asking hittability of a fully occluded
-            // element. Check bounds first so rotation can settle before asking.
-            guard input.isHittable else { stableSince = nil; observations = 0; return false }
             if geometry != lastGeometry || stableSince == nil {
                 lastGeometry = geometry; stableSince = Date(); observations = 1; return false
             }
             observations += 1
             return observations >= 3 && Date().timeIntervalSince(stableSince ?? Date()) >= 0.8
         }
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visibleAndStable, object: nil)], timeout: 20), .completed,
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visibleAndStable, object: nil)], timeout: 30), .completed,
                        "Entire input must remain visible after native and DOM geometry settle")
+        XCTAssertTrue(input.isHittable, "The geometrically verified input must remain hittable")
         print("INPUT GEOMETRY \(name): \(app.staticTexts["test-host-status"].value ?? "missing")")
         XCTAssertFalse(web.buttons["Review plan"].exists, "Review actions must remain hidden during every keyboard phase")
         for label in ["Home", "Assets", "Plan", "Help"] {
@@ -283,6 +296,12 @@ final class HostTests: XCTestCase {
         capture(name, app)
         XCTAssertTrue(visibleAndStable.evaluate(with: nil), "Input geometry must stay valid through screenshot capture")
         print("INPUT GEOMETRY AFTER \(name): \(app.staticTexts["test-host-status"].value ?? "missing")")
+    }
+
+    private func flattenedSnapshots(_ root: any XCUIElementSnapshot) -> [any XCUIElementSnapshot] {
+        var result: [any XCUIElementSnapshot] = [root]
+        for child in root.children { result.append(contentsOf: flattenedSnapshots(child)) }
+        return result
     }
 
     private func hostJSON(_ path: String, body: [String: Any]? = nil) throws -> [String: Any] {
