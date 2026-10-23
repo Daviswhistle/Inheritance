@@ -76,7 +76,6 @@ export function PlanSetup({
   const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const wasReviewingRef = useRef(false);
   const createClickLocked = useRef(false);
-  const [keyboardOffset, setKeyboardOffset] = useState<number | null>(null);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -90,7 +89,6 @@ export function PlanSetup({
         const editing = active instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(active.type);
         const keyboard = editing && viewport.scale === 1 && viewport.height < fullHeight - 120;
         document.documentElement.toggleAttribute("data-plan-keyboard", keyboard);
-        setKeyboardOffset(keyboard ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : null);
         if (keyboard && active instanceof HTMLElement) {
           const rect = active.getBoundingClientRect();
           const actionHeight = document.querySelector(".plan-primary-actions")?.getBoundingClientRect().height ?? 0;
@@ -439,7 +437,7 @@ export function PlanSetup({
       {validationReason && pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
         && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
-      {!pendingPlan && <div className="plan-primary-actions" ref={actionRef} style={keyboardOffset === null ? undefined : { bottom: keyboardOffset + 24 }}>
+      {!pendingPlan && <div className="plan-primary-actions" ref={actionRef}>
       <p className="plan-action-hint" role="status">{validationReason || t(showReview ? "plan.action.confirmHint" : "plan.action.reviewHint")}</p>
       {showReview
         ? <div className="plan-step-actions">

@@ -12,7 +12,8 @@ export function useActionClearance(active = true) {
     const measure = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const bottom = Number.parseFloat(getComputedStyle(action).bottom) || 0;
+        const style = getComputedStyle(action);
+        const bottom = style.display === "none" ? 0 : Number.parseFloat(style.bottom) || 0;
         main.style.paddingBottom = `${Math.ceil(action.getBoundingClientRect().height + bottom + 32)}px`;
       });
     };

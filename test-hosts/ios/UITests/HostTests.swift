@@ -30,11 +30,17 @@ final class HostTests: XCTestCase {
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         recipient.typeText("@sam")
+        XCTAssertFalse(web.buttons["Review plan"].exists, "Fixed review action must not cover keyboard input")
         capture("native-keyboard", app)
         XCUIDevice.shared.orientation = .landscapeLeft
+        let landscape = NSPredicate { _, _ in app.frame.width > app.frame.height }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
+        Thread.sleep(forTimeInterval: 1) // Finish UIKit rotation before recording the screen.
         XCTAssertEqual(recipient.value as? String, "@sam")
         capture("landscape-input-preserved", app)
         XCUIDevice.shared.orientation = .portrait
+        let portrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: portrait, object: nil)], timeout: 10), .completed)
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(recipient.waitForExistence(timeout: 15))
