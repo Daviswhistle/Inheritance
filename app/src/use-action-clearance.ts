@@ -13,7 +13,11 @@ export function useActionClearance(active = true) {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const style = getComputedStyle(action);
-        const bottom = style.display === "none" ? 0 : Number.parseFloat(style.bottom) || 0;
+        // WKWebView can keep the layout viewport tall while the keyboard only
+        // shrinks visualViewport. Retain enough scroll range to bring a lower
+        // input above that occluded area even when fixed actions are hidden.
+        const occluded = Math.max(0, window.innerHeight - (window.visualViewport?.height ?? window.innerHeight));
+        const bottom = style.display === "none" ? occluded : Number.parseFloat(style.bottom) || 0;
         main.style.paddingBottom = `${Math.ceil(action.getBoundingClientRect().height + bottom + 32)}px`;
       });
     };
