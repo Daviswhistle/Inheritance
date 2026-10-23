@@ -115,6 +115,19 @@ deadlineTimer.unref();
 let proxy;
 let provider;
 let deploymentGas;
+async function setLocalChainId(chainId) {
+  // Anvil mining clones the full EVM environment and writes it back when the
+  // block completes. A concurrent setChainId can therefore be overwritten by
+  // the old mining snapshot. Drain that work through the mining mutex, then
+  // verify the actual chain; retry only this local fixture configuration.
+  // Never spoof eth_chainId or retry a production finalizer invocation.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await provider.send("anvil_setChainId", [chainId]);
+    await provider.send("evm_mine", []);
+    if (BigInt(await provider.send("eth_chainId", [])) === BigInt(chainId)) return;
+  }
+  assert.fail(`Anvil did not retain fixture chain ID ${chainId} after mining barriers`);
+}
 const behavior = { sends: [], requests: 0, hiddenReceipts: false, droppedResponse: false,
   chainId: null, oracleQuote: null, receiptExtra: null, renewedBeforeSimulation: null,
   rpcErrorMethod: null, rpcErrorAddress: null, historicalReadErrorSelector: null, finalizedBlock: null, requestLimit: null };
@@ -1336,7 +1349,7 @@ try {
     // OP fee RPCs. Oracle prices and receipt metadata remain local fixtures.
     const worldChainIdentity = mode === "cash" || mode === "exhausted-strategy";
     if (worldChainIdentity) {
-      await provider.send("anvil_setChainId", [480]);
+      await setLocalChainId(480);
       behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
       Object.assign(f.env, { FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001" });
     }
@@ -1346,7 +1359,7 @@ try {
     try { result = await runFinalizerCycle(f.env); } finally {
       behavior.requestLimit = null;
       if (worldChainIdentity) {
-        await provider.send("anvil_setChainId", [31337]);
+        await setLocalChainId(31337);
         behavior.oracleQuote = null; behavior.receiptExtra = null;
       }
     }
@@ -1573,7 +1586,7 @@ try {
     const f = await productionUSDCFixture("cash");
     Object.assign(f.env, { FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001",
       FINALIZER_DAILY_GAS_CAP_ETH: "0" });
-    await provider.send("anvil_setChainId", [480]);
+    await setLocalChainId(480);
     await configureGasFunding(f.env);
     behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
     const rollback = await provider.send("evm_snapshot", []);
@@ -1650,7 +1663,7 @@ try {
         2n * originalSpend);
     });
     assert.ok(await f.usdc.balanceOf(heirAddress) > 0n);
-    await provider.send("anvil_setChainId", [31337]);
+    await setLocalChainId(31337);
     behavior.oracleQuote = null; behavior.receiptExtra = null;
   }
 
@@ -1988,7 +2001,7 @@ try {
     Object.assign(f.env, { YIELD_FACTORY_ADDRESS: primary.target,
       LEGACY_YIELD_FACTORY_ADDRESSES: [firstLegacy.target, secondLegacy.target].join(","),
       FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001", FINALIZER_DAILY_GAS_CAP_ETH: "0" });
-    await provider.send("anvil_setChainId", [480]);
+    await setLocalChainId(480);
     await configureGasFunding(f.env);
     behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
     const firstStart = behavior.requests;
@@ -2013,7 +2026,7 @@ try {
       assert.equal(sentTo, expectedSource);
       assert.equal(f.store.native.prepare("SELECT state FROM finalizer_jobs").get().state, "confirmed");
     });
-    await provider.send("anvil_setChainId", [31337]);
+    await setLocalChainId(31337);
     behavior.oracleQuote = null; behavior.receiptExtra = null;
   }
   {
@@ -2030,7 +2043,7 @@ try {
     Object.assign(f.env, { LEGACY_YIELD_FACTORY_ADDRESSES: wldLegacy.join(","),
       LEGACY_USDC_YIELD_FACTORY_ADDRESSES: usdcLegacy.join(","), FINALIZER_CHAIN_ID: "480",
       FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001", FINALIZER_DAILY_GAS_CAP_ETH: "0" });
-    await provider.send("anvil_setChainId", [480]);
+    await setLocalChainId(480);
     await configureGasFunding(f.env);
     const requests = behavior.requests;
     behavior.requestLimit = requests + 50;
@@ -2049,7 +2062,7 @@ try {
       assert.ok(count <= 50, `used ${count} external requests`);
       console.log("  maximum configured health HTTP requests: " + count);
     });
-    await provider.send("anvil_setChainId", [31337]);
+    await setLocalChainId(31337);
   }
   for (const [limit, value] of [
     ["FINALIZER_MAX_GAS", "1"],
@@ -2167,7 +2180,7 @@ try {
     // Local Anvil changes chain identity only for this final case. Its OP fee
     // oracle/receipt metadata are fixtures, so this verifies RPC request count,
     // not real World Chain fee levels or protocol bytecode.
-    await provider.send("anvil_setChainId", [480]);
+    await setLocalChainId(480);
     behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
     f.env.FINALIZER_CHAIN_ID = "480";
     f.env.FINALIZER_EXTRA_FEE_RESERVE_ETH = "0.000001";
@@ -2178,7 +2191,7 @@ try {
       assert.equal(result.reason, "finalized", JSON.stringify(result));
       assert.ok(behavior.requests - before <= 50, String(behavior.requests - before));
     });
-    await provider.send("anvil_setChainId", [31337]);
+    await setLocalChainId(31337);
     behavior.oracleQuote = null; behavior.receiptExtra = null;
   }
   {
@@ -2193,7 +2206,7 @@ try {
     await provider.send("evm_increaseTime", [86400]); await provider.send("evm_mine", []);
     await (await f.yieldFactory.connect(heir).fileClaimFor(otherVault)).wait();
     await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
-    await provider.send("anvil_setChainId", [480]);
+    await setLocalChainId(480);
     behavior.oracleQuote = 0n; behavior.receiptExtra = 0n;
     Object.assign(f.env, { FINALIZER_CHAIN_ID: "480", FINALIZER_EXTRA_FEE_RESERVE_ETH: "0.000001", FINALIZER_BATCH_SIZE: "5" });
     for (let cycle = 0; cycle < 2; cycle++) {
@@ -2211,7 +2224,7 @@ try {
     }
     assert.equal(f.store.native.prepare("SELECT count(*) AS n FROM finalizer_jobs WHERE state='confirmed'").get().n, 2);
     assert.equal((await readFinalizerHealth(f.env)).batchSize, 1);
-    await provider.send("anvil_setChainId", [31337]);
+    await setLocalChainId(31337);
     behavior.oracleQuote = null; behavior.receiptExtra = null;
   }
   {
