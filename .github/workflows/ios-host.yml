@@ -1,0 +1,66 @@
+name: iOS native host
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'test-hosts/ios/**'
+      - 'scripts/test-host/**'
+      - '.github/workflows/ios-host.yml'
+  pull_request:
+    paths:
+      - 'test-hosts/ios/**'
+      - 'scripts/test-host/**'
+      - '.github/workflows/ios-host.yml'
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.3.2
+      - name: Prepare real SDK and native project
+        run: |
+          pnpm --dir app install --frozen-lockfile
+          brew install xcodegen
+          cd test-hosts/ios
+          xcodegen generate
+      - name: Start isolated chain and mini app
+        run: |
+          node scripts/test-host/start.mjs > "$RUNNER_TEMP/host.log" 2>&1 &
+          for attempt in {1..120}; do
+            if curl -fsS http://localhost:7777/__host/config > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/host.log"
+          exit 1
+      - name: Build and exercise iPhone simulator
+        run: |
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
+          DEVICE=$(python3 -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/devices.json")); print(next(x["udid"] for k,v in d["devices"].items() if "iOS" in k for x in v if "iPhone" in x["name"]))')
+          xcodebuild test -project test-hosts/ios/InheritanceTestHost.xcodeproj \
+            -scheme InheritanceTestHost -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE" \
+            -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/iOS.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Save native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-native-evidence
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/iOS.xcresult
+            ${{ runner.temp }}/host.log
+            ${{ runner.temp }}/devices.json

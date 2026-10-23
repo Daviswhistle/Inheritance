@@ -39,10 +39,23 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
+  InheritanceHostUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: InheritanceTestHost
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: InheritanceTestHost
 schemes:
   InheritanceTestHost:
     build:
       targets:
         InheritanceTestHost: all
+    test:
+      config: Debug
+      targets: [InheritanceHostUITests]
     run:
       config: Debug
