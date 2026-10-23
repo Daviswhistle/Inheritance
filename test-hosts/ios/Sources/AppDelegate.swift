@@ -160,7 +160,8 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                   sameOrigin(webView.url), var metrics = message.body as? [String: Any] else { return }
             let frame = webView.convert(webView.bounds, to: view.window)
             metrics["nativeWebView"] = [frame.minX, frame.minY, frame.width, frame.height]
-            metrics["keyboardGuide"] = NSStringFromCGRect(view.keyboardLayoutGuide.layoutFrame)
+            let keyboardFrame = view.keyboardLayoutGuide.layoutFrame
+            metrics["keyboardGuide"] = [keyboardFrame.minX, keyboardFrame.minY, keyboardFrame.width, keyboardFrame.height]
             if let data = try? JSONSerialization.data(withJSONObject: metrics, options: [.sortedKeys]),
                let value = String(data: data, encoding: .utf8) { status.accessibilityValue = value }
             return
