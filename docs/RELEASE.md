@@ -15,6 +15,14 @@ and support. Empty balances, risk consent and recovery remain explicit. Final
 over-balance/self-recipient errors and rejected-approval recovery. The English
 Help language label no longer repeats "Language".
 
+The adversarial UX pass also found that a cancelled additional deposit could
+leave its recovery controls below existing plan settings. On first recovery
+display or return from a wallet action, the app now focuses and reveals the
+recovery heading. Background reads retain the reader's scroll/focus. A persisted
+WebKit regression verifies the complete recovery action at 320px, unchanged
+on-chain balances after rejection and the exact `1.000001` amount after editing.
+The complete WebKit suite passed **12 groups / 29 layouts** after the fix.
+
 Store artwork was regenerated from current app captures. The income showcase
 now explicitly describes loss recovery, investment losses and cash liquidity;
 it does not imply guaranteed principal. All seven PNGs meet their dimensions,

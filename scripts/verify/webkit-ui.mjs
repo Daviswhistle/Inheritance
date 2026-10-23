@@ -192,6 +192,36 @@ try {
   const vaults = [wldVault, usdcVault].map(address => new Contract(address,
     ['function lastPing() view returns(uint256)', 'function costBasis() view returns(uint256)'], provider));
   const snapshot = () => Promise.all(vaults.map(async vault => [String(await vault.lastPing()), String(await vault.costBasis())]));
+  const beforeRejectedSetup = await snapshot();
+  await page.setViewportSize({ width: 320, height: 640 });
+  await tab(page, 2); await tap(page, '내 플랜에 자산 추가');
+  await page.locator('#plan-usdc').fill('1.000001');
+  await tap(page, '플랜 검토');
+  await page.locator('#yield-consent').check();
+  await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.rejectNext('send-transaction'));
+  await tap(page, '승인하고 예치');
+  await page.waitForFunction(() => document.activeElement?.id === 'plan-resume-title');
+  const resumeButton = page.getByRole('button', { name: '남은 설정 이어하기', exact: true });
+  const resumeBox = await resumeButton.boundingBox();
+  const tabBox = await page.locator('.tab-bar').boundingBox();
+  assert.ok(resumeBox && tabBox && resumeBox.y >= 0 && resumeBox.y + resumeBox.height <= tabBox.y);
+  assert.deepEqual(await snapshot(), beforeRejectedSetup);
+  await page.screenshot({ path: out + '/rejected-setup-recovery-ko-320.png' });
+  // Once shown, a background refresh must not pull the reader back down.
+  await page.getByRole('button', { name: '남은 설정 수정', exact: true }).focus();
+  const refreshingRecovery = page.waitForResponse(response => response.url().endsWith('/__host/rpc'));
+  await page.evaluate(() => { scrollTo(0, 0); document.dispatchEvent(new Event('visibilitychange')); });
+  await refreshingRecovery;
+  await sleep(300);
+  assert.equal(await page.evaluate(() => scrollY), 0);
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), '남은 설정 수정');
+  await tab(page, 3); await tab(page, 2);
+  await page.waitForFunction(() => document.activeElement?.id === 'plan-resume-title');
+  await tap(page, '남은 설정 수정');
+  await page.locator('#plan-usdc').waitFor();
+  assert.equal(await page.locator('#plan-usdc').inputValue(), '1.000001');
+  await page.setViewportSize({ width: 390, height: 844 });
+  pass('Rejected added funds focus the visible recovery action at 320px; refresh preserves reader focus/scroll and editing retains the exact amount');
   const beforeOutage = await snapshot();
   const commandCount = () => page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length);
   const beforeCommands = await commandCount();
