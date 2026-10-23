@@ -51,6 +51,7 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
         Thread.sleep(forTimeInterval: 1) // Finish UIKit rotation before recording the screen.
         XCTAssertEqual(recipient.value as? String, "@sam")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: inputAboveKeyboard, object: nil)], timeout: 10), .completed, "Landscape input must remain above keyboard")
         capture("landscape-input-preserved", app)
         XCUIDevice.shared.orientation = .portrait
         let portrait = NSPredicate { _, _ in app.frame.height > app.frame.width }

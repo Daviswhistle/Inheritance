@@ -92,10 +92,14 @@ export function PlanSetup({
         if (keyboard && active instanceof HTMLElement) {
           const rect = active.getBoundingClientRect();
           const actionHeight = document.querySelector(".plan-primary-actions")?.getBoundingClientRect().height ?? 0;
-          const visibleTop = viewport.offsetTop + 80;
-          const visibleBottom = viewport.offsetTop + viewport.height - 24 - actionHeight - 16;
-          if (rect.bottom > visibleBottom) window.scrollBy(0, Math.ceil(rect.bottom - visibleBottom));
-          else if (rect.top < visibleTop) window.scrollBy(0, Math.floor(rect.top - visibleTop));
+          // A landscape keyboard can leave less than 80px of web content. Keep
+          // both bounds compatible with the input height instead of alternating
+          // between an impossible top/bottom position on every viewport scroll.
+          const edge = Math.min(16, Math.max(0, (viewport.height - rect.height - actionHeight) / 2));
+          const visibleBottom = viewport.offsetTop + viewport.height - actionHeight - edge;
+          const visibleTop = viewport.offsetTop + Math.min(80, Math.max(0, viewport.height - actionHeight - rect.height - edge));
+          if (rect.bottom > visibleBottom + 1) window.scrollBy(0, Math.ceil(rect.bottom - visibleBottom));
+          else if (rect.top < visibleTop - 1) window.scrollBy(0, Math.floor(rect.top - visibleTop));
         }
       });
     };
