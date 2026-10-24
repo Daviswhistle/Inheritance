@@ -14,6 +14,12 @@ The gas-refill fork test now honors that block. The manual `worldchain-forks.yml
 workflow retains logs and receipt for 90 days and fails on any skipped or missing
 suite. No product runtime or deployed contract changed in this follow-up.
 
+Follow-up verification commit: `b09627748594e84660b1683dc0a41479c08d8ad1`.
+[World Chain fork acceptance 40091745672](https://github.com/Daviswhistle/Inheritance/actions/runs/40091745672)
+passed; the downloaded receipt confirms a clean tree, the same block hash, 21
+passes and zero skips. [CI 40091742269](https://github.com/Daviswhistle/Inheritance/actions/runs/40091742269)
+passed all three jobs (contracts, Mini App and notification backend).
+
 Official must-have requirements and recommendations are distinguished in
 [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md). Korea was confirmed as the operator's
 country; distribution countries remain unchanged. Concrete scope questions are
