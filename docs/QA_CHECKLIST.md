@@ -2,6 +2,20 @@
 
 Use current evidence, not checked boxes copied from a previous release. Local release results and acceptance criteria are in `docs/RELEASE.md`; deployment receipts are the GitHub Actions runs for the exact release commit. Verify live automation separately through its health cycle.
 
+## October 24 guideline checks
+
+- Run `node scripts/check-natspec.mjs` for all public/external contract handlers.
+- Run `forge coverage --report summary --ir-minimum > coverage-summary.txt` and
+  `node scripts/check-custody-coverage.mjs coverage-summary.txt`; preserve the
+  actual report and distinguish line from branch coverage.
+- Pre-login Privacy/Terms links open and close without a wallet request. The
+  data/session disclosure appears before Continue; guest navigation remains usable.
+- During keyboard editing, financial actions stay hidden. At >=240px visible
+  height the compact Done control is hittable, 44px tall, and 24px above the
+  keyboard; input remains above it. At shorter heights native dismissal is used.
+- Stalled nonce headers and verification bodies abort; no session is saved,
+  and a fresh explicit sign-in still succeeds.
+
 ## Required local checks
 
 - Foundry formatting, contract build and full suite; generated custom error ABI matches.

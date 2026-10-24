@@ -85,6 +85,14 @@ try {
   }
   assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => ['wallet-auth', 'send-transaction'].includes(x.command)).length), 0);
   pass('Both languages and all four guest tabs reflow at 320/390px without requesting a wallet');
+  await tab(page, 0);
+  assert.ok((await page.locator('.entry-consent').textContent()).trim().length > 30);
+  await page.locator('.entry-consent a[href="/privacy.html"]').tap();
+  await page.locator('.plan-legal-dialog').waitFor({ state: 'visible' });
+  await page.keyboard.press('Escape');
+  await page.locator('.plan-legal-dialog').waitFor({ state: 'detached' });
+  assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => ['wallet-auth', 'send-transaction'].includes(x.command)).length), 0);
+  pass('Privacy and terms are available before explicit sign-in consent, without a wallet request');
   // Simulate a keyboard-reduced visual viewport while retaining the layout
   // viewport, then deliver a separate layout scroll as WKWebView can do after
   // rotation. This is an event/geometry regression, not native-keyboard proof.
@@ -139,6 +147,18 @@ try {
       });
       assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), false);
       assert.equal(await editingPage.locator('.tab-bar').isVisible(), false);
+      if (height >= 240) {
+        await editingPage.waitForFunction(() => {
+          const button = document.querySelector('.plan-keyboard-done');
+          const r = button.getBoundingClientRect();
+          const input = document.getElementById('heir-input').getBoundingClientRect();
+          const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return getComputedStyle(button).display !== 'none' && Math.abs(visualViewport.height - r.bottom - 24) < 2
+            && r.height >= 44 && input.bottom <= r.top && (hit === button || button.contains(hit));
+        });
+      } else {
+        assert.equal(await editingPage.locator('.plan-keyboard-done').isVisible(), false);
+      }
     }
     await editingPage.evaluate(() => {
       document.dispatchEvent(new Event('visibilitychange'));
@@ -150,10 +170,10 @@ try {
     assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), false);
     assert.equal(await editingPage.locator('.tab-bar').isVisible(), false);
     assert.equal(await editingPage.locator('#heir-input').inputValue(), config.heir);
-    await editingPage.locator('#heir-input').blur();
+    await editingPage.getByRole('button', { name: 'Done', exact: true }).tap();
     await editingPage.waitForFunction(() => !document.documentElement.hasAttribute('data-plan-keyboard'));
   } finally { await editingContext.close(); }
-  pass('Keyboard clearance settles after layout scrolling and preserves hidden actions across resized portrait/landscape/foreground transitions');
+  pass('Keyboard Done is hittable 24px above the keyboard, dismisses editing without submission, and preserves portrait/landscape/foreground input clearance');
   await tab(page, 2); await tap(page, 'World App으로 계속하기');
   await page.locator('#heir-input').fill(config.heir);
   await page.locator('#plan-wld').fill('10');

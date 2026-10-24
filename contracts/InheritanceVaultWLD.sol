@@ -383,6 +383,7 @@ contract InheritanceVaultWLD {
     // `fallback` 을 두지 않는다 — payable fallback 이 붙으면 이 컨트랙트 타입이
     // payable 로 승격되어 상위에서 `payable(...)` 캐스팅을 강제하게 된다.
     // 빈 calldata 전송은 `receive` 로, 그 외 모든 미지 시그니처는 revert 로 차단된다.
+    /// @notice Reject direct native ETH deposits; this vault accepts its configured ERC20 assets.
     receive() external payable {
         revert EthNotAccepted();
     }

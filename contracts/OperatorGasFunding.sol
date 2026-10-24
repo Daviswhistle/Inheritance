@@ -8,8 +8,11 @@ import {YieldMath} from "./libraries/YieldMath.sol";
 import {GasPriceMath} from "./libraries/GasPriceMath.sol";
 
 interface IFundingPool {
+    /// @notice Read cumulative pool observations for the supplied lookback times.
     function observe(uint32[] calldata) external view returns (int56[] memory, uint160[] memory);
+    /// @notice Read the pool's current price, tick, observation state and lock state.
     function slot0() external view returns (uint160, int24, uint16, uint16, uint16, uint8, bool);
+    /// @notice Return the pool's current in-range liquidity.
     function liquidity() external view returns (uint128);
 }
 
@@ -21,10 +24,12 @@ interface IFundingRouter {
         uint256 amountInMaximum;
     }
 
+    /// @notice Swap through the supplied path for an exact output subject to the maximum input and deadline.
     function exactOutput(ExactOutputParams calldata) external payable returns (uint256 amountIn);
 }
 
 interface IFundingWETH {
+    /// @notice Withdraw the specified assets under the external token or vault interface's authorization rules.
     function withdraw(uint256) external;
 }
 
@@ -108,22 +113,26 @@ contract OperatorGasFunding {
         dailyBudgetUSDC = budget_;
     }
 
+    /// @notice Allow only the operator treasury to set the daily gas-funding budget in USDC base units.
     function setDailyBudget(uint256 amount) external onlyTreasury {
         dailyBudgetUSDC = amount;
         emit BudgetUpdated(amount);
     }
 
+    /// @notice Allow only the operator treasury to pause or resume gas refills.
     function setPaused(bool value) external onlyTreasury {
         paused = value;
         emit PauseUpdated(value);
     }
 
+    /// @notice Return ETH needed by the fixed keeper and bot when either wallet is below its low-water mark.
     function needed() public view returns (uint256 keeperETH, uint256 botETH) {
         if (keeper.balance >= KEEPER_LOW && bot.balance >= BOT_LOW) return (0, 0);
         keeperETH = keeper.balance < KEEPER_TARGET ? KEEPER_TARGET - keeper.balance : 0;
         botETH = bot.balance < BOT_TARGET ? BOT_TARGET - bot.balance : 0;
     }
 
+    /// @notice Return the unspent USDC-equivalent gas-funding budget for the current rolling daily window.
     function remainingBudget() public view returns (uint256) {
         uint256 spent = block.timestamp >= windowStartedAt + 1 days ? 0 : windowSpentUSDC;
         return spent < dailyBudgetUSDC ? dailyBudgetUSDC - spent : 0;
@@ -265,6 +274,7 @@ contract OperatorGasFunding {
         else SafeERC20Lib.safeTransfer(token, treasury, IERC20(token).balanceOf(address(this)));
     }
 
+    /// @notice Accept native ETH only from the fixed WETH contract during gas refills.
     receive() external payable {
         if (msg.sender != WETH) revert NotAuthorized();
     }

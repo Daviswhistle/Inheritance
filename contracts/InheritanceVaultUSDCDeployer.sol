@@ -32,6 +32,7 @@ contract InheritanceVaultUSDCDeployer {
         creationCodeLength = type(InheritanceVaultUSDC).creationCode.length;
     }
 
+    /// @notice Deploy an immutable vault only for the factory that created this deployer.
     function createVault(address owner, address heir, uint256 interval) external returns (address) {
         if (msg.sender != factory) revert NotFactory();
         return ImmutableCreationCode.create(

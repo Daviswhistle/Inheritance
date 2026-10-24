@@ -13,6 +13,8 @@
 /* Leave the reduced viewport to the focused field; Done restores navigation/actions. */
 html[data-plan-keyboard] .tab-bar,
 html[data-plan-keyboard] .plan-primary-actions { display: none; }
+.plan-keyboard-done { display: none; }
+html[data-plan-keyboard-toolbar] .plan-keyboard-done { display: flex; position: fixed; z-index: 29; right: 24px; bottom: var(--plan-keyboard-bottom); height: 44px; min-width: 64px; background: var(--paper, #fff); box-shadow: 0 2px 12px #142d2733; }
 html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-content { padding-bottom: 200px; }
 .plan-setup-card .card-header { padding: 17px 18px 13px; border-color: #e4e8dc; background: #fbfcf6; }
 .plan-setup-card .eyebrow { color: #5f795e; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }

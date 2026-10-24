@@ -108,30 +108,36 @@ contract InheritanceVaultTokens {
     }
 
     // ===== Views =====
+    /// @notice Return whether the heartbeat deadline has passed; this does not authenticate the caller.
     function canClaim() public view returns (bool) {
         return block.timestamp >= lastPing + heartbeatInterval;
     }
 
+    /// @notice Return seconds until heartbeat expiry, or zero once the countdown is no longer active.
     function timeRemaining() external view returns (uint256) {
         if (canClaim()) return 0;
         uint256 due = lastPing + heartbeatInterval;
         return due > block.timestamp ? (due - block.timestamp) : 0;
     }
 
+    /// @notice Return the current heartbeat deadline as a Unix timestamp.
     function deadline() external view returns (uint256) {
         return lastPing + heartbeatInterval;
     }
 
+    /// @notice Return the bounded list of tokens included in this vault's inheritance arrangement.
     function allowedTokens() external view returns (address[] memory) {
         return _allowedTokens;
     }
 
     // ===== Owner controls (만기 전) =====
+    /// @notice Allow only the owner to renew the timer before expiry.
     function ping() external onlyOwnerBeforeExpiry {
         lastPing = block.timestamp;
         emit Ping(lastPing);
     }
 
+    /// @notice Allow only the owner to replace the heir before expiry.
     function updateHeir(address _newHeir) external onlyOwnerBeforeExpiry {
         if (_newHeir == address(0)) revert InvalidAddress();
         address old = heir;
@@ -139,6 +145,7 @@ contract InheritanceVaultTokens {
         emit HeirUpdated(old, _newHeir);
     }
 
+    /// @notice Allow only the owner to set a permitted heartbeat interval before expiry.
     function updateHeartbeat(uint256 _newInterval) external onlyOwnerBeforeExpiry {
         if (_newInterval < MIN_HEARTBEAT || _newInterval > MAX_HEARTBEAT) revert HeartbeatOutOfRange();
         uint256 old = heartbeatInterval;
@@ -154,6 +161,7 @@ contract InheritanceVaultTokens {
         emit InheritanceCanceled(owner);
     }
 
+    /// @notice Allow the owner to add a token to the bounded inheritance list.
     function addAllowedToken(address token) external onlyOwnerBeforeExpiry {
         if (token == address(0)) revert InvalidAddress();
         if (!isAllowedToken[token]) {
@@ -164,6 +172,7 @@ contract InheritanceVaultTokens {
         }
     }
 
+    /// @notice Allow the owner to remove a token from the inheritance list.
     function removeAllowedToken(address token) external onlyOwnerBeforeExpiry {
         if (!isAllowedToken[token]) return;
         isAllowedToken[token] = false;
@@ -238,6 +247,7 @@ contract InheritanceVaultTokens {
 
     // ===== Reject ETH outright =====
     // WLD 금고와 동일하게 payable `fallback` 을 두지 않는다.
+    /// @notice Reject direct native ETH deposits; this vault accepts its configured ERC20 assets.
     receive() external payable {
         revert EthNotAccepted();
     }

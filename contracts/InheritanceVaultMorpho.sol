@@ -151,51 +151,63 @@ contract InheritanceVaultMorpho {
         emit Ping(lastPing);
     }
 
+    /// @notice Return the current heartbeat deadline as a Unix timestamp.
     function deadline() public view returns (uint256) {
         return lastPing + heartbeatInterval;
     }
 
+    /// @notice Return whether the owner is before expiry with no pending or completed claim.
     function ownerStillActive() public view returns (bool) {
         return claimedAt == 0 && claimFiledAt == 0 && block.timestamp < deadline();
     }
 
+    /// @notice Return whether the heartbeat deadline has passed without a pending or completed claim.
     function isExpired() public view returns (bool) {
         return claimedAt == 0 && claimFiledAt == 0 && block.timestamp >= deadline();
     }
 
+    /// @notice Return whether the owner has disabled inheritance by naming themselves as heir.
     function inheritanceCancelled() public view returns (bool) {
         return heir != address(0) && heir == owner;
     }
 
+    /// @notice Return whether a claim has been filed and its filing timestamp remains recorded.
     function claimPending() external view returns (bool) {
         return claimFiledAt != 0;
     }
 
+    /// @notice Return the claim review deadline, or zero when no claim has been filed.
     function challengeEndsAt() public view returns (uint256) {
         return claimFiledAt == 0 ? 0 : claimFiledAt + CHALLENGE_PERIOD;
     }
 
+    /// @notice Return whether a filed claim is still within its review window.
     function challengeRunning() public view returns (bool) {
         return claimFiledAt != 0 && block.timestamp < challengeEndsAt();
     }
 
+    /// @notice Return whether a filed claim is eligible for settlement after its review window.
     function claimableNow() public view returns (bool) {
         return claimedAt == 0 && claimFiledAt != 0 && block.timestamp >= challengeEndsAt();
     }
 
+    /// @notice Return seconds until heartbeat expiry, or zero once the countdown is no longer active.
     function timeRemaining() external view returns (uint256) {
         if (claimedAt != 0 || claimFiledAt != 0 || block.timestamp >= deadline()) return 0;
         return deadline() - block.timestamp;
     }
 
+    /// @notice Return whether the vault is expired, under claim, or paid; this alone does not prove funds were transferred.
     function isSettled() external view returns (bool) {
         return claimedAt != 0 || isExpired() || claimFiledAt != 0;
     }
 
+    /// @notice Return whether the vault holds underlying tokens or strategy shares.
     function hasAssets() external view returns (bool) {
         return IERC20(WLD).balanceOf(address(this)) != 0 || strategy.balanceOf(address(this)) != 0;
     }
 
+    /// @notice Estimate underlying value of idle cash and strategy shares; this is not a cash-liquidity guarantee.
     function totalAssets() public view returns (uint256) {
         uint256 shares = strategy.balanceOf(address(this));
         return IERC20(WLD).balanceOf(address(this)) + (shares == 0 ? 0 : strategy.convertToAssets(shares));
@@ -310,10 +322,12 @@ contract InheritanceVaultMorpho {
         return IMerklDistributor(MERKL_DISTRIBUTOR).claimed(address(this), WLD);
     }
 
+    /// @notice Return cumulative canonical rewards not yet processed by the vault's reward accounting.
     function unprocessedRewards() public view returns (uint256) {
         return totalRewardsClaimed() - accountedRewards;
     }
 
+    /// @notice Allow the owner or trusted factory to renew the timer and cancel any pending claim.
     function ping() external onlyOwnerOrFactory nonReentrant {
         if (claimedAt != 0) revert Expired();
         lastPing = block.timestamp;
@@ -324,18 +338,21 @@ contract InheritanceVaultMorpho {
         emit Ping(lastPing);
     }
 
+    /// @notice Allow the active owner or trusted factory to replace the heir with a valid address.
     function updateHeir(address next) external onlyOwnerOrFactory activeOwner {
         if (next == address(0)) revert InvalidAddress();
         emit HeirUpdated(heir, next);
         heir = next;
     }
 
+    /// @notice Allow the active owner or trusted factory to set the heartbeat interval within permitted bounds.
     function updateHeartbeat(uint256 interval_) external onlyOwnerOrFactory activeOwner {
         if (interval_ < MIN_HEARTBEAT || interval_ > MAX_HEARTBEAT) revert HeartbeatOutOfRange();
         emit HeartbeatUpdated(heartbeatInterval, interval_);
         heartbeatInterval = interval_;
     }
 
+    /// @notice Allow the owner or trusted factory to cancel inheritance according to this vault's state rules.
     function cancelInheritance() external onlyOwnerOrFactory activeOwner {
         emit HeirUpdated(heir, owner);
         heir = owner;
@@ -389,6 +406,7 @@ contract InheritanceVaultMorpho {
         return _processRewards(minShares);
     }
 
+    /// @notice Process canonical rewards already received, subject to the minimum share output and fixed-beneficiary rules.
     function processRewards(uint256 minShares) external nonReentrant returns (uint256 assets) {
         return _processRewards(minShares);
     }
@@ -578,6 +596,7 @@ contract InheritanceVaultMorpho {
         emit OwnerWithdrawnWLD(to, net);
     }
 
+    /// @notice File the named heir's claim after heartbeat expiry and start the fixed review period.
     function fileClaim() external {
         if (msg.sender != heir && msg.sender != factory) revert NotHeir();
         if (claimedAt != 0) revert AlreadyClaimed();
@@ -624,6 +643,7 @@ contract InheritanceVaultMorpho {
         emit InheritanceFinalized(recipient, payout, claimedAt);
     }
 
+    /// @notice Allow the owner or factory to sweep post-settlement residual assets; canonical rewards retain their fixed beneficiary.
     function ownerSweepAfterSettlement(address to) external onlyOwnerOrFactory nonReentrant {
         _validRecipient(to);
         if (claimedAt == 0) revert NotSettled();
@@ -635,6 +655,7 @@ contract InheritanceVaultMorpho {
         if (shares != 0) _sendShares(shares, to);
     }
 
+    /// @notice Rescue unrelated ERC20 tokens under owner authorization without bypassing protected asset withdrawal rules.
     function ownerRescueUnknownERC20(address token, uint256 amount, address to)
         external
         onlyOwnerOrFactory
@@ -645,6 +666,7 @@ contract InheritanceVaultMorpho {
         SafeERC20Lib.safeTransfer(token, to, amount);
     }
 
+    /// @notice Sweep native ETH only under the vault's authorization and beneficiary rules.
     function sweepEth(address payable to) external onlyOwnerOrFactory nonReentrant {
         _validRecipient(to);
         if (address(this).balance == 0) revert NothingToTransfer();
@@ -713,6 +735,7 @@ contract InheritanceVaultMorpho {
         if (to == address(0) || to == address(this)) revert InvalidAddress();
     }
 
+    /// @notice Reject direct native ETH deposits; this vault accepts its configured ERC20 assets.
     receive() external payable {
         revert EthNotAccepted();
     }

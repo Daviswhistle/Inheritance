@@ -56,6 +56,7 @@ contract InheritanceVaultMorphoFactory {
         vaultDeployer = new InheritanceVaultMorphoDeployer(wld_, strategy_, feeRecipient_, feeBps_);
     }
 
+    /// @notice Create a vault with the supplied heir and heartbeat interval; existing owner-slot restrictions apply.
     function createVault(address heir, uint256 interval_) external nonReentrant returns (address vault) {
         if (vaultOf[msg.sender] != address(0)) revert AlreadyHasVault();
         vault = vaultDeployer.createVault(msg.sender, heir, interval_);
@@ -64,10 +65,12 @@ contract InheritanceVaultMorphoFactory {
         emit VaultCreated(msg.sender, heir, vault, interval_);
     }
 
+    /// @notice Return the vault currently registered to the caller.
     function myVault() external view returns (address) {
         return vaultOf[msg.sender];
     }
 
+    /// @notice Release the caller's registry slot only after the vault satisfies the settlement and empty-balance checks.
     function releaseMyVault() external nonReentrant returns (bool) {
         InheritanceVaultMorpho vault = _mine();
         if (!vault.isSettled()) revert NotExpired();
@@ -77,68 +80,83 @@ contract InheritanceVaultMorphoFactory {
         return true;
     }
 
+    /// @notice Transfer the caller's assets into their vault and invest, reverting if the minimum share output is not met.
     function depositWithMinShares(uint256 assets, uint256 minShares) external nonReentrant {
         InheritanceVaultMorpho vault = _mine();
         SafeERC20Lib.safeTransferFrom(WLD, msg.sender, address(vault), assets);
         vault.invest(assets, minShares);
     }
 
+    /// @notice Renew the caller's vault timer and cancel any pending inheritance claim.
     function pingMyVault() external {
         _mine().ping();
     }
 
+    /// @notice Update the caller's heir subject to the vault's active-owner checks.
     function updateMyHeir(address heir) external {
         _mine().updateHeir(heir);
     }
 
+    /// @notice Update the caller's heartbeat interval subject to the vault's active-owner checks; does not itself check in.
     function changeMyPeriod(uint256 interval_) external {
         _mine().updateHeartbeat(interval_);
     }
 
+    /// @notice Cancel the caller's inheritance arrangement using the vault's owner authorization.
     function cancelMyInheritance() external {
         _mine().cancelInheritance();
     }
 
+    /// @notice Withdraw the requested gross assets from the caller's vault to the supplied recipient, applying vault rules and any gain fee.
     function withdrawFromMyVault(address to, uint256 grossAssets) external {
         _mine().ownerWithdrawWLD(grossAssets, to);
     }
 
+    /// @notice Collect only available net income for the caller, enforcing minimum proceeds without resetting the timer.
     function withdrawIncomeFromMyVault(address to, uint256 minNetAssets) external returns (uint256 netReceived) {
         return _mine().ownerWithdrawIncome(to, minNetAssets);
     }
 
+    /// @notice Withdraw all redeemable underlying assets for the caller, enforcing minimum net proceeds.
     function withdrawAllFromMyVault(address to, uint256 minNetAssets) external {
         _mine().ownerWithdrawAllWLD(to, minNetAssets);
     }
 
+    /// @notice Withdraw strategy shares for the caller, applying the vault's accounting and gain-fee rules.
     function withdrawSharesFromMyVault(address to, uint256 shares) external {
         _mine().ownerWithdrawShares(shares, to);
     }
 
+    /// @notice Relay the owner's post-settlement residual sweep; canonical rewards retain their fixed beneficiary.
     function sweepSettledVaultFor(address to) external {
         _mine().ownerSweepAfterSettlement(to);
     }
 
+    /// @notice Rescue an unrelated token from the caller's vault; protected underlying and strategy tokens cannot bypass withdrawal rules.
     function rescueFromMyVault(address token, uint256 amount, address to) external {
         _mine().ownerRescueUnknownERC20(token, amount, to);
     }
 
+    /// @notice Relay an ETH sweep from the caller's vault under its beneficiary and authorization rules.
     function sweepEthFromMyVault(address payable to) external {
         _mine().sweepEth(to);
     }
 
+    /// @notice File a claim on a canonical vault only for its named heir; the vault enforces expiry.
     function fileClaimFor(address address_) external {
         InheritanceVaultMorpho vault = _ours(address_);
         if (vault.heir() != msg.sender) revert NotHeir();
         vault.fileClaim();
     }
 
+    /// @notice Finalize a canonical vault's claim for its named heir after the review window.
     function finalizeClaimFor(address address_) external {
         InheritanceVaultMorpho vault = _ours(address_);
         if (vault.heir() != msg.sender) revert NotHeir();
         vault.finalizeClaim();
     }
 
+    /// @notice Relay an eligible canonical vault settlement permissionlessly; proceeds go only to its fixed heir.
     function executeInheritance(address address_) external {
         _ours(address_).finalizeClaim();
     }

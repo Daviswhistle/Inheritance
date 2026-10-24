@@ -1,5 +1,31 @@
 # Release evidence
 
+## October 24, 2026 guideline remediation
+
+The operator withdrew the previous submission; Portal readback confirmed
+`unverified`. This revision adds pre-sign-in data/session consent and in-app legal
+links, explicit monitoring/recovery disclosure, a keyboard Done control 24px above
+the visible keyboard, and bounded sign-in network reads. All 203 handwritten
+public/external contract handlers now have NatSpec. Unsupported coverage settings
+were replaced with a measured CI gate. Executable Solidity is unchanged.
+
+Local checks: product UI 68 layouts; WebKit 29 layouts; Android 17 layouts/eight
+scenario groups; auth/notification authorization 77 tests; contracts 375 passed,
+zero failed and five RPC-dependent fork skips. Pinned Foundry 1.3.2 custody line
+coverage including helpers is 1201/1268 (94.72%); this is not branch coverage.
+Typecheck, lint, build, localization, CSS mapping and negative controls for the
+NatSpec/coverage gates passed. Store artwork was regenerated from the current UI.
+
+Ten Portal contracts and four Permit2 tokens remain configured. Current deployed
+entry-point/token variables were independently checked against the Portal list.
+The daily notification cap remains two and full-contact import is disabled.
+
+Real World App device acceptance, physical iPhone, human comprehension, independent
+audit and jurisdiction-specific legal clearance remain unverified. The operator
+confirmed no device/legal records are available. Details and reviewer access are
+in [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md). Remote CI, native iOS, deployment
+and resubmission receipts will be added below after completion.
+
 ## October 23, 2026 independent release and design review
 
 ### Final deployment and review submission

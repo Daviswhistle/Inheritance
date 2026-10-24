@@ -4,6 +4,22 @@ App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`
 URL: https://inheritance.pages.dev/
 Languages: English and Korean. Platform: World App iOS and Android.
 
+## October 24 guideline supplement
+
+Before sign-in, read the wallet-data/session explanation and open Privacy or
+Terms without leaving the app. Neither opening those documents nor closing them
+requests a wallet signature. During plan entry, a compact Done button sits 24px
+above the keyboard when there is room; very short landscape views preserve the
+input and use native keyboard dismissal. Final review explicitly discloses
+monitoring and device recovery storage. Sign-in network reads time out after 15
+seconds and remain retryable without storing an unverified session.
+
+All public/external contract functions now have NatSpec; CI measures custody
+line coverage rather than relying on unsupported configuration keys. Source,
+control roles, coverage limits, current evidence and unresolved real-device and
+jurisdictional review are in [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md). No
+independent audit, real World App acceptance or legal clearance is claimed.
+
 ## Response to the October 21 design review
 
 The review asked us to follow the app/design guidelines, improve UX and make

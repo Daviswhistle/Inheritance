@@ -1133,6 +1133,35 @@ try {
   globalThis.sessionStorage = storage();
   globalThis.localStorage = storage();
   globalThis.location = { origin: ORIGIN };
+  await test("frontend sign-in aborts stalled nonce headers and verification bodies without storing a session", async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (callback, ms, ...args) => realSetTimeout(callback, ms === 15_000 ? 10 : ms, ...args);
+    try {
+      for (const stage of ['nonce', 'verify-body']) {
+        frontend.clearSession();
+        let signatures = 0, aborted = false;
+        globalThis.fetch = async (url, init) => {
+          const hang = () => new Promise((_, reject) => {
+            init.signal.addEventListener('abort', () => { aborted = true; reject(new Error('offline')); }, { once: true });
+          });
+          if (stage === 'nonce') return hang();
+          if (url === '/api/auth/nonce') return Response.json({ nonce: 'a'.repeat(64) });
+          return { ok: true, json: hang };
+        };
+        let watchdog;
+        try {
+          const result = await Promise.race([
+            frontend.signInWithWorldApp(async () => { signatures++; return { ok: true, address: OWNER, message: 'fixture', signature: 'fixture' }; }),
+            new Promise((_, reject) => { watchdog = realSetTimeout(() => reject(new Error('Sign-in never stopped')), 1000); }),
+          ]);
+          assert.equal(result.ok, false);
+          assert.equal(aborted, true);
+          assert.equal(signatures, stage === 'nonce' ? 0 : 1);
+          assert.equal(frontend.readSessionAddress(), null);
+        } finally { clearTimeout(watchdog); }
+      }
+    } finally { globalThis.setTimeout = realSetTimeout; }
+  });
   await test("frontend rejects legacy address caches, stores tab session and attaches Bearer", async (context) => {
     frontend.clearSession();
     localStorage.setItem("wld-session", JSON.stringify({ address: STRANGER, at: Date.now() }));

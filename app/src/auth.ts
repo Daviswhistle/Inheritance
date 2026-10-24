@@ -7,6 +7,19 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 type Session = { address: string; token: string; expiresAt: number };
 let memorySession: Session | null = null;
 
+/** Bound both headers and body reads so an offline sign-in can be retried. */
+async function authResponse(url: string, init: RequestInit = {}): Promise<{ response: Response; data: unknown }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const data: unknown = await response.json();
+    return { response, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function origin(): string {
   return typeof location !== "undefined" ? location.origin : "";
 }
@@ -62,9 +75,9 @@ function saveSession(session: Session): void {
 
 export async function fetchAuthNonce(): Promise<string | null> {
   try {
-    const response = await fetch("/api/auth/nonce", { headers: { accept: "application/json" }, cache: "no-store" });
+    const { response, data: body } = await authResponse("/api/auth/nonce", { headers: { accept: "application/json" }, cache: "no-store" });
     if (!response.ok) return null;
-    const data = await response.json() as { nonce?: string };
+    const data = body as { nonce?: string };
     return typeof data.nonce === "string" && /^[0-9a-f]{64}$/.test(data.nonce) ? data.nonce : null;
   } catch {
     return null;
@@ -83,11 +96,11 @@ export async function signInWithWorldApp(signature: (nonce: string) => Promise<{
   const signed = await signature(nonce);
   if (!signed.ok) return signed;
   try {
-    const response = await fetch("/api/auth/verify", {
+    const { response, data: body } = await authResponse("/api/auth/verify", {
       method: "POST", headers: { "content-type": "application/json" }, cache: "no-store",
       body: JSON.stringify({ nonce, payload: { message: signed.message, signature: signed.signature, address: signed.address } }),
     });
-    const data = await response.json() as {
+    const data = body as {
       isValid?: boolean; address?: string; token?: string; expiresAt?: number; message?: string;
     };
     if (!response.ok || !data.isValid || typeof data.address !== "string" || data.address.toLowerCase() !== signed.address.toLowerCase()) {

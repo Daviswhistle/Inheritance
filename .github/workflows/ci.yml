@@ -35,6 +35,22 @@ jobs:
       - name: Test
         run: forge test -vvv
 
+      - name: Check public contract documentation
+        run: node scripts/check-natspec.mjs
+
+      - name: Measure and enforce critical custody line coverage
+        run: |
+          set -euo pipefail
+          forge coverage --report summary --ir-minimum | tee coverage-summary.txt
+          node scripts/check-custody-coverage.mjs coverage-summary.txt
+
+      - name: Save custody coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custody-coverage
+          path: coverage-summary.txt
+
       # revert 를 이름으로 해독하려면 ABI 에 커스텀 에러 항목이 있어야 한다. 예전에
       # 이게 없어서 ethers 가 revert 를 4바이트 셀렉터로만 남겼고, 사용자에게
       # `execution reverted (unknown custom error) (action=…, transaction={…})` 가

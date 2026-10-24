@@ -35,7 +35,7 @@ function isWalletAddress(value: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(value);
 }
 
-function PlanLegalDialog({ document: legalDocument, onClose }: { document: "terms" | "privacy"; onClose: () => void }) {
+export function PlanLegalDialog({ document: legalDocument, onClose }: { document: "terms" | "privacy"; onClose: () => void }) {
   const { t } = useLocale();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [visibleDocument, setVisibleDocument] = useState<"terms" | "privacy" | "yield">(legalDocument);
@@ -163,9 +163,15 @@ export function PlanSetup({
         const keyboard = editing && viewport.scale === 1
           && (viewport.height < fullHeight - 120 || viewport.height < 200);
         document.documentElement.toggleAttribute("data-plan-keyboard", keyboard);
+        // Keep a compact completion action 24px above the visible keyboard.
+        // Very short landscape viewports need all their space for the input;
+        // the native keyboard's Done/Back control remains available there.
+        const toolbar = keyboard && viewport.height >= 240;
+        document.documentElement.toggleAttribute("data-plan-keyboard-toolbar", toolbar);
+        document.documentElement.style.setProperty("--plan-keyboard-bottom", `${Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height) + 24}px`);
         if (keyboard && active instanceof HTMLElement) {
           const rect = active.getBoundingClientRect();
-          const actionHeight = document.querySelector(".plan-primary-actions")?.getBoundingClientRect().height ?? 0;
+          const actionHeight = toolbar ? 68 : 0;
           // A landscape keyboard can leave less than 80px of web content. Keep
           // both bounds compatible with the input height instead of alternating
           // between an impossible top/bottom position on every viewport scroll.
@@ -194,6 +200,8 @@ export function PlanSetup({
       window.removeEventListener("resize", update); document.removeEventListener("focusin", update); document.removeEventListener("focusout", update);
       document.removeEventListener("visibilitychange", update);
       document.documentElement.removeAttribute("data-plan-keyboard");
+      document.documentElement.removeAttribute("data-plan-keyboard-toolbar");
+      document.documentElement.style.removeProperty("--plan-keyboard-bottom");
     };
   }, []);
   const formatInterval = (seconds: bigint) => {
@@ -519,6 +527,13 @@ export function PlanSetup({
 
       {showReview && <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("terms"); }}>{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("privacy"); }}>{t("plan.legal.privacy")}</a>.</p>}
       {legalDocument && <PlanLegalDialog document={legalDocument} onClose={() => setLegalDocument(null)} />}
+      <Button className="plan-keyboard-done" onClick={() => {
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      }} onPointerDown={event => event.preventDefault()} onPointerUp={() => {
+        // WebKit can suppress the compatibility click after prevented focus.
+        // Complete the non-transactional action on a trusted pointer release too.
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      }}>{t("plan.keyboard.done")}</Button>
       {validationReason && pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
         && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
