@@ -7,6 +7,21 @@ Open [Inheritance in World App](https://world.org/mini-app?app_id=app_28c40a2a42
 Record the device model, OS version, World App version, date and UI language.
 The current runtime is `a56335f8a978db1dda9b154b3a606b5de74382ae`.
 
+## Available installation environment
+
+The original AOSP test host remains at `emulator-5554`. A separate official
+Android Emulator device, `inheritance-worldapp-play` (`emulator-5556`), now runs
+Android 15 Google Play revision 9. Live properties confirm `x86_64,arm64-v8a`,
+`libndk_translation.so` and build type `user`. Play Store is installed and its
+sign-in screen is visible in a desktop window. Google account login is pending.
+This corrects the earlier assumption that the x86 host alone ruled out local
+World App execution: the Google Play image has ARM translation that the original
+AOSP image lacked. World App installation, device checks and login still need
+to succeed before this environment can supply actual SDK-host evidence.
+
+Do not record emulator results in the physical-device fields. Do not capture
+screenshots, UI text or logs while the operator enters Google credentials.
+
 ## No-transfer checks
 
 1. Browse Home / Assets / Plan / Help before signing in. No wallet request should

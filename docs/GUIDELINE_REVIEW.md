@@ -23,10 +23,16 @@ Our release acceptance still needs actual World App approval/cancellation and
 permission behavior because the existing native hosts simulate those responses.
 That is an engineering evidence boundary, not an invented Portal form requirement.
 The operator can perform device testing; no results have yet been reported.
-The available Android host is x86_64, has no Play Store and reports no native ARM
-bridge. World's [supported-device notice](https://support.world.org/hc/en-us/articles/16088035260691-What-devices-operating-systems-are-supported-by-World-Money)
-states x86 support has ended, so this host cannot establish supported World App
-acceptance merely by installing the app.
+The original AOSP Android host is x86_64, has no Play Store and reports no ARM
+bridge. That limitation does **not** rule out other Android Emulator images:
+Google documents [ARM binary translation](https://android-developers.googleblog.com/2020/03/run-arm-apps-on-android-emulator.html).
+A separate Android 15 Google Play image (revision 9) now boots as
+`inheritance-worldapp-play`, serial `emulator-5556`, with `x86_64,arm64-v8a`,
+`libndk_translation.so`, a `user` build and the actual Play Store. Its visible
+Play Store sign-in screen has been inspected. Google account authentication is
+pending; World App installation and acceptance have not yet been established.
+Even a successful translated-emulator run must be identified as such, not as
+physical-device verification or a World-supported hardware certification.
 
 The operator has confirmed Korea as the operating country, but this does not
 change the seven selected distribution countries. The concrete jurisdiction
