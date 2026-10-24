@@ -24,7 +24,34 @@ Real World App device acceptance, physical iPhone, human comprehension, independ
 audit and jurisdiction-specific legal clearance remain unverified. The operator
 confirmed no device/legal records are available. Details and reviewer access are
 in [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md). Remote CI, native iOS, deployment
-and resubmission receipts will be added below after completion.
+and resubmission receipts follow here.
+
+Runtime commit: `a56335f8a978db1dda9b154b3a606b5de74382ae`.
+
+- [CI 40090185065](https://github.com/Daviswhistle/Inheritance/actions/runs/40090185065): all three jobs passed, including the retained custody coverage artifact.
+- [Pages/Worker 40090185020](https://github.com/Daviswhistle/Inheritance/actions/runs/40090185020): passed; immutable Pages URL `https://30a7c891.inheritance.pages.dev`, notification Worker version `ffeb3342-3d1a-41f6-b2ce-046a6833470a`.
+- [Gas refill 40090185079](https://github.com/Daviswhistle/Inheritance/actions/runs/40090185079): passed; the existing Worker was redeployed by its contract-path filter, without a new on-chain contract.
+- Production JS/CSS bytes match the immutable Pages deployment. Legal pages resolve and the new privacy disclosure is live. Sixteen English/Korean guest layouts at 320/390px pass without runtime exceptions.
+- A disposable unfunded EOA passed genuine production SIWE verification. Nonce replay returned 401, the Pages session authorized an empty Worker index, anonymous access returned 401 and foreign-origin access returned 403. No user funds or notifications were involved; this is not native World App approval evidence.
+- Automation was funded, supported and fresh, with no halt/error; `lastCycleAt` advanced from `2026-10-24T11:31:24.404Z` to `2026-10-24T11:33:25.016Z`.
+- Public-site cold-profile performance under 150ms latency, 1.6Mbps download and 4× Chromium CPU slowdown: entry 2167 / 2125 / 3760ms; tab transitions 24–46ms. One run exceeds the guideline's 2–3-second initial-load target. These are simulated conditions, not physical-device timings or a guaranteed latency bound.
+- Final product screenshots were repeated with Korean fonts available; 68 layouts and 37 accessibility states passed with zero reported axe violations.
+- Portal descriptions link the guideline review and disclose missing real-device/legal clearance. Seven image uploads committed successfully, and metadata was read back before submission.
+
+[Native iOS 40090185124](https://github.com/Daviswhistle/Inheritance/actions/runs/40090185124)
+passed both XCTest methods on the same runtime commit, with zero failures or
+skips. iPhone 16 Pro simulator screenshots were inspected for portrait Done/input
+clearance, the short landscape input, restored actions and the recovered
+`1.000001` USDC balance without resubmission. The final Android rerun also passed
+17 layouts/eight scenario groups. These remain test-host results, not actual
+World App approval services.
+
+Re-submitted on **October 24, 2026 at 11:41 UTC (20:41 KST)** for app
+`app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`. Submission returned
+`awaiting_review`; a separate configuration readback confirmed the same state
+with developer listing enabled. This is a submitted review, not approval.
+The subsequent documentation commit does not change the verified runtime.
 
 ## October 23, 2026 independent release and design review
 

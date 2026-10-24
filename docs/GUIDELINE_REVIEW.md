@@ -62,8 +62,12 @@ the normal optimized deployment build.
 - Authentication/notification authorization: 77 passed, including stalled nonce
   headers and verification bodies, no stored session on timeout, and successful retry.
 - Typecheck, lint, production build, localization and CSS-class checks passed.
-- Updated iOS native run and exact-commit production receipts are recorded in
-  [RELEASE.md](RELEASE.md) after remote checks complete.
+- The production cold-load probe at 150ms latency / 1.6Mbps / 4× CPU measured
+  2.167, 2.125 and 3.760 seconds to guest entry. One run exceeds the 2–3-second
+  guideline target; tab changes were 24–46ms. This is not a device latency guarantee.
+- iPhone 16 Pro simulator: both native XCTest methods passed, zero failures or
+  skips. Portrait, landscape and recovered-balance screenshots were inspected.
+  Exact-commit CI, native and production receipts are in [RELEASE.md](RELEASE.md).
 
 On October 24 the operator confirmed there is **no** real World App device
 acceptance record and **no** jurisdiction-specific legal review to supply.
