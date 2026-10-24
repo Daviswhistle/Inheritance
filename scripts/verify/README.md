@@ -1,5 +1,21 @@
 # 검증 하네스
 
+## World Chain 포크 제출 검증
+
+```sh
+WORLDCHAIN_FORK_RPC=https://worldchain-mainnet.g.alchemy.com/public \
+node scripts/verify/worldchain-forks.mjs
+```
+
+현재 블록을 한 번 선택하고 다섯 포크 스위트에 같은 번호를 적용합니다.
+`WORLDCHAIN_FORK_BLOCK`으로 재현할 블록을 지정할 수 있습니다.
+테스트 생략, 누락 스위트, 실패는 실패 종료로 처리합니다. 결과·블록 해시·소스
+커밋·작업 트리 변경 여부는 `/tmp/inheritance-worldchain-forks`에 남습니다.
+`FORGE_BIN`, `CAST_BIN`, `FORK_EVIDENCE_DIR`로 실행 파일과 출력 경로를 지정할
+수 있습니다. GitHub의 `World Chain fork acceptance` 수동 워크플로도 같은 검증을
+수행하고 증거를 90일 보관합니다. 실제 체인 상태를 읽되 모든 거래는 로컬 포크에서
+수행하며, World App 지갑 승인 또는 메인넷 송금 검증을 대신하지 않습니다.
+
 단위 테스트가 못 잡은 버그들을 잡는 곳입니다. 실제로 돈을 잃게 만들던 문제들은
 전부 여기서 나왔습니다 — 화면이 무엇을 말하는지와 체인이 무엇을 말하는지를 나란히
 놓고 비교해서만 보이는 종류입니다.

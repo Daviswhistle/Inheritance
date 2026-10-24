@@ -1,5 +1,25 @@
 # Release evidence
 
+## October 24 follow-up after second withdrawal
+
+Portal readback is `unverified`. The 11:41 UTC submission recorded below was
+withdrawn by the operator and is no longer the current state. No follow-up
+submission has been made yet.
+
+Five World Chain fork suites passed **21 tests, zero failures, zero skips** at
+block `36753480` (`0x636136a382c158bc475fb402b8c26cc54e11a50fb0e85de3611352a5d60848fd`).
+The new `scripts/verify/worldchain-forks.mjs` requires an explicit RPC, checks
+chain 480, selects one block for all suites and saves a source/block receipt.
+The gas-refill fork test now honors that block. The manual `worldchain-forks.yml`
+workflow retains logs and receipt for 90 days and fails on any skipped or missing
+suite. No product runtime or deployed contract changed in this follow-up.
+
+Official must-have requirements and recommendations are distinguished in
+[GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md). Korea was confirmed as the operator's
+country; distribution countries remain unchanged. Concrete scope questions are
+in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md), and actual World App steps/results are in
+[WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md). Device results are pending.
+
 ## October 24, 2026 guideline remediation
 
 The operator withdrew the previous submission; Portal readback confirmed

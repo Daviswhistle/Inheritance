@@ -46,7 +46,9 @@ contract GasRefillWorldChainForkTest is Test {
             vm.skip(true);
             return;
         }
-        vm.createSelectFork(rpc);
+        uint256 pinnedBlock = vm.envOr("WORLDCHAIN_FORK_BLOCK", uint256(0));
+        if (pinnedBlock == 0) vm.createSelectFork(rpc);
+        else vm.createSelectFork(rpc, pinnedBlock);
         assertEq(block.chainid, 480);
         IRefillRouter router = IRefillRouter(ROUTER);
         assertEq(router.factory(), FACTORY);

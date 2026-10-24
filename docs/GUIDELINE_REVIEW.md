@@ -5,6 +5,33 @@ legal certification, or independent security audit. The previous submission was
 withdrawn by the operator before this revision. The Portal was read back as
 `unverified` before changes.
 
+## Current submission status and requirement classification
+
+The operator withdrew the October 24 11:41 UTC submission again. A fresh Portal
+readback confirmed `unverified`; that earlier `awaiting_review` receipt is historical.
+No new submission has been made during this follow-up.
+
+The official review policy requires a complete working app, meaningful live SDK
+integration, accurate listing information, reviewer access, and compliance with
+the laws of the selected countries. It does **not** prescribe a blanket legal
+opinion certificate or a physical-device test report attachment. The contract
+guidelines strongly recommend an independent audit; that recommendation is not
+an unconditional audit-certificate requirement. Missing evidence is not itself
+proof of a product defect or illegality.
+
+Our release acceptance still needs actual World App approval/cancellation and
+permission behavior because the existing native hosts simulate those responses.
+That is an engineering evidence boundary, not an invented Portal form requirement.
+The operator can perform device testing; no results have yet been reported.
+The available Android host is x86_64, has no Play Store and reports no native ARM
+bridge. World's [supported-device notice](https://support.world.org/hc/en-us/articles/16088035260691-What-devices-operating-systems-are-supported-by-World-Money)
+states x86 support has ended, so this host cannot establish supported World App
+acceptance merely by installing the app.
+
+The operator has confirmed Korea as the operating country, but this does not
+change the seven selected distribution countries. The concrete jurisdiction
+questions and primary sources are recorded in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
+
 ## Official references
 
 Checked against the current [App Guidelines](https://docs.world.org/mini-apps/guidelines/app-guidelines),
@@ -55,6 +82,12 @@ the normal optimized deployment build.
 
 - Local contract suite: 375 passed, zero failed, five fork tests skipped without
   an explicitly configured live RPC. This run does not certify current market liquidity.
+- Follow-up: all five World Chain fork suites ran at block **36,753,480**,
+  hash `0x636136a382c158bc475fb402b8c26cc54e11a50fb0e85de3611352a5d60848fd`:
+  **21 passed, zero failures, zero skips**. `scripts/verify/worldchain-forks.mjs`
+  pins all suites to the same block and rejects skips/missing suites. These tests
+  use local funded accounts and explicit reward-root/illiquidity fixtures; they
+  do not send mainnet transactions or demonstrate native wallet approval.
 - Chromium product UI: 68 layouts, with accessibility checks enabled.
 - Linux WebKit: 29 layouts, including pre-login privacy access without a wallet
   request, keyboard Done geometry, offline recovery and interrupted deposits.
@@ -79,5 +112,6 @@ human comprehension are also unverified. No independent security audit exists.
 Existing Portal countries are KR, US, GB, CA, AU, JP and SG. This revision does
 not expand that list or assert lawful financial/inheritance service availability
 in those countries. Legal review cannot be replaced with software tests or a
-Terms disclaimer. Submission requests World App review with these limitations
-disclosed; it is not a declaration that every external requirement is satisfied.
+Terms disclaimer. The now-withdrawn submission disclosed these limitations;
+it was not a declaration that every
+external requirement was satisfied. Resubmission is pending the follow-up checks.

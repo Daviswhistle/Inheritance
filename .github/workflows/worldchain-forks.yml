@@ -1,0 +1,39 @@
+name: World Chain fork acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      block:
+        description: World Chain block (empty selects current head once)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  forks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.3.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test all five fork suites without skips
+        env:
+          WORLDCHAIN_FORK_RPC: https://worldchain-mainnet.g.alchemy.com/public
+          WORLDCHAIN_FORK_BLOCK: ${{ inputs.block }}
+          FORK_EVIDENCE_DIR: fork-evidence
+        run: node scripts/verify/worldchain-forks.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: worldchain-fork-evidence
+          path: fork-evidence/
+          retention-days: 90

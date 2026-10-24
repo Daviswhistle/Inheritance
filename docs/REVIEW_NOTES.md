@@ -63,7 +63,7 @@ User keys never reach our servers. Basic WLD stays in the user's vault; yield WL
 4. For registered supported vaults, the service can execute the eligible transfer after the review window. Only the named heir receives the funds. Manual completion of eligible assets together remains available. Completed history shows actual cash, invested shares, reward amounts and canonical transaction links; wallet-share redemption is separate. Finalized yield settlement can trigger a completion notification to the immutable recipient. Earlier basic deployments require manual completion.
 5. The owner can renew to cancel the claim until the actual transfer executes, including after the seven days. Transaction ordering determines which action wins.
 
-Automation depends on registration, network/service availability, gas funding and spending caps. Current contracts support one heir; the app does not claim multi-recipient inheritance. The interface shows service availability and keeps manual completion available. It does not promise execution at an exact time. A timer is not death verification, a legal will or an investment product.
+Automation depends on registration, network/service availability, gas funding and spending caps. Current contracts support one heir; the app does not claim multi-recipient inheritance. The interface shows service availability and keeps manual completion available. It does not promise execution at an exact time. A timer is not death verification or a legal will. Lending and fees are described below; this description does not determine their regulatory classification.
 
 An unfinished saved deposit blocks additional deposits into that position from
 Assets as well as Plan. Resume verifies the original receipt before allowing new
