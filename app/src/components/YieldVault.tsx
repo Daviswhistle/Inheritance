@@ -10,18 +10,30 @@ import type { YieldRates } from "@/yield-rates";
 import type { YieldRoute } from "@/assets";
 import { useLocale } from "@/locale-context";
 
-function YieldRateSummary({ rates, loading, strategy = MORPHO_VAULT_ADDRESS }: { rates: YieldRates | null; loading: boolean; strategy?: string }) {
+export function YieldRateSummary({ rates, loading, strategy, symbol = "WLD", compact = false }: {
+  rates: YieldRates | null; loading: boolean; strategy?: string; symbol?: "WLD" | "USDC"; compact?: boolean;
+}) {
   const { t, locale } = useLocale();
   const now = Math.floor(Date.now() / 1000);
-  const fresh = rates && now - rates.reportedAt <= RATE_MAX_AGE_SECONDS && rates.campaignEndsAt > now;
-  const date = (stamp: number) => new Date(stamp * 1000).toLocaleDateString(locale === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  return <div className="yield-rate-summary"><strong>{t("yield.rates.title")}</strong>
+  const fresh = strategy && rates && now - rates.reportedAt <= RATE_MAX_AGE_SECONDS && rates.campaignEndsAt > now;
+  const date = (stamp: number) => new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", {
+    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC",
+  }).format(stamp * 1000);
+  return <div className="yield-rate-summary" data-rate-symbol={symbol} data-rate-strategy={strategy?.toLowerCase()}>
+    <strong>{t("yield.rates.title", { symbol })}</strong>
     {fresh ? <><dl className="yield-values"><div><dt>{t("yield.rates.lending")}</dt><dd>{formatRate(rates.lendingApr)}</dd></div>
       <div><dt>{t("yield.rates.rewards")}</dt><dd>{formatRate(rates.rewardApr)}</dd></div></dl>
-      <p className="text-xs text-gray-600">{t("yield.rates.reported", { date: date(rates.reportedAt), end: date(rates.campaignEndsAt) })}</p>
+      <p className="text-xs text-gray-600">{t(compact ? "yield.rates.asOf" : "yield.rates.reported", { reported: date(rates.reportedAt), end: date(rates.campaignEndsAt) })}</p>
     </> : <p role="status">{t(loading ? "yield.rates.loading" : "yield.rates.unavailable")}</p>}
-    <p className="text-xs text-gray-600">{t("yield.rates.disclosure")}</p>
-    <a className="text-blue-600 underline text-xs" href={`https://app.merkl.xyz/opportunities/world-chain/MORPHOVAULT/${strategy}`} target="_blank" rel="noreferrer">{t("yield.rates.source")}</a>
+    {compact ? <details className="plan-more-details">
+      <summary>{t("yield.rates.details")}</summary>
+      {fresh && <p className="text-xs text-gray-600">{t("yield.rates.campaignUntil", { end: date(rates.campaignEndsAt) })}</p>}
+      <p className="text-xs text-gray-600">{t("yield.rates.disclosure")}</p>
+      {strategy && <a className="text-blue-600 underline text-xs" href={`https://app.merkl.xyz/opportunities/world-chain/MORPHOVAULT/${strategy}`} target="_blank" rel="noreferrer">{t("yield.rates.source", { symbol })}</a>}
+    </details> : <>
+      <p className="text-xs text-gray-600">{t("yield.rates.disclosure")}</p>
+      {strategy && <a className="text-blue-600 underline text-xs" href={`https://app.merkl.xyz/opportunities/world-chain/MORPHOVAULT/${strategy}`} target="_blank" rel="noreferrer">{t("yield.rates.source", { symbol })}</a>}
+    </>}
   </div>;
 }
 
@@ -44,7 +56,7 @@ export function YieldChoice({ kind, terms, rates, ratesLoading, consent, busy, o
       </label>
     </fieldset>
     {kind === "yield" && <div className="yield-disclosure">
-      <YieldRateSummary rates={rates} loading={ratesLoading} strategy={route?.strategy} />
+      <YieldRateSummary rates={rates} loading={ratesLoading} strategy={route?.strategy ?? MORPHO_VAULT_ADDRESS} symbol={symbol} />
       <p>{symbol} is supplied to Re7 {symbol} on Morpho. Its current performance fee is {terms?.underlyingFeePercent}% and can change; our fee applies after that cost. Returns vary and funds can lose value.</p>
       <p>Cash withdrawals depend on liquidity. If cash cannot be redeemed at inheritance, the heir receives receipt shares and any idle {symbol}. A positive-gain fee is then paid in shares, based on their quoted {symbol} value.</p>
       <p>{usdc ? "USDC principal and interest stay in USDC. Claimed WLD rewards are held separately and paid to you on withdrawal, or to the same heir at inheritance. USDC gains after USDC loss recovery and WLD rewards are charged 10% separately; they are not converted or offset across currencies. WLD gifts are not charged." : "Available WLD campaign rewards can be claimed and reinvested."} Rewards and rates vary. This contract does not automatically qualify for World App’s verified-human boost. Each vault has its own heir and countdown.</p>
@@ -86,7 +98,7 @@ export function YieldPositionCard({ position, holdings, terms, rates, ratesLoadi
   const symbol = route?.symbol ?? "WLD";
   const fmt = (amount: bigint) => formatYieldAmount(amount, route?.decimals ?? 18);
   return <Card><CardHeader><CardTitle>{t("yield.position.title")}</CardTitle></CardHeader><CardContent className="grid gap-3">
-    <YieldRateSummary rates={rates} loading={ratesLoading} strategy={route?.strategy} />
+    <YieldRateSummary rates={rates} loading={ratesLoading} strategy={route?.strategy ?? MORPHO_VAULT_ADDRESS} symbol={route?.symbol ?? "WLD"} />
     {!position ? <p role="status">{t("yield.position.unavailable")}</p> : <>
       <div className="stat-row"><div className="stat yield-stat"><div className="stat-label">{t("yield.position.net", { symbol })}</div><div className="stat-value">{position.valued ? `${fmt(position.net)} ${symbol}` : t("home.value.unavailable")}</div></div></div>
       <dl className="yield-values"><div><dt>{t("yield.position.liquid")}</dt><dd>{fmt(position.liquid)} {symbol}</dd></div>

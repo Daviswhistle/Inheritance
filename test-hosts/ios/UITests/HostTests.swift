@@ -148,7 +148,7 @@ final class HostTests: XCTestCase {
             web.swipeUp()
         }
         consent.tap()
-        let confirm = web.buttons["Confirm and deposit"].firstMatch
+        let confirm = web.buttons["Open approval screen"].firstMatch
         XCTAssertTrue(confirm.isEnabled)
         let nonceBefore = try rpcString("eth_getTransactionCount", [account, "latest"])
         _ = try hostJSON("/__host/control", body: ["action": "mining", "enabled": false])

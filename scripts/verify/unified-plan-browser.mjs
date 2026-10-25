@@ -23,7 +23,7 @@ const SHOTS = path.join(RUN_DIR, "shots");
 mkdirSync(SHOTS, { recursive: true });
 const anvilLog = createWriteStream(path.join(RUN_DIR, "anvil.log"), { flags: "w" });
 const evidence = {
-  runtime: { chainId: 480, browser: "google-chrome --headless=new", rpcHost: "127.0.0.1", screenshots: [] },
+  runtime: { chainId: 480, browser: `${process.env.CHROME_BIN || "google-chrome"} --headless=new`, os: process.platform, rpcHost: "127.0.0.1", screenshots: [] },
   fixtures: { worldAppBridge: "local E2E MiniKit stub", auth: "local Pages Functions + in-memory D1",
     notifications: "local registration/status HTTP fixture; no remote delivery", externalFetches: [] },
   contracts: {},
@@ -84,7 +84,7 @@ async function clickButton(targetPage, label) {
   if (label === "Create plan and deposit") {
     if (!await targetPage.ev("return !!document.querySelector('.plan-final-review')")) await clickButton(targetPage, "Review plan");
     if (await targetPage.ev("return !!document.getElementById('yield-consent')")) await acceptYieldTerms(targetPage);
-    return clickButton(targetPage, "Confirm and deposit");
+    return clickButton(targetPage, "Open approval screen");
   }
   if (label === "Review plan" && await targetPage.ev("return !!document.querySelector('.plan-final-review')")) return;
   const quoted = JSON.stringify(label);
@@ -318,6 +318,8 @@ try {
   function localPublicFixtures() {
     const strategies = window.__E2E_STRATEGIES__;
     const wldAddress = window.__E2E_WLD__;
+    window.__E2E_RATE_REQUESTS__ = [];
+    window.__E2E_RATES_STALE__ = false;
     window.__E2E_REWARDS__ = {};
     window.__E2E_REWARDS_DOWN__ = false;
     window.__E2E_RATES_DOWN__ = false;
@@ -351,10 +353,14 @@ try {
       if (rates) {
         const strategy = strategies.find(item => item.toLowerCase() === rates.toLowerCase());
         if (!strategy) throw new Error("Unexpected Morpho strategy rate request");
+        window.__E2E_RATE_REQUESTS__.push(strategy.toLowerCase());
+        if (window.__E2E_RATES_DOWN__) return new Response("down", { status: 503 });
         const timestamp = Math.floor(Date.now() / 1000);
+        const strategyIndex = strategies.findIndex(item => item.toLowerCase() === strategy.toLowerCase());
+        const reportedAt = timestamp - (window.__E2E_RATES_STALE__ ? 36 * 60 * 60 + 1 : 5);
         return Response.json([{ chainId: 480, type: "MORPHOVAULT", identifier: strategy, status: "LIVE",
-          latestCampaignEnd: String(timestamp + 86400), nativeAprRecord: { timestamp: String(timestamp - 5), value: 1.2 },
-          aprRecord: { timestamp: String(timestamp - 5), cumulated: 3.4 },
+          latestCampaignEnd: String(timestamp + 86400), nativeAprRecord: { timestamp: String(reportedAt), value: strategyIndex === 0 ? 1.2 : 2.3 },
+          aprRecord: { timestamp: String(reportedAt), cumulated: strategyIndex === 0 ? 3.4 : 5.6 },
           rewardsRecord: { breakdowns: [{ token: { address: wldAddress, chainId: 480, decimals: 18 } }] } }]);
       }
       if (/^https:\/\/api\.merkl\.xyz\/v4\/users\/0x[a-fA-F0-9]{40}\/rewards\?chainId=480$/.test(url)) return Response.json([]);
@@ -366,8 +372,8 @@ try {
   }
   const exampleNames = process.env.UNIFIED_STORE_IMAGES === "1"
     ? `window.__E2E_USERNAMES__ = ${JSON.stringify({ [ACCOUNTS.a0.a.toLowerCase()]: "amy", [ACCOUNTS.a1.a.toLowerCase()]: "alex" })};` : "";
-  const pauseTermsPoll = `const originalInterval = window.setInterval; window.setInterval = (work,delay,...args) => originalInterval.call(window,delay === 30000 ? (...values) => { if(!window.__E2E_PAUSE_TERM_POLL__)work(...values); } : work,delay,...args);`;
-  const preload = `${exampleNames}${pauseTermsPoll}window.__E2E_EXTERNAL_FETCHES__ = []; window.__E2E_RPC__ = ${JSON.stringify(rpc)}; window.__E2E_BATCH_WALLET__ = ${JSON.stringify(batchWallet.target)}; window.__E2E_STRATEGIES__ = ${JSON.stringify(rateStrategies)}; window.__MONITOR_FACTORIES__ = ${JSON.stringify([await plainFactory.getAddress(), await wldFactory.getAddress(), await usdcFactory.getAddress()])}; window.__E2E_WLD__ = ${JSON.stringify(await wld.getAddress())}; (${localPublicFixtures.toString()})(); (function(){${HELPERS}})();`;
+  const pauseTermsPoll = `const originalInterval = window.setInterval; window.__E2E_RATE_POLL__ = null; window.setInterval = (work,delay,...args) => { if(delay === 300000)window.__E2E_RATE_POLL__ = () => work(...args); return originalInterval.call(window,delay === 30000 ? (...values) => { if(!window.__E2E_PAUSE_TERM_POLL__)work(...values); } : work,delay,...args); };`;
+  const preload = `localStorage.setItem("inheritance:locale", "en");${exampleNames}${pauseTermsPoll}window.__E2E_EXTERNAL_FETCHES__ = []; window.__E2E_RPC__ = ${JSON.stringify(rpc)}; window.__E2E_BATCH_WALLET__ = ${JSON.stringify(batchWallet.target)}; window.__E2E_STRATEGIES__ = ${JSON.stringify(rateStrategies)}; window.__MONITOR_FACTORIES__ = ${JSON.stringify([await plainFactory.getAddress(), await wldFactory.getAddress(), await usdcFactory.getAddress()])}; window.__E2E_WLD__ = ${JSON.stringify(await wld.getAddress())}; (${localPublicFixtures.toString()})(); (function(){${HELPERS}})();`;
   const pendingKey = `inheritance:pending-plan:${ACCOUNTS.a0.a.toLowerCase()}`;
   const wldAddress = await wld.getAddress();
   const wldFactoryAddress = (await wldFactory.getAddress()).toLowerCase();
@@ -390,6 +396,7 @@ try {
       window.__FINISH_PLAN_RETRY__ = () => setBusy(false);
       return React.createElement(PlanSetup, {
         rows: [{ symbol: 'WLD', decimals: 18, mode: 'plain', amount: '1', walletBalance: 10000000000000000000n }],
+        yieldRateInfoByAsset: { WLD: { rates: { lendingApr: 99, rewardApr: 99, reportedAt: Math.floor(Date.now()/1000), campaignEndsAt: Math.floor(Date.now()/1000)+3600 }, loading: false, strategy: '0x0000000000000000000000000000000000000001' } },
         heir: '${ACCOUNTS.a1.a}', heirResolved: '${ACCOUNTS.a1.a}', heirUsername: '',
         resolvingHeir: false, heirSuspicious: false, contactPickerStatus: 'idle', contactPickerPending: false,
         onCancelContactPicker: () => {}, period: '30', periodValid: true,
@@ -403,6 +410,7 @@ try {
     }
     createRoot(mount).render(React.createElement(RetryPlan)); return true;
   `);
+  assert.equal(await retryPage.ev("return document.querySelectorAll('#retry-plan .yield-rate-summary').length"), 0, "plain vaults must not be presented with Morpho rates");
   await clickButton(retryPage, "Review plan");
   for (let attempt = 1; attempt <= 2; attempt++) {
     await until(() => retryPage.ev("return !!document.querySelector('#retry-plan .plan-final-review') && !document.querySelector('#retry-plan .plan-submit').disabled"), "confirmation reenabled without unrelated render");
@@ -423,6 +431,20 @@ try {
 
   await until(() => page.ev("return !!(document.getElementById('plan-wld') && document.getElementById('plan-usdc') && document.getElementById('heir-input'))"), "unified plan form");
   await until(() => page.ev("return /Available:/.test(document.body.innerText) && !/Wallet balance is loading/.test(document.body.innerText)"), "token balances");
+  await until(() => page.ev("return [...document.querySelectorAll('.plan-asset-row .yield-rate-summary')].length === 2 && [...document.querySelectorAll('.plan-asset-row .yield-rate-summary')].every(summary => summary.querySelector('dl'))"), "live asset-specific rates before the first deposit");
+  assert.equal(await wldFactory.vaultOf(ACCOUNTS.a0.a), ZeroAddress, "the rate summaries must load before this account has a WLD vault");
+  assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a), ZeroAddress, "the rate summaries must load before this account has a USDC vault");
+  const setupRateSummaries = JSON.parse(await page.ev("return JSON.stringify([...document.querySelectorAll('.plan-asset-row .yield-rate-summary')].map(summary => ({symbol:summary.dataset.rateSymbol, strategy:summary.dataset.rateStrategy, text:summary.textContent, source:summary.querySelector('a')?.href || ''})))"));
+  assert.deepEqual(setupRateSummaries.map(summary => summary.symbol), ["WLD", "USDC"]);
+  assert.match(setupRateSummaries[0].text, /1\.20%[\s\S]*3\.40%/);
+  assert.match(setupRateSummaries[1].text, /2\.30%[\s\S]*5\.60%/);
+  for (const summary of setupRateSummaries) {
+    assert.match(summary.text, /\d{1,2}:\d{2}/, `${summary.symbol} rate timestamp must include UTC time of day`);
+    assert.match(summary.text, /UTC[\s\S]*UTC/, `${summary.symbol} report and reward end must disclose UTC`);
+    assert.ok(summary.source.toLowerCase().includes(summary.strategy), `${summary.symbol} source must match its own strategy`);
+  }
+  const requestedStrategies = new Set(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_RATE_REQUESTS__)")));
+  for (const strategy of rateStrategies) assert.ok(requestedStrategies.has(strategy.toLowerCase()), `new plan setup must request rates for ${strategy}`);
   assert.equal(await page.ev("return document.getElementById('yield-consent') !== null"), false, "input step must not ask for consent before showing the review");
   assert.equal(await page.ev("return document.querySelector('.plan-submit')?.disabled"), true, "plan submission must require consent");
   await page.ev(`return __q.setInput('heir-input', ${JSON.stringify(ACCOUNTS.a1.a)})`);
@@ -446,8 +468,27 @@ try {
   assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), /2\.5 WLD[\s\S]*12\.123456 USDC/);
   assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), new RegExp(ACCOUNTS.a1.a, 'i'));
   const feeReview = await page.ev("return document.querySelector('.plan-final-review').innerText");
-  assert.match(feeReview, /Service fee: 10%/);
-  assert.match(feeReview, /WLD \+ USDC: 10% of Morpho strategy profits/);
+  assert.match(feeReview, /Fees on gains[\s\S]*WLD \+ USDC:[\s\S]*Re7 vault on Morpho[\s\S]*10%[\s\S]*Inheritance service fee: 10% of positive gains realized after strategy fees and loss recovery/);
+  assert.match(feeReview, /Network fees[\s\S]*gas sponsorship[\s\S]*Reusing a vault does not make later transactions free/);
+  assert.match(feeReview, /Opening that screen does not send funds/);
+  assert.equal(await page.ev("return document.querySelectorAll('.plan-fee-example').length"), 1, "assets with equal strategy fees should share one example group");
+  await page.ev("document.querySelector('.plan-fee-example summary').click(); return true;");
+  const initialFeeExample = await page.ev("return document.querySelector('.plan-fee-example').innerText");
+  assert.match(initialFeeExample, /10 WLD gross lending profit[\s\S]*1 WLD Re7 strategy performance fee \(10%\)[\s\S]*9 WLD remaining[\s\S]*0\.9 WLD Inheritance service fee \(10% of the remainder\)[\s\S]*8\.1 WLD illustrative net/);
+  assert.match(initialFeeExample, /10 USDC gross lending profit[\s\S]*1 USDC Re7 strategy performance fee \(10%\)[\s\S]*9 USDC remaining[\s\S]*0\.9 USDC Inheritance service fee \(10% of the remainder\)[\s\S]*8\.1 USDC illustrative net/);
+  assert.match(initialFeeExample, /Excludes principal, other gains or losses, rewards, and network costs\. This is not a promised return\./);
+  await page.ev("document.querySelector('.plan-fee-example').open = false; return true;");
+  const reviewRateSummaries = JSON.parse(await page.ev("return JSON.stringify([...document.querySelectorAll('.plan-final-review .yield-rate-summary')].map(summary => ({symbol:summary.dataset.rateSymbol, strategy:summary.dataset.rateStrategy, text:summary.textContent, source:summary.querySelector('a')?.href || ''})))"));
+  assert.deepEqual(reviewRateSummaries.map(summary => summary.symbol), ["WLD", "USDC"], "final review must show a separate rate source for each selected Morpho asset");
+  assert.match(reviewRateSummaries[0].text, /1\.20%[\s\S]*3\.40%/);
+  assert.match(reviewRateSummaries[1].text, /2\.30%[\s\S]*5\.60%/);
+  assert.ok(reviewRateSummaries.every(summary => summary.source.toLowerCase().includes(summary.strategy)));
+  for (const [state, label] of [["stale", "stale"], ["down", "failed"]]) {
+    await page.ev(`window.__E2E_RATES_STALE__ = ${state === "stale"}; window.__E2E_RATES_DOWN__ = ${state === "down"}; window.__E2E_RATE_POLL__?.(); return true;`);
+    await until(() => page.ev("return [...document.querySelectorAll('.plan-final-review .yield-rate-summary')].length === 2 && [...document.querySelectorAll('.plan-final-review .yield-rate-summary')].every(summary => /unavailable/i.test(summary.querySelector('[role=status]')?.textContent || '') && !summary.querySelector('dl'))"), `${label} rates are explicitly unavailable without a percentage`);
+    assert.equal(await page.ev("return document.getElementById('yield-consent').checked"), true, `${label} rate data must not reset fee consent`);
+    assert.equal(await page.ev("return document.querySelector('.plan-submit')?.disabled"), false, `${label} optional rate data must not block deposit review`);
+  }
   assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length, 0, "review opened the wallet");
   assert.equal(await page.ev("return document.activeElement?.id"), 'plan-review-title');
   await captureLayout(page, "review", 320, [".plan-submit", ".plan-step-actions button"]);
@@ -456,13 +497,18 @@ try {
   for(const percent of [12,10]){
     await (await wldStrategy.setFee(parseUnits(String(percent/100),18))).wait();
     assert.equal(await page.ev("return !!document.querySelector('.plan-final-review')"),true,"cached review should remain until fresh preflight observes the fee");
-    await clickButton(page,"Confirm and deposit");
+    await clickButton(page,"Open approval screen");
     await until(() => page.ev(`return /strategy fee changed/.test(document.body.innerText) && !document.querySelector('.plan-final-review') && !document.getElementById('yield-consent')`),"fresh fee drift stops before the wallet");
     assert.equal(JSON.parse(await page.ev("return JSON.stringify(window.__E2E_BRIDGE_CALLS__ || [])")).length,0);
     assert.equal(await wldFactory.vaultOf(ACCOUNTS.a0.a),ZeroAddress);
     assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a),ZeroAddress);
     await acceptYieldTerms(page);
     await clickButton(page,"Review plan");
+    assert.equal(await page.ev("return document.querySelectorAll('.plan-fee-example').length"), percent === 12 ? 2 : 1, "separate fee groups should be shown when the selected assets have different rates");
+    await page.ev("document.querySelector('.plan-fee-example summary').click(); return true;");
+    const currentFeeExample = await page.ev("return document.querySelector('.plan-fee-example').innerText");
+    assert.match(currentFeeExample, new RegExp(`${percent === 12 ? "1.2" : "1"} WLD Re7 strategy performance fee \\(${percent}%\\)[\\s\\S]*${percent === 12 ? "7.92" : "8.1"} WLD illustrative net`));
+    await page.ev("document.querySelectorAll('.plan-fee-example').forEach(details => details.open = false); return true;");
   }
   await page.ev("window.__E2E_PAUSE_TERM_POLL__=false;return true;");
   pass("service and strategy fees are shown separately; a real strategy-fee change invalidates approval before wallet submission");
@@ -573,6 +619,8 @@ try {
   assert.equal(storedAfterReject.assets[1].txHash, undefined, "ID-less bridge failure was misclassified as safe to retry");
   assert.equal(storedAfterReject.assets[0].amount, parseUnits("2.5", 18).toString());
   assert.equal(storedAfterReject.assets[1].amount, parseUnits("12.123456", 6).toString());
+  assert.equal(await page.ev("return document.querySelectorAll('.plan-resume .yield-rate-summary').length"), 0,
+    "completed or unresolved deposits must not be offered fresh-deposit rates");
   evidence.plan.rejection = { bridgeCalls: firstPageCalls, createStateAfterSimulationFailure: createSimulationSaved.createState,
     savedProgress: storedAfterReject.assets.map(item => ({ symbol: item.symbol, amount: item.amount, state: item.depositState })) };
   pass("ID-less bridge failure stays unresolved after WLD completes", "WLD is complete; USDC is submitting without an identifier; no USDC balance moved");
@@ -763,11 +811,19 @@ try {
   assert.equal(await freshPage.ev("return !!document.querySelector('.plan-final-review') && document.getElementById('yield-consent').checked"),true);
   const freshKey=`inheritance:pending-plan:${ACCOUNTS.a10.a.toLowerCase()}`;
   await freshPage.ev(`window.__E2E_REJECTED_TARGET__=${JSON.stringify((await usdc.getAddress()).toLowerCase())};window.__E2E_REJECT_ERROR_CODE__='user_rejected';return true;`);
-  await clickButton(freshPage,'Confirm and deposit');
+  await clickButton(freshPage,'Open approval screen');
   await until(()=>freshPage.ev(`const p=JSON.parse(await (async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw))(${JSON.stringify(freshKey)})||'null');return p?.createState==='ready' && !p.setupRequest && p.assets.every(a=>a.depositState==='ready');`),'whole setup rejection stays editable');
   assert.equal(await wldFactory.vaultOf(ACCOUNTS.a10.a),ZeroAddress);
   assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a10.a),ZeroAddress);
   pass('one-request wallet cancellation creates neither asset and leaves both amounts ready');
+  await until(() => freshPage.ev("return [...document.querySelectorAll('.plan-resume .yield-rate-summary')].length === 2 && [...document.querySelectorAll('.plan-resume .yield-rate-summary')].every(summary => summary.querySelector('dl'))"), 'cancelled setup retains current rates before resume');
+  const resumeRates = JSON.parse(await freshPage.ev("return JSON.stringify([...document.querySelectorAll('.plan-resume .yield-rate-summary')].map(summary => ({symbol: summary.dataset.rateSymbol, text: summary.textContent})))"));
+  assert.deepEqual(resumeRates.map(rate => rate.symbol), ['WLD', 'USDC']);
+  assert.match(resumeRates[0].text, /1\.20%[\s\S]*3\.40%/);
+  assert.match(resumeRates[1].text, /2\.30%[\s\S]*5\.60%/);
+  evidence.plan.resumeRates = resumeRates;
+  pass('cancelled setup shows current rates only for amounts still ready to deposit');
+  await captureLayout(freshPage, 'resume', 390, ['.plan-resume', '.yield-rate-summary']);
 
   // Cause the final USDC deposit to revert on the actual local EVM after the
   // valid app quote. The earlier creation, approval and WLD deposit roll back.

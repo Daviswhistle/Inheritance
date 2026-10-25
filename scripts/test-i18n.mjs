@@ -59,7 +59,7 @@ await test("English app and transaction labels match the interface", () => {
     assert.equal(i18n.translate("en", "home.title.vault"), "Your plan");
     assert.equal(i18n.translate("en", "nav.money"), "Assets");
     assert.equal(i18n.translate("en", "plan.action.review"), "Review plan");
-    assert.equal(i18n.translate("en", "plan.action.confirm"), "Confirm and deposit");
+    assert.equal(i18n.translate("en", "plan.action.confirm"), "Open approval screen");
     assert.equal(i18n.translate("en", "income.title"), "Collect income");
     assert.equal(i18n.translate("en", "plan.legal.join"), "and");
     assert.equal(i18n.translate("en", "plan.balance.available", { amount: "1.25", symbol: "WLD" }), "Available: 1.25 WLD");
@@ -90,7 +90,19 @@ await test("completed transaction messages reproject when language changes witho
     assert.equal(i18n.localizeAppMessage("ko", "Message copied."), "메시지를 복사했습니다.");
     assert.equal(i18n.localizeAppMessage("ko", "Not delivered: Check your World App notification settings."), "알림이 전달되지 않았습니다: World App의 알림 설정을 확인해 주세요.");
     assert.match(i18n.translate("ko", "automation.ready"), /직접 수령/);
-    assert.match(i18n.translate("en", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 }), /USDC.*12%.*before our service fee/);
+    const strategyFeeEn = i18n.translate("en", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 });
+    const strategyFeeKo = i18n.translate("ko", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 });
+    assert.match(strategyFeeEn, /USDC.*Re7.*Morpho.*performance fee.*12%.*Inheritance/);
+    assert.match(strategyFeeKo, /USDC.*Morpho.*Re7.*12%.*Inheritance/);
+    assert.doesNotMatch(strategyFeeEn, /external investment vault/i);
+    assert.match(i18n.translate("en", "plan.review.feeExampleLine", {
+      symbol: "WLD", gross: "10 WLD", strategyFee: "1 WLD", strategyPercent: 10,
+      remaining: "9 WLD", serviceFee: "0.9 WLD", net: "8.1 WLD",
+    }), /10 WLD gross lending profit.*1 WLD Re7 strategy performance fee \(10%\).*9 WLD remaining.*0\.9 WLD Inheritance service fee.*8\.1 WLD illustrative net/);
+    assert.match(i18n.translate("ko", "plan.review.feeExampleLine", {
+      symbol: "USDC", gross: "10 USDC", strategyFee: "1 USDC", strategyPercent: 10,
+      remaining: "9 USDC", serviceFee: "0.9 USDC", net: "8.1 USDC",
+    }), /USDC별 예시: 대출 수익 10 USDC → Re7 전략 성과 수수료 1 USDC \(10%\) → 남은 금액 9 USDC → Inheritance 서비스 수수료 0\.9 USDC/);
 });
 
 await test("locale provider uses React context without mutating the document", () => {

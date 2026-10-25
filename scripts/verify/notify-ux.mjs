@@ -297,7 +297,7 @@ log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 �
     e.click(); return "clicked";
   })()`);
   await waitUntil(() => c2.ev("return !!document.querySelector('.plan-final-review')"));
-  await c2.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Confirm and deposit'); if (!button || button.disabled) throw new Error('Final deposit approval unavailable'); button.click(); return true;");
+  await c2.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Open approval screen'); if (!button || button.disabled) throw new Error('Final deposit approval unavailable'); button.click(); return true;");
   log(`    상속인 입력 ${setHeir} / amount 입력 ${setAmount} / 생성 CTA ${clicked}`);
   const creationObserved = await waitUntil(() => c2.ev(`return (window.__NOTIFY_REQUESTS__ || []).some(call => call.path === '/api/notifications/register')
     && !document.getElementById('heir-input')
@@ -350,7 +350,7 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
     `heir=${heirSet}, amount=${amountSet}, enabled=${enabledCta}`);
   await fresh.ev("const button=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Review plan');button.click();return true;");
   await waitUntil(()=>fresh.ev("return !!document.querySelector('.plan-final-review');"));
-  await fresh.ev("const button=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Confirm and deposit');if(!button||button.disabled)throw Error('Review unavailable');button.click();return true;");
+  await fresh.ev("const button=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Open approval screen');if(!button||button.disabled)throw Error('Review unavailable');button.click();return true;");
   await waitUntil(()=>fresh.ev("return !!document.querySelector('.plan-overview-reminders');"),30000);
   const reminder=fresh.ev("return document.querySelector('.plan-overview-reminders').getAttribute('role');");
   check("설정 후 홈에서 알림 상태를 경고 없이 안내한다",await reminder==='status');

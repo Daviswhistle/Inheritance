@@ -107,7 +107,7 @@ async function setPlanAmount(symbol, amount) {
 }
 async function clickPlanSubmit() {
   if (!await page.ev("return !!document.querySelector('.plan-final-review')")) await clickReady("Review plan");
-  return clickReady("Confirm and deposit");
+  return clickReady("Open approval screen");
 }
 async function selectOwnedVault(labelPrefix) {
   if (!await page.ev("return !!document.querySelector('.asset-switcher')")) await page.ev("return __q.tab('Assets')");

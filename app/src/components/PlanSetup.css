@@ -23,7 +23,7 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
 
 .plan-card-intro, .plan-section-hint, .plan-field-help, .plan-pending-settings { margin: 0; color: #5b6e60; font-size: 12px; line-height: 1.55; }
 .plan-section-hint { margin-top: -5px; }
-.plan-setup-card .plan-assets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.plan-setup-card .plan-assets { display: grid; grid-template-columns: 1fr; gap: 9px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .plan-setup-card .plan-amount-control strong { display: none; }
 .plan-setup-card .plan-amount-control .input-control { width: 100%; padding: 12px 9px; }
 .plan-setup-card .plan-risk-points { display: grid; gap: 7px; margin: 7px 0; padding-left: 16px; }
@@ -167,3 +167,5 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
 .plan-setup-card .plan-recipient-controls { flex-wrap: wrap; }
 .plan-setup-card .plan-recipient-controls > .input-control { flex-basis: 100%; }
 .plan-setup-card .plan-recipient-controls > .btn { background: #f3f6ef; }
+
+.plan-asset-row .yield-rate-summary { grid-column: 1 / -1; min-width: 0; }

@@ -4,13 +4,17 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 import { Input } from "./ui/input";
 import { formatPlanInterval, parseAssetAmount } from "@/plan";
 import { useLocale } from "@/locale-context";
+import { calculateIllustrativeFeeAmounts, isValidStrategyFeePercent } from "@/plan-fee-illustration";
 import { useActionClearance } from "@/use-action-clearance";
+import { YieldRateSummary } from "@/components/YieldVault";
+import type { YieldRates } from "@/yield-rates";
 import type { ContactPickerStatus } from "@/contact-picker";
 import type { LocaleKeyType } from "@/locale";
 import "./PlanSetup.css";
 
 type PlanAsset = "WLD" | "USDC";
 type PlanRouteRow = { symbol: PlanAsset; decimals: number; mode: "morpho" | "plain"; amount: string; walletBalance: bigint | null; balanceUnavailable: boolean; underlyingFeePercent?: number };
+type PlanYieldRateInfo = { rates: YieldRates | null; loading: boolean; strategy: string };
 type PlanAssetProgress = { symbol: PlanAsset; amount: string; decimals: number; mode: "morpho" | "plain"; depositState: "ready" | "submitting" | "submitted" | "complete" };
 type PlanProgress = { heir: string; periodDays: number; createState: "ready" | "submitting" | "submitted" | "complete"; assets: PlanAssetProgress[];
   alignment?: { state: "submitting" | "submitted" } };
@@ -102,7 +106,7 @@ export function PlanSetup({
   rows, heir, onHeirChange, onPickHeir, onCancelContactPicker, contactPickerStatus, contactPickerPending,
   resolvingHeir, heirResolved, heirUsername,
   period, periodValid, onPeriodChange, onPreset, onAmountChange, yieldConsent, onYieldConsent, pendingPlan,
-  heirSuspicious, alignmentConflicts, onConfirmAlignment, onCancelAlignment, onCreate, onResume,
+  heirSuspicious, alignmentConflicts, onConfirmAlignment, onCancelAlignment, onCreate, onResume, yieldRateInfoByAsset,
   busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining, onRefreshBalances,
 }: {
   rows: PlanRouteRow[];
@@ -125,6 +129,7 @@ export function PlanSetup({
   onYieldConsent: (value: boolean) => void;
   pendingPlan: PlanProgress | null;
   alignmentConflicts: AlignmentConflict[];
+  yieldRateInfoByAsset?: Partial<Record<PlanAsset, PlanYieldRateInfo>>;
   onConfirmAlignment: () => void;
   onCancelAlignment: () => void;
   onCreate: (reviewedFees: Partial<Record<PlanAsset, number>>) => void;
@@ -352,6 +357,10 @@ export function PlanSetup({
     }
   };
 
+  const rateSummary = (symbol: PlanAsset) => {
+    const info = yieldRateInfoByAsset?.[symbol];
+    return <YieldRateSummary rates={info?.rates ?? null} loading={info?.loading ?? false} strategy={info?.strategy ?? ""} symbol={symbol} compact />;
+  };
   const amountSection = <fieldset className="plan-assets" disabled={Boolean(pendingPlan) || busy} aria-labelledby="plan-assets-title">
     <legend id="plan-assets-title">{t("plan.amounts.title")}</legend>
     {rows.map(row => {
@@ -375,6 +384,7 @@ export function PlanSetup({
         <p id={balanceId} className="plan-asset-balance">
           {row.balanceUnavailable ? t("plan.balance.unavailable") : row.walletBalance === null ? t("plan.balance.loading") : t("plan.balance.available", { amount: formatExactTokenAmount(row.walletBalance, row.decimals), symbol: row.symbol })}
         </p>
+        {row.mode === "morpho" && rateSummary(row.symbol)}
         {rowError && <p id={errorId} className="plan-inline-error" role="alert">{t("plan.amount.errorPrecision", { decimals: row.decimals })}</p>}
         {!rowError && rowOverBalance && <p id={errorId} className="plan-inline-error" role="alert">{t("plan.amount.errorBalance")}</p>}
       </div>;
@@ -383,8 +393,8 @@ export function PlanSetup({
 
   const strategyFeeText = (asset: { symbol: string; underlyingFeePercent?: number }) => {
     const fee = asset.underlyingFeePercent;
-    return typeof fee === "number" && Number.isFinite(fee) && fee >= 0 && fee <= 100
-      ? t("plan.risk.strategyFee", { symbol: asset.symbol, percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(fee) })
+    return isValidStrategyFeePercent(fee)
+      ? t("plan.risk.strategyFee", { symbol: asset.symbol, percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(fee) })
       : t("plan.risk.strategyFeeChecking", { symbol: asset.symbol });
   };
   const feeGroups = (assets: readonly { symbol: string; underlyingFeePercent?: number }[]) => {
@@ -399,8 +409,8 @@ export function PlanSetup({
     <h3 id="plan-risk-title">{t("plan.risk.title")}</h3>
     <ul className="plan-risk-points">
       <li>{t("plan.risk.audit")}</li>
-      {!showReview && <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>}
       {!showReview && feeGroups(disclosedYieldRows).map(row => <li key={row.symbol}>{strategyFeeText(row)}</li>)}
+      {!showReview && <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>}
       {hasYieldRoute && <li>{t("plan.risk.value")}</li>}
       {!showReview && <li>{t("plan.risk.inheritance")}</li>}
     </ul>
@@ -460,6 +470,7 @@ export function PlanSetup({
             <dd>{amountStatus(asset.depositState)}</dd>
           </div>)}
         </dl>
+        <h4>{t("fees.network.title")}</h4><p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p>
         <p className="plan-pending-settings">{t("plan.pending.recipient", { address: `${pendingPlan.heir.slice(0, 6)}…${pendingPlan.heir.slice(-4)}`, days: pendingPlan.periodDays })}</p>
         <Button variant="primary" disabled={busy || resumeDisabled} onClick={onResume}>
           {busy ? <><span className="spinner" />{t("plan.pending.resumeBusy")}</> : t("plan.pending.resume")}
@@ -468,6 +479,7 @@ export function PlanSetup({
           <Button disabled={busy} onClick={onEditRemaining}>{t("plan.pending.edit")}</Button>
           <p className="plan-pending-settings">{t("plan.pending.editNote")}</p>
         </>}
+        {disclosedYieldRows.map(row => <div key={row.symbol}>{rateSummary(row.symbol)}</div>)}
       </section>}
 
       {!showReview && !pendingPlan && <>
@@ -537,11 +549,40 @@ export function PlanSetup({
           <div><dt>{t("plan.review.interval")}</dt><dd>{t("plan.review.every", { days: reviewSnapshot.periodDays })}</dd></div>
         </dl>
         <section className="plan-review-terms">
+          <h4>{t("fees.network.title")}</h4><p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p>
           <h4>{t("plan.review.feeRisk")}</h4>
-          <p>{t(reviewSnapshot.assets.some(asset => asset.mode === "morpho") ? "plan.review.yieldFee" : "plan.review.basicFee")}</p>
           {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <>
             <h4>{t("plan.review.strategyFee")}</h4>
             {feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(asset => <p key={asset.symbol}>{strategyFeeText(asset)}</p>)}
+            <p>{t("plan.review.yieldFee")}</p>
+            {feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(group => {
+              const percent = group.underlyingFeePercent;
+              if (!isValidStrategyFeePercent(percent)) return null;
+              const example = calculateIllustrativeFeeAmounts(percent);
+              if (!example) return null;
+              const groupedAssets = reviewSnapshot.assets.filter(asset => asset.mode === "morpho" && asset.underlyingFeePercent === percent);
+              const formatAmount = (value: number, symbol: string) => `${new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(value)} ${symbol}`;
+              return <details className="plan-more-details plan-fee-example" key={group.symbol}>
+                <summary>{t("plan.review.feeExampleSummary", { symbol: group.symbol, percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(percent) })}</summary>
+                <div>
+                  {groupedAssets.map(asset => <p key={asset.symbol}>{t("plan.review.feeExampleLine", {
+                    symbol: asset.symbol,
+                    gross: formatAmount(example.grossLendingProfit, asset.symbol),
+                    strategyFee: formatAmount(example.strategyFee, asset.symbol),
+                    strategyPercent: new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(percent),
+                    remaining: formatAmount(example.remaining, asset.symbol),
+                    serviceFee: formatAmount(example.inheritanceServiceFee, asset.symbol),
+                    net: formatAmount(example.net, asset.symbol),
+                  })}</p>)}
+                  <p>{t("plan.review.feeExampleDisclosure")}</p>
+                </div>
+              </details>;
+            })}
+          </>}
+          {!reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <p>{t("plan.review.basicFee")}</p>}
+          {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <>
+            <h4>{t("plan.review.currentRates")}</h4>
+            {reviewSnapshot.assets.filter(asset => asset.mode === "morpho").map(asset => <div key={asset.symbol}>{rateSummary(asset.symbol)}</div>)}
           </>}
           <h4>{t("plan.review.missedTitle")}</h4><p>{t("plan.review.missedBody")}</p>
         </section>

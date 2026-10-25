@@ -241,6 +241,19 @@ try {
   assert.equal(await page.locator('.plan-submit').isDisabled(), true);
   assert.deepEqual(await page.locator('.plan-review-amount').allTextContents(), ['10 WLD', '12.345678 USDC']);
   assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);
+  const feeExample = page.locator('.plan-fee-example');
+  assert.equal(await feeExample.count(), 1);
+  await feeExample.locator('summary').tap();
+  const exampleText = await feeExample.innerText();
+  assert.match(exampleText, /대출 수익 10 WLD[\s\S]*Inheritance 서비스 수수료[\s\S]*대출 수익 10 USDC/);
+  assert.match(exampleText, /원금, 다른 손익, 보상, 네트워크 비용은 제외/);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await layout(page, `fee-example-ko-${width}`, width);
+  }
+  await feeExample.screenshot({ path: out + '/fee-example-ko.png' });
+  await feeExample.locator('summary').tap();
+  pass('The fee example separates WLD and USDC, names both fees and excludes principal and other costs');
   await page.locator('#yield-consent').check();
   // Reading the required documents must not replace the app and lose the draft.
   for (const legalDocument of ['terms', 'privacy']) {
@@ -292,7 +305,7 @@ try {
   pass('Terms/privacy close, document return link and Escape preserve the review, exact amounts and consent; focus returns to the opener');
   await layout(page, 'review-ko', 390);
   await page.screenshot({ path: out + '/review-ko.png' });
-  await tap(page, '승인하고 예치');
+  await tap(page, '거래 승인 화면 열기');
   await page.locator('.invite-disclosure').waitFor({ timeout: 60000 });
   const wf = new Contract(config.wldFactory, ['function vaultOf(address) view returns(address)'], provider);
   const uf = new Contract(config.usdcFactory, ['function vaultOf(address) view returns(address)'], provider);
@@ -359,7 +372,7 @@ try {
   await tap(page, '플랜 검토');
   await page.locator('#yield-consent').check();
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.rejectNext('send-transaction'));
-  await tap(page, '승인하고 예치');
+  await tap(page, '거래 승인 화면 열기');
   await page.waitForFunction(() => document.activeElement?.id === 'plan-resume-title');
   const resumeButton = page.getByRole('button', { name: '남은 설정 이어하기', exact: true });
   const resumeBox = await resumeButton.boundingBox();
@@ -431,6 +444,9 @@ try {
   await until(() => page.getByRole('button', { name: '지금 확인하기', exact: true }).isEnabled(), 'history return recovers owner');
   assert.equal(await commandCount(), 0);
   assert.deepEqual(await snapshot(), beforePending);
+  // WebKit may restore the previous manual mode from its back-forward cache.
+  // Explicitly approve this retry in the disposable host in either case.
+  await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.setApproval('auto'));
   await tap(page, '지금 확인하기');
   await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('2개') && e.textContent.includes('확인')));
   assert.equal(await commandCount(), 1, 'only explicit retry submits');
@@ -462,7 +478,7 @@ try {
     await new Promise(resolve => releaseResponse = resolve);
     await route.fulfill({ response }).catch(() => {}); // old page is gone
   });
-  await tap(heir, 'Confirm and deposit');
+  await tap(heir, 'Open approval screen');
   await until(async () => committed, 'deposit mined before callback');
   const recoveryKey = 'inheritance:pending-plan:' + config.heir.toLowerCase();
   const journal = await heir.evaluate(async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, JSON.parse), recoveryKey);

@@ -116,8 +116,16 @@ export async function __sendAtomicBatch(transactions: { to: string; data?: strin
     const calls = transactions.map(tx => ({ to: tx.to, data: tx.data || "0x", value: BigInt(tx.value || 0) }));
     const tx = await signer.sendTransaction({ to: signer.address, data: abi.encodeFunctionData("execute", [calls]), nonce,
       gasLimit: 12_000_000n, ...(authorization ? { type: 4, authorizationList: [authorization] } : {}) });
-    const receipt = await tx.wait();
-    return { executedWith: "minikit", data: { status: "success", transaction_hash: receipt!.hash, from: signer.address } };
+    // tx.wait() leaves a block-polling subscriber whose in-flight request can
+    // outlive the receipt and reject when this fixture provider is destroyed.
+    // Await only our own bounded receipt reads; the app still verifies status.
+    const deadline = Date.now() + 30_000;
+    while (!await provider.send("eth_getTransactionReceipt", [tx.hash]) && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    // An accepted hash is also returned for a mined revert or pending receipt,
+    // matching the native bridge rather than misclassifying either as rejection.
+    return { executedWith: "minikit", data: { status: "success", transaction_hash: tx.hash, from: signer.address } };
   } catch (error: any) {
     if (error.receipt?.status === 0 && /^0x[0-9a-fA-F]{64}$/.test(error.receipt.hash)) {
       // A mined revert is an accepted request with a failed canonical receipt,

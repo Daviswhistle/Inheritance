@@ -63,7 +63,7 @@ try {
   await capture('create');
   await page.getByRole('button', { name: 'Review plan', exact: true }).tap();
   await page.locator('#yield-consent').check();
-  await page.getByRole('button', { name: 'Confirm and deposit', exact: true }).tap();
+  await page.getByRole('button', { name: 'Open approval screen', exact: true }).tap();
   await page.locator('.invite-disclosure').waitFor({ timeout: 60000 });
   await page.locator('.tab-item').nth(0).tap(); await capture('overview');
   assert.equal((await fetch(origin + '/__host/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'yield' }) })).status, 200);

@@ -88,7 +88,7 @@ try{
   assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),0,'review sends no transaction');
   if(lang==='en')await click(page,'Edit plan');
  }
- await page.ev("document.getElementById('yield-consent').click();");await click(page,'승인하고 예치');
+ await page.ev("document.getElementById('yield-consent').click();");await click(page,'거래 승인 화면 열기');
  await until(()=>page.ev("return !!document.querySelector('.invite-disclosure')"),'created plan',60000);
  console.log('PASS real localized setup, exact six-decimal review, unchecked consent, safe editing and approved creation');
  await page.send('Browser.grantPermissions',{origin,permissions:['clipboardReadWrite','clipboardSanitizedWrite']});

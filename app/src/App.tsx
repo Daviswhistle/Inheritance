@@ -1555,7 +1555,10 @@ export default function App() {
   }, [account]);
 
   // ---- contracts
-  const showYieldRates = HAS_YIELD_ROUTES && isYieldVault;
+  const showPlanSetupRates = tab === "inherit" && Boolean(account) && (Boolean(pendingPlan) || showPlanSetup
+    || !ownVault && !linkedVault && inheritedRead.positions.length === 0 && !findingHeirVaults
+      && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded);
+  const showYieldRates = HAS_YIELD_ROUTES && (isYieldVault || showPlanSetupRates && draftPlanRoutes.some(route => route.mode === "morpho"));
   useEffect(() => {
     if (!showYieldRates) return;
     let active = true;
@@ -4829,6 +4832,11 @@ export default function App() {
           <PlanSetup
             rows={draftPlanRows.map(row => ({ ...row, walletBalance: planWalletBalances[row.symbol] ?? null,
               balanceUnavailable: walletBalances.account.toLowerCase() === account.toLowerCase() && walletBalances.unavailable.includes(row.symbol) }))}
+            yieldRateInfoByAsset={Object.fromEntries(draftPlanRoutes.filter(route => route.mode === "morpho").map(route => [route.symbol, {
+              rates: yieldRatesByFactory[route.factory] ?? null,
+              loading: yieldRatesLoading,
+              strategy: route.details?.strategy ?? "",
+            }]))}
             onRefreshBalances={() => void refreshBalances()}
             heir={heir}
             onHeirChange={changePlanHeir}
@@ -4907,6 +4915,7 @@ export default function App() {
               <details className="help-topic"><summary>{t("help.feeTitle")}</summary><div>
                 <p>{t("help.feeDisclosure")}</p><a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
               </div></details>
+              <details className="help-topic"><summary>{t("fees.network.title")}</summary><div><p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p></div></details>
               <details className="help-topic"><summary>{t("help.custodyQuestion")}</summary><div><p>{t("help.journey.custody")}</p></div></details>
               {(["income", "heir", "receiving", "shares"] as const).map(subject => <details className="help-topic" key={subject}>
                 <summary>{t(`help.journey.${subject}Title`)}</summary><div><p>{t(`help.journey.${subject}`)}</p></div>

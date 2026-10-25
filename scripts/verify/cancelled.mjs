@@ -364,7 +364,7 @@ if (formAfter.heir && formAfter.create) {
   check("상속인을 넣으면 Create 가 활성화된다", canCreate === true, canCreate ? "활성" : "비활성");
   await b.ev(`return (()=>{const btn=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan");if(!btn||btn.disabled)return false;btn.click();return true;})()`);
   await b.waitFor('.plan-final-review');
-  const reviewed = await b.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Confirm and deposit'); if (!button || button.disabled) return false; button.click(); return true;");
+  const reviewed = await b.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Open approval screen'); if (!button || button.disabled) return false; button.click(); return true;");
   check("최종 검토 후에만 두 번째 입금 요청을 승인한다", reviewed === true, reviewed ? "승인" : "확인 버튼 없음");
   await sleep(9000);
   const v2 = vaultOf(owner.a);
