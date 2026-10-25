@@ -9,15 +9,13 @@ The current runtime is `a56335f8a978db1dda9b154b3a606b5de74382ae`.
 
 ## Available installation environment
 
-The original AOSP test host remains at `emulator-5554`. A separate official
-Android Emulator device, `inheritance-worldapp-play` (`emulator-5556`), now runs
-Android 15 Google Play revision 9. Live properties confirm `x86_64,arm64-v8a`,
-`libndk_translation.so` and build type `user`. Play Store is installed and its
-sign-in screen is visible in a desktop window. Google account login is pending.
-This corrects the earlier assumption that the x86 host alone ruled out local
-World App execution: the Google Play image has ARM translation that the original
-AOSP image lacked. World App installation, device checks and login still need
-to succeed before this environment can supply actual SDK-host evidence.
+The original AOSP test host remains at `emulator-5554`. The Google Play WSL
+AVD `inheritance-worldapp-play` was stopped after poor interactive performance.
+A separate Windows-native AVD, `inheritance-windows-play`, runs Android 15
+Google Play revision 9 with Windows WHPX and NVIDIA host GPU acceleration.
+It advertises `x86_64,arm64-v8a` and `libndk_translation.so`. The operator completed
+Google Play login. Store installation was rejected; see the dated attempt below.
+This is an emulator, not a physical Android device.
 
 Do not record emulator results in the physical-device fields. Do not capture
 screenshots, UI text or logs while the operator enters Google credentials.
@@ -76,3 +74,60 @@ No message to an heir or other person is needed for this check.
 
 Record failures with the action and visible error. A user report is operator-
 reported evidence; do not relabel it as an automated or independently observed test.
+
+## Windows emulator installation attempt — 2026-10-24
+
+After the operator completed Google Play sign-in, the Windows-native AVD
+`inheritance-windows-play` (Android 15, Google Play API 35 image, advertised ABIs
+`x86_64,arm64-v8a`) opened the official `com.worldcoin` store listing. The listing
+was titled “World Money — Digital Wallet”, publisher TFH. UI automation observed
+“Your device isn't compatible with this version.” No install button was available;
+`pm list packages com.worldcoin` returned no installed package.
+
+Windows WHPX and NVIDIA host rendering worked and Android boot completed. This
+resolves the nested-virtualization setup issue, but does not establish World App
+compatibility. ARM translation did not make this AVD eligible for store installation.
+The store message does not identify the specific exclusion rule. World support
+also documents discontinued x86 support; this alone does not prove the exact cause
+of this store rejection. No actual World App acceptance checks were completed.
+
+Source: https://support.world.org/hc/en-us/articles/16088035260691-What-devices-operating-systems-are-supported-by-World-Money
+
+## Signed direct-install experiment — 2026-10-24
+
+To test beyond the store compatibility filter, APKPure's ARM64 bundle for
+`com.worldcoin` 4.0.4100 (versionCode 4004100, min SDK 32) was downloaded.
+Each of its three APKs passed `apksigner verify` with v2/v3 integrity validation
+and the app signer matched the certificate independently obtained over HTTPS
+from https://world.org/.well-known/assetlinks.json:
+`9D:2A:D7:12:7F:09:91:92:97:14:C0:19:5B:43:47:84:34:53:1C:D8:B7:F1:81:36:5C:2B:D5:CD:85:E3:46:EF`.
+Google's source-stamp signer was distinguished from the app signer.
+
+`adb install-multiple` succeeded on the Windows AVD. Starting
+`com.worldcoin/.app.main.MainActivity` returned successfully, but the app then
+terminated. The crash buffer identified `com.worldcoin` and an obfuscated
+`FATAL EXCEPTION: Thread-2`; it did not establish the underlying cause.
+No authentication, wallet, or Mini App acceptance was achieved. This older
+version is a compatibility experiment, not current-release acceptance.
+No binary patch, identity spoof, or attestation bypass was performed.
+
+A separate BlueStacks installer from the vendor's official download page was
+obtained and its Windows Authenticode signature validated (`Now.gg, INC`).
+Installation completed; see the 2026-10-25 attempt below.
+
+## BlueStacks retry — 2026-10-25
+
+The operator approved Windows UAC. BlueStacks 5.22.285.1013 Pie64 (Android 9)
+was running. Its configuration was backed up before enabling local ADB;
+remote ADB remained disabled. Live ABIs included `armeabi-v7a` and `arm64-v8a`.
+The APKPure 4.0.4401 ARM32 bundle's APK signatures and v2/v3 integrity had been
+verified against the same official World certificate above. Installing the base,
+ARM32, Korean and density splits with `adb install-multiple` returned `Success`.
+
+The first launch failed with `FATAL EXCEPTION: Thread-2` in `com.worldcoin` at
+13:28:35 device time. A force-stop and relaunch reproduced the same class of
+obfuscated exception at 13:29:21. UI inspection returned to BlueStacks Gamecenter;
+no World App login or Mini App screen was reached. These observations establish
+failure on this tested BlueStacks instance, not failure of every possible PC
+configuration. The exception does not identify its cause in readable form.
+Actual World App acceptance remains incomplete. No resubmission was performed.
