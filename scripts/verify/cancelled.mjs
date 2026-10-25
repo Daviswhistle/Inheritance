@@ -214,7 +214,7 @@ check("체인: 취소 + 만료 + settled", isCancelled === 1n && isSettled === 1
 // ── 2) 화면이 그 상태를 어떻게 말하는가 ─────────────────────────────────────
 const b = await launch({ pk: owner.pk, url: APP });
 await sleep(3000);
-await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(6500);
 const goto = (tab) =>
   b.ev(

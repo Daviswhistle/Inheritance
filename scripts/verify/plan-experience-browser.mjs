@@ -69,7 +69,7 @@ try{
  const src=readFileSync(root+'/scripts/verify/unified-plan-browser.mjs','utf8');
  const fixture=src.slice(src.indexOf('function localPublicFixtures()'),src.indexOf('\n  const exampleNames'));
  const preload=`window.__E2E_RPC__=${JSON.stringify(rpc)};window.__E2E_STRATEGIES__=${JSON.stringify([wldStrategy.target,usdcStrategy.target])};window.__MONITOR_FACTORIES__=${JSON.stringify(factories)};window.__E2E_WLD__=${JSON.stringify(wld.target)};window.__E2E_EXTERNAL_FETCHES__=[];window.__E2E_USERNAMES__=${JSON.stringify({[ACCOUNTS.a0.a.toLowerCase()]:'amy',[ACCOUNTS.a1.a.toLowerCase()]:'alex',[ACCOUNTS.a3.a.toLowerCase()]:'ben'})};(${fixture})();window.__MONITOR_REGISTERED__=${JSON.stringify({[wa.toLowerCase()]:true,[ua.toLowerCase()]:true})};(function(){${HELPERS}})();`;
- async function open(pk,link='',ko=false){const p=await launch({pk,url:url+link,preload:preload+(ko?`localStorage.setItem('inheritance:locale','ko');`:'')});pages.push(p);await p.ev(HELPERS);if(await p.ev(`return document.body.innerText.includes('Continue with World App')`))await click(p,'Continue with World App');await until(()=>p.ev(`return !!document.querySelector('.account-row')`),'sign-in');await sleep(1800);return p;}
+ async function open(pk,link='',ko=false){const p=await launch({pk,url:url+link,preload:preload+(ko?`localStorage.setItem('inheritance:locale','ko');`:'')});pages.push(p);await p.ev(HELPERS);if(await p.ev(`return document.body.innerText.includes('Agree and sign in')`))await click(p,'Agree and sign in');await until(()=>p.ev(`return !!document.querySelector('.account-row')`),'sign-in');await sleep(1800);return p;}
  const guest=await launch({pk:ACCOUNTS.a0.pk,url,preload});pages.push(guest);await guest.ev(HELPERS);
  await until(()=>guest.ev(`return document.querySelectorAll('.tab-item').length===4 && !!document.querySelector('.account-entry')`),'initial app entry ready');
  assert.deepEqual(await guest.ev('return __q.tabs()'),['Home','Assets','Plan','Help']);
@@ -112,7 +112,7 @@ try{
  assert.equal(await linkedGuest.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Plan');
  assert.ok((await snap(linkedGuest,'shared-plan-entry')).text.includes('Shared inheritance plan'));
  await linkedGuest.ev(`const {__setState}=await import('/src/test/minikit-stub.ts');__setState({installed:false});return true;`);
- await click(linkedGuest,'Continue with World App');
+ await click(linkedGuest,'Agree and sign in');
  await until(()=>linkedGuest.ev(`return !!document.querySelector('.entry-action a')`),'World App entry link');
  const deepLink=new URL(await linkedGuest.ev(`return document.querySelector('.entry-action a').href`));
  assert.equal(deepLink.hostname,'world.org');assert.equal(new URL('https://example.test'+deepLink.searchParams.get('path')).searchParams.get('vault').toLowerCase(),wa.toLowerCase());
@@ -232,7 +232,7 @@ try{
  pass('restored unresolved setup opens Plan and remains reachable from Home without another wallet request');
  await empty.close();pages.splice(pages.indexOf(empty),1);
  const explicitPlan=await launch({pk:ACCOUNTS.a0.pk,url,preload});pages.push(explicitPlan);await explicitPlan.ev(HELPERS);
- await tab(explicitPlan,'Plan');await click(explicitPlan,'Continue with World App');await until(()=>explicitPlan.ev(`return !!document.getElementById('period-change')`),'explicit Plan sign-in');
+ await tab(explicitPlan,'Plan');await click(explicitPlan,'Agree and sign in');await until(()=>explicitPlan.ev(`return !!document.getElementById('period-change')`),'explicit Plan sign-in');
  assert.equal(await explicitPlan.ev(`return document.querySelector('.tab-item-active').textContent.trim()`),'Plan');
  pass('sign-in from Plan preserves the chosen section when the owner registry finishes');
  await explicitPlan.close();pages.splice(pages.indexOf(explicitPlan),1);
@@ -358,7 +358,7 @@ try{
    }return window.__WALLET_READ_FETCH__(input,init);
  };`;
  const walletFailure=await launch({pk:ACCOUNTS.a1.pk,url,preload:preload+walletOutage});pages.push(walletFailure);await walletFailure.ev(HELPERS);
- await until(()=>walletFailure.ev(`return !!document.querySelector('.account-entry')`),'wallet failure entry');await click(walletFailure,'Continue with World App');
+ await until(()=>walletFailure.ev(`return !!document.querySelector('.account-entry')`),'wallet failure entry');await click(walletFailure,'Agree and sign in');
  await until(()=>walletFailure.ev(`return !!document.querySelector('.account-row')`),'wallet failure sign-in');await tab(walletFailure,'Assets');
  await until(()=>walletFailure.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('Wallet balances unavailable')`),'wallet-read failure stays unavailable');
  assert.ok(await walletFailure.ev('return window.__WALLET_READ_FAILURES__>0'));
@@ -376,7 +376,7 @@ try{
    }return window.__SLOW_BALANCE_FETCH__(input,init);
  };`;
  const slow=await launch({pk:ACCOUNTS.a1.pk,url,preload:preload+slowWallet});pages.push(slow);await slow.ev(HELPERS);
- await until(()=>slow.ev(`return !!document.querySelector('.account-entry')`),'slow balance entry');await click(slow,'Continue with World App');
+ await until(()=>slow.ev(`return !!document.querySelector('.account-entry')`),'slow balance entry');await click(slow,'Agree and sign in');
  await until(()=>slow.ev(`return !!document.querySelector('.account-row')`),'slow balance sign-in');await tab(slow,'Assets');
  try{await until(()=>slow.ev(`return document.body.innerText.includes('Invested assets in your wallet · USDC')`),'slow wallet shares settle after the poll interval',45000);}catch(error){evidence.slowRead={requests:await slow.ev('return window.__SLOW_BALANCE_REQUESTS__'),logs:slow.logs};throw error;}
  assert.equal(await slow.ev('return window.__SLOW_BALANCE_REQUESTS__'),1);assert.equal(await slow.ev(`return !!document.querySelector('.app-empty-state')`),false);
@@ -384,7 +384,7 @@ try{
  await slow.close();pages.splice(pages.indexOf(slow),1);
  const stalled=await launch({pk:ACCOUNTS.a1.pk,url,preload});pages.push(stalled);await stalled.ev(HELPERS);
  await until(()=>stalled.ev(`return !!document.querySelector('.account-entry')`),'stalled balance entry');await stallNextShareRead(stalled,usdcStrategy.target,ACCOUNTS.a1.a);
- await click(stalled,'Continue with World App');await until(()=>stalled.ev(`return !!document.querySelector('.account-row')`),'stalled balance sign-in');await tab(stalled,'Assets');
+ await click(stalled,'Agree and sign in');await until(()=>stalled.ev(`return !!document.querySelector('.account-row')`),'stalled balance sign-in');await tab(stalled,'Assets');
  await until(()=>stalled.ev('return window.__SHARE_STALL__.started===1'),'first share read is stalled');
  await until(()=>stalled.ev(`return document.querySelector('.app-empty-state')?.innerText.includes('Wallet balances unavailable')`),'stalled share read exposes retry',50000);
  await stalled.ev('window.__RELEASE_SHARE_STALL__();return true;');await until(()=>stalled.ev('return window.__SHARE_STALL__.completed===1'),'expired share response completes');await sleep(300);

@@ -55,7 +55,7 @@ await test("browser fallback follows the preferred locale and defaults safely to
 });
 
 await test("English app and transaction labels match the interface", () => {
-    assert.equal(i18n.translate("en", "entry.connect.continue"), "Continue with World App");
+    assert.equal(i18n.translate("en", "entry.connect.continue"), "Agree and sign in");
     assert.equal(i18n.translate("en", "home.title.vault"), "Your plan");
     assert.equal(i18n.translate("en", "nav.money"), "Assets");
     assert.equal(i18n.translate("en", "plan.action.review"), "Review plan");
@@ -74,7 +74,7 @@ await test("Korean fee disclosures keep the 10 percent fee off principal", () =>
       assert.match(i18n.translate("ko", key), /원금/);
     }
     assert.match(i18n.translate("ko", "plan.risk.inheritance"), /7일/);
-    assert.equal(i18n.translate("ko", "entry.connect.continue"), "World App으로 계속하기");
+    assert.equal(i18n.translate("ko", "entry.connect.continue"), "동의하고 로그인");
     assert.equal(i18n.translate("ko", "plan.interval.daysSeconds", { days: 30, seconds: 3600 }), "30일 + 3600초");
 });
 

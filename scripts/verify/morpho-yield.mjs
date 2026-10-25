@@ -184,7 +184,7 @@ try {
   page = await launch({ pk: ACCOUNTS.a0.pk, url, preload: preload + `window.__E2E_RATE_TOKEN__ = ${JSON.stringify(await token.getAddress())};` }); await page.ev(HELPERS); await enableAtomicBatch();
   await captureStore("welcome");
   await fault(yieldFactory, yieldFactory.interface.getFunction("vaultOf").selector);
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return __q.tabs().includes('Plan')"));
   await page.ev("return __q.tab('Assets')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Renew this WLD only' && !b.d) && /Other assets are temporarily unavailable/.test(document.body.innerText)"));
@@ -430,7 +430,7 @@ try {
   await (await morpho.setLiquidity(0)).wait();
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a0.pk, url: url + "?vault=" + vault, preload: withoutPosition(vault) }); await page.ev(HELPERS); await enableAtomicBatch();
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return __q.tabs().includes('Assets')"));
   await openAssetDetails();
   await until(() => page.ev("return window.__E2E_RPC_FAULT_MATCHES__ > 0 && /Value and cash liquidity are unavailable/.test(document.body.innerText)"));
@@ -476,7 +476,7 @@ try {
   await provider.send("evm_increaseTime", [30 * 86400 + 1]); await provider.send("evm_mine", []);
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a1.pk, url: url + "?vault=" + vault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'File claim' && !b.d)"));
   await page.ev("return __q.tab('Plan')");
   await clickReady("File claim");
@@ -538,7 +538,7 @@ try {
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a1.pk, url: url + "?vault=" + newVault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
   await publishReward(parseEther("10"), 0n, 0n, newVault);
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return /This archived vault/.test(document.body.innerText)"));
   await page.ev("return __q.tab('Assets')");
   await clickReady("Refresh rewards");
@@ -551,7 +551,7 @@ try {
   pass("Rewards published after an empty vault was released can still enter its original inheritance review");
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a0.pk, url: url + "?vault=" + newVault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return /An earlier balance/.test(document.body.innerText)"));
   assert.doesNotMatch(await page.ev("return document.body.innerText"), /You are neither|You are neither of them/);
   for (const tab of ["Assets", "Home", "Plan"]) {
@@ -565,7 +565,7 @@ try {
   pass("An archived owner sees recovery scoped to the old vault without controls that could target the current vault");
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a1.pk, url: url + "?vault=" + newVault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return /This archived vault/.test(document.body.innerText)"));
   await provider.send("evm_increaseTime", [7 * 86400]); await provider.send("evm_mine", []);
   await page.send("Page.reload", {}); await sleep(1500); await page.ev(HELPERS); await enableAtomicBatch();
@@ -587,7 +587,7 @@ try {
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a0.pk, url: url + "?vault=" + currentVault, preload: withoutPosition(currentVault) }); await page.ev(HELPERS); await enableAtomicBatch();
   await publishReward(parseEther("10"), 0n, 0n, currentVault);
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return /An earlier balance/.test(document.body.innerText)"));
   await page.ev("return __q.tab('Assets')");
   await clickReady("Refresh rewards");
@@ -611,7 +611,7 @@ try {
 
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a1.pk, url: url + "?vault=" + newVault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   const lateHeirBefore = await token.balanceOf(ACCOUNTS.a1.a);
   await externalReward(newVault, parseEther("20"));
   await page.ev("window.__E2E_REWARDS_DOWN__ = true; return true;");
@@ -630,7 +630,7 @@ try {
   const recoveryHeirBefore = await token.balanceOf(ACCOUNTS.a1.a);
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a0.pk, url: url + "?vault=" + newVault, preload }); await page.ev(HELPERS); await enableAtomicBatch();
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await clickReady("Recover archived assets to me");
   await until(async () => await token.balanceOf(newVault) === 0n);
   await until(() => page.ev("return /Archived assets settled/.test(document.body.innerText)"));
@@ -641,7 +641,7 @@ try {
 
   await page.close(); page = null;
   page = await launch({ pk: ACCOUNTS.a0.pk, url: url + "?vault=" + latestVault, preload: withoutPosition(latestVault) }); await page.ev(HELPERS); await enableAtomicBatch();
-  await clickReady("Continue with World App");
+  await clickReady("Agree and sign in");
   await until(() => page.ev("return __q.tabs().includes('Assets')"));
   await openAssetDetails();
   await externalReward(latestVault, parseEther("10"));

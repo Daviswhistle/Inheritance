@@ -81,8 +81,8 @@ async function openApp(acct, url = APP) {
   const b = await launch({ pk: acct.pk, url });
   await sleep(2800);
   // 앱은 자동 로그인하지 않는다. Connect 를 눌러야 SIWE 서명 → 서버 검증이 돈다.
-  // 이걸 빠뜨리면 모든 검사가 "Continue with World App" 화면을 검사하게 되어 아무것도 검증 못 한다.
-  const r = await click(b, "Continue with World App");
+  // 이걸 빠뜨리면 모든 검사가 "Agree and sign in" 화면을 검사하게 되어 아무것도 검증 못 한다.
+  const r = await click(b, "Agree and sign in");
   if (r !== "OK") log(`    (Connect 클릭 실패: ${r})`);
   await sleep(4500);
   const t = await text(b);

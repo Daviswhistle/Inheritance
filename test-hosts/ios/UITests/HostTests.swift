@@ -34,7 +34,7 @@ final class HostTests: XCTestCase {
             XCTAssertTrue(tab.waitForExistence(timeout: 30), "Missing tab: \(label)\n\(app.debugDescription)")
             tab.tap()
         }
-        let login = web.buttons["Continue with World App"].firstMatch
+        let login = web.buttons["Agree and sign in"].firstMatch
         XCTAssertTrue(login.waitForExistence(timeout: 20))
         login.tap()
         let reject = web.buttons["Reject"].firstMatch
@@ -121,7 +121,7 @@ final class HostTests: XCTestCase {
         let web = app.webViews.firstMatch
         XCTAssertTrue(web.buttons["Plan"].firstMatch.waitForExistence(timeout: 120))
         web.buttons["Plan"].firstMatch.tap()
-        let login = web.buttons["Continue with World App"].firstMatch
+        let login = web.buttons["Agree and sign in"].firstMatch
         XCTAssertTrue(login.waitForExistence(timeout: 30))
         login.tap()
         let amount = web.textFields["USDC"].firstMatch

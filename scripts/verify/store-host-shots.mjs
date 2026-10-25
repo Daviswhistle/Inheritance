@@ -56,7 +56,7 @@ try {
   await page.goto(origin + '/?approval=auto'); await ready();
   await capture('welcome');
   await page.locator('.tab-item').nth(2).tap();
-  await page.getByRole('button', { name: 'Continue with World App', exact: true }).tap();
+  await page.getByRole('button', { name: 'Agree and sign in', exact: true }).tap();
   await page.locator('#heir-input').fill('@sam');
   await page.locator('#plan-wld').fill('10'); await page.locator('#plan-usdc').fill('100');
   await until(() => page.getByRole('button', { name: 'Review plan', exact: true }).isEnabled(), 'valid plan');

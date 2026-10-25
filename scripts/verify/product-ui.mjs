@@ -66,7 +66,7 @@ try{
  console.log('PASS localized guest navigation, one heading, 44px tabs, action hit testing and scroll clearance across 24 layouts');
  await locale(page,'en');await tab(page,2);
  await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
- await click(page,'Continue with World App');assert.ok(await page.waitFor('#heir-input',30000));
+ await click(page,'Agree and sign in');assert.ok(await page.waitFor('#heir-input',30000));
  await page.ev(`await __q.setInput('heir-input',${JSON.stringify(config.heir)});await __q.setInput('plan-wld','10');await __q.setInput('plan-usdc','12.345678');`);
  for(const lang of ['en','ko']){
   await locale(page,lang);await tab(page,2);assert.ok(await page.waitFor('#heir-input'));
@@ -155,7 +155,7 @@ try{
  const heir=await launch({url:origin+`/?account=heir&approval=auto&vault=${vault}`,preload:"localStorage.setItem('inheritance:locale','en');"});pages.push(heir);await heir.ev(HELPERS);
  assert.ok(await heir.waitFor('#inheritance-test-controls'));await heir.ev("document.getElementById('inheritance-test-controls').style.display='none';");
  if(axeSource)await heir.send('Runtime.evaluate',{expression:axeSource});
- await click(heir,'Continue with World App');await until(()=>heir.ev("return document.querySelectorAll('.inheritance-asset').length===2"),'heir receives both assets');
+ await click(heir,'Agree and sign in');await until(()=>heir.ev("return document.querySelectorAll('.inheritance-asset').length===2"),'heir receives both assets');
  await heir.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  for(const lang of ['en','ko']){
   await locale(heir,lang);await tab(heir,2);

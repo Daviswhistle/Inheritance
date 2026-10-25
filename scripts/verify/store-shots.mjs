@@ -62,7 +62,7 @@ const goto = async (p, t) => {
 
 const connect = async (p) => {
   await sleep(3000);
-  await p.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+  await p.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(7000);
 };
 const capture = async (p, name) => {

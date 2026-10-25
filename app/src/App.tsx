@@ -1472,7 +1472,7 @@ export default function App() {
       setVaultIdentity(null);
       notifyWatchRequest.current++;
       setNotifyWatch({ key: "", state: "unknown" });
-      setStatus("Your sign-in expired. Continue with World App to reconnect.");
+      setStatus("Your sign-in expired. Sign in again to reconnect.");
       heirScannedFor.current = null;
     };
     window.addEventListener("inheritance:session-expired", expired);

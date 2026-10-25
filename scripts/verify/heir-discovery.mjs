@@ -90,7 +90,7 @@ try {
   vite = await createVite({ root: process.cwd() + "/app", configFile: process.cwd() + "/app/vite.config.e2e.ts", logLevel: "error", server: { host: "127.0.0.1", port: await freePort() } });
   await vite.listen();
   page = await launch({ pk: ACCOUNTS.a1.pk, url: vite.resolvedUrls.local[0], preload }); await page.ev(HELPERS);
-  await page.ev("return __q.click('Continue with World App')");
+  await page.ev("return __q.click('Agree and sign in')");
   await until(() => failures > 0);
   await page.ev("return __q.tab('Help')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Check again' && !b.d)"));

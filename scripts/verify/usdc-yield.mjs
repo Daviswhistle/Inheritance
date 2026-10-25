@@ -165,7 +165,7 @@ try {
   const preload = `window.__E2E_RPC__=${JSON.stringify(rpc)}; window.__E2E_BATCH_WALLET__=${JSON.stringify(await batchWallet.getAddress())}; (${publicFixtures.toString()})();window.__E2E_WLD__=${JSON.stringify(await wld.getAddress())};window.__E2E_USDC_STRATEGY__=${JSON.stringify(await usdcStrategy.getAddress())};window.__E2E_FACTORIES__=${JSON.stringify([await plain.getAddress(),await wldFactory.getAddress(),await usdcFactory.getAddress()])};window.__E2E_USERNAMES__=${JSON.stringify({[ACCOUNTS.a0.a.toLowerCase()]:"davis",[ACCOUNTS.a1.a.toLowerCase()]:"alex"})};`;
   const open = async (account, vault = "") => {
     await page?.close(); page = await launch({ pk: account.pk, url: url + (vault ? "?vault=" + vault : ""), preload });
-    await page.ev(HELPERS); await enableAtomicBatch(); await click("Continue with World App");
+    await page.ev(HELPERS); await enableAtomicBatch(); await click("Agree and sign in");
   };
   await open(ACCOUNTS.a0);
   await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");

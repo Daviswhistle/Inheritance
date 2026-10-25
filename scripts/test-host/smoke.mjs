@@ -73,7 +73,7 @@ try {
     return page;
   };
   const owner = await open('android');
-  await click(owner, 'Continue with World App');
+  await click(owner, 'Agree and sign in');
   await until(() => owner.ev('return !!document.querySelector(".account-row")'), 'real SIWE login');
   pass('Android transport: installed SDK, signed login and real Pages nonce verification');
   assert.equal(await owner.ev(`
@@ -126,7 +126,7 @@ try {
   pass('Failing second call rolls back the entire batch, including token approval');
 
   const ios = await open('ios', 'owner', '', 'manual');
-  await click(ios, 'Continue with World App');
+  await click(ios, 'Agree and sign in');
   await until(() => ios.ev('return window.__INHERITANCE_TEST_HOST__.pending.some(row => row.command === "wallet-auth")'), 'manual sign-in approval');
   assert.equal(await ios.ev('return document.querySelector("#inheritance-test-controls").shadowRoot.querySelector("dialog").open'), true);
   await ios.shot('test-host-ios-approval');
@@ -147,7 +147,7 @@ try {
 
   await control({ action: 'time', days: 31 });
   const heir = await open('ios', 'heir', `&vault=${await wldVault.getAddress()}`);
-  await click(heir, 'Continue with World App');
+  await click(heir, 'Agree and sign in');
   await until(() => heir.ev('return !!document.querySelector(".account-row")'), 'heir login');
   const claim = [
     { address: config.wldFactory, abi: ['function fileClaimFor(address)'], functionName: 'fileClaimFor', args: [await wldVault.getAddress()] },

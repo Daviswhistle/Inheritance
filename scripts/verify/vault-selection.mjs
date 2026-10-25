@@ -85,7 +85,7 @@ try {
   await vite.listen();
   const url = vite.resolvedUrls.local[0] + "?vault=" + legacyVault;
   page = await launch({ pk: ACCOUNTS.a0.pk, url, preload }); await page.ev(HELPERS);
-  await page.ev("return __q.click('Continue with World App')");
+  await page.ev("return __q.click('Agree and sign in')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'Back to your own vault')"));
   await page.ev("return __q.tab('Assets')");
   await page.waitFor('.money-metadata');
@@ -146,13 +146,13 @@ try {
   await (await token.mint(legacyVault, parseEther("3"))).wait();
   await provider.send("evm_increaseTime", [90 * 86400 + 1]); await provider.send("evm_mine", []);
   page = await launch({ pk: ACCOUNTS.a2.pk, url, preload }); await page.ev(HELPERS);
-  await page.ev("return __q.click('Continue with World App')");
+  await page.ev("return __q.click('Agree and sign in')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'File claim' && !b.d)"));
   pass("The named heir can claim the older shared vault after expiry");
   await page.ev("const auth = await import('/src/auth.ts'); auth.clearSession(); return (await auth.notificationFetch('/session-expiry-check')).status");
-  await until(() => page.ev("return /Continue with World App/.test(document.body.innerText)"));
+  await until(() => page.ev("return /Agree and sign in/.test(document.body.innerText)"));
   pass("An expired session returns to wallet sign-in");
-  await page.ev("return __q.click('Continue with World App')");
+  await page.ev("return __q.click('Agree and sign in')");
   await until(() => page.ev("return __q.btns().some(b => b.t === 'File claim' && !b.d)"));
   pass("Reauthentication restores the selected shared vault and heir controls");
   await page.ev("return __q.click('File claim')");

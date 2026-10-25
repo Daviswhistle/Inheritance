@@ -143,7 +143,7 @@ log(`    setup: vault=${vault.slice(0, 12)}… 잔액=${bal.split(" ")[0]}`);
 
 const b = await launch({ pk: A.a4.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
 await sleep(2800);
-await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+await b.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
 
 const clickTab = async (n) => {
@@ -235,7 +235,7 @@ log("\n[4] no funded plan means no funded-plan permission row");
 await b.close();
 const c = await launch({ pk: A.a9.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
 await sleep(2800);
-await c.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+await c.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(5000);
 await sleep(1000);
 await c.ev("const section = document.querySelector('.plan-reminder-details'); if (section && !section.open) section.querySelector('summary').click(); return true;");
@@ -254,7 +254,7 @@ log("\n[5] 새 사용자가 양의 입금액으로 unified plan 을 만들 수 �
 {
   const c3 = await launch({ pk: A.a11.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
   await sleep(2800);
-  await c3.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+  await c3.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   // `sleep(5000)` 은 추측이고 여기서는 관측이 필요하다. 지갑 연결이 끝나기 전에
   // 폼이 mounts 되지 않으면 그 다음 줄 `s.call(null, …)` 이 예외를 던져, 이 단계가
   // "실패" 가 아니라 스크립트 크래시로 죽는다 — 어느 검사가 왜 죽었는지 로그에 안 남는다.
@@ -282,7 +282,7 @@ log("\n[6] funded unified-plan 생성이 자동 등록되고 canonical 관리 �
 {
   const c2 = await launch({ pk: A.a10.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
   await sleep(2800);
-  await c2.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+  await c2.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   check("생성 폼과 amount control 이 나타난다",
     await c2.waitFor("#heir-input") && await c2.waitFor("#plan-wld"), "#heir-input + #plan-wld");
   const setHeir = await setInput(c2, "heir-input", A.a9.a);
@@ -333,7 +333,7 @@ log("\n[7] 새 계획 안내는 funded plan 이 생기기 전에 올바른 위�
 {
   const fresh = await launch({ pk: A.a11.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
   await sleep(2800);
-  await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+  await fresh.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5000);
   const tabs = await fresh.ev(`return [...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).map(x=>x.innerText.trim());`);
   check("금고가 없어도 앱의 네 개 탭을 탐색할 수 있다", tabs.join("|") === "Home|Assets|Plan|Help",
@@ -384,7 +384,7 @@ log("\n[8] 상속인 카드는 결과가 있을 때만 첫 화면에 나온다")
     };
   ` });
   await sleep(2800);
-  await plain.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+  await plain.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(6500);
   const t = await plain.ev("return document.body.innerText;");
   const completeEmpty = await plain.ev("return window.__emptyIndexReads > 0;");
@@ -419,7 +419,7 @@ log("\n[9] 진짜 상속인에게는 여전히 첫 화면에 보여야 한다");
   const heir = heirAcct ? await launch({ pk: heirAcct.pk, url: APP }) : null;
   if (heir) {
   await sleep(2800);
-  await heir.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+  await heir.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(9000);
   const th = await heir.ev("return document.body.innerText;");
   check("상속인에게는 상속인 카드가 보인다", /Are you named as someone/i.test(th),
@@ -439,7 +439,7 @@ log("\n[10] Enable reminders updates the overview to the confirmed wallet permis
 // wallet permission status without implying that a vault was registered or delivery succeeded.
 const perm = await launch({ pk: A.a4.pk, url: APP, preload: LOCAL_NOTIFY_FIXTURE });
 await sleep(2800);
-await perm.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+await perm.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
 await sleep(6000);
 await perm.ev(`return (()=>{const e=[...document.querySelectorAll(".tab-item")].filter(x=>x.offsetParent!==null).find(x=>x.innerText.trim()==="Home");if(e)e.click();return 1;})()`);
 await sleep(1500);

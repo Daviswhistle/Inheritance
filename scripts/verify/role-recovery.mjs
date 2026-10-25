@@ -76,7 +76,7 @@ try {
   await vite.listen();
   page = await launch({ pk: ACCOUNTS.a0.pk, url: vite.resolvedUrls.local[0], preload: `window.__E2E_RPC__ = ${JSON.stringify(rpc)};` });
   await page.ev(HELPERS);
-  await page.ev("return __q.click('Continue with World App')");
+  await page.ev("return __q.click('Agree and sign in')");
   await until(() => page.ev("return !!document.querySelector('.account-row') && __q.tabs().includes('Plan')"));
   await page.ev("return __q.tab('Plan')");
   await until(() => page.ev("return !!document.getElementById('period-change')"));

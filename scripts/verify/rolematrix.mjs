@@ -122,7 +122,7 @@ check("dev 서버 기동", (await fetch(APP)).ok, APP);
 
 const mk = (pk, url) => launch({ pk, url });
 const connect = async (page) => {
-  await page.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Continue with World App)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
+  await page.ev(`(()=>{const e=[...document.querySelectorAll("button")].find(x=>/^(Connect|Agree and sign in)$/.test(x.innerText.trim()));if(e)e.click();return 1;})()`);
   await sleep(5500);
 };
 const goto = (page, tab) =>

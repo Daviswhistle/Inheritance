@@ -112,8 +112,8 @@ async function clickMatchingButton(targetPage, matcher) {
 
 async function signIn(targetPage) {
   await targetPage.ev(HELPERS);
-  await clickButton(targetPage, "Continue with World App");
-  await until(() => targetPage.ev("return !!document.querySelector('.account-row') && !/Continue with World App/.test(document.body.innerText)"), "authenticated app shell");
+  await clickButton(targetPage, "Agree and sign in");
+  await until(() => targetPage.ev("return !!document.querySelector('.account-row') && !/Agree and sign in/.test(document.body.innerText)"), "authenticated app shell");
 }
 
 async function chooseTab(targetPage, label) {

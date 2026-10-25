@@ -130,7 +130,7 @@ try {
   const editingPage = await editingContext.newPage();
   try {
     await editingPage.goto(origin + '/?platform=ios&approval=auto');
-    await tab(editingPage, 2); await tap(editingPage, 'Continue with World App');
+    await tab(editingPage, 2); await tap(editingPage, 'Agree and sign in');
     await editingPage.locator('#heir-input').fill(config.heir);
     for (const [width, height, visible] of [[390, 844, 350], [844, 390, 70]]) {
       await editingPage.setViewportSize({ width, height });
@@ -198,7 +198,7 @@ try {
     await editingPage.waitForFunction(() => !document.documentElement.hasAttribute('data-plan-keyboard'));
   } finally { await editingContext.close(); }
   pass('Keyboard Done is hittable 24px above the keyboard, dismisses editing without submission, and preserves portrait/landscape/foreground input clearance');
-  await tab(page, 2); await tap(page, 'World App으로 계속하기');
+  await tab(page, 2); await tap(page, '동의하고 로그인');
   await tab(page, 3);
   await page.getByText('World App 알림', { exact: true }).tap();
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.failNext('request-permission'));
@@ -436,7 +436,7 @@ try {
   assert.equal(await commandCount(), 1, 'only explicit retry submits');
   pass('Approval rejection, reload during pending approval and browser Back preserve both vaults; only an explicit retry submits once');
   const heir = await open(origin + `/?platform=ios&approval=auto&account=heir&vault=${wldVault}`);
-  await tap(heir, 'Continue with World App');
+  await tap(heir, 'Agree and sign in');
   await heir.locator('.inheritance-asset').nth(1).waitFor();
   await layout(heir, 'heir-active-en', 390);
   assert.equal(await heir.locator('.heir-shared-next').count(), 1);
