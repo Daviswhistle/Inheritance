@@ -36,7 +36,7 @@
 .income-history-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .locale-picker { display: inline-flex; align-items: center; }
-.locale-picker select { min-height: 44px; max-width: 116px; border: 1px solid var(--line); border-radius: 999px; padding: 0 27px 0 11px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
+.locale-picker select { appearance: none; height: 44px; min-height: 44px; max-width: 116px; border: 1px solid var(--line); border-radius: 999px; padding: 0 27px 0 11px; color: var(--ink); background-color: #fff; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 12px) 19px, calc(100% - 8px) 19px; background-repeat: no-repeat; background-size: 4px 4px; font: inherit; font-size: 12px; }
 .asset-history summary, .asset-details > summary, .principal-controls > summary, .income-recipient > summary { display: flex; min-height: 48px; align-items: center; justify-content: space-between; padding: 12px 15px; gap: 10px; color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
 .asset-history summary::-webkit-details-marker, .asset-details > summary::-webkit-details-marker, .principal-controls > summary::-webkit-details-marker, .income-recipient > summary::-webkit-details-marker { display: none; }
 .asset-history summary::after, .asset-details > summary::after, .principal-controls > summary::after, .income-recipient > summary::after { content: '+'; color: var(--muted); font-size: 19px; font-weight: 400; }

@@ -14,6 +14,7 @@
     "test-host:pending": "node scripts/test-host/pending.mjs",
     "test-host:check": "node scripts/test-host/smoke.mjs",
     "test:product-ui": "node scripts/verify/product-ui.mjs",
+    "test:mobile-fixes": "node --test scripts/test-mobile-fixes.mjs",
     "test:webkit-ui": "node scripts/verify/webkit-ui.mjs",
     "contracts:build": "forge build",
     "contracts:test": "forge test -vvv",

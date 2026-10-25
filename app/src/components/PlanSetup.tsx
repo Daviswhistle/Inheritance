@@ -5,6 +5,8 @@ import { Input } from "./ui/input";
 import { formatPlanInterval, parseAssetAmount } from "@/plan";
 import { useLocale } from "@/locale-context";
 import { useActionClearance } from "@/use-action-clearance";
+import type { ContactPickerStatus } from "@/contact-picker";
+import type { LocaleKeyType } from "@/locale";
 import "./PlanSetup.css";
 
 type PlanAsset = "WLD" | "USDC";
@@ -35,6 +37,19 @@ function isWalletAddress(value: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(value);
 }
 
+const contactPickerMessageKeys: Record<Exclude<ContactPickerStatus, "idle">, LocaleKeyType> = {
+  opening: "plan.recipient.pickerOpening",
+  cancelled_waiting: "plan.recipient.pickerWaiting",
+  timed_out_waiting: "plan.recipient.pickerWaiting",
+  manual_waiting: "plan.recipient.pickerManualWaiting",
+  context_waiting: "plan.recipient.pickerWaiting",
+  cancelled: "plan.recipient.pickerCancelled",
+  timed_out: "plan.recipient.pickerTimedOut",
+  manual: "plan.recipient.pickerManual",
+  empty: "plan.recipient.pickerEmpty",
+  failed: "plan.recipient.pickerFailed",
+};
+
 export function PlanLegalDialog({ document: legalDocument, onClose }: { document: "terms" | "privacy"; onClose: () => void }) {
   const { t } = useLocale();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -61,8 +76,11 @@ export function PlanLegalDialog({ document: legalDocument, onClose }: { document
         // Reuse the published documents while keeping their return links inside
         // this review: reloading the app would discard the unsubmitted draft.
         const frameDocument = event.currentTarget.contentDocument;
-        if (frameDocument) setVisibleDocument(frameDocument.location.pathname === "/privacy.html" ? "privacy"
-          : frameDocument.location.pathname === "/yield-terms.html" ? "yield" : "terms");
+        if (frameDocument) {
+          const pathname = frameDocument.location.pathname;
+          setVisibleDocument(pathname === "/privacy" || pathname === "/privacy.html" ? "privacy"
+            : pathname === "/yield-terms" || pathname === "/yield-terms.html" ? "yield" : "terms");
+        }
         frameDocument?.addEventListener("keydown", event => {
           if (event.key === "Escape") { event.preventDefault(); onClose(); }
         });
@@ -81,7 +99,8 @@ export function PlanLegalDialog({ document: legalDocument, onClose }: { document
 }
 
 export function PlanSetup({
-  rows, heir, onHeirChange, onPickHeir, resolvingHeir, heirResolved, heirUsername, shareBusy,
+  rows, heir, onHeirChange, onPickHeir, onCancelContactPicker, contactPickerStatus, contactPickerPending,
+  resolvingHeir, heirResolved, heirUsername,
   period, periodValid, onPeriodChange, onPreset, onAmountChange, yieldConsent, onYieldConsent, pendingPlan,
   heirSuspicious, alignmentConflicts, onConfirmAlignment, onCancelAlignment, onCreate, onResume,
   busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining, onRefreshBalances,
@@ -90,10 +109,12 @@ export function PlanSetup({
   heir: string;
   onHeirChange: (value: string) => void;
   onPickHeir: () => void;
+  onCancelContactPicker: () => void;
+  contactPickerStatus: ContactPickerStatus;
+  contactPickerPending: boolean;
   resolvingHeir: boolean;
   heirResolved: string;
   heirUsername: string;
-  shareBusy: boolean;
   period: string;
   periodValid: boolean;
   onPeriodChange: (value: string) => void;
@@ -461,11 +482,16 @@ export function PlanSetup({
           <div className="field-row-controls plan-recipient-controls">
             <Input id="heir-input" placeholder={t("plan.recipient.placeholder")} value={heir} disabled={Boolean(pendingPlan) || busy}
               onChange={event => { setReviewSnapshot(null); onHeirChange(event.target.value); }} aria-describedby="heir-help" />
-            <Button disabled={busy || Boolean(pendingPlan) || shareBusy} onClick={() => { setReviewSnapshot(null); onPickHeir(); }} title={t("plan.recipient.chooseTitle")}>
-              {shareBusy ? t("plan.recipient.opening") : t("plan.recipient.choose")}
+            <Button disabled={busy || Boolean(pendingPlan) || contactPickerPending} onClick={() => { setReviewSnapshot(null); onPickHeir(); }} title={t("plan.recipient.chooseTitle")}>
+              {contactPickerStatus === "opening" ? t("plan.recipient.opening") : t("plan.recipient.choose")}
             </Button>
           </div>
           <p id="heir-help" className="plan-field-help">{t("plan.recipient.help")}</p>
+          {contactPickerStatus !== "idle" && <div className="plan-field-help" role="status">
+            <p>{t(contactPickerMessageKeys[contactPickerStatus])}</p>
+            {contactPickerPending && contactPickerStatus === "opening" &&
+              <Button size="sm" variant="ghost" onClick={onCancelContactPicker}>{t("plan.recipient.cancelSelection")}</Button>}
+          </div>}
           {heir && (resolvingHeir ? <p className="plan-field-help" role="status">{t("plan.recipient.checking")}</p>
             : recipientValid ? <p className="resolved-heir">{heirUsername ? `@${heirUsername}` : t("plan.recipient.wallet")}<span>{heirResolved.slice(0, 6)}…{heirResolved.slice(-4)}</span></p>
               : !heirSuspicious && <p className="plan-inline-error" role="alert">{t("plan.recipient.notFound")}</p>)}

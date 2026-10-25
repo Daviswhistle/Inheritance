@@ -391,7 +391,8 @@ try {
       return React.createElement(PlanSetup, {
         rows: [{ symbol: 'WLD', decimals: 18, mode: 'plain', amount: '1', walletBalance: 10000000000000000000n }],
         heir: '${ACCOUNTS.a1.a}', heirResolved: '${ACCOUNTS.a1.a}', heirUsername: '',
-        resolvingHeir: false, heirSuspicious: false, shareBusy: false, period: '30', periodValid: true,
+        resolvingHeir: false, heirSuspicious: false, contactPickerStatus: 'idle', contactPickerPending: false,
+        onCancelContactPicker: () => {}, period: '30', periodValid: true,
         yieldConsent: false, pendingPlan: null, alignmentConflicts: [], busy, createDisabled: false,
         resumeDisabled: false, canEditRemaining: false,
         onCreate: () => { window.__PLAN_RETRY_CALLS__++; setBusy(true); },

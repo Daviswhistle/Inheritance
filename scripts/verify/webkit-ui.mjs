@@ -1,4 +1,4 @@
-// Linux WebKit + the real MiniKit SDK's iOS transport + disposable local contracts.
+// Playwright WebKit + the real MiniKit SDK's iOS transport + disposable local contracts.
 // This exercises a second browser engine; it does not certify iPhone/World App UI.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -23,7 +23,10 @@ const host = spawn(process.execPath, [new URL('../test-host/start.mjs', import.m
 let output = '', browser, provider;
 host.stdout.on('data', data => output += data);
 host.stderr.on('data', data => output += data);
-const evidence = { environment: 'Linux WebKit, emulated mobile viewport, real MiniKit iOS transport, local assets; not an iPhone', checks: [], layouts: [], errors: [] };
+const evidence = {
+  environment: (process.platform === 'darwin' ? 'macOS' : process.platform) + ' Playwright WebKit, emulated mobile viewport, real MiniKit iOS transport, local assets; not an iPhone',
+  checks: [], layouts: [], errors: [],
+};
 async function until(fn, label, timeout = 45000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -72,6 +75,15 @@ async function open(url) {
 try {
   await until(async () => { try { return (await fetch(origin + '/__host/config')).ok; } catch { return false; } }, 'host startup', 90000);
   const config = await (await fetch(origin + '/__host/config')).json();
+  for (const [alias, canonical] of [['terms.html', '/terms'], ['privacy.html', '/privacy'], ['yield-terms.html', '/yield-terms']]) {
+    const response = await fetch(origin + '/' + alias, { redirect: 'manual' });
+    assert.equal(response.status, 308, alias + ' HTTP redirect status');
+    assert.equal(response.headers.get('location'), canonical, alias + ' HTTP redirect target');
+    const document = await fetch(origin + canonical);
+    assert.equal(document.status, 200, canonical + ' extensionless document');
+    assert.match(await document.text(), /<h1>/, canonical + ' legal document body');
+  }
+  pass('The local HTTP host returns real 308 legal aliases and serves each extensionless document');
   browser = await webkit.launch({ headless: true });
   evidence.browser = browser.version();
   provider = new JsonRpcProvider(origin + '/__host/rpc', undefined, { cacheTimeout: -1, batchMaxCount: 1 });
@@ -85,12 +97,24 @@ try {
   }
   assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => ['wallet-auth', 'send-transaction'].includes(x.command)).length), 0);
   pass('Both languages and all four guest tabs reflow at 320/390px without requesting a wallet');
+  const localePickerStyle = await page.locator('.locale-picker select').evaluate(select => {
+    const style = getComputedStyle(select);
+    return { appearance: style.appearance, backgroundImage: style.backgroundImage };
+  });
+  assert.equal(localePickerStyle.appearance, 'none');
+  assert.match(localePickerStyle.backgroundImage, /linear-gradient/);
+  pass('The locale select keeps a visible custom arrow and the 44px touch target under WebKit');
   await tab(page, 0);
   assert.ok((await page.locator('.entry-consent').textContent()).trim().length > 30);
   await page.locator('.entry-consent a[href="/privacy.html"]').tap();
   await page.locator('.plan-legal-dialog').waitFor({ state: 'visible' });
+  await page.frameLocator('.plan-legal-dialog iframe').locator('h1').waitFor();
+  assert.equal(await page.frameLocator('.plan-legal-dialog iframe').locator('body').evaluate(body => body.ownerDocument.location.pathname), '/privacy');
+  await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '개인정보 처리방침');
+  assert.equal(await page.locator('.plan-legal-dialog iframe').getAttribute('title'), '개인정보 처리방침');
   await page.keyboard.press('Escape');
   await page.locator('.plan-legal-dialog').waitFor({ state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('href')), '/privacy.html');
   assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => ['wallet-auth', 'send-transaction'].includes(x.command)).length), 0);
   pass('Privacy and terms are available before explicit sign-in consent, without a wallet request');
   // Simulate a keyboard-reduced visual viewport while retaining the layout
@@ -175,6 +199,30 @@ try {
   } finally { await editingContext.close(); }
   pass('Keyboard Done is hittable 24px above the keyboard, dismisses editing without submission, and preserves portrait/landscape/foreground input clearance');
   await tab(page, 2); await tap(page, 'World App으로 계속하기');
+  await tab(page, 3);
+  await page.getByText('World App 알림', { exact: true }).tap();
+  await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.failNext('request-permission'));
+  await tap(page, '알림 켜기');
+  await page.getByText('이 버전에서는 알림 권한을 요청할 수 없습니다. World App → 설정 → 알림에서 켜 주세요.', { exact: true }).waitFor();
+  assert.equal(await page.getByText('알림이 꺼져 있습니다.', { exact: true }).isVisible(), true);
+  assert.equal(await page.getByText('World App에서 알림을 허용하지 않았습니다. World App의 설정에서 알림을 켜 주세요.', { exact: true }).count(), 0);
+  await tap(page, '알림 켜기');
+  await page.getByText('이 지갑의 알림이 켜져 있습니다.', { exact: true }).first().waitFor();
+  pass('An unexpected SDK permission failure does not become a user denial; retry reads permission on without claiming global monitoring');
+  await tab(page, 2);
+  await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.delayNext(1200, 'share-contacts'));
+  await tap(page, '연락처 선택');
+  await page.getByRole('button', { name: '선택 취소 후 직접 입력', exact: true }).tap();
+  assert.equal(await page.getByRole('button', { name: '연락처 선택', exact: true }).isEnabled(), false,
+    'An abandoned native request has a terminal label and cannot overlap another request');
+  await page.locator('#heir-input').fill(config.heir);
+  assert.equal(await page.locator('#heir-input').inputValue(), config.heir);
+  await page.waitForFunction(() => window.__INHERITANCE_TEST_HOST__.history
+    .filter(command => command.command === 'share-contacts').at(-1)?.state === 'success');
+  await page.waitForFunction(() => document.querySelector('[role="status"].plan-field-help')?.textContent.includes('직접 입력한 수령인'));
+  assert.equal(await page.locator('#heir-input').inputValue(), config.heir);
+  assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(command => command.command === 'share-contacts').length), 1);
+  pass('Cancelling a pending contacts request preserves manual recipient entry and ignores its late result');
   await page.locator('#heir-input').fill(config.heir);
   await page.locator('#plan-wld').fill('10');
   await page.locator('#plan-usdc').fill('12.345678');
@@ -195,16 +243,39 @@ try {
   assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);
   await page.locator('#yield-consent').check();
   // Reading the required documents must not replace the app and lose the draft.
-  for (const document of ['terms', 'privacy']) {
-    const link = page.locator(`.plan-legal-copy a[href="/${document}.html"]`);
+  for (const legalDocument of ['terms', 'privacy']) {
+    const link = page.locator(`.plan-legal-copy a[href="/${legalDocument}.html"]`);
     await link.tap();
     await page.locator('.plan-legal-dialog[open]').waitFor();
     const frame = page.frameLocator('.plan-legal-dialog iframe');
     await frame.locator('h1').waitFor();
-    assert.ok(await page.locator('.plan-legal-dialog iframe').getAttribute('title'));
+    const expectedTitle = legalDocument === 'privacy' ? '개인정보 처리방침' : '이용약관';
+    assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/' + legalDocument);
+    await page.waitForFunction(title => document.querySelector('.plan-legal-dialog h2')?.textContent === title, expectedTitle);
+    assert.equal(await page.locator('.plan-legal-dialog iframe').getAttribute('title'), expectedTitle);
+    if (legalDocument === 'privacy') {
+      await frame.getByRole('link', { name: 'Terms', exact: true }).tap();
+      await frame.locator('h1').waitFor();
+      await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '이용약관');
+      assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/terms');
+      await frame.getByRole('link', { name: 'Privacy', exact: true }).tap();
+      await frame.locator('h1').waitFor();
+      await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '개인정보 처리방침');
+      assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/privacy');
+    } else {
+      await frame.locator('a[href="/yield-terms.html"]').tap();
+      await frame.locator('h1').waitFor();
+      await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '운용 약관 보기');
+      assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/yield-terms');
+      assert.equal(await page.locator('.plan-legal-dialog iframe').getAttribute('title'), '운용 약관 보기');
+      await frame.getByRole('link', { name: 'General terms', exact: true }).tap();
+      await frame.locator('h1').waitFor();
+      await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '이용약관');
+      assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/terms');
+    }
     await tap(page, '닫기');
     await page.locator('.plan-legal-dialog').waitFor({ state: 'detached' });
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('href')), `/${document}.html`);
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('href')), `/${legalDocument}.html`);
     assert.equal(page.url(), origin + '/?platform=ios&approval=auto');
     assert.ok(await page.locator('#yield-consent').isChecked());
   }

@@ -21,6 +21,12 @@ const accounts = {
 };
 // Loaded at server startup, never bundled into the miniapp.
 const executorPath = path.resolve(__dirname, "../scripts/test-host/executor.mjs");
+const legalDocuments: Record<string, string> = {
+  "/terms": "terms.html",
+  "/privacy": "privacy.html",
+  "/yield-terms": "yield-terms.html",
+};
+const legalAliases = new Map(Object.entries(legalDocuments).map(([pathname, filename]) => ["/" + filename, pathname]));
 
 function hostServer(): Plugin {
   return {
@@ -44,6 +50,33 @@ function hostServer(): Plugin {
       };
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url || "/", `http://${req.headers.host}`);
+        const canonicalLegalPath = legalAliases.get(url.pathname);
+        if (canonicalLegalPath) {
+          if (req.method !== "GET" && req.method !== "HEAD") {
+            res.statusCode = 405;
+            res.setHeader("Allow", "GET, HEAD");
+            res.end();
+            return;
+          }
+          res.statusCode = 308;
+          res.setHeader("Location", canonicalLegalPath + url.search);
+          res.setHeader("Cache-Control", "no-store");
+          res.end();
+          return;
+        }
+        const legalFile = legalDocuments[url.pathname];
+        if (legalFile) {
+          if (req.method !== "GET" && req.method !== "HEAD") {
+            res.statusCode = 405;
+            res.setHeader("Allow", "GET, HEAD");
+            res.end();
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(req.method === "HEAD" ? undefined : readFileSync(path.resolve(__dirname, "public", legalFile)));
+          return;
+        }
         if (!url.pathname.startsWith("/__host/")) return next();
         res.setHeader("Cache-Control", "no-store");
         const reply = (status: number, value: unknown) => {

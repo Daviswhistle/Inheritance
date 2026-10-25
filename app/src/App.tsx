@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FACTORY_ABI, VAULT_ABI, INCOME_FACTORY_ABI, INCOME_VAULT_ABI } from "./abis";
 import { errorText } from "./errors";
 import { ethers } from "ethers";
@@ -56,6 +56,9 @@ import { walletAuth, sendWorldChainTx, getNotifyPermission, requestNotifyPermiss
 import { LanguagePicker } from "@/i18n";
 import { useLocale } from "@/locale-context";
 import { localizeAppMessage } from "@/locale";
+import { contactPickerCoordinator } from "@/contact-picker";
+import type { ContactPickerSnapshot } from "@/contact-picker";
+import { notificationHealth, requestAndReadNotificationPermission } from "@/notification-state";
 
 type AppPlanRoute = PlanRoute<YieldRoute | null>;
 const APP_PLAN_ROUTES: AppPlanRoute[] = buildPlanRoutes(
@@ -319,6 +322,17 @@ export default function App() {
   // signer 경로는 비활성 (World App 내부에서만 실행)
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [account, setAccount] = useState<string>("");
+  const [contactPicker, setContactPicker] = useState<ContactPickerSnapshot>(() => contactPickerCoordinator.snapshot);
+  useLayoutEffect(() => {
+    contactPickerCoordinator.invalidate();
+    const unsubscribe = contactPickerCoordinator.subscribe(setContactPicker);
+    return () => {
+      unsubscribe();
+      // MiniKit cannot abort this promise; invalidate its result and keep the
+      // module-level single-flight lock until the original promise settles.
+      contactPickerCoordinator.invalidate();
+    };
+  }, [account]);
   // Username (World App handle) — used for display; addresses are used on-chain
   const [username, setUsername] = useState<string>("");
   const [homeHeirUsernameRead, setHomeHeirUsernameRead] = useState<{ account: string; address: string; username: string | null } | null>(null);
@@ -831,44 +845,15 @@ export default function App() {
    * 무엇을 고쳐야 하는지와 함께 말한다.
    */
   const notifyHealth = useMemo(() => {
-    if (!NOTIFY_BACKEND_ENABLED) {
-      return { level: "checking" as const, text: "" };
-    }
-    // 카피는 짧게 유지한다. 카운트다운 바로 아래에 붙는 자리라 길어지면 실제 조작
-    // 버튼을 화면 아래로 밀어낸다. "무엇이 되고 있지 않은가" 만 남기고 **결과는
-    // 아래 문장이 말한다** — 이 자리의 `text` 는 "무엇을 고쳐야 하는가" 만 한다.
-    //
-    // 예전엔 여기서 "…nobody will be told if you stop renewing" 까지 말했는데, 바로 아래
-    // "If you stop renewing, your heir can file a claim and take the balance…" 가 같은
-    // 사실을 다시 말했다. 같은 화면에서 같은 말을 두 번 하면 하나가 거짓말처럼
-    // 읽힌다. **결과는 그 문장 한 곳에만 남긴다.**
-    //
-    // "Notifications are off" 라는 문구는 유지한다 — 하네스가 이 상태를 문자열로
-    // 판정한다(notify-ux.mjs). 문구를 바꾸면 검사가 아니라 문자열 검색이 된다.
-    if (notifyPermission === "denied" && notifyAsked) {
-      // 우리가 물어봤는데 여전히 false 다. 누군가 actively 거절한 상태이므로 "꺼짐"
-      // 보다 강한 말이 이 자리에 필요하다.
-      return { level: "broken" as const, text: "World App is blocking notifications — turn them on in World App → Settings." };
-    }
-    if (notifyPermission !== "granted") {
-      // 아직 켜지 않았거나 알 수 없는 경우. "누가 막았다" 고 말할 근거가 없으므로
-      // 그렇게 말하지 않는다.
-      return { level: "off" as const, text: "Notifications are off." };
-    }
-    if (notifyWatchState === "not_registered") {
-      return { level: "broken" as const, text: "This vault is not being watched." };
-    }
-    if (notifyWatchState === "registered") {
-      if (notifyDeliveryNote) {
-        return {
-          level: "broken" as const,
-          text: `World App took the request but did not deliver it (${notifyDeliveryNote}).`,
-        };
-      }
-      return { level: "ok" as const, text: "Reminders are enabled for you. Your heir must enable their own notifications separately." };
-    }
-    return { level: "checking" as const, text: "Checking notification status…" };
-  }, [notifyPermission, notifyWatchState, notifyDeliveryNote, notifyAsked]);
+    return notificationHealth({
+      backendEnabled: NOTIFY_BACKEND_ENABLED,
+      permission: notifyPermission,
+      asked: notifyAsked,
+      hasWatchTarget: Boolean(notifyWatchKey),
+      watchState: notifyWatchState,
+      deliveryNote: notifyDeliveryNote,
+    });
+  }, [notifyPermission, notifyAsked, notifyWatchKey, notifyWatchState, notifyDeliveryNote]);
 
   /**
    * 알림이 실제로 필요할 때만 배너를 띄우기 위한 판정.
@@ -1212,37 +1197,24 @@ export default function App() {
       return;
     }
     setNotifyBusy(true);
-    try {
-      await askNotifyPermission();
-    } catch (e: unknown) {
-      /* 여기 도달하면 World App 이 아니라 **이 앱 쪽** 문제다(브리지 명령이 없거나
-         형태가 다르다 — 옛 World App 에서 실제로 그렇다). "World App 이 허용하지
-         않습니다" 라고 하면 원인이 다른 곳을 향한다. 되읽은 값이 granted 여도
-         마찬가지: 살아만 있으면서 이 요청 경로가 깨진 것이므로, 배선 불량이라고
-         알린다.
-         원문은 개발자 콘솔에 남긴다 — 사용자 화면에는 원인을 담지 않되 사라뜨리지도
-         않는다(버그 신고에 필요). */
-      console.warn("requestPermission failed (bridge/app side):", e);
-      pushToast("error", "This version of World App could not ask for notifications. Turn them on in World App → Settings → Notifications instead.");
-      await refreshNotifyPermission();
-      setNotifyBusy(false);
+    const outcome = await requestAndReadNotificationPermission(askNotifyPermission, getNotifyPermission);
+    const state = outcome.permission
+      ? outcome.permission.notifications ? "granted" : "denied"
+      : "unknown";
+    setNotifyPermission(state);
+    setNotifyBusy(false);
+    if (outcome.failure?.category === "unexpected") {
+      console.warn("requestPermission failed (unexpected SDK/app error):", outcome.failure.error);
+      pushToast("error", t("status.notificationPermissionUnsupported"));
       return;
     }
-    /* 결과를 다시 **읽어서** 말한다. 예전에는 호출이 null 이 아니면 곧바로
-       "Notifications enabled for this wallet." 를 띄웠는데, MiniKit 2.x 는 거절을
-       throw 하지 않고 결과로 돌려줄 수 있다 — 즉 함수가 아무 예외 없이 끝났다는
-       사실은 "허용됐다" 는 뜻이 아니었다. 알림 테스트에서 이미 같은 실수를 한 번
-       했고(sent:false 인데 "요청했다"고 말함), 여기도 같았다.
-       그래서 실제로 권한 상태를 다시 읽고 그 값으로 말한다. */
-    const state = await refreshNotifyPermission();
     setNotifyAsked(true);
-    setNotifyBusy(false);
     if (state === "granted") {
-      pushToast("success", "Notifications are on for this wallet.");
+      pushToast("success", t("status.notificationsOn"));
     } else if (state === "denied") {
-      pushToast("error", "Still off — World App is not granting notifications. Turn them on in World App → Settings → Notifications.");
+      pushToast("error", t("status.notificationStillOff"));
     } else {
-      pushToast("error", "Could not read the notification setting back. Check World App → Settings → Notifications.");
+      pushToast("error", t("status.notificationReadFailed"));
     }
   };
 
@@ -3287,21 +3259,22 @@ export default function App() {
    * 주소를 손으로 옮겨 적으면 한 글자만 틀려도 자기가 지정하지 않은 지갑이
    * 상속인이 된다. 연락처에서 고르면 지갑 주소가 함께 와서 그 위험이 없다.
    */
-  const pickHeirFromContacts = async () => {
-    setShareBusy(true);
-    try {
-      const picked = await pickWorldContacts(
-        "Join me on an inheritance vault in World App.",
-      );
-      const first = picked?.[0];
-      if (!first?.walletAddress) {
-        // 월드앱 밖이거나 사용자가 취소했다. 주소를 직접 넣는 경로가 남는다.
-        return;
-      }
-      onHeirInput(first.username ? `@${first.username}` : first.walletAddress);
-    } finally {
-      setShareBusy(false);
-    }
+  const pickHeirFromContacts = () => {
+    contactPickerCoordinator.start(async () => {
+      const picked = await pickWorldContacts("Join me on an inheritance vault in World App.");
+      return picked?.[0]?.walletAddress ? picked[0] : null;
+    }, first => {
+      onHeirInput(first.username ? "@" + first.username : first.walletAddress);
+    });
+  };
+
+  const changePlanHeir = (value: string) => {
+    contactPickerCoordinator.manualEdit();
+    void onHeirInput(value);
+  };
+  const cancelContactPicker = () => {
+    contactPickerCoordinator.cancel();
+    document.getElementById("heir-input")?.focus({ preventScroll: true });
   };
 
   // ---- discover vaults where current account is the heir (for heirs)
@@ -4858,13 +4831,15 @@ export default function App() {
               balanceUnavailable: walletBalances.account.toLowerCase() === account.toLowerCase() && walletBalances.unavailable.includes(row.symbol) }))}
             onRefreshBalances={() => void refreshBalances()}
             heir={heir}
-            onHeirChange={onHeirInput}
+            onHeirChange={changePlanHeir}
             onPickHeir={pickHeirFromContacts}
+            onCancelContactPicker={cancelContactPicker}
+            contactPickerStatus={contactPicker.status}
+            contactPickerPending={contactPicker.pending}
             resolvingHeir={resolvingHeir}
             heirResolved={heirResolved?.address ?? ""}
             heirUsername={heirResolved?.username ?? ""}
             heirSuspicious={Boolean(heirResolved?.address && isHeirSuspicious())}
-            shareBusy={shareBusy}
             period={periodInput}
             periodValid={periodValid}
             onPeriodChange={onPeriodChange}
