@@ -241,7 +241,7 @@ try {
   assert.equal(await page.locator('.plan-submit').isDisabled(), true);
   assert.deepEqual(await page.locator('.plan-review-amount').allTextContents(), ['10 WLD', '12.345678 USDC']);
   assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);
-  const feeExample = page.locator('.plan-fee-example');
+  const feeExample = page.locator('[data-fee-example]');
   assert.equal(await feeExample.count(), 1);
   await feeExample.locator('summary').tap();
   const exampleText = await feeExample.innerText();

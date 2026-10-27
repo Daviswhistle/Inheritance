@@ -562,7 +562,7 @@ export function PlanSetup({
               if (!example) return null;
               const groupedAssets = reviewSnapshot.assets.filter(asset => asset.mode === "morpho" && asset.underlyingFeePercent === percent);
               const formatAmount = (value: number, symbol: string) => `${new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(value)} ${symbol}`;
-              return <details className="plan-more-details plan-fee-example" key={group.symbol}>
+              return <details className="plan-more-details" data-fee-example="" key={group.symbol}>
                 <summary>{t("plan.review.feeExampleSummary", { symbol: group.symbol, percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(percent) })}</summary>
                 <div>
                   {groupedAssets.map(asset => <p key={asset.symbol}>{t("plan.review.feeExampleLine", {

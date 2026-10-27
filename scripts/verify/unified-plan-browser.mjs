@@ -471,13 +471,13 @@ try {
   assert.match(feeReview, /Fees on gains[\s\S]*WLD \+ USDC:[\s\S]*Re7 vault on Morpho[\s\S]*10%[\s\S]*Inheritance service fee: 10% of positive gains realized after strategy fees and loss recovery/);
   assert.match(feeReview, /Network fees[\s\S]*gas sponsorship[\s\S]*Reusing a vault does not make later transactions free/);
   assert.match(feeReview, /Opening that screen does not send funds/);
-  assert.equal(await page.ev("return document.querySelectorAll('.plan-fee-example').length"), 1, "assets with equal strategy fees should share one example group");
-  await page.ev("document.querySelector('.plan-fee-example summary').click(); return true;");
-  const initialFeeExample = await page.ev("return document.querySelector('.plan-fee-example').innerText");
+  assert.equal(await page.ev("return document.querySelectorAll('[data-fee-example]').length"), 1, "assets with equal strategy fees should share one example group");
+  await page.ev("document.querySelector('[data-fee-example] summary').click(); return true;");
+  const initialFeeExample = await page.ev("return document.querySelector('[data-fee-example]').innerText");
   assert.match(initialFeeExample, /10 WLD gross lending profit[\s\S]*1 WLD Re7 strategy performance fee \(10%\)[\s\S]*9 WLD remaining[\s\S]*0\.9 WLD Inheritance service fee \(10% of the remainder\)[\s\S]*8\.1 WLD illustrative net/);
   assert.match(initialFeeExample, /10 USDC gross lending profit[\s\S]*1 USDC Re7 strategy performance fee \(10%\)[\s\S]*9 USDC remaining[\s\S]*0\.9 USDC Inheritance service fee \(10% of the remainder\)[\s\S]*8\.1 USDC illustrative net/);
   assert.match(initialFeeExample, /Excludes principal, other gains or losses, rewards, and network costs\. This is not a promised return\./);
-  await page.ev("document.querySelector('.plan-fee-example').open = false; return true;");
+  await page.ev("document.querySelector('[data-fee-example]').open = false; return true;");
   const reviewRateSummaries = JSON.parse(await page.ev("return JSON.stringify([...document.querySelectorAll('.plan-final-review .yield-rate-summary')].map(summary => ({symbol:summary.dataset.rateSymbol, strategy:summary.dataset.rateStrategy, text:summary.textContent, source:summary.querySelector('a')?.href || ''})))"));
   assert.deepEqual(reviewRateSummaries.map(summary => summary.symbol), ["WLD", "USDC"], "final review must show a separate rate source for each selected Morpho asset");
   assert.match(reviewRateSummaries[0].text, /1\.20%[\s\S]*3\.40%/);
@@ -504,11 +504,11 @@ try {
     assert.equal(await usdcFactory.vaultOf(ACCOUNTS.a0.a),ZeroAddress);
     await acceptYieldTerms(page);
     await clickButton(page,"Review plan");
-    assert.equal(await page.ev("return document.querySelectorAll('.plan-fee-example').length"), percent === 12 ? 2 : 1, "separate fee groups should be shown when the selected assets have different rates");
-    await page.ev("document.querySelector('.plan-fee-example summary').click(); return true;");
-    const currentFeeExample = await page.ev("return document.querySelector('.plan-fee-example').innerText");
+    assert.equal(await page.ev("return document.querySelectorAll('[data-fee-example]').length"), percent === 12 ? 2 : 1, "separate fee groups should be shown when the selected assets have different rates");
+    await page.ev("document.querySelector('[data-fee-example] summary').click(); return true;");
+    const currentFeeExample = await page.ev("return document.querySelector('[data-fee-example]').innerText");
     assert.match(currentFeeExample, new RegExp(`${percent === 12 ? "1.2" : "1"} WLD Re7 strategy performance fee \\(${percent}%\\)[\\s\\S]*${percent === 12 ? "7.92" : "8.1"} WLD illustrative net`));
-    await page.ev("document.querySelectorAll('.plan-fee-example').forEach(details => details.open = false); return true;");
+    await page.ev("document.querySelectorAll('[data-fee-example]').forEach(details => details.open = false); return true;");
   }
   await page.ev("window.__E2E_PAUSE_TERM_POLL__=false;return true;");
   pass("service and strategy fees are shown separately; a real strategy-fee change invalidates approval before wallet submission");
