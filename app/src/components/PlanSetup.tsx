@@ -539,6 +539,16 @@ export function PlanSetup({
               {formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}
             </span>)}</dd>
           </div>
+          <div data-total-wallet-debit="">
+            <dt>{t("plan.review.totalWalletDebit")}</dt>
+            <dd>
+              {reviewSnapshot.assets.map(asset => <span key={asset.symbol}>
+                {formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}
+              </span>)}
+              <span>{t("plan.review.walletNetworkFee")}</span>
+              <span>{t("plan.review.walletDebitQuote")}</span>
+            </dd>
+          </div>
           <div>
             <dt>{t("plan.review.recipient")}</dt>
             <dd>

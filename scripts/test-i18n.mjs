@@ -65,6 +65,21 @@ await test("English app and transaction labels match the interface", () => {
     assert.equal(i18n.translate("en", "plan.balance.available", { amount: "1.25", symbol: "WLD" }), "Available: 1.25 WLD");
 });
 
+await test("wallet debit review and network fee copy keep deposits and fees separate", () => {
+    assert.equal(i18n.translate("en", "plan.review.totalWalletDebit"), "Total wallet debit");
+    assert.equal(i18n.translate("ko", "plan.review.totalWalletDebit"), "지갑 총차감액");
+    assert.equal(i18n.translate("en", "plan.review.walletNetworkFee"), "+ WLD network fee (if charged)");
+    assert.equal(i18n.translate("ko", "plan.review.walletNetworkFee"), "+ WLD 네트워크 수수료(발생하는 경우)");
+    assert.match(i18n.translate("en", "plan.review.walletDebitQuote"), /deposit and fee quote together on World App’s approval screen.*cannot know the exact total in advance.*final debit is settled after the transaction/i);
+    assert.match(i18n.translate("ko", "plan.review.walletDebitQuote"), /World App 승인 화면.*예치액과 수수료 견적.*정확한 합계를 미리 알 수 없으며.*최종 차감액은 거래 후 정산/);
+    assert.match(i18n.translate("en", "fees.network.body"), /on top of deposits.*full entered amount goes to the vault/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /예치액에 더해.*입력한 금액 전부가 금고에 들어갑니다/);
+    assert.match(i18n.translate("en", "fees.network.body"), /Vault creation.*additional deposits.*withdrawals.*can each incur a fee.*existing vaults are not guaranteed free/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /금고 생성.*추가 예치.*출금.*비용이 들 수 있고.*기존 금고도 무료가 보장되지 않습니다/);
+    assert.match(i18n.translate("en", "fees.network.body"), /Inheritance’s service fee.*Re7’s strategy performance fee/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /Inheritance 서비스 수수료.*Re7 전략 성과 수수료와 별도/);
+});
+
 await test("Korean fee disclosures keep the 10 percent fee off principal", () => {
     for (const key of ["plan.risk.yieldFee", "income.feeDisclosure", "help.feeDisclosure"]) {
       const disclosure = i18n.translate("ko", key);

@@ -58,6 +58,7 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(recipient.waitForExistence(timeout: 60), "SDK login must reveal the setup form\n\(app.debugDescription)")
         let amount = web.textFields["USDC"].firstMatch
         XCTAssertTrue(amount.waitForExistence(timeout: 10))
+        scrollInputAboveFixedFooter(amount, in: web, app: app)
         amount.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         amount.typeText("12.345678")
@@ -126,6 +127,7 @@ final class HostTests: XCTestCase {
         login.tap()
         let amount = web.textFields["USDC"].firstMatch
         XCTAssertTrue(amount.waitForExistence(timeout: 60))
+        scrollInputAboveFixedFooter(amount, in: web, app: app)
         amount.tap()
         amount.typeText("1.000001")
         app.buttons["Done"].firstMatch.tap()
@@ -217,6 +219,22 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "latest"]), minedNonce)
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "pending"]), minedNonce, "Recovery must not replay an already submitted deposit")
         capture("pending-deposit-recovered-without-resubmission", app)
+    }
+
+    private func scrollInputAboveFixedFooter(_ input: XCUIElement, in web: XCUIElement,
+                                             app: XCUIApplication) {
+        for _ in 0..<4 {
+            if input.isHittable && input.frame.minY > web.frame.minY + 20
+                && input.frame.maxY < app.frame.maxY - 180 { break }
+            if input.frame.minY <= web.frame.minY + 20 {
+                web.swipeDown()
+            } else {
+                web.swipeUp()
+            }
+        }
+        XCTAssertTrue(input.isHittable, "Amount field must be hittable after native scrolling\n\(app.debugDescription)")
+        XCTAssertGreaterThan(input.frame.minY, web.frame.minY + 20, "Amount field must be inside the WebView viewport")
+        XCTAssertLessThan(input.frame.maxY, app.frame.maxY - 180, "Amount field must clear the fixed footer")
     }
 
     private func assertVisibleInput(_ input: XCUIElement, in web: XCUIElement,

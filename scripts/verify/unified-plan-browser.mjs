@@ -469,7 +469,7 @@ try {
   assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), new RegExp(ACCOUNTS.a1.a, 'i'));
   const feeReview = await page.ev("return document.querySelector('.plan-final-review').innerText");
   assert.match(feeReview, /Fees on gains[\s\S]*WLD \+ USDC:[\s\S]*Re7 vault on Morpho[\s\S]*10%[\s\S]*Inheritance service fee: 10% of positive gains realized after strategy fees and loss recovery/);
-  assert.match(feeReview, /Network fees[\s\S]*gas sponsorship[\s\S]*Reusing a vault does not make later transactions free/);
+  assert.match(feeReview, /Network fees[\s\S]*may sponsor network fees[\s\S]*charged in WLD on top of deposits[\s\S]*full entered amount goes to the vault[\s\S]*Vault creation, additional deposits and withdrawals can each incur a fee[\s\S]*existing vaults are not guaranteed free/);
   assert.match(feeReview, /Opening that screen does not send funds/);
   assert.equal(await page.ev("return document.querySelectorAll('[data-fee-example]').length"), 1, "assets with equal strategy fees should share one example group");
   await page.ev("document.querySelector('[data-fee-example] summary').click(); return true;");

@@ -240,6 +240,12 @@ try {
   assert.equal(await page.locator('#yield-consent').isChecked(), false);
   assert.equal(await page.locator('.plan-submit').isDisabled(), true);
   assert.deepEqual(await page.locator('.plan-review-amount').allTextContents(), ['10 WLD', '12.345678 USDC']);
+  const walletDebit = page.locator('[data-total-wallet-debit]');
+  assert.equal(await walletDebit.locator('dt').textContent(), '지갑 총차감액');
+  assert.deepEqual(await walletDebit.locator('dd > span').allTextContents(), [
+    '10 WLD', '12.345678 USDC', '+ WLD 네트워크 수수료(발생하는 경우)',
+    'World App 승인 화면에서 예치액과 수수료 견적을 함께 확인하세요. 이 앱은 정확한 합계를 미리 알 수 없으며, 최종 차감액은 거래 후 정산됩니다.',
+  ]);
   assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);
   const feeExample = page.locator('[data-fee-example]');
   assert.equal(await feeExample.count(), 1);
