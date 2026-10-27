@@ -658,7 +658,12 @@ export default function App() {
   const depositEntryValid = depositAmount !== null && depositAmount > 0n && walletBalanceKnown && depositAmount <= walletWld;
   const [withdrawTo, setWithdrawTo] = useState<string>("");
   const [withdrawAmountStr, setWithdrawAmountStr] = useState<string>("");
-  const withdrawAmount = parseAssetAmount(withdrawAmountStr.trim() || "0", wldDecimals);
+  const [withdrawAllScope, setWithdrawAllScope] = useState("");
+  const withdrawAllSelected = Boolean(balanceScope) && withdrawAllScope === balanceScope;
+  const withdrawAmountInput = withdrawAllSelected
+    ? ethers.formatUnits(vaultWldForWithdrawal, Number(wldDecimals) || 0)
+    : withdrawAmountStr;
+  const withdrawAmount = parseAssetAmount(withdrawAmountInput.trim() || "0", wldDecimals);
   const withdrawRecipientValid = Boolean(withdrawTo && ethers.isAddress(withdrawTo)
     && ethers.getAddress(withdrawTo) !== ethers.ZeroAddress);
   const withdrawEntryValid = withdrawRecipientValid && withdrawAmount !== null
@@ -669,6 +674,7 @@ export default function App() {
     setWithdrawTo("");
     setIncomeTo("");
   }, [account, vault]);
+  useEffect(() => { setWithdrawAllScope(""); }, [balanceScope]);
   const [newHeir, setNewHeir] = useState<string>("");
   const [newHeirResolved, setNewHeirResolved] = useState<{ username?: string; address?: string } | null>(null);
   const [resolvingNewHeir, setResolvingNewHeir] = useState<boolean>(false);
@@ -3843,25 +3849,70 @@ export default function App() {
   // Owner withdraw WLD (before expiry)
   const ownerWithdraw = async () => {
     if (!vaultCtr) return;
+    const submission = {
+      account, vault, factory: vaultFactory, balanceScope,
+      isYieldVault, isUsdcVault, asset: selectedAssetAddress, strategy: selectedStrategyAddress,
+      factoryAbi: selectedFactoryAbi, vaultAbi: selectedVaultAbi,
+    };
+    const allSelected = withdrawAllSelected;
+    const amountInput = withdrawAmountInput;
+    const amount = withdrawAmount;
+    const recipient = withdrawTo;
+    const scopeIsCurrent = () => submission.balanceScope === balanceScopeRef.current;
     if (!withdrawTo) { setStatus("Enter recipient address"); return; }
     if (!withdrawRecipientValid) { setStatus("Invalid recipient address"); return; }
-    if (!withdrawAmountStr.trim()) { setStatus("Enter amount"); return; }
-    if (withdrawAmount === null) { setStatus("Enter a valid decimal amount"); return; }
-    const amt = withdrawAmount;
+    if (!amountInput.trim()) { setStatus("Enter amount"); return; }
+    if (amount === null) { setStatus("Enter a valid decimal amount"); return; }
+    const amt = amount;
     if (amt <= 0n) { setStatus("Enter amount greater than 0"); return; }
-    if (amt > vaultWldForWithdrawal) { setStatus("Amount exceeds vault balance"); return; }
+    if (amt > vaultWldForWithdrawal && !(submission.isYieldVault && allSelected)) {
+      setStatus("Amount exceeds vault balance"); return;
+    }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const fullExit = isYieldVault && selectedYieldPosition?.valued && amt === selectedYieldPosition.gross;
-      const minNet = fullExit ? minimumOutput(selectedYieldPosition!.net) : 0n;
-      const asset = new ethers.Contract(isYieldVault ? selectedStrategyAddress : selectedAssetAddress, ERC20_ABI, provider);
-      const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
+      if (!scopeIsCurrent()) return;
+      let fullExit = false;
+      const sendAmount = amt;
+      let minNet = 0n;
+      if (submission.isYieldVault && allSelected) {
+        const token = new ethers.Contract(submission.asset, ERC20_ABI, provider);
+        const strategy = new ethers.Contract(submission.strategy, ERC20_ABI, provider);
+        const [idle, shares]: [bigint, bigint] = await Promise.all([
+          token.balanceOf(submission.vault), strategy.balanceOf(submission.vault),
+        ]);
+        if (!scopeIsCurrent()) return;
+        if (shares === 0n && submission.isUsdcVault) {
+          // Idle USDC is fee-free. Full exit also pays separately held WLD.
+          if (idle <= 0n) throw new Error("No idle cash is currently available to withdraw.");
+          fullExit = true;
+          minNet = minimumOutput(idle);
+        } else {
+          // With no WLD shares, position() skips share valuation but still
+          // accounts for the service fee on canonical cash rewards. Keep All
+          // intent so cash arriving during wallet approval is also recovered.
+          let freshPosition;
+          try {
+            freshPosition = await new ethers.Contract(submission.vault, submission.vaultAbi, provider).position();
+          } catch {
+            throw new Error("The yield position value is unavailable. Refresh the balance before withdrawing all.");
+          }
+          if (!scopeIsCurrent()) return;
+          if (!freshPosition.valued || freshPosition.shares !== shares || freshPosition.idle !== idle) {
+            throw new Error("The yield position value is unavailable. Refresh the balance before withdrawing all.");
+          }
+          fullExit = true;
+          minNet = minimumOutput(freshPosition.net);
+        }
+      }
+      const asset = new ethers.Contract(submission.isYieldVault ? submission.strategy : submission.asset, ERC20_ABI, provider);
+      const token = new ethers.Contract(submission.asset, ERC20_ABI, provider);
       const [before, beforeIdle]: [bigint, bigint] = await Promise.all([
-        asset.balanceOf(vault), isYieldVault ? token.balanceOf(vault) : Promise.resolve(0n),
+        asset.balanceOf(submission.vault), submission.isYieldVault ? token.balanceOf(submission.vault) : Promise.resolve(0n),
       ]);
-      const sent = await sendWorldChainTx([{ address: vaultFactory, abi: selectedFactoryAbi,
+      if (!scopeIsCurrent()) return;
+      const sent = await sendWorldChainTx([{ address: submission.factory, abi: submission.factoryAbi,
         functionName: fullExit ? "withdrawAllFromMyVault" : "withdrawFromMyVault",
-        args: [withdrawTo, (fullExit ? minNet : amt).toString()] }]);
+        args: [recipient, (fullExit ? minNet : sendAmount).toString()] }]);
       if (!sent.ok) {
         setStatus(sent.error);
         if (sent.userFacing) pushToast("error", sent.error);
@@ -3874,9 +3925,9 @@ export default function App() {
         txHash: txh,
         hashType: sent.tx.hashType,
         check: async () => {
-          const held: bigint = await asset.balanceOf(vault);
+          const held: bigint = await asset.balanceOf(submission.vault);
           // Idle-only yield withdrawals do not burn receipt shares.
-          return held < before || isYieldVault && await token.balanceOf(vault) < beforeIdle;
+          return held < before || submission.isYieldVault && await token.balanceOf(submission.vault) < beforeIdle;
         },
       });
       setStatus("Withdraw complete");
@@ -3884,6 +3935,7 @@ export default function App() {
       // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
       void refreshVaultDetails();
       setWithdrawAmountStr("");
+      setWithdrawAllScope("");
       await refreshBalances();
     } catch (e: unknown) {
       setStatus("Withdraw error: " + errorText(e));
@@ -3954,7 +4006,12 @@ export default function App() {
     }
   };
 
-  const setWithdrawMax = () => setWithdrawAmountStr(fmtUnits(vaultWldForWithdrawal, wldDecimals));
+  const setWithdrawMax = () => {
+    setWithdrawAllScope(balanceScope);
+    // The number is derived while All is selected. Never retain it as a
+    // manual partial amount if an identity refresh invalidates that selection.
+    setWithdrawAmountStr("");
+  };
 
   const recoverArchivedYieldAssets = async () => {
     if (!isYieldVault || !vaultIdentity?.released || !isVaultOwner || !provider || !miniInstalled) return;
@@ -4584,7 +4641,10 @@ export default function App() {
                     <label className="field-row-label" htmlFor="withdraw-amount">{t("assets.withdrawAmount")}</label>
                     <div className="field-row-controls">
                       <Input id="withdraw-amount" inputMode="decimal" placeholder="0.0"
-                        value={withdrawAmountStr} onChange={e => setWithdrawAmountStr(e.target.value)}
+                        value={withdrawAmountInput} onChange={e => {
+                          setWithdrawAllScope("");
+                          setWithdrawAmountStr(e.target.value);
+                        }}
                         aria-invalid={withdrawAmount === null || withdrawAmount > vaultWldForWithdrawal}
                         aria-describedby={isYieldVault ? "withdraw-amount-fee withdraw-amount-help" : "withdraw-amount-help"} />
                       <Button onClick={setWithdrawMax}>{t("assets.all")}</Button>

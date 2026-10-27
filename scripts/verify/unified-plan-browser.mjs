@@ -16,7 +16,7 @@ const RUN_DIR = process.env.VERIFY_TMP || "/tmp/wld-unified-plan";
 process.env.VERIFY_TMP = RUN_DIR;
 mkdirSync(RUN_DIR, { recursive: true });
 const require = createRequire(new URL("../../app/package.json", import.meta.url));
-const { Contract, ContractFactory, Interface, JsonRpcProvider, Wallet, parseUnits, ZeroAddress } = require("ethers");
+const { Contract, ContractFactory, Interface, JsonRpcProvider, Wallet, parseUnits, formatUnits, ZeroAddress } = require("ethers");
 const { launch, ACCOUNTS, HELPERS } = await import("./drv.mjs");
 
 const SHOTS = path.join(RUN_DIR, "shots");
@@ -238,6 +238,30 @@ async function sendAtomicFixtureBatch(targetPage, transactions) {
   return result;
 }
 
+async function failWithdrawalRead(targetPage, vaultAddress, selector) {
+  await targetPage.ev(`
+    window.__WITHDRAW_FETCH__ = window.fetch;
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input?.url ?? String(input);
+      if (url === window.__E2E_RPC__ && init?.body) {
+        const body = JSON.parse(typeof init.body === 'string' ? init.body : new TextDecoder().decode(init.body));
+        const requests = Array.isArray(body) ? body : [body];
+        const bad = requests.filter(request => request.method === 'eth_call'
+          && request.params[0].to?.toLowerCase() === ${JSON.stringify(vaultAddress.toLowerCase())}
+          && (request.params[0].data || request.params[0].input || '').startsWith(${JSON.stringify(selector)}));
+        if (bad.length) {
+          const response = await window.__WITHDRAW_FETCH__(input, init);
+          const result = await response.json();
+          const patched = (Array.isArray(result) ? result : [result]).map(row => bad.some(request => request.id === row.id)
+            ? {id: row.id, jsonrpc: '2.0', error: {code: -32000, message: 'withdrawal read unavailable'}} : row);
+          return Response.json(Array.isArray(result) ? patched : patched[0]);
+        }
+      }
+      return window.__WITHDRAW_FETCH__(input, init);
+    }; return true;
+  `);
+}
+
 function amountText(value, symbol) { return `${value} ${symbol}`; }
 
 try {
@@ -378,6 +402,182 @@ try {
   const wldAddress = await wld.getAddress();
   const wldFactoryAddress = (await wldFactory.getAddress()).toLowerCase();
   const usdcFactoryAddress = await usdcFactory.getAddress();
+  // Keep this owner and heir separate from the later discovery/accounting cases.
+  const withdrawalOwner = ACCOUNTS.a11.a;
+  const withdrawalSigner = new Wallet(ACCOUNTS.a11.pk, provider);
+  await provider.send("anvil_setBalance", [withdrawalOwner, "0x1000000000000000000"]);
+  const withdrawalFactory = new Contract(wldFactoryAddress, wldFactory.interface, withdrawalSigner);
+  const withdrawalToken = new Contract(wldAddress, wld.interface, withdrawalSigner);
+  const rateBeforeWithdrawal = await wldStrategy.rate();
+  await (await wld.mint(withdrawalOwner, parseUnits("3", 18))).wait();
+  await (await wld.mint(await wldStrategy.getAddress(), parseUnits("1", 18))).wait();
+  await (await withdrawalFactory.createVault("0x000000000000000000000000000000000000beef", 30 * 86400)).wait();
+  const withdrawalVaultAddress = await wldFactory.vaultOf(withdrawalOwner);
+  const withdrawalVault = new Contract(withdrawalVaultAddress, artifact("InheritanceVaultMorpho").abi, provider);
+  const fundWithdrawalVault = async () => {
+    await (await withdrawalToken.approve(wldFactoryAddress, parseUnits("1", 18))).wait();
+    await (await withdrawalFactory.depositWithMinShares(parseUnits("1", 18), 1)).wait();
+  };
+  await fundWithdrawalVault();
+  const withdrawalPage = await launch({pk: ACCOUNTS.a11.pk, url: appUrl, preload});
+  regressionPages.push(["withdraw-all-intent", withdrawalPage]);
+  await signIn(withdrawalPage);
+  await chooseTab(withdrawalPage, "Assets");
+  await until(() => withdrawalPage.ev("return !!document.getElementById('withdraw-amount')"), "isolated principal withdrawal form");
+  await installBridgeRecorder(withdrawalPage);
+  await withdrawalPage.ev(`return __q.setInput('withdraw-to', ${JSON.stringify(withdrawalOwner)})`);
+  await clickButton(withdrawalPage, "All");
+  await until(() => withdrawalPage.ev("return Number(document.getElementById('withdraw-amount').value) > 0"), "All has a known positive quote");
+  const beforeBlockedShares = await wldStrategy.balanceOf(withdrawalVaultAddress);
+  const beforeBlockedBasis = await withdrawalVault.costBasis();
+  const withdrawalPositionSelector = withdrawalVault.interface.getFunction("position").selector;
+  await withdrawalPage.ev("window.__E2E_BRIDGE_CALLS__ = []; return true;");
+  await failWithdrawalRead(withdrawalPage, withdrawalVaultAddress, withdrawalPositionSelector);
+  await clickButton(withdrawalPage, "Withdraw to myself");
+  await until(() => withdrawalPage.ev("return /yield position value is unavailable/.test(document.body.innerText)"), "full withdrawal stops on unavailable fresh value");
+  assert.equal((await withdrawalPage.ev("return window.__E2E_BRIDGE_CALLS__")).length, 0);
+  assert.equal(await wldStrategy.balanceOf(withdrawalVaultAddress), beforeBlockedShares);
+  assert.equal(await withdrawalVault.costBasis(), beforeBlockedBasis);
+  await withdrawalPage.ev("window.fetch = window.__WITHDRAW_FETCH__; return true;");
+  pass("All withdrawal with unavailable fresh valuation sends no wallet request and preserves custody");
+
+  const oldWithdrawalQuote = await withdrawalVault.position();
+  await (await wldStrategy.setRate(rateBeforeWithdrawal * 11n / 10n)).wait();
+  await clickButton(withdrawalPage, "Refresh balance");
+  const freshWithdrawalQuote = await withdrawalVault.position();
+  assert.ok(freshWithdrawalQuote.gross > oldWithdrawalQuote.gross);
+  await until(() => withdrawalPage.ev(`return document.getElementById('withdraw-amount').value === ${JSON.stringify(formatUnits(freshWithdrawalQuote.gross, 18))}`), "All follows refreshed exact valuation");
+  await withdrawalPage.ev("window.__E2E_BRIDGE_CALLS__ = []; return true;");
+  await clickButton(withdrawalPage, "Withdraw to myself");
+  await until(async () => await wldStrategy.balanceOf(withdrawalVaultAddress) === 0n, "full withdrawal canonical result");
+  await until(() => withdrawalPage.ev("return /Withdraw complete/.test(document.body.innerText)"), "full withdrawal receipt status");
+  const fullWithdrawalCalls = await withdrawalPage.ev("return window.__E2E_BRIDGE_CALLS__");
+  assert.equal(fullWithdrawalCalls.length, 1);
+  const fullWithdrawal = wldFactory.interface.parseTransaction({data: fullWithdrawalCalls[0].transactions[0].data});
+  assert.equal(fullWithdrawal.name, "withdrawAllFromMyVault");
+  assert.equal(fullWithdrawal.args[0].toLowerCase(), withdrawalOwner.toLowerCase());
+  assert.equal(fullWithdrawal.args[1], freshWithdrawalQuote.net * 9950n / 10000n);
+  assert.ok(fullWithdrawal.args[1] > 0n);
+  assert.equal(await withdrawalVault.costBasis(), 0n);
+  pass("All survives a higher refreshed quote and exits every share with a positive fresh minimum");
+
+  await (await wldStrategy.setRate(rateBeforeWithdrawal)).wait();
+  await fundWithdrawalVault();
+  await clickButton(withdrawalPage, "Refresh balance");
+  await clickButton(withdrawalPage, "All");
+  await withdrawalPage.ev("return __q.setInput('withdraw-amount', '0.2')");
+  await withdrawalPage.ev("window.__E2E_BRIDGE_CALLS__ = []; return true;");
+  await clickButton(withdrawalPage, "Withdraw to myself");
+  await until(() => withdrawalPage.ev("return /Withdraw complete/.test(document.body.innerText) && window.__E2E_BRIDGE_CALLS__.length === 1"), "manual partial withdrawal receipt");
+  const partialWithdrawalCalls = await withdrawalPage.ev("return window.__E2E_BRIDGE_CALLS__");
+  const partialWithdrawal = wldFactory.interface.parseTransaction({data: partialWithdrawalCalls[0].transactions[0].data});
+  assert.equal(partialWithdrawal.name, "withdrawFromMyVault");
+  assert.equal(partialWithdrawal.args[1], parseUnits("0.2", 18));
+  assert.ok(await wldStrategy.balanceOf(withdrawalVaultAddress) > 0n);
+  assert.ok(await withdrawalVault.costBasis() > 0n);
+  evidence.plan.withdrawalIntent = { freshQuoteFailureRequests: 0, fullExitRequests: 1,
+    fullExitMinimum: fullWithdrawal.args[1].toString(), fullExitShares: "0", fullExitBasis: "0",
+    manualPartialAmount: partialWithdrawal.args[1].toString() };
+  pass("Manually editing an All amount restores exact partial withdrawal and leaves the remaining position");
+
+  // Idle WLD must retain All intent if the balance grows while World App approval is pending.
+  await (await withdrawalFactory.withdrawAllFromMyVault(withdrawalOwner, 0)).wait();
+  assert.equal(await wldStrategy.balanceOf(withdrawalVaultAddress), 0n);
+  assert.equal(await withdrawalVault.costBasis(), 0n);
+  await (await wld.mint(withdrawalVaultAddress, parseUnits("2", 18))).wait();
+  await clickButton(withdrawalPage, "Refresh balance");
+  await clickButton(withdrawalPage, "All");
+  await until(() => withdrawalPage.ev("return document.getElementById('withdraw-amount').value === '2.0'"), "idle WLD All quote");
+  const idleWldPositionBeforeApproval = await withdrawalVault.position();
+  assert.equal(idleWldPositionBeforeApproval.shares, 0n);
+  assert.equal(idleWldPositionBeforeApproval.idle, parseUnits("2", 18));
+  await withdrawalPage.ev(`
+    const fixture = await import('/src/test/minikit-stub.ts');
+    const original = fixture.MiniKit.sendTransaction.bind(fixture.MiniKit);
+    let markEntered, releaseRequest;
+    window.__IDLE_WLD_ALL_ENTERED__ = new Promise(resolve => { markEntered = resolve; });
+    window.__IDLE_WLD_ALL_RELEASE__ = new Promise(resolve => { releaseRequest = resolve; });
+    window.__IDLE_WLD_ALL_RELEASE_REQUEST__ = releaseRequest;
+    window.__IDLE_WLD_ALL_REQUEST__ = null;
+    fixture.MiniKit.sendTransaction = async request => {
+      window.__IDLE_WLD_ALL_REQUEST__ = request.transactions.map(tx => ({to: tx.to.toLowerCase(), data: tx.data || '0x'}));
+      markEntered();
+      await window.__IDLE_WLD_ALL_RELEASE__;
+      return original(request);
+    };
+    return true;
+  `);
+  await withdrawalPage.ev("window.__E2E_BRIDGE_CALLS__ = []; return true;");
+  const idleWldOwnerBefore = await wld.balanceOf(withdrawalOwner);
+  await clickButton(withdrawalPage, "Withdraw to myself");
+  await withdrawalPage.ev("await window.__IDLE_WLD_ALL_ENTERED__; return true;");
+  const pendingIdleWldFactoryCall = wldFactory.interface.parseTransaction({
+    data: JSON.parse(await withdrawalPage.ev("return JSON.stringify(window.__IDLE_WLD_ALL_REQUEST__)")).find(tx => tx.to === wldFactoryAddress).data,
+  });
+  assert.equal(pendingIdleWldFactoryCall?.name, "withdrawAllFromMyVault");
+  assert.ok(pendingIdleWldFactoryCall.args[1] > 0n);
+  await (await wld.mint(withdrawalVaultAddress, parseUnits("1", 18))).wait();
+  await withdrawalPage.ev("window.__IDLE_WLD_ALL_RELEASE_REQUEST__(); return true;");
+  await until(async () => await wld.balanceOf(withdrawalVaultAddress) === 0n, "pending idle WLD full exit includes later deposit");
+  await until(() => withdrawalPage.ev("return /Withdraw complete/.test(document.body.innerText)"), "idle WLD full-exit receipt");
+  const idleWldCalls = await withdrawalPage.ev("return window.__E2E_BRIDGE_CALLS__");
+  assert.equal(idleWldCalls.length, 1);
+  const idleWldReceipt = await provider.getTransactionReceipt(idleWldCalls[0].hash);
+  assert.equal(idleWldReceipt?.status, 1);
+  const idleWldCall = wldFactory.interface.parseTransaction({data: idleWldCalls[0].transactions[0].data});
+  assert.equal(idleWldCall.name, "withdrawAllFromMyVault");
+  assert.equal(idleWldCall.args[1], idleWldPositionBeforeApproval.net * 9950n / 10000n);
+  assert.equal(await wld.balanceOf(withdrawalOwner) - idleWldOwnerBefore, parseUnits("3", 18));
+  assert.equal(await wldStrategy.balanceOf(withdrawalVaultAddress), 0n);
+  assert.equal(await withdrawalVault.costBasis(), 0n);
+  evidence.plan.withdrawalIntent.idleWldExit = {initialIdle: "2000000000000000000", approvalTimeDeposit: "1000000000000000000",
+    received: "3000000000000000000", minimum: idleWldCall.args[1].toString(), shares: "0", basis: "0",
+    receipt: idleWldCalls[0].hash, walletRequests: 1};
+  await (await wldStrategy.setRate(rateBeforeWithdrawal)).wait();
+  pass("All on idle WLD remains a full exit when another deposit arrives during approval");
+
+  const idleUsdcFactory = new Contract(usdcFactoryAddress, usdcFactory.interface, withdrawalSigner);
+  await (await idleUsdcFactory.createVault("0x000000000000000000000000000000000000beef", 30 * 86400)).wait();
+  const idleUsdcVault = await usdcFactory.vaultOf(withdrawalOwner);
+  await (await usdc.mint(idleUsdcVault, parseUnits("2", 6))).wait();
+  await (await wld.mint(idleUsdcVault, parseUnits("0.5", 18))).wait();
+  assert.equal(await usdcStrategy.balanceOf(idleUsdcVault), 0n);
+  const idleUsdcPage = await launch({pk: ACCOUNTS.a11.pk, url: appUrl, preload});
+  regressionPages.push(["idle-usdc-full-exit", idleUsdcPage]);
+  await signIn(idleUsdcPage);
+  await chooseTab(idleUsdcPage, "Assets");
+  await clickMatchingButton(idleUsdcPage, label => label === "USDC");
+  await until(() => idleUsdcPage.ev("return !!document.getElementById('withdraw-amount')"), "idle USDC withdrawal form");
+  await installBridgeRecorder(idleUsdcPage);
+  await idleUsdcPage.ev(`return __q.setInput('withdraw-to', ${JSON.stringify(withdrawalOwner)})`);
+  await clickButton(idleUsdcPage, "All");
+  await until(() => idleUsdcPage.ev("return document.getElementById('withdraw-amount').value === '2.0'"), "idle USDC All quote");
+  await failWithdrawalRead(idleUsdcPage, idleUsdcVault,
+    new Interface(["function factory() view returns(address)"]).getFunction("factory").selector);
+  await until(() => idleUsdcPage.ev("return !document.getElementById('withdraw-amount')"), "identity outage disables withdrawal", 45_000);
+  await idleUsdcPage.ev("window.fetch = window.__WITHDRAW_FETCH__; return true;");
+  await until(() => idleUsdcPage.ev("return !!document.getElementById('withdraw-amount')"), "identity read recovers", 45_000);
+  assert.equal(await idleUsdcPage.ev("return document.getElementById('withdraw-amount').value"), "");
+  assert.equal(await idleUsdcPage.ev("return document.querySelector('.principal-submit').disabled"), true);
+  assert.equal((await idleUsdcPage.ev("return window.__E2E_BRIDGE_CALLS__")).length, 0);
+  pass("Identity read failure clears an All quote and requires an explicit new amount or All selection");
+  await clickButton(idleUsdcPage, "All");
+  const idleUsdcBefore = await usdc.balanceOf(withdrawalOwner);
+  const idleWldBefore = await wld.balanceOf(withdrawalOwner);
+  await clickButton(idleUsdcPage, "Withdraw to myself");
+  await until(async () => await usdc.balanceOf(idleUsdcVault) === 0n && await wld.balanceOf(idleUsdcVault) === 0n,
+    "idle USDC full exit returns both tokens");
+  await until(() => idleUsdcPage.ev("return /Withdraw complete/.test(document.body.innerText)"), "idle USDC full-exit receipt");
+  const idleUsdcCalls = await idleUsdcPage.ev("return window.__E2E_BRIDGE_CALLS__");
+  assert.equal(idleUsdcCalls.length, 1);
+  const idleUsdcCall = usdcFactory.interface.parseTransaction({data: idleUsdcCalls[0].transactions[0].data});
+  assert.equal(idleUsdcCall.name, "withdrawAllFromMyVault");
+  assert.equal(idleUsdcCall.args[1], parseUnits("1.99", 6));
+  assert.equal(await usdc.balanceOf(withdrawalOwner) - idleUsdcBefore, parseUnits("2", 6));
+  assert.equal(await wld.balanceOf(withdrawalOwner) - idleWldBefore, parseUnits("0.5", 18));
+  evidence.plan.withdrawalIntent.idleUsdcExit = {usdc: "2000000", wld: "500000000000000000", shares: "0", walletRequests: 1};
+  pass("All on an idle-only USDC vault returns USDC and separate WLD through one protected full-exit request");
+
   // Exercise the real confirmation component without background App refreshes.
   // A pre-journal failure must allow retry using only the busy-state transition.
   const retryPage = await launch({ pk: ACCOUNTS.a0.pk, url: appUrl, preload });

@@ -61,24 +61,26 @@ final class HostTests: XCTestCase {
         scrollInputAboveFixedFooter(amount, in: web, app: app)
         amount.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        waitForStableControl(amount, in: web)
         amount.typeText("12.345678")
-        XCTAssertEqual(amount.value as? String, "12.345678")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in amount.value as? String == "12.345678" }, object: nil)], timeout: 10), .completed)
         capture("decimal-keyboard", app)
-        app.buttons["Done"].firstMatch.tap()
+        dismissKeyboard(in: web, app: app)
         XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10))
         // WKWebView's accessibility tree includes offscreen inputs. Bring the
         // recipient above the fixed actions before tapping; do not type through
         // a still-visible decimal keyboard using stale element coordinates.
-        for _ in 0..<4 {
-            if recipient.frame.maxY < app.frame.maxY - 180 && recipient.frame.minY > web.frame.minY + 20 { break }
-            web.swipeUp()
-        }
+        scrollInputAboveFixedFooter(recipient, in: web, app: app)
         XCTAssertTrue(recipient.isHittable)
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        waitForStableControl(recipient, in: web)
         recipient.typeText("@sam")
         XCTAssertFalse(web.buttons["Review plan"].exists, "Fixed review action must not cover keyboard input")
-        let fullInputHeight = max(44, recipient.frame.height)
+        // Accessibility can inflate a 48 CSS-pixel input to 49.05 native points.
+        // Round the baseline to pixels before applying the one-pixel tolerance.
+        let fullInputHeight = max(44, recipient.frame.height.rounded(.down))
         assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
                            text: "@sam", screenshot: "native-keyboard")
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -94,12 +96,14 @@ final class HostTests: XCTestCase {
         app.activate()
         XCTAssertTrue(recipient.waitForExistence(timeout: 15))
         XCTAssertEqual(recipient.value as? String, "@sam")
-        XCTAssertEqual(amount.value as? String, "12.345678")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in amount.value as? String == "12.345678" }, object: nil)], timeout: 10), .completed)
         assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
                            text: "@sam", screenshot: "foreground-input-preserved")
-        app.buttons["Done"].firstMatch.tap()
+        dismissKeyboard(in: web, app: app)
         XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10), "Dismissal restores review action")
-        XCTAssertEqual(amount.value as? String, "12.345678")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in amount.value as? String == "12.345678" }, object: nil)], timeout: 10), .completed)
         capture("keyboard-dismissed-actions-restored", app)
     }
 
@@ -129,16 +133,17 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(amount.waitForExistence(timeout: 60))
         scrollInputAboveFixedFooter(amount, in: web, app: app)
         amount.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        waitForStableControl(amount, in: web)
         amount.typeText("1.000001")
-        app.buttons["Done"].firstMatch.tap()
+        dismissKeyboard(in: web, app: app)
         let recipient = web.textFields.matching(NSPredicate(format: "label CONTAINS %@ OR placeholderValue == %@", "Who should receive", "@username or wallet address")).firstMatch
-        for _ in 0..<4 {
-            if recipient.frame.maxY < app.frame.maxY - 180 && recipient.frame.minY > web.frame.minY + 20 { break }
-            web.swipeUp()
-        }
+        scrollInputAboveFixedFooter(recipient, in: web, app: app)
         recipient.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        waitForStableControl(recipient, in: web)
         recipient.typeText(recipientAddress)
-        app.buttons["Done"].firstMatch.tap()
+        dismissKeyboard(in: web, app: app)
         let review = web.buttons["Review plan"].firstMatch
         let ready = NSPredicate { _, _ in review.exists && review.isEnabled }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: nil)], timeout: 30), .completed)
@@ -221,16 +226,51 @@ final class HostTests: XCTestCase {
         capture("pending-deposit-recovered-without-resubmission", app)
     }
 
+    private func dismissKeyboard(in web: XCUIElement, app: XCUIApplication) {
+        let done = web.buttons["Done"].firstMatch
+        waitForStableControl(done, in: web)
+        done.tap()
+    }
+
+    private func waitForStableControl(_ control: XCUIElement, in web: XCUIElement) {
+        var previous = CGRect.zero
+        var stableSince: Date?
+        var observations = 0
+        let stable = NSPredicate { _, _ in
+            guard control.exists && control.isHittable else {
+                stableSince = nil; observations = 0; return false
+            }
+            let frame = control.frame
+            guard frame.height >= 44, frame.minY >= web.frame.minY,
+                  frame.maxY <= web.frame.maxY else {
+                stableSince = nil; observations = 0; return false
+            }
+            if frame != previous || stableSince == nil {
+                previous = frame; stableSince = Date(); observations = 1; return false
+            }
+            observations += 1
+            return observations >= 3 && Date().timeIntervalSince(stableSince ?? Date()) >= 0.8
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: stable, object: nil)], timeout: 20), .completed,
+                       "Wait for the visible web control to settle before interacting")
+    }
+
     private func scrollInputAboveFixedFooter(_ input: XCUIElement, in web: XCUIElement,
                                              app: XCUIApplication) {
         for _ in 0..<4 {
-            if input.isHittable && input.frame.minY > web.frame.minY + 20
+            if input.exists && input.isHittable && input.frame.minY > web.frame.minY + 20
                 && input.frame.maxY < app.frame.maxY - 180 { break }
-            if input.frame.minY <= web.frame.minY + 20 {
-                web.swipeDown()
-            } else {
-                web.swipeUp()
-            }
+            // A full WebView swipe can jump past the field on short devices.
+            // Start inside the content above the fixed review/nav controls.
+            let contentHeight = min(web.frame.height, app.frame.maxY - 180 - web.frame.minY)
+            let origin = web.coordinate(withNormalizedOffset: .zero)
+            let startY = contentHeight * 0.75
+            let step = contentHeight * 0.3
+            let above = input.exists && input.frame.minY <= web.frame.minY + 20
+            let endY = above ? startY + step : startY - step
+            origin.withOffset(CGVector(dx: web.frame.width / 2, dy: startY))
+                .press(forDuration: 0.05, thenDragTo:
+                    origin.withOffset(CGVector(dx: web.frame.width / 2, dy: endY)))
         }
         XCTAssertTrue(input.isHittable, "Amount field must be hittable after native scrolling\n\(app.debugDescription)")
         XCTAssertGreaterThan(input.frame.minY, web.frame.minY + 20, "Amount field must be inside the WebView viewport")

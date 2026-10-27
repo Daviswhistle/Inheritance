@@ -176,6 +176,9 @@ export function PlanSetup({
     // Returning to portrait can still have a resized layout viewport.
     const fullHeights = new Map([[window.innerWidth, window.innerHeight]]);
     let frame = 0;
+    let keyboardWasOpen = false;
+    let closingStartedAt: number | null = null;
+    let closingTimer = 0;
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -184,10 +187,22 @@ export function PlanSetup({
         fullHeights.set(width, fullHeight);
         const active = document.activeElement;
         const editing = active instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(active.type);
+        if (editing) closingStartedAt = null;
+        else if (keyboardWasOpen && closingStartedAt === null) {
+          closingStartedAt = Date.now();
+          window.clearTimeout(closingTimer);
+          closingTimer = window.setTimeout(update, 1000);
+        }
         // A native host may resize its WKWebView while rotating with the
         // keyboard already open, leaving no unoccluded height baseline yet.
-        const keyboard = editing && viewport.scale === 1
-          && (viewport.height < fullHeight - 120 || viewport.height < 200);
+        const reduced = viewport.height < fullHeight - 120;
+        // Blur precedes the native keyboard's closing resize. Keep fixed
+        // controls hidden during that gap so Done cannot tap through to a tab.
+        // A permanent window resize must not leave navigation latched off.
+        const closing = closingStartedAt !== null && Date.now() - closingStartedAt < 1000;
+        const keyboard = viewport.scale === 1
+          && (editing && (reduced || viewport.height < 200) || keyboardWasOpen && reduced && closing);
+        keyboardWasOpen = keyboard;
         document.documentElement.toggleAttribute("data-plan-keyboard", keyboard);
         // Keep a compact completion action 24px above the visible keyboard.
         // Very short landscape viewports need all their space for the input;
@@ -195,7 +210,7 @@ export function PlanSetup({
         const toolbar = keyboard && viewport.height >= 240;
         document.documentElement.toggleAttribute("data-plan-keyboard-toolbar", toolbar);
         document.documentElement.style.setProperty("--plan-keyboard-bottom", `${Math.max(0, window.innerHeight - viewport.offsetTop - viewport.height) + 24}px`);
-        if (keyboard && active instanceof HTMLElement) {
+        if (keyboard && editing && active instanceof HTMLElement) {
           const rect = active.getBoundingClientRect();
           const actionHeight = toolbar ? 68 : 0;
           // A landscape keyboard can leave less than 80px of web content. Keep
@@ -221,6 +236,7 @@ export function PlanSetup({
     return () => {
       observer?.disconnect();
       cancelAnimationFrame(frame);
+      window.clearTimeout(closingTimer);
       viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update);
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update); document.removeEventListener("focusin", update); document.removeEventListener("focusout", update);

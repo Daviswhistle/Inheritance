@@ -7,15 +7,22 @@ import WebKit
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
-    var window: UIWindow?
-
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
+        return true
+    }
+}
+
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
+               options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: windowScene)
         window.rootViewController = TestHostViewController()
         window.makeKeyAndVisible()
         self.window = window
-        return true
     }
 }
 
@@ -24,6 +31,8 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
     private var webView: WKWebView!
     private let address = UITextField()
     private let status = UILabel()
+    private var toolbar: UIStackView!
+    private var toolbarHeight: NSLayoutConstraint!
     private var allowedURL: URL?
     private var webBottom: NSLayoutConstraint!
     private var keyboardScreenFrame: CGRect?
@@ -108,7 +117,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
         reload.setTitle("↻", for: .normal)
         reload.accessibilityLabel = "Reload test page"
         reload.addTarget(self, action: #selector(reloadPage), for: .touchUpInside)
-        let toolbar = UIStackView(arrangedSubviews: [address, open, reload])
+        toolbar = UIStackView(arrangedSubviews: [address, open, reload])
         toolbar.spacing = 8
         let hostViews: [UIView] = [status, toolbar, webView!]
         hostViews.forEach {
@@ -116,6 +125,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             view.addSubview($0)
         }
         webBottom = webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
+        toolbarHeight = toolbar.heightAnchor.constraint(equalToConstant: 44)
         NSLayoutConstraint.activate([
             status.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
             status.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
@@ -123,7 +133,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             toolbar.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 4),
             toolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
             toolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            toolbar.heightAnchor.constraint(equalToConstant: 44),
+            toolbarHeight,
             open.widthAnchor.constraint(equalToConstant: 48),
             reload.widthAnchor.constraint(equalToConstant: 44),
             webView.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 4),
@@ -180,6 +190,14 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
 
     private func updateKeyboardClearance() {
         guard webBottom != nil, let window = view.window else { return }
+        // Debug URL controls must not consume the input's remaining landscape
+        // space above the system keyboard and WKWebView accessory bars.
+        let compact = view.bounds.width > view.bounds.height && view.bounds.height < 500
+        let height: CGFloat = compact ? 0 : 44
+        if toolbarHeight.constant != height {
+            toolbar.isHidden = compact
+            toolbarHeight.constant = height
+        }
         let guideTop = view.keyboardLayoutGuide.layoutFrame.minY
         var visibleBottom = guideTop
         var obstructions: [CGRect] = []

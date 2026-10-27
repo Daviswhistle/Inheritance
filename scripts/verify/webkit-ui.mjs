@@ -195,7 +195,28 @@ try {
     assert.equal(await editingPage.locator('.tab-bar').isVisible(), false);
     assert.equal(await editingPage.locator('#heir-input').inputValue(), config.heir);
     await editingPage.getByRole('button', { name: 'Done', exact: true }).tap();
+    await editingPage.waitForFunction(() => document.activeElement.id !== 'heir-input');
+    assert.equal(await editingPage.locator('.tab-bar').isVisible(), false,
+      'blur must not expose a tab underneath Done before the keyboard closing resize');
+    await editingPage.setViewportSize({ width: 390, height: 844 });
+    await editingPage.evaluate(() => {
+      Object.assign(visualViewport, { width: 390, height: 844 });
+      visualViewport.dispatchEvent(new Event('resize'));
+    });
     await editingPage.waitForFunction(() => !document.documentElement.hasAttribute('data-plan-keyboard'));
+    assert.equal(await editingPage.locator('.tab-bar').isVisible(), true);
+    assert.equal(await editingPage.locator('.tab-item[aria-current="page"]').textContent(), 'Plan');
+    await editingPage.setViewportSize({ width: 390, height: 600 });
+    await editingPage.evaluate(() => {
+      Object.assign(visualViewport, { width: 390, height: 600 });
+      visualViewport.dispatchEvent(new Event('resize'));
+      document.getElementById('heir-input').focus();
+    });
+    await editingPage.waitForFunction(() => document.documentElement.hasAttribute('data-plan-keyboard'));
+    await editingPage.locator('#heir-input').blur();
+    await editingPage.waitForFunction(() => !document.documentElement.hasAttribute('data-plan-keyboard'), null, { timeout: 5000 });
+    assert.equal(await editingPage.locator('.tab-bar').isVisible(), true);
+    assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), true);
   } finally { await editingContext.close(); }
   pass('Keyboard Done is hittable 24px above the keyboard, dismisses editing without submission, and preserves portrait/landscape/foreground input clearance');
   await tab(page, 2); await tap(page, '동의하고 로그인');

@@ -24,7 +24,7 @@ async function locale(page,value){await tab(page,3);await page.ev(`const s=docum
 async function click(page,label){await until(()=>page.ev(`__q.revealButton(${JSON.stringify(label)});return __q.btns().some(b=>b.t===${JSON.stringify(label)}&&!b.d)`),label);assert.match(await page.ev(`return __q.click(${JSON.stringify(label)})`),/^clicked/);}
 async function shot(page,label,top=true){if(top)await page.ev('window.scrollTo(0,0)');await sleep(80);const result=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});const path=`${OUT}/${label}.png`;writeFileSync(path,Buffer.from(result.data,'base64'));evidence.screenshots.push(path);}
 async function help(page,label){
- assert.equal(await page.ev("return document.querySelectorAll('.help-topic-list > details').length"),7);
+ assert.equal(await page.ev("return document.querySelectorAll('.help-topic-list > details').length"),8);
  await page.ev("document.querySelectorAll('.help-topic').forEach(x=>x.open=true)");await layout(page,label,390);
  assert.ok(await page.ev("return !!document.querySelector('a[href=\"/yield-terms.html\"]')&&!!document.querySelector('.transfer-guide')"));
  await page.ev("document.querySelectorAll('.help-topic').forEach(x=>x.open=false)");
