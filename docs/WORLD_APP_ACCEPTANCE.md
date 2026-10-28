@@ -90,6 +90,25 @@ and authentication steps; unavailable PIN or biometric input still needs the hum
 Mac environment inspection is complete. Use this connected phone; no emulator
 retry is needed. Earlier Windows installation experiments below are historical.
 
+## Mac actual-host installation check — October 28, 2026
+
+The M4 MacBook Air runs macOS 27.0.1 and Xcode 27.1. Native host tests on this
+Mac and CI establish the recorded WebKit/MiniKit transport behavior, not the
+World Money App Store binary. The official
+[World Money listing](https://apps.apple.com/kr/app/world-money-digital-wallet/id1560859847)
+was opened and its compatibility section expanded: iPhone iOS 16.4+ and Apple
+Vision visionOS 1.0+ were listed, with no Mac entry. The Mac App Store was also
+searched under Mac apps and iPhone/iPad apps; no verified World Money install
+action was offered in the observed results.
+
+iPhone Mirroring reported that it could not connect to an eligible nearby
+iPhone. Xcode's three same-machine iPhone records matched local simulator IDs;
+no USB/network physical iPhone was found. No account, security setting or
+application binary was modified to bypass these limits. No public official
+World Money simulator build was found; that does not establish that TFH cannot
+provide a developer build. An official simulator/Mac-enabled beta or a reachable
+physical iPhone is the next supported route to actual iOS host testing.
+
 ## No-transfer checks
 
 1. Browse Home / Assets / Plan / Help before signing in. No wallet request should

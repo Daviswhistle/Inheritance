@@ -3,6 +3,30 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## October 28 withdrawal and substantive readiness work
+
+The operator withdrew the October 28 review request after the technical release.
+A separate Portal readback confirmed `unverified` for app
+`app_28c40a2a42b7f6c95789c2d5231b1314`. The earlier `awaiting_review` receipt below
+records that submission at the time; it is no longer current. Production remains
+on `3e675010e5c0e5641a2b433a01e76f5cfec2e529`; no new contract or funds transaction
+was made for this follow-up.
+
+The user explicitly requires resolving the TFH procedure, defensible launch
+countries and actual iOS World App validation before resubmission. Merely
+reporting unresolved issues in a changelog does not satisfy this project gate.
+The public World Money compatibility listing shows iPhone and Apple Vision, with
+no Mac entry. This M4 Mac's App Store offered no verified World Money install;
+iPhone Mirroring could not connect to an iPhone. Xcode's same-machine iPhone
+records matched local simulators. Our native host results remain valid for
+those hosts and do not establish actual World App iOS acceptance.
+
+A follow-up asking TFH for existing-contract remediation and an official iOS
+simulator/Mac beta route, plus a Korean service-classification inquiry, has been
+prepared but not sent or submitted. Current authority and next steps are in
+[MAC_HANDOFF.md](MAC_HANDOFF.md); country evidence is in
+[LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
+
 ## October 28 deployment — wallet-debit transparency and full-withdrawal recovery
 
 Runtime source: `3e675010e5c0e5641a2b433a01e76f5cfec2e529`, descendant of requested `91944cc` baseline.

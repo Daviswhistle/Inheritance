@@ -7,12 +7,16 @@ withdrawn by the operator before this revision. The Portal was read back as
 
 ## Current submission status and requirement classification
 
-The operator withdrew the October 24 11:41 UTC submission. After remediation and
-deployment, a new review request was submitted October 28. A separate Portal
-readback at 04:09 UTC (13:09 KST) confirmed `awaiting_review`; that is a submitted
-review, not approval. The changelog disclosed the historical source-sharing gap,
-unresolved jurisdiction classification and actual-device evidence limits. See
-[RELEASE.md](RELEASE.md) for the exact runtime, CI and native-test receipts.
+The operator withdrew the October 24 request. After technical remediation, a
+new request on October 28 was read back as `awaiting_review` at 04:09 UTC
+(13:09 KST). The user subsequently withdrew that request; a fresh Portal readback
+confirmed **unverified**. No new submission has followed that withdrawal.
+
+The disclosed source-sharing and jurisdiction gaps were not resolved by sending
+the request. Under the user's current instruction, they must be substantively
+addressed along with actual iOS World App validation before resubmission.
+See [MAC_HANDOFF.md](MAC_HANDOFF.md) for the current readiness gate and
+[RELEASE.md](RELEASE.md) for the historical technical receipts.
 
 The official review policy requires a complete working app, meaningful live SDK
 integration, accurate listing information, reviewer access, and compliance with
@@ -131,6 +135,7 @@ not expand that list or assert lawful financial/inheritance service availability
 in those countries. Legal review cannot be replaced with software tests or a
 Terms disclaimer. The now-withdrawn submission disclosed these limitations;
 it was not a declaration that every
-external requirement was satisfied. The October 28 review request disclosed
-the historical source-sharing gap and unresolved classification; it does not
-claim that either has been cleared.
+external requirement was satisfied. The later October 28 request was also
+withdrawn. Its disclosures do not resolve the historical source-sharing gap or
+the operator/service classification. Those remain concrete work before another
+review request under the user's current direction.

@@ -1,8 +1,9 @@
 # Launch scope assessment — updated October 28, 2026
 
 The operator reports individual operation from Korea and wants the maximum lawful
-availability. The October 28 review request lists KR, US, GB, CA, AU, JP and SG; no
-country or runtime access restriction has been changed. No legal determination
+availability. The October 28 request was withdrawn by the operator. KR, US, GB,
+CA, AU, JP and SG remain Portal draft settings, not a determined lawful launch
+scope; no runtime access restriction has been changed. No legal determination
 or pre-deployment TFH source-sharing record was supplied. The source is public.
 Public access supplies present review access, not evidence of a historical sharing step.
 
@@ -74,3 +75,27 @@ retroactively satisfy it. Requesting review with that fact disclosed is not a
 claim that the gap has been accepted. Applicable legal compliance remains the
 operator's responsibility; a submitted or approved store listing is not a legal
 determination. No new country is being added.
+
+## Current decision after withdrawal
+
+No selected country is being represented as cleared for the complete service.
+The next step is a specific Korean operator/service classification inquiry,
+covering the immutable vault, fixed Morpho route, realized-gain fee and
+permissionless paid-gas relay together. The FIU's official
+[civil inquiry page](https://www.kofiu.go.kr/kor/etc/fcsc.do) directs questions on
+FSC/FIU law and work to the National Petition System. A draft is prepared; no
+regulator submission or decision is claimed. A response is evidence about its
+specified scope, not a universal certificate for every law or foreign market.
+
+The current UK proposal should remain on hold until an applicable lawful
+financial-promotion route is evidenced or an appropriately assessed exclusion
+is implemented. The [FCA's current guidance](https://www.fca.org.uk/firms/cryptoassets/marketing-uk-consumers)
+covers overseas firms and website/mobile-app communications and identifies four
+lawful routes. No applicable route has been established for this app. Store
+country removal alone is insufficient to claim that the public website is
+restricted; no such runtime block has yet been implemented.
+
+Retain the full product only in a launch scope supported by the actual facts
+and applicable requirements. The previously assessed basic-only alternative is
+not presumed exempt or adopted merely to avoid obtaining the classification.
+Resubmission remains on hold under the user's explicit readiness instruction.

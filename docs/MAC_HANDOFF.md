@@ -5,7 +5,10 @@
 Complete World App guideline remediation, actual-device validation, necessary
 fixes/deployment and resubmission when ready. The user withdrew the earlier
 submission and authorized these actions. Push and deployment are authorized.
-They explicitly resumed work October 28 after the October 27 pause.
+They explicitly resumed work October 28 after the October 27 pause. After the
+subsequent submission, the user rejected treating disclosed gaps as readiness,
+withdrew the request, and instructed us to resolve TFH review procedure, a
+defensible country scope and actual iOS World App validation before resubmitting.
 
 ADB inspection/tap/input on the connected Android phone is authorized. Stop
 captures during secret entry. The user subsequently authorized the agent to
@@ -51,15 +54,11 @@ notification, contact message, invitation or external inquiry without authority.
 ## External decisions still open
 
 Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
-`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was resubmitted October 28; a separate Portal readback at 04:09 UTC (13:09 KST)
-confirmed `awaiting_review`. This is a review request, not approval. Earlier
-withdrawn receipts remain historical. Hero/showcase captures and
-review descriptions were updated and independently read back; allowlists,
-notification restrictions and KR/US/GB/CA/AU/JP/SG were preserved. Developer
-listing stayed enabled; only verification_status changed in the metadata
-comparison. The submitted changelog disclosed the source-sharing gap, unresolved
-jurisdiction classification, lack of an independent audit and physical-iPhone
-test boundary.
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`, is **unverified after the user withdrew
+the October 28 submission**. This was independently read back from the Portal.
+The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical, not the
+current state. Countries remain KR/US/GB/CA/AU/JP/SG as draft settings, not a
+cleared launch scope. Production runtime and existing-holder access are unchanged.
 
 The operator is an individual in Korea and wants maximum lawful availability.
 There is no historical pre-deployment TFH source-sharing or legal-review record.
@@ -72,20 +71,39 @@ a universal paid legal report, incorporation, audit or device-certificate rule;
 do not declare all seven countries cleared. A disclosed review request does
 not establish legal clearance or TFH acceptance of the historical sharing gap.
 
-## Next action
+## Required before another submission
+
+This is the user's project-specific readiness requirement, not a claim that the
+Portal imposes a universal legal certificate or physical-device attachment.
+Do not resubmit merely by listing these gaps in a changelog.
+
+1. Obtain the actual TFH review/remediation route for the existing immutable
+   contracts and satisfy the case-specific steps. Public source and the sent
+   October 25 inquiry do not retroactively prove pre-deployment sharing.
+2. Justify a concrete launch scope against the actual Morpho/fee/relay activity.
+   Start with Korean operator classification; the current UK promotion route is
+   not established. Changing store countries alone does not restrict the public
+   site, and any required controls must preserve existing holders' fund access.
+3. Complete actual iOS World App host validation through a supported route.
+   The M4 Mac runs our iOS host tests. The official World Money listing offers
+   iPhone and Apple Vision compatibility, with no Mac entry; Mac App Store
+   iPhone/iPad search offered no verified World Money install. iPhone Mirroring
+   could not connect, and Xcode's three same-machine records were local
+   simulators, not physical phones. Ask TFH for an official simulator/Mac beta
+   build or use a reachable physical iPhone. Do not count the custom host as
+   actual World App acceptance.
+
+A concrete TFH follow-up and Korean classification inquiry were prepared for
+operator review. They are not sent/submitted until specifically authorized.
+The original TFH message was one approved send, not a standing outreach mandate.
+No new real-fund transaction, paid service or monitoring automation was started.
 
 Read [RELEASE.md](RELEASE.md), [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md),
 [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md), [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) and
-[REVIEW_NOTES.md](REVIEW_NOTES.md). The technical remediation, deployment and authorized disclosed review request
-are complete. At the next continuation, recheck the Portal and any review
-response before acting. Address actual review findings within the authorized
-scope; do not treat this submission as legal clearance or approval. Do not send
-duplicate inquiries or schedule monitoring unless requested. A TFH reply or
-universal legal certificate is not an invented prerequisite to a review request.
+[REVIEW_NOTES.md](REVIEW_NOTES.md). Recheck current state before acting. Resubmission
+is authorized only after the substantive readiness work is complete.
 
-This Mac now has Xcode 27.1; select it per command with DEVELOPER_DIR rather than
-changing the global developer directory. iOS 27.0 supports the standard iPhone
-models; the installed 27.1 runtime is Duo-only. Native test hosts use real MiniKit
-transport and fixture funds with simulated approvals. They do not establish
-physical iPhone World App acceptance. Earlier PC/emulator installation failures
-are historical; use the connected Android phone for actual-host work.
+This Mac has Xcode 27.1; select it per command with DEVELOPER_DIR rather than
+changing the global developer directory. Local native hosts use real MiniKit
+transport, fixture funds and simulated approvals. Keep that evidence separate
+from actual World App iOS testing.
