@@ -1,24 +1,94 @@
 # Actual World App acceptance
 
-Status: awaiting operator test results. Do not check a step from a simulated
-bridge, Linux browser, native test host, or on-chain fork result.
+Status: physical Android checks observed on October 25 and 27, 2026, including
+one successful user-approved WLD deposit, close/reopen recovery and principal
+withdrawal. This is acceptance of the observed flows, not proof of every asset,
+claim path or physical iPhone behavior. Native test hosts simulate the wallet
+host; their results are recorded separately.
 
 Open [Inheritance in World App](https://world.org/mini-app?app_id=app_28c40a2a42b7f6c95789c2d5231b1314).
 Record the device model, OS version, World App version, date and UI language.
-The current runtime is `a56335f8a978db1dda9b154b3a606b5de74382ae`.
+The October 27 real-money test used runtime
+`e4be10c5225cd05504c3cb3f02082f16b1b4a623`. Current deployed source and exact
+CI/native-test results are in [RELEASE.md](RELEASE.md).
 
-## Available installation environment
+## Physical device — October 25 and 27, 2026
 
-The original AOSP test host remains at `emulator-5554`. The Google Play WSL
-AVD `inheritance-worldapp-play` was stopped after poor interactive performance.
-A separate Windows-native AVD, `inheritance-windows-play`, runs Android 15
-Google Play revision 9 with Windows WHPX and NVIDIA host GPU acceleration.
-It advertises `x86_64,arm64-v8a` and `libndk_translation.so`. The operator completed
-Google Play login. Store installation was rejected; see the dated attempt below.
-This is an emulator, not a physical Android device.
+The user connected a Samsung SM-S911N running Android 16, with World Money
+(`com.worldcoin`) 4.0.4401 / versionCode 4004401. The Mini App used English and
+the native World App used Korean. The user explicitly authorized ADB screen
+inspection and tap/input. The user entered credentials directly; captures and
+mirroring stopped during credential entry. Financial/contact screenshots remain
+private and are not committed.
 
-Do not record emulator results in the physical-device fields. Do not capture
-screenshots, UI text or logs while the operator enters Google credentials.
+The official app-ID deep link opened the actual Inheritance Mini App. Home,
+Assets, Plan and Help were distinct before authentication and did not open a
+wallet request from navigation. Terms and Privacy bodies loaded in-app. Closing
+wallet sign-in returned to the guest interface with “You cancelled sign-in”;
+retry opened the native request, and user-completed authentication rendered the
+username and live wallet data. A draft `0.01 WLD` remained after the app's Done
+button dismissed the native numeric keyboard. This entered amount did not send
+a transaction.
+
+The previous runtime left “Opening…” after contact X or Android Back cancellation,
+and titled Privacy as Terms after the canonical redirect. After deployment of
+`37df75d`, the actual phone showed the correct Privacy Policy modal title.
+Cancelling native contacts returned to a recoverable waiting state; explicit
+Cancel selection and enter manually focused the input. Typed input was preserved
+and the app rejected the owner's own username as a recipient. The terminal button
+no longer claimed Opening. Close/reopen reset unsubmitted details and restored
+native contacts. The user selected a contact, and its username and resolved
+address appeared correctly. No invitation or message was sent.
+
+After explicit user authorization, exactly one self-test notification was
+requested at 14:48 KST. The app reported delivery, and the physical phone's
+notification shade separately displayed the Inheritance test message. No heir
+or other contact was messaged. The native menu offered Mute notifications; no
+new permission-grant dialog was observed. The old runtime still displayed a
+misleading version error on Enable reminders and an indefinite monitoring-status
+message when no plan was open. The deployed fix now reports Notifications are on for this wallet. Repeating
+Enable reminders returned the same success without the misleading version error.
+No additional self-test was sent and no fresh permission-grant dialog was needed.
+
+On October 25 the native approval for `0.01 WLD` quoted `0.094 WLD` in
+network fees and was cancelled before authorization. The saved plan remained
+editable; a read-only factory query returned no owner vault. This is a
+historical cancellation result, not the outcome of the later approved deposit.
+
+On October 27 the user authorized the necessary test transaction and personally
+completed the native wallet approval for `0.01 WLD` plus a quoted `0.098 WLD`
+network fee. The privately retained successful canonical receipt confirms the
+full `0.01 WLD` principal reached the newly created vault. The WLD fee reserve
+was partly refunded: the actual net network charge was
+`0.063726535762749712 WLD`, and the deposit transaction's total wallet debit was
+`0.073726535762749712 WLD`. The `0.108 WLD` quote sum was an estimate, not the
+settled debit. Private receipts identify the single owner UserOperation and its
+fee/refund transfers; tester-linked addresses, transaction hashes and screenshots
+are deliberately excluded from this public record.
+
+Closing and reopening the actual Mini App required sign-in but restored the
+funded 30-day plan and `0.01 WLD` position without another deposit approval.
+The user then personally approved withdrawal to their own wallet. The privately retained canonical
+receipt confirms `0.010000000000056801 WLD` returned; this
+transaction charged the owner no WLD network fee. The round-trip network cost
+was therefore `0.063726535762749712 WLD`.
+
+The withdrawal recovered the original principal and a small positive return,
+but left `2923` token wei (`0.000000000000002923 WLD`) in the vault. A balance
+refresh after tapping All changed the gross quote and caused the existing UI to
+choose a partial withdrawal. The follow-up fix and fixture regression are recorded
+in [RELEASE.md](RELEASE.md); no additional live transaction is claimed to clear
+that residual. Do not describe the real test as a zero-share full exit.
+
+Only this test WLD position was used. Unrelated existing wallet-held USDC receipt
+shares were not redeemed. No new invitation or notification was sent. The initial
+zero-extra-cost restriction was superseded for the approved test; it is not an
+unlimited spending permission. Future financial actions still require scoped
+amount/cost authorization. The user later authorized agent-handled confirmation
+and authentication steps; unavailable PIN or biometric input still needs the human.
+
+Mac environment inspection is complete. Use this connected phone; no emulator
+retry is needed. Earlier Windows installation experiments below are historical.
 
 ## No-transfer checks
 
@@ -36,8 +106,9 @@ screenshots, UI text or logs while the operator enters Google credentials.
 ## Wallet transaction checks
 
 Do these only with a willing tester's disposable funds and a known recipient.
-There is no automatic test deposit. Record token, amount and public transaction
-hash, never a private key, seed phrase, session token or sign-in signature.
+There is no automatic test deposit. Record token, amount and canonical receipt privately. Do not publish tester-linked
+transaction details without permission; never record a private key, seed phrase,
+session token or sign-in signature.
 
 1. Review a small plan, check recipient, exact amount, fees and risk disclosures.
    Open the World App deposit approval and cancel. Confirm no success/deposit is
@@ -60,17 +131,17 @@ No message to an heir or other person is needed for this check.
 
 | Field | Result |
 | --- | --- |
-| Device / OS / World App version / date | Pending |
-| Guest navigation and legal links | Pending |
-| Sign-in cancel → retry → success | Pending |
-| Keyboard input and Done | Pending |
-| Contact cancel / selection | Pending |
-| Notification permission | Pending |
-| Deposit cancel / no receipt | Pending |
-| Approved deposit / receipt | Pending |
-| Reopen without duplicate approval | Pending |
-| Withdrawal / receipt | Pending |
-| Self-test notification delivery (if performed) | Pending |
+| Device / OS / World App version / date | SM-S911N / Android 16 / World Money 4.0.4401 / October 25 and 27, 2026 |
+| Guest navigation and legal links | Guest navigation observed; deployed Privacy modal title and close passed |
+| Sign-in cancel → retry → success | Observed native cancel/retry; user completed login, authenticated UI independently observed |
+| Keyboard input and Done | Observed: draft 0.01 WLD retained, keyboard dismissed, no transaction |
+| Contact cancel / selection | Deployed manual recovery, own-recipient rejection and native selected username/address passed |
+| Notification permission | Existing permission, deployed status and Enable reminders retry passed; no new grant dialog |
+| Deposit cancel / no receipt | Native 0.01 WLD request cancelled; 0.094 WLD network quote; editable saved plan and zero factory vault confirmed |
+| Approved deposit / receipt | October 27: canonical success; full 0.01 WLD principal in new vault; actual network fee 0.063726535762749712 WLD |
+| Reopen without duplicate approval | Actual close/reopen and sign-in restored funded 30-day plan; no second deposit request |
+| Withdrawal / receipt | Canonical success; 0.010000000000056801 WLD returned, no owner WLD network fee; 2923 wei residual remains, so not a zero-share full exit |
+| Self-test notification delivery (if performed) | One authorized test: app acceptance and actual phone receipt observed separately, 14:48 KST |
 
 Record failures with the action and visible error. A user report is operator-
 reported evidence; do not relabel it as an automated or independently observed test.
@@ -130,4 +201,6 @@ obfuscated exception at 13:29:21. UI inspection returned to BlueStacks Gamecente
 no World App login or Mini App screen was reached. These observations establish
 failure on this tested BlueStacks instance, not failure of every possible PC
 configuration. The exception does not identify its cause in readable form.
-Actual World App acceptance remains incomplete. No resubmission was performed.
+As of this October 25 BlueStacks experiment, actual World App acceptance was
+incomplete and no resubmission had been performed. The later physical Android
+results above supersede that device-testing gap only for their observed flows.

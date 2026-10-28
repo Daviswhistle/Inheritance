@@ -1,105 +1,85 @@
-# Mac continuation — 2026-10-25
+# Mac continuation — 2026-10-28
 
-## Objective and authorization
+## Objective and authority
 
-Finish Inheritance's World App guideline remediation, verify the actual World App
-flows, and resubmit when ready. The user withdrew the previous submission and
-explicitly authorized fixes, deployment and resubmission. They have no phone and
-rejected BrowserStack signup. They now want to continue on their Mac. Do not
-repeat Windows emulator experiments or request another paid/cloud signup without
-new user direction. Do not claim that a Mac automatically supports this app;
-inspect its hardware, OS and available official installation paths first.
+Complete World App guideline remediation, actual-device validation, necessary
+fixes/deployment and resubmission when ready. The user withdrew the earlier
+submission and authorized these actions. Push and deployment are authorized.
+They explicitly resumed work October 28 after the October 27 pause.
 
-## Repository and production
+ADB inspection/tap/input on the connected Android phone is authorized. Stop
+captures during secret entry. The user subsequently authorized the agent to
+handle authentication/confirmation steps; human input is still required for
+biometrics or an unavailable device PIN. This does not expand spending authority.
+One 0.01 WLD deposit/withdrawal test and its necessary costs were approved; this
+is not permission to spend unrelated funds.
+Exactly one approved self-notification has already been used. Do not send another
+notification, contact message, invitation or external inquiry without authority.
 
-- Repository: https://github.com/Daviswhistle/Inheritance, branch `main`.
-- Production: https://inheritance.pages.dev
-- Deployed runtime: `a56335f8a978db1dda9b154b3a606b5de74382ae`.
-- Immutable deployment: https://30a7c891.inheritance.pages.dev
-- Later commits add verification tooling and documentation; they are not a new
-  product runtime deployment.
-- App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`.
-- Metadata ID: `meta_9cf3b324ec9a1838a56c5b6d98be8674`.
-- Last confirmed portal status: `unverified` after user withdrawal. Re-read it.
-  Earlier `awaiting_review` receipts are historical, not current approval.
-- Deep link: https://world.org/mini-app?app_id=app_28c40a2a42b7f6c95789c2d5231b1314
+## Current verified checkpoint
 
-## Read first
+- Runtime source: `3e675010e5c0e5641a2b433a01e76f5cfec2e529`, descendant of requested baseline `91944cc`.
+  Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
+  deployment, native-test and independent-review receipts.
+- Production: https://inheritance.pages.dev ; immutable: https://6fff670a.inheritance.pages.dev.
+  Deployment [40629700530](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700530): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [40629700573](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700573): passed, all three jobs successful.
+  Readback: October 28 readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
+- Financial UI separates dated lending/reward rates, live strategy fee, service
+  fee and conditional WLD network costs. Review shows per-token deposit amounts
+  plus the conditional fee as total-debit components; the SDK does not expose an
+  exact preapproval network quote to this mini app. Quote and settled debit differ.
+- Current validation: the complete local-chain browser suite passed 92 checks, including refreshed/full/partial withdrawal, identity outage recovery, idle USDC plus WLD exit, and WLD arriving during approval. Separate automated code review: completed against the complete final commit with no actionable findings; its focused checks covered seven withdrawal scenarios and keyboard closing/recovery.
+  iOS: [40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598) — in progress; final-source native results are not yet established.
+- Physical Android: Samsung SM-S911N / Android 16 / World Money 4.0.4401.
+  Login cancel/retry/success, keyboard Done, legal title, contact cancellation,
+  manual recovery/selection, notification status, one received self-notification,
+  deposit cancellation, real deposit, close/reopen and principal withdrawal passed
+  for the specifically recorded versions. See [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md).
+- Real-money test used `e4be10c`. Deposit principal 0.01 WLD; quoted network fee
+  0.098 WLD. Actual net network fee 0.063726535762749712 WLD; actual deposit debit
+  0.073726535762749712 WLD after the unused reserve was refunded. Withdrawal
+  returned 0.010000000000056801 WLD with zero owner WLD network fee.
+- The original live All action left 2923 token wei after a quote-refresh race.
+  The follow-up fix preserves explicit All intent, reads fresh output protection,
+  and retains manually entered partial withdrawals. Fixture evidence is separate
+  from the real receipt. Do not claim the live vault was emptied unless a later
+  canonical receipt establishes it. No unrelated wallet-held USDC shares were used.
+- Private phone/transaction/contact evidence stays outside Git. Do not publish
+  tester-linked addresses, transaction linkage or screenshots in public docs.
 
-`docs/WORLD_APP_ACCEPTANCE.md`, `docs/GUIDELINE_REVIEW.md`,
-`docs/LAUNCH_SCOPE.md`, `docs/REVIEW_NOTES.md`, `docs/RELEASE.md`.
-Read any applicable local AGENTS.md before modifying the Mac checkout.
+## External decisions still open
 
-## Completed evidence
+Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was read back as `unverified` October 28 before resubmission.
+Earlier `awaiting_review` receipts are historical. Hero/showcase captures and
+review descriptions were updated and independently read back; allowlists,
+notification restrictions and KR/US/GB/CA/AU/JP/SG were preserved.
 
-The runtime includes prelogin consent and legal dialogs, final plan risk/recovery
-disclosures, keyboard/accessibility fixes, authentication timeout handling, and
-updated store assets. Repository documents contain the complete test receipts.
-Native Android/iOS test hosts simulate wallet responses and do not establish
-actual World App acceptance. iOS simulator XCTest passing is not proof that the
-App Store World App binary will run in the simulator.
+The operator is an individual in Korea and wants maximum lawful availability.
+There is no historical pre-deployment TFH source-sharing or legal-review record.
+One approved source-review/remediation inquiry was sent to TFH October 25 at
+15:33 KST. The sent thread was rechecked October 28 with no reply or decision. Earlier
+related-inbox checks also found no decision. The Korean classification inquiry remains unsent. Do not duplicate
+messages or treat a sent email as TFH acceptance. [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md)
+records specific lending/fee/relay and financial-promotion questions. Do not invent
+a universal paid legal report, incorporation, audit or device-certificate rule;
+do not declare all seven countries cleared. A disclosed review request does
+not establish legal clearance or TFH acceptance of the historical sharing gap.
 
-At source `b09627748594e84660b1683dc0a41479c08d8ad1`, full CI passed:
-https://github.com/Daviswhistle/Inheritance/actions/runs/40091742269
+## Next action
 
-The added World Chain fork runner and manual workflow passed all five suites:
-21 passed, zero failed, zero skipped, block 36,753,480, block hash
-`0x636136a382c158bc475fb402b8c26cc54e11a50fb0e85de3611352a5d60848fd`.
-https://github.com/Daviswhistle/Inheritance/actions/runs/40091745672
-No live funds or transaction broadcasts were used for fork tests.
+Read [RELEASE.md](RELEASE.md), [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md),
+[GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md), [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) and
+[REVIEW_NOTES.md](REVIEW_NOTES.md). Recheck live state before changing it. Submit the verified app with the
+historical source-sharing gap and unresolved jurisdiction classification clearly
+disclosed, then confirm Portal state. A TFH reply or universal legal certificate
+is not an invented prerequisite to requesting review. Resubmission is already
+authorized; no repeat approval is needed within this scope.
 
-## Windows attempts — do not mistake installation for acceptance
-
-1. WSL Google Play Android 15 AVD: ARM translation was present but interaction was
-   too slow. It was stopped.
-2. Windows-native Google Android 15 emulator: WHPX and NVIDIA GPU worked; Google
-   account login succeeded. Play Store rejected `com.worldcoin` as incompatible.
-3. A signed ARM64 4.0.4100 bundle installed directly, then crashed on startup.
-4. BlueStacks 5.22.285.1013 Pie64 / Android 9: signed ARM32 4.0.4401 installed;
-   first launch and retry both produced obfuscated `FATAL EXCEPTION: Thread-2`
-   in `com.worldcoin`, returning to Gamecenter. No login or Mini App was reached.
-
-Bundles came from APKPure and were verified with apksigner v2/v3 integrity and
-app certificate comparison against https://world.org/.well-known/assetlinks.json.
-No patching, device-identity spoofing or attestation bypass was performed.
-The crash text does not establish the exact cause. These results do not prove
-all Mac or PC environments fail. BlueStacks removal was requested by the user.
-
-## Next work on the Mac
-
-1. Inspect `uname -m`, macOS version, Xcode/simulator tools and existing authorized
-   access. On Apple Silicon check whether the publisher actually makes the iOS
-   app available for this Mac through the App Store; do not assume availability.
-   Check official ARM64 Android development options if needed. Verify current
-   official support and installation requirements before promising success.
-2. Use the actual World app (`com.worldcoin`, now listed as World Money in the
-   observed Android store) for MiniKit wallet/transaction acceptance. Distinguish
-   it from the separate World ID app and from SDK simulator/test-host tools.
-3. Follow WORLD_APP_ACCEPTANCE.md. Collect actual login cancel/retry/success,
-   keyboard Done, contacts, notifications and approval cancellation results.
-   Do not record success from mocks or app installation alone.
-4. User credentials and authentication codes must be entered by the user; never
-   capture screens/logs while credentials are being entered. Do not extract or
-   transfer Google sessions from Windows.
-5. Real deposits/withdrawals require an explicitly approved amount and a willing
-   tester's disposable funds. Do not infer permission to spend existing assets.
-6. Resolve launch scope: operator is in Korea; portal countries last read were
-   KR, US, GB, CA, AU, JP, SG. User has not approved narrowing the country list.
-   No legal review was supplied. Do not invent a blanket mandatory legal report,
-   independent audit, or physical-device report requirement; equally, do not
-   claim lawful operation in all seven countries without supporting analysis.
-7. Finish authorized fixes and relevant checks, deploy actual runtime changes if
-   needed, verify live behavior, update truthful reviewer materials and submit.
-   Preserve the portal contract/token allowlists and notification restrictions.
-
-## Access and nonportable artifacts
-
-GitHub contains source, documentation, workflows and committed assets. It does
-not contain Windows/WSL `/tmp` evidence, downloaded APKs, emulator disks, local
-Google authentication, secrets or installed SDKs. Reacquire only what is needed.
-Use existing authorized GitHub/World developer portal connections on the Mac;
-never ask for passwords or API keys in chat. Windows uses the Daviswhistle
-GitHub identity for this repo; an unrelated default identity lacked permissions.
-
-The remaining actual-host and launch-scope gaps must be reported honestly. Do
-not resubmit merely with an unfinished-work disclosure and call the task ready.
+This Mac now has Xcode 27.1; select it per command with DEVELOPER_DIR rather than
+changing the global developer directory. iOS 27.0 supports the standard iPhone
+models; the installed 27.1 runtime is Duo-only. Native test hosts use real MiniKit
+transport and fixture funds with simulated approvals. They do not establish
+physical iPhone World App acceptance. Earlier PC/emulator installation failures
+are historical; use the connected Android phone for actual-host work.

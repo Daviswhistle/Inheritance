@@ -4,6 +4,26 @@ App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`
 URL: https://inheritance.pages.dev/
 Languages: English and Korean. Platform: World App iOS and Android.
 
+## October 25 rate and fee clarification
+
+Plan entry and final review show separate dated lending and general WLD reward
+APRs for each configured Morpho asset, including before the first deposit. The
+source and UTC report/campaign times are available. Failed or stale queries show
+unavailable rates rather than a fixed return; verified-human boosts are excluded.
+
+The review distinguishes the Re7 vault's currently queried performance fee from
+Inheritance's 10% of positive realized gains after underlying costs and loss
+recovery. A collapsible example uses the reviewed strategy fee and calculates
+each token separately; it excludes principal, other gains/losses, rewards and
+network costs. It is illustrative, not a promised return. A changed strategy fee
+requires fresh review and consent before opening a wallet request.
+
+Network costs are separate. World App can quote a WLD network fee if sponsorship
+is unavailable; creation, adding funds and withdrawal can each incur costs.
+Reusing a vault does not guarantee a free transaction. **Open approval screen**
+opens the native amount/fee review; opening it does not authorize a transfer.
+The sign-in action is **Agree and sign in**, including when already inside World App.
+
 ## October 24 guideline supplement
 
 Before sign-in, read the wallet-data/session explanation and open Privacy or
@@ -18,7 +38,9 @@ All public/external contract functions now have NatSpec; CI measures custody
 line coverage rather than relying on unsupported configuration keys. Source,
 control roles, coverage limits, current evidence and unresolved real-device and
 jurisdictional review are in [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md). No
-independent audit, real World App acceptance or legal clearance is claimed.
+independent audit or jurisdictional determination is claimed. Actual Android
+acceptance is partial; the current results and remaining checks are in
+[WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md).
 
 ## Response to the October 21 design review
 
@@ -51,13 +73,13 @@ approval-service or notification-delivery behavior.
 
 ## Sign-in and custody
 
-Tap **Continue with World App** to sign in; opening the app initializes the bridge without requesting a signature. World ID verification is not required. Pages verifies the MiniKit SIWE signature, origin, statement, chain and address, consumes a one-use random nonce in D1, and issues a one-hour session. The notification Worker independently verifies this session and current vault permissions. Expired sessions retain app navigation and ask the user to reconnect before viewing personal balances or acting on funds.
+Tap **Agree and sign in** to sign in; opening the app initializes the bridge without requesting a signature. World ID verification is not required. Pages verifies the MiniKit SIWE signature, origin, statement, chain and address, consumes a one-use random nonce in D1, and issues a one-hour session. The notification Worker independently verifies this session and current vault permissions. Expired sessions retain app navigation and ask the user to reconnect before viewing personal balances or acting on funds.
 
 User keys never reach our servers. Basic WLD stays in the user's vault; yield WLD or USDC goes into its fixed Re7 strategy and the user's vault holds receipt shares. WLD and USDC use separate factories and vaults, managed together in the app. User transactions go through the allowlisted tokens, receipt contracts and factories with World App approval. A dedicated infrastructure signer pays gas for eligible automated transfers; it cannot choose the recipient, file an heir's claim or withdraw an active owner's funds.
 
 ## The inheritance flow
 
-1. Choose WLD and/or USDC amounts, an heir and a 1–365-day timer. Configured new routes default to Morpho with explicit risk and fee consent; earlier basic WLD positions remain manageable. Review the exact amounts and full recipient address in **Review plan**, then use **Confirm and deposit** for wallet approval. The review itself sends no wallet request. Missing asset creation, approvals and deposits execute atomically in one wallet request. Each confirmed deposit receives monitoring even if a later step is interrupted or the user edits the remaining setup.
+1. Choose WLD and/or USDC amounts, an heir and a 1–365-day timer. Configured new routes default to Morpho with explicit risk and fee consent; earlier basic WLD positions remain manageable. Review the exact amounts and full recipient address in **Review plan**, then use **Open approval screen** for wallet approval. The review itself sends no wallet request. Missing asset creation, approvals and deposits execute atomically in one wallet request. Each confirmed deposit receives monitoring even if a later step is interrupted or the user edits the remaining setup.
 2. Use **Home** to review the combined plan and check in to verified active assets. **Assets** separates principal withdrawals from income collection on new supporting contracts. Collecting income charges 10% of realized gains while preserving the inheritance principal and timer. **Invite your heir** appears immediately after setup and offers World Chat and a single link to their verified assets. The owner sees the last observed heir visit and notification permission, with delivery limitations stated. Notification permission is separate and is required on each recipient's World App.
 3. The heir sees assets grouped by owner, without an owner setup form. After expiry the named heir can file a claim for the eligible assets together in one approval. Funds remain in the vault or its strategy for the fixed seven-day review window.
 4. For registered supported vaults, the service can execute the eligible transfer after the review window. Only the named heir receives the funds. Manual completion of eligible assets together remains available. Completed history shows actual cash, invested shares, reward amounts and canonical transaction links; wallet-share redemption is separate. Finalized yield settlement can trigger a completion notification to the immutable recipient. Earlier basic deployments require manual completion.
@@ -93,6 +115,6 @@ MiniKit user-operation hashes are resolved through the official transaction-stat
 
 Plan creation, settings changes and deposits require a retained recovery record before a wallet request is sent. The app verifies that record was actually saved. An interrupted plan uses its original trusted factory even after a new generation is introduced. The ordinary shared plan editor updates every unsettled asset, including earlier deposits. Changes to existing heirs or timers require review of the exact current vaults and settings; a changed list requires another review. An interval change explicitly includes a check-in in the same transaction, so shortening the period does not immediately expire old funds. Recovery requires its check-in event as well as the period-change event. Ambiguous settings requests block another plan mutation until the original receipt is verified. They do not lock withdrawals, income or wallet-share redemption. Structured wallet-policy rejections remain editable. Historical creation and deposit receipts remain valid after later owner actions. Income support is verified on the deployed contract rather than inferred from a generation label. The WLD overview includes held rewards and gifts in active USDC positions without converting their USDC balances.
 
-Local verification uses real Anvil transactions, contract state, browser automation, actual Pages SIWE verification and SQLite-backed notification/automation paths. These tests do not certify native World App permission dialogs or real device behavior. Real iPhone/Android World App wallet approval and notification delivery remain external verification items. There is no independent third-party security audit; the app and store do not claim one.
+Local verification uses real Anvil transactions, contract state, browser automation, actual Pages SIWE verification and SQLite-backed notification/automation paths. These tests do not certify native World App permission dialogs or real device behavior. Actual Android sign-in cancel/retry/success, keyboard Done, one self-notification delivery and deployed contact-cancel recovery have been observed. Contact selection and native deposit-approval cancellation also passed. On October 27 the actual World App also completed one user-approved 0.01 WLD deposit, close/reopen recovery without a second deposit request, and principal withdrawal. The withdrawal left 2923 wei WLD after an All-selection quote-refresh race; the follow-up fix is verified separately with local fixture funds. Physical-iPhone acceptance remains open; see WORLD_APP_ACCEPTANCE.md. There is no independent third-party security audit; the app and store do not claim one.
 
 Privacy and terms disclose session data, monitoring records, automatic transfer rules, risks and support. Source and contract information are linked from Help.

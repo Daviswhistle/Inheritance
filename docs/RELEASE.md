@@ -1,5 +1,82 @@
 # Release evidence
 
+## October 28 deployment — wallet-debit transparency and full-withdrawal recovery
+
+Runtime source: `3e675010e5c0e5641a2b433a01e76f5cfec2e529`, descendant of requested `91944cc` baseline.
+This follow-up includes earlier legal-title, contact recovery, permission-status,
+in-app sign-in and dated-rate disclosures. No executable contract, fee percentage,
+strategy, allowlist or operator spending budget changed.
+
+The final plan review now shows total-wallet-debit components: exact per-token
+deposits plus a conditional WLD network fee. Deposits reach the vault in full;
+the network charge is additional. The mini app cannot obtain the native fee quote
+in advance, so it neither invents a number nor sums unlike currencies. The World
+App quote and the post-transaction settled debit are explicitly distinguished.
+
+Actual phone testing exposed a separate All-withdrawal race: the old UI inferred
+full exit from exact equality with a changing valuation. All is now explicit,
+scoped intent; its visible amount follows refreshed valuation, and submission
+reads a fresh protected minimum before using withdrawAllFromMyVault. Manual input
+clears All intent and keeps an exact partial withdrawal. Independent review found
+and reproduced an idle-only USDC case that could leave WLD behind; the amended
+full-exit path protects the directly read USDC amount and also pays held WLD. Unavailable valued-share
+quotes stop before the wallet. Idle WLD retains the full-exit route, including
+cash arriving during wallet approval; its fresh position accounts for canonical
+cash-reward fees without requiring a share valuation. Idle USDC remains
+recoverable from its directly read balance.
+
+Validation for this runtime:
+
+- Typecheck, lint, production build, 9 localization checks and 22 rate/fee checks
+  passed. Current monetary and mobile verification: the complete local-chain browser suite passed 92 checks, including refreshed/full/partial withdrawal, identity outage recovery, idle USDC plus WLD exit, and WLD arriving during approval.
+- macOS WebKit: 19 checks / 31 layouts / no JS errors for the debit disclosure.
+  Chromium localized product UI: 68 layouts. Its old seven-topic Help assertion
+  was corrected for the existing eighth Network fees topic.
+- Separate automated code review (Codex commit review): completed against the complete final commit with no actionable findings; its focused checks covered seven withdrawal scenarios and keyboard closing/recovery.
+- [CI 40629700573](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700573): passed, all three jobs successful.
+- [Pages/Worker 40629700530](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700530): passed for this runtime; Pages and notification Worker deployed successfully.
+  Immutable Pages: https://6fff670a.inheritance.pages.dev. Worker version: `44ac6f50-9fae-469e-962e-660cfc35545a`.
+- [iOS native host 40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598): in progress; final-source native results are not yet established.
+  Local native iOS at `aa47552`: Xcode 27.1 / iPhone 16 Pro / iOS 27.0, both XCTest methods passed with zero failures or skips. Prototype source hashes matched that revision; canonical recovery and portrait/landscape/foreground evidence were retained. The subsequent idle-WLD handler amendment is covered by the local EVM regression and the final-source CI result above.
+- Production HTML/imported assets/legal documents/Worker automation readback:
+  October 28 readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
+
+The native test host adopts UIKit's scene lifecycle, required by the installed
+iOS 27 SDK ([Apple migration guide](https://developer.apple.com/documentation/uikit/transitioning-to-the-uikit-scene-based-life-cycle)).
+The product keeps fixed navigation hidden during keyboard dismissal after input
+blur, preventing Done from tapping through to Help. A one-second upper bound
+restores navigation after a permanent window resize. WebKit tests both the
+closing interval and the bounded recovery.
+
+Amount and recipient navigation uses bounded drags above fixed controls rather
+than full-page swipes that can overshoot short screens. Full CSS input geometry,
+native occlusion, hit targets, preserved values, keyboard controls, rotation,
+process-death recovery and canonical fixture receipts remain asserted. The
+accessibility height baseline is rounded to pixels before applying its existing
+one-pixel tolerance. These are host/driver corrections, not evidence that the
+physical iPhone World App has been tested. The earlier e4be10c and a4b9ec4 iOS
+runs failed; only the exact current result above establishes the current status.
+
+Actual World App Android acceptance used e4be10c: the user personally approved
+one 0.01 WLD deposit and a later withdrawal. The full deposit reached the new
+vault. Quoted network fee was 0.098 WLD, while the actual net network charge after
+unused reserve refund was 0.063726535762749712 WLD; actual deposit debit was
+0.073726535762749712 WLD. Close/reopen restored the funded 30-day plan without a
+second deposit approval. Withdrawal returned 0.010000000000056801 WLD and charged
+no owner WLD network fee. The test principal was recovered, but 2923 wei WLD
+remained after the original race; this is not a real zero-share full-exit receipt.
+Private tester-linked receipts/screenshots are not committed. No unrelated USDC
+wallet shares, invitation or second self-notification were used.
+
+The factual TFH inquiry was sent October 25 at 15:33 KST. October 28 sent-thread readback
+found no response or decision. This is proof of sending, not review-team routing
+or acceptance. Individual Korean operation and the seven existing country
+settings retain the concrete classification questions in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
+Portal descriptions/captures were updated and read back; Portal status remains
+unverified. No resubmission is claimed. See [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md)
+for the precise actual-host boundary and [MAC_HANDOFF.md](MAC_HANDOFF.md) for the
+small current continuation checkpoint.
+
 ## October 24 follow-up after second withdrawal
 
 Portal readback is `unverified`. The 11:41 UTC submission recorded below was

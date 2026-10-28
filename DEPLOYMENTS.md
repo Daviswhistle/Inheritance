@@ -1,6 +1,6 @@
 # 배포 기록
 
-World Chain mainnet, chain ID 480. 아래 표는 WLD 보관형 계약의 현재·기존 배포 기록입니다. 수익형 WLD·USDC 경로는 각각 [Morpho 문서](docs/MORPHO_YIELD.md)와 [USDC 문서](docs/USDC_YIELD.md)를 따릅니다. 새 이자 수령 계약은 아직 배포 전입니다.
+World Chain mainnet, chain ID 480. 아래 표는 WLD 보관형 계약의 현재·기존 배포 기록입니다. 수익형 WLD·USDC 경로는 각각 [Morpho 문서](docs/MORPHO_YIELD.md)와 [USDC 문서](docs/USDC_YIELD.md)를 따릅니다. 현재 이자 수령 팩토리와 가스 목적 제한 계약은 2026-10-05에 배포되었습니다. 주소·블록·비용은 [출시 영수증](docs/RELEASE.md#october-5-2026-final-launch-candidate-and-onchain-receipts)에 기록되어 있습니다. 2026-10-25 읽기 전용 확인에서도 세 주소의 런타임 코드가 존재했습니다. 아래의 날짜별 “배포 전” 기록은 당시 상태입니다.
 
 | 항목 | 현재 계약 | 기존 계약 |
 | --- | --- | --- |
