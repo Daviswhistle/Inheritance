@@ -14,7 +14,9 @@ confirmed **unverified**. No new submission has followed that withdrawal.
 
 The disclosed source-sharing and jurisdiction gaps were not resolved by sending
 the request. Under the user's current instruction, they must be substantively
-addressed along with actual iOS World App validation before resubmission.
+addressed before resubmission. Native iOS Simulator tests and actual Android
+World App results are the current engineering evidence; a physical iPhone is
+not treated as a mandatory attachment or a standalone readiness blocker.
 See [MAC_HANDOFF.md](MAC_HANDOFF.md) for the current readiness gate and
 [RELEASE.md](RELEASE.md) for the historical technical receipts.
 
@@ -136,6 +138,6 @@ in those countries. Legal review cannot be replaced with software tests or a
 Terms disclaimer. The now-withdrawn submission disclosed these limitations;
 it was not a declaration that every
 external requirement was satisfied. The later October 28 request was also
-withdrawn. Its disclosures do not resolve the historical source-sharing gap or
+withdrawn. Its disclosures do not resolve the unverified historical source-sharing fact or
 the operator/service classification. Those remain concrete work before another
 review request under the user's current direction.

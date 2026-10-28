@@ -13,7 +13,7 @@ on `3e675010e5c0e5641a2b433a01e76f5cfec2e529`; no new contract or funds transact
 was made for this follow-up.
 
 The user explicitly requires resolving the TFH procedure, defensible launch
-countries and actual iOS World App validation before resubmission. Merely
+countries and appropriate iOS validation before resubmission. Merely
 reporting unresolved issues in a changelog does not satisfy this project gate.
 The public World Money compatibility listing shows iPhone and Apple Vision, with
 no Mac entry. This M4 Mac's App Store offered no verified World Money install;
@@ -21,11 +21,26 @@ iPhone Mirroring could not connect to an iPhone. Xcode's same-machine iPhone
 records matched local simulators. Our native host results remain valid for
 those hosts and do not establish actual World App iOS acceptance.
 
-A follow-up asking TFH for existing-contract remediation and an official iOS
-simulator/Mac beta route, plus a Korean service-classification inquiry, has been
-prepared but not sent or submitted. Current authority and next steps are in
+The existing native iOS Simulator results plus actual Android World App evidence
+are accepted for this engineering stage; lack of a physical iPhone alone does
+not block submission. Real iOS World App approval/permission UI remains an
+explicit evidence limit.
+
+A TFH follow-up and Korean classification inquiry were prepared, neither sent
+nor submitted. A formal government inquiry is optional and held while current
+statutes are mapped to the actual service; it is not a universal preclearance
+requirement. Current authority and next steps are in
 [MAC_HANDOFF.md](MAC_HANDOFF.md); country evidence is in
 [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
+
+A bounded history check found contract deployment records from September 26,
+the repository URL in a tracked Privacy file by October 2, and a saved Portal
+submission receipt on October 5. Neither the searched Git records nor the bounded 2026 project-mail searches
+in the two connected Gmail accounts provided direct pre-deployment TFH sharing
+evidence.
+This is an unverified historical fact, not proof that communication never
+occurred. The appropriate existing-contract review path remains a focused TFH
+question rather than a claim that a policy breach has been adjudicated.
 
 ## October 28 deployment — wallet-debit transparency and full-withdrawal recovery
 

@@ -107,7 +107,9 @@ no USB/network physical iPhone was found. No account, security setting or
 application binary was modified to bypass these limits. No public official
 World Money simulator build was found; that does not establish that TFH cannot
 provide a developer build. An official simulator/Mac-enabled beta or a reachable
-physical iPhone is the next supported route to actual iOS host testing.
+physical iPhone is the next supported route to additional actual iOS host testing.
+The existing native iOS Simulator and actual Android evidence remains valid;
+lack of a physical iPhone alone is not treated as a submission blocker.
 
 ## No-transfer checks
 

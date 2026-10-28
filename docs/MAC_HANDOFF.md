@@ -8,7 +8,9 @@ submission and authorized these actions. Push and deployment are authorized.
 They explicitly resumed work October 28 after the October 27 pause. After the
 subsequent submission, the user rejected treating disclosed gaps as readiness,
 withdrew the request, and instructed us to resolve TFH review procedure, a
-defensible country scope and actual iOS World App validation before resubmitting.
+defensible country scope and iOS validation before resubmitting. The engineering
+assessment accepts the existing native iOS Simulator plus actual Android World
+App evidence; absence of a physical iPhone alone is not a submission blocker.
 
 ADB inspection/tap/input on the connected Android phone is authorized. Stop
 captures during secret entry. The user subsequently authorized the agent to
@@ -81,22 +83,24 @@ Do not resubmit merely by listing these gaps in a changelog.
    contracts and satisfy the case-specific steps. Public source and the sent
    October 25 inquiry do not retroactively prove pre-deployment sharing.
 2. Justify a concrete launch scope against the actual Morpho/fee/relay activity.
-   Start with Korean operator classification; the current UK promotion route is
-   not established. Changing store countries alone does not restrict the public
+   Start with the concrete Korean transfer-business question about the
+   operator-funded permissionless relay; do not equate lack of an official
+   opinion with illegality. The current UK promotion route is not established. Changing store countries alone does not restrict the public
    site, and any required controls must preserve existing holders' fund access.
-3. Complete actual iOS World App host validation through a supported route.
-   The M4 Mac runs our iOS host tests. The official World Money listing offers
-   iPhone and Apple Vision compatibility, with no Mac entry; Mac App Store
-   iPhone/iPad search offered no verified World Money install. iPhone Mirroring
-   could not connect, and Xcode's three same-machine records were local
-   simulators, not physical phones. Ask TFH for an official simulator/Mac beta
-   build or use a reachable physical iPhone. Do not count the custom host as
-   actual World App acceptance.
+3. Retain the verified iOS evidence and its scope: the actual WebKit/MiniKit
+   native-host tests passed on local iOS 27.0 and final-source CI iOS 18.5; actual
+   Android World App testing covered native flows and the principal round trip.
+   The simulator host models approval callbacks; it does not establish the real
+   World App iOS approval/permission screens. Physical iPhone testing is useful
+   additional evidence, not an invented universal prerequisite. The user has no
+   available iPhone; do not block only on that fact or repeatedly request one.
 
-A concrete TFH follow-up and Korean classification inquiry were prepared for
-operator review. They are not sent/submitted until specifically authorized.
-The original TFH message was one approved send, not a standing outreach mandate.
-No new real-fund transaction, paid service or monitoring automation was started.
+A TFH follow-up and Korean classification inquiry were prepared but not sent.
+The government inquiry is optional and currently held, not a required launch
+process. First apply current legal definitions to the actual service and narrow
+any remaining decision-changing question. A separate outbound approval is still
+needed before sending a new message or government inquiry; the original TFH
+permission covered one send. No new funds transaction or paid service was used.
 
 Read [RELEASE.md](RELEASE.md), [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md),
 [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md), [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) and

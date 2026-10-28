@@ -69,9 +69,9 @@ website; any later required access control must preserve existing holders' funds
 ## Review request versus launch clearance
 
 The official rules do not state that a TFH reply or a universal legal-opinion
-certificate must precede a review request. The missing historical repository
-sharing step remains a real gap; present public access and a sent inquiry do not
-retroactively satisfy it. Requesting review with that fact disclosed is not a
+certificate must precede a review request. Historical repository sharing with the review team is not verified in the
+searched records. Present public access and a sent inquiry do not establish
+that historical fact; absence of a found record is not proof it never happened. Requesting review with that fact disclosed is not a
 claim that the gap has been accepted. Applicable legal compliance remains the
 operator's responsibility; a submitted or approved store listing is not a legal
 determination. No new country is being added.
@@ -79,12 +79,15 @@ determination. No new country is being added.
 ## Current decision after withdrawal
 
 No selected country is being represented as cleared for the complete service.
-The next step is a specific Korean operator/service classification inquiry,
-covering the immutable vault, fixed Morpho route, realized-gain fee and
-permissionless paid-gas relay together. The FIU's official
+The next step is precise activity classification against current statutory
+definitions, covering the immutable vault, fixed Morpho route, realized-gain
+fee and operator-funded permissionless relay together. The relay does not charge
+a separate transfer fee to the user. A formal classification inquiry is one
+option if a specific decision-changing issue remains; it is not a legally
+required preclearance step. The FIU's official
 [civil inquiry page](https://www.kofiu.go.kr/kor/etc/fcsc.do) directs questions on
-FSC/FIU law and work to the National Petition System. A draft is prepared; no
-regulator submission or decision is claimed. A response is evidence about its
+FSC/FIU law and work to the National Petition System. A draft is prepared but
+currently held; no regulator submission or decision is claimed. A response is evidence about its
 specified scope, not a universal certificate for every law or foreign market.
 
 The current UK proposal should remain on hold until an applicable lawful
@@ -99,3 +102,31 @@ Retain the full product only in a launch scope supported by the actual facts
 and applicable requirements. The previously assessed basic-only alternative is
 not presumed exempt or adopted merely to avoid obtaining the classification.
 Resubmission remains on hold under the user's explicit readiness instruction.
+
+## Narrow Korean classification point
+
+The current [Virtual Asset User Protection Act, Article 2(2)](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1024562465)
+includes transfer as a business activity. Its current
+[Enforcement Decree, Article 3](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lspttninfSeq=188933)
+covers address-to-address transfers for that business, including user-to-user
+transfers; it should not be replaced with the narrower wording of an older
+Specific Financial Information Act decree.
+
+The [August 2026 FIU manual](https://www.fsc.go.kr/comm/getFile?fileNo=5&fileTy=ATTACH&srvcId=BBSTY1&upperNo=87521)
+printed pages 1 and 3 (PDF pages 3 and 5) describe recurring profit-oriented
+activity and case-specific software/keyless-wallet exclusions. Those exclusions
+are relevant to custody/intermediation; they do not establish a universal DApp
+exemption or an automatic government-inquiry requirement.
+
+| Actual conduct | Decision relevance |
+| --- | --- |
+| Each user signs; the operator has no user key, upgrade power or arbitrary recipient/strategy control. | Supports a software/noncustodial characterization rather than discretionary custody. |
+| The operator-funded relay submits eligible fixed-heir execution transactions; any caller can execute the same contract path. | The remaining transfer-business question is attribution of this recurring execution to the operator versus provision of immutable software. Permissionlessness alone does not decide it. |
+| The service earns 10% of realized positive gains. There is no separate user-paid relay fee. | Commercial context matters, but the fee alone does not decide which statutory activity is performed. |
+
+Removing operator execution, or offering a noncommercial basic-only variant,
+would change the relevant facts and may reduce these concerns. Neither is
+automatically a legal exemption, and neither has been adopted without a product
+decision. Preserve the intended product while evaluating a defensible country
+scope; use a narrowly scoped external opinion only where it resolves a concrete
+decision that cannot be supported from the available law and facts.
