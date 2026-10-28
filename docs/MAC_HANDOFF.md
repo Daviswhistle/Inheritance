@@ -30,7 +30,7 @@ notification, contact message, invitation or external inquiry without authority.
   plus the conditional fee as total-debit components; the SDK does not expose an
   exact preapproval network quote to this mini app. Quote and settled debit differ.
 - Current validation: the complete local-chain browser suite passed 92 checks, including refreshed/full/partial withdrawal, identity outage recovery, idle USDC plus WLD exit, and WLD arriving during approval. Separate automated code review: completed against the complete final commit with no actionable findings; its focused checks covered seven withdrawal scenarios and keyboard closing/recovery.
-  iOS: [40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598) — in progress; final-source native results are not yet established.
+  iOS: [40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598) — passed on iPhone 16 Pro / iOS 18.5 Simulator: two tests, zero failures and skips; exported screenshots and raw summary independently inspected.
 - Physical Android: Samsung SM-S911N / Android 16 / World Money 4.0.4401.
   Login cancel/retry/success, keyboard Done, legal title, contact cancellation,
   manual recovery/selection, notification status, one received self-notification,
@@ -51,10 +51,15 @@ notification, contact message, invitation or external inquiry without authority.
 ## External decisions still open
 
 Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
-`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was read back as `unverified` October 28 before resubmission.
-Earlier `awaiting_review` receipts are historical. Hero/showcase captures and
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was resubmitted October 28; a separate Portal readback at 04:09 UTC (13:09 KST)
+confirmed `awaiting_review`. This is a review request, not approval. Earlier
+withdrawn receipts remain historical. Hero/showcase captures and
 review descriptions were updated and independently read back; allowlists,
-notification restrictions and KR/US/GB/CA/AU/JP/SG were preserved.
+notification restrictions and KR/US/GB/CA/AU/JP/SG were preserved. Developer
+listing stayed enabled; only verification_status changed in the metadata
+comparison. The submitted changelog disclosed the source-sharing gap, unresolved
+jurisdiction classification, lack of an independent audit and physical-iPhone
+test boundary.
 
 The operator is an individual in Korea and wants maximum lawful availability.
 There is no historical pre-deployment TFH source-sharing or legal-review record.
@@ -71,11 +76,12 @@ not establish legal clearance or TFH acceptance of the historical sharing gap.
 
 Read [RELEASE.md](RELEASE.md), [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md),
 [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md), [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) and
-[REVIEW_NOTES.md](REVIEW_NOTES.md). Recheck live state before changing it. Submit the verified app with the
-historical source-sharing gap and unresolved jurisdiction classification clearly
-disclosed, then confirm Portal state. A TFH reply or universal legal certificate
-is not an invented prerequisite to requesting review. Resubmission is already
-authorized; no repeat approval is needed within this scope.
+[REVIEW_NOTES.md](REVIEW_NOTES.md). The technical remediation, deployment and authorized disclosed review request
+are complete. At the next continuation, recheck the Portal and any review
+response before acting. Address actual review findings within the authorized
+scope; do not treat this submission as legal clearance or approval. Do not send
+duplicate inquiries or schedule monitoring unless requested. A TFH reply or
+universal legal certificate is not an invented prerequisite to a review request.
 
 This Mac now has Xcode 27.1; select it per command with DEVELOPER_DIR rather than
 changing the global developer directory. iOS 27.0 supports the standard iPhone

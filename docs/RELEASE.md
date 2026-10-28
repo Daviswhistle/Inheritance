@@ -1,5 +1,8 @@
 # Release evidence
 
+The first dated section is the latest verified state. Older dated sections
+record historical snapshots and do not override it.
+
 ## October 28 deployment — wallet-debit transparency and full-withdrawal recovery
 
 Runtime source: `3e675010e5c0e5641a2b433a01e76f5cfec2e529`, descendant of requested `91944cc` baseline.
@@ -36,7 +39,7 @@ Validation for this runtime:
 - [CI 40629700573](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700573): passed, all three jobs successful.
 - [Pages/Worker 40629700530](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700530): passed for this runtime; Pages and notification Worker deployed successfully.
   Immutable Pages: https://6fff670a.inheritance.pages.dev. Worker version: `44ac6f50-9fae-469e-962e-660cfc35545a`.
-- [iOS native host 40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598): in progress; final-source native results are not yet established.
+- [iOS native host 40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598): passed on iPhone 16 Pro / iOS 18.5 Simulator: two XCTest methods, zero failures or skips; raw summary and portrait/landscape/recovered-deposit captures independently inspected.
   Local native iOS at `aa47552`: Xcode 27.1 / iPhone 16 Pro / iOS 27.0, both XCTest methods passed with zero failures or skips. Prototype source hashes matched that revision; canonical recovery and portrait/landscape/foreground evidence were retained. The subsequent idle-WLD handler amendment is covered by the local EVM regression and the final-source CI result above.
 - Production HTML/imported assets/legal documents/Worker automation readback:
   October 28 readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
@@ -72,8 +75,14 @@ The factual TFH inquiry was sent October 25 at 15:33 KST. October 28 sent-thread
 found no response or decision. This is proof of sending, not review-team routing
 or acceptance. Individual Korean operation and the seven existing country
 settings retain the concrete classification questions in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
-Portal descriptions/captures were updated and read back; Portal status remains
-unverified. No resubmission is claimed. See [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md)
+Portal descriptions/captures were updated and read back. The app was resubmitted
+October 28; an independent readback at 04:09 UTC (13:09 KST) confirmed
+`awaiting_review` for metadata `meta_9cf3b324ec9a1838a56c5b6d98be8674`. Developer
+listing remained enabled; countries and other metadata were unchanged. The
+submitted changelog explicitly disclosed the historical source-sharing gap,
+unresolved jurisdiction classification, lack of an independent audit and the
+physical-iPhone evidence boundary. Review acceptance and legal clearance are
+not claimed. See [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md)
 for the precise actual-host boundary and [MAC_HANDOFF.md](MAC_HANDOFF.md) for the
 small current continuation checkpoint.
 

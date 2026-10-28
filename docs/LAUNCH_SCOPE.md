@@ -1,7 +1,7 @@
 # Launch scope assessment — updated October 28, 2026
 
 The operator reports individual operation from Korea and wants the maximum lawful
-availability. The current Portal draft lists KR, US, GB, CA, AU, JP and SG; no
+availability. The October 28 review request lists KR, US, GB, CA, AU, JP and SG; no
 country or runtime access restriction has been changed. No legal determination
 or pre-deployment TFH source-sharing record was supplied. The source is public.
 Public access supplies present review access, not evidence of a historical sharing step.
@@ -59,9 +59,9 @@ TFH receipt, review-team routing or a decision. The sent thread was
 rechecked October 28 with no reply or decision. Earlier related-inbox checks
 also found no decision. The Korean classification inquiry
 remains an unsent draft; no adviser or paid service has been engaged. Country
-settings remain unchanged. The authorized resubmission will disclose these
-classification/source-review gaps and request review; it will not assert that the
-selected countries have been legally cleared. The October 27 WLD deposit/reopen/principal-withdrawal results are
+settings remain unchanged. The October 28 resubmission disclosed these
+classification/source-review gaps and requested review; it did not assert that
+the selected countries have been legally cleared. The October 27 WLD deposit/reopen/principal-withdrawal results are
 recorded separately in [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md). Store restrictions alone do not restrict the public
 website; any later required access control must preserve existing holders' funds.
 
