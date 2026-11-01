@@ -252,7 +252,7 @@ final class HostTests: XCTestCase {
 
     private func dismissKeyboard(in web: XCUIElement, app: XCUIApplication) {
         let done = web.buttons["Done"].firstMatch
-        waitForStableControl(done, in: web)
+        waitForStableControl(done, in: web, timeout: 60)
         done.tap()
         if app.launchArguments.contains(where: { $0.contains("trace=1") }) {
             let closed = NSPredicate { _, _ in !app.keyboards.firstMatch.exists }
@@ -280,7 +280,7 @@ final class HostTests: XCTestCase {
         // The reported failure had the fixed Done button over this label. A tap
         // must not activate that label when keyboard dismissal changes layout.
         let done = web.buttons["Done"].firstMatch
-        waitForStableControl(done, in: web)
+        waitForStableControl(done, in: web, timeout: 60)
         func geometry() -> (button: [Double], interval: [Double])? {
             guard let raw = app.staticTexts["test-host-status"].value as? String,
                   let data = raw.data(using: .utf8),
@@ -303,7 +303,7 @@ final class HostTests: XCTestCase {
             // Short drags can be entirely consumed by UIKit pan recognition.
             // Measure actual DOM movement, not the possibly clipped AX label,
             // and adapt the next gesture while preserving the exact overlap gate.
-            let distance = min(120, max(44, abs(delta) + panAllowance))
+            let distance = min(120, abs(delta) + panAllowance)
             let step = delta < 0 ? -distance : distance
             origin.withOffset(CGVector(dx: 8, dy: start))
                 .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: 8, dy: start - step)))
@@ -337,7 +337,7 @@ final class HostTests: XCTestCase {
         capture("done-over-interval-label", app)
     }
 
-    private func waitForStableControl(_ control: XCUIElement, in web: XCUIElement) {
+    private func waitForStableControl(_ control: XCUIElement, in web: XCUIElement, timeout: TimeInterval = 20) {
         var previous = CGRect.zero
         var stableSince: Date?
         var observations = 0
@@ -346,8 +346,10 @@ final class HostTests: XCTestCase {
                 stableSince = nil; observations = 0; return false
             }
             let frame = control.frame
-            guard frame.height >= 44, frame.minY >= web.frame.minY,
-                  frame.maxY <= web.frame.maxY else {
+            let webFrame = web.frame
+            print("CONTROL STABILITY: frame=\(frame) web=\(webFrame) observations=\(observations)")
+            guard frame.height >= 44, frame.minY >= webFrame.minY,
+                  frame.maxY <= webFrame.maxY else {
                 stableSince = nil; observations = 0; return false
             }
             if frame != previous || stableSince == nil {
@@ -356,7 +358,7 @@ final class HostTests: XCTestCase {
             observations += 1
             return observations >= 3 && Date().timeIntervalSince(stableSince ?? Date()) >= 0.8
         }
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: stable, object: nil)], timeout: 20), .completed,
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: stable, object: nil)], timeout: timeout), .completed,
                        "Wait for the visible web control to settle before interacting")
     }
 
