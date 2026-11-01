@@ -221,7 +221,23 @@ try {
     assert.equal(await editingPage.locator('.plan-primary-actions').isVisible(), false);
     assert.equal(await editingPage.locator('.tab-bar').isVisible(), false);
     assert.equal(await editingPage.locator('#heir-input').inputValue(), config.heir);
+    await editingPage.evaluate(() => {
+      window.__doneGesture = [];
+      // Bubble observes React's default prevention after its root handler.
+      for (const type of ['pointerdown', 'pointerup', 'touchend', 'click']) {
+        document.addEventListener(type, event => window.__doneGesture.push({
+          type, prevented: event.defaultPrevented,
+          done: event.target.closest?.('.plan-keyboard-done') !== null,
+        }));
+      }
+    });
     await editingPage.getByRole('button', { name: 'Done', exact: true }).tap();
+    const doneGesture = await editingPage.evaluate(() => window.__doneGesture);
+    assert.ok(doneGesture.some(event => event.type === 'pointerup' && event.done), 'Done receives the real touch release');
+    assert.ok(doneGesture.some(event => event.type === 'touchend' && event.done && event.prevented),
+      'Done consumes the compatibility click before keyboard closing can retarget it');
+    assert.equal(doneGesture.filter(event => event.type === 'click').length, 0,
+      'touch dismissal must not generate a second click on Done or the content behind it');
     await editingPage.waitForFunction(() => document.activeElement.id !== 'heir-input');
     assert.equal(await editingPage.locator('.tab-bar').isVisible(), false,
       'blur must not expose a tab underneath Done before the keyboard closing resize');

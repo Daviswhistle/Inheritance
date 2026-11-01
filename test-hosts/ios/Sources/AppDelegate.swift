@@ -58,11 +58,14 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                   const hit = Number.isFinite(point.clientX) ? document.elementFromPoint(point.clientX, point.clientY) : null;
                   const done = document.querySelector('.plan-keyboard-done');
                   const doneRect = done?.getBoundingClientRect();
-                  interactionTrace.push({type, target: target?.id || target?.className || target?.tagName,
+                  const record = {type, target: target?.id || target?.className || target?.tagName,
                     hit: hit?.id || hit?.className || hit?.tagName,
                     active: document.activeElement?.id, x: point.clientX, y: point.clientY,
                     done: doneRect ? [doneRect.x, doneRect.y, doneRect.width, doneRect.height] : null,
-                    at: Math.round(performance.now())});
+                    at: Math.round(performance.now())};
+                  interactionTrace.push(record);
+                  // Read the final flag after React's root handler has run.
+                  setTimeout(() => record.prevented = event.defaultPrevented, 0);
                   if (interactionTrace.length > 24) interactionTrace.shift();
                 }, true);
               }

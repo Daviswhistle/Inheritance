@@ -637,6 +637,11 @@ export function PlanSetup({
         // WebKit can suppress the compatibility click after prevented focus.
         // Complete the non-transactional action on a trusted pointer release too.
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      }} onTouchEnd={event => {
+        // Native keyboard dismissal can move Done before WebKit dispatches its
+        // compatibility click, retargeting that click to a label underneath.
+        // Pointer-up already completed the action; consume the touch's click.
+        event.preventDefault();
       }}>{t("plan.keyboard.done")}</Button>
       {validationReason && pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
         && <p className="plan-validation-message" role="status">{validationReason}</p>}

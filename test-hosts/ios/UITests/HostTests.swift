@@ -254,6 +254,25 @@ final class HostTests: XCTestCase {
         let done = web.buttons["Done"].firstMatch
         waitForStableControl(done, in: web)
         done.tap()
+        if app.launchArguments.contains(where: { $0.contains("trace=1") }) {
+            let closed = NSPredicate { _, _ in !app.keyboards.firstMatch.exists }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: closed, object: nil)], timeout: 10), .completed,
+                           "Done must dismiss the keyboard without focusing another field")
+            guard let raw = app.staticTexts["test-host-status"].value as? String,
+                  let data = raw.data(using: .utf8),
+                  let metrics = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let trace = metrics["interactionTrace"] as? [[String: Any]],
+                  let start = trace.lastIndex(where: { $0["type"] as? String == "pointerdown" }) else {
+                XCTFail("Done must have a native gesture trace"); return
+            }
+            let gesture = trace[start...]
+            XCTAssertTrue((trace[start]["target"] as? String)?.contains("plan-keyboard-done") == true,
+                          "The original touch must land on Done")
+            XCTAssertTrue(gesture.contains { $0["type"] as? String == "touchend" && $0["prevented"] as? Bool == true },
+                          "Consume the compatibility click before native keyboard reflow")
+            XCTAssertFalse(gesture.contains { $0["type"] as? String == "click" },
+                           "A Done touch must not generate a second click on underlying content: \(gesture)")
+        }
         print("AFTER DONE: \(app.staticTexts["test-host-status"].value ?? "missing")")
     }
 
