@@ -45,7 +45,7 @@ Earlier emulator installation failures are historical; use the connected phone.
 Physical-iPhone acceptance has not been performed.
 
 The operator confirmed individual operation in Korea and wants the maximum
-lawful availability. The November 1 country review selected KR/AR in the
+lawful availability. The November 1 country review selected KR/AR/CO in the
 unverified Portal draft, with an independent readback. The source is public;
 no historical pre-deployment TFH sharing record was supplied.
 [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) records the reasoned activity classification,
@@ -135,12 +135,12 @@ unverified on the actual host. Physical iPhone acceptance, first-use human compr
 independent security audit have not been established. See the acceptance table
 for the precise boundary.
 
-The current Portal draft countries are KR/AR. US/CA/AU/JP were removed during
+The current Portal draft countries are KR/AR/CO. US/CA/AU/JP were removed during
 this review; GB/SG had already been removed. This is a store-scope decision, not
-a government approval or public-site geoblock. The operational KR/AR software-
-service interpretation does not depend on receiving an FIU letter. Other markets
-were not assumed illegal merely because this screening did not establish their
-full-service treatment. See LAUNCH_SCOPE.md for the source-to-product reasoning.
+a government approval or public-site geoblock. The selected-market assessment
+does not depend on receiving an FIU letter. Other markets
+were assessed against their specific transfer, offering and marketing rules;
+non-selection is a release judgment, not a blanket illegality finding. See LAUNCH_SCOPE.md for the source-to-product reasoning.
 The withdrawn requests remain historical. TFH's existing-contract review route
 and necessary territorial access implementation remain separate release work;
 country selection does not satisfy them or authorize a readiness claim.

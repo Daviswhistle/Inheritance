@@ -78,7 +78,7 @@ Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
 November 1 as **unverified after the user withdrew that submission**. GB/SG were
 removed from the draft and device evidence was updated; no resubmission occurred.
 The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical, not the
-current state. The later November 1 country review changed the draft to **KR/AR**
+current state. The later November 1 country review changed the draft to **KR/AR/CO**
 and independently verified that only supported countries changed. These are the
 reasoned intended launch markets, not regulator approvals or publication.
 Production runtime and existing-holder access are unchanged.
@@ -89,7 +89,7 @@ One approved source-review/remediation inquiry was sent to TFH October 25 at
 15:33 KST. The sent thread was rechecked November 1 with no reply or decision. Earlier
 related-inbox checks also found no decision. The Korean classification inquiry remains unsent. Do not duplicate
 messages or treat a sent email as TFH acceptance. [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md)
-records the KR/AR decision and the broader country screening, including specific
+records the KR/AR/CO decision and the completed candidate release assessment, including specific
 reasons other markets were not added. The Korean no-reporting software-service
 interpretation is now the operational basis; an FIU reply is not a prerequisite.
 Do not invent a universal paid legal report, incorporation, audit or device-certificate rule. A disclosed review request does
@@ -109,7 +109,7 @@ the user corrected the rejection premise instead of authorizing it.
 1. Obtain the actual TFH review/remediation route for the existing immutable
    contracts and satisfy the case-specific steps. Public source and the sent
    October 25 inquiry do not retroactively prove pre-deployment sharing.
-2. The current reasoned country scope is KR/AR; do not reopen it solely for lack
+2. The current reasoned country scope is KR/AR/CO; do not reopen it solely for lack
    of an official opinion. Before claiming a geographically restricted launch,
    verify the necessary onboarding/new-deposit controls. Store selection alone
    does not restrict the public site or contracts; preserve existing-holder

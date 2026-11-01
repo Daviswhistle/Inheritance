@@ -38,7 +38,7 @@ All public/external contract functions now have NatSpec; CI measures custody
 line coverage rather than relying on unsupported configuration keys. Source,
 control roles, coverage limits, current evidence and unresolved real-device and
 jurisdictional review are in [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md).
-The intended store scope is KR/AR, with the reasoning and other-market screening
+The intended store scope is KR/AR/CO, with the reasoning and other-market release decisions
 in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md). No independent audit or government
 clearance is claimed; store selection does not geoblock the public app. Actual Android
 acceptance is partial; the current results and remaining checks are in

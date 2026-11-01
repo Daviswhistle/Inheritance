@@ -3,6 +3,29 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 1 — completed candidate review and verified KR/AR/CO draft
+
+The follow-up assessment added Colombia. The UIAF territorial reporting guidance
+and SFC's current service/token interpretations were applied to the Korean
+operator, separate owner vaults, external strategy and service fee. This is a
+reasoned release decision, not official clearance. The previously unfinished
+candidate table now records specific product-to-rule judgments, favorable
+arguments and limits in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
+
+Australia's favorable Access precedent and AUSTRAC territorial rule were
+considered, but the actual arbitrary-recipient withdrawal functions and core
+heir-payment purpose prevent assuming the single-payee/incidental exceptions.
+Mauritius's current consolidated Act supplied the previously missing August 2026
+solicitation restriction. No country was excluded solely because it has a VASP
+regime. No universal regulator-letter prerequisite was added.
+
+A country-only Portal patch added CO to KR/AR; a separate `get_app_config`
+readback confirmed KR/AR/CO, **unverified**, and no other returned metadata field
+change. Runtime remains `8cf03afa7fea797ff651190bc64a659449b5ba2b`. No runtime
+deployment, transaction, external inquiry or resubmission occurred. Territorial
+new-deposit controls and the TFH existing-contract route remain separate release
+work. The previous KR/AR section below is a historical snapshot.
+
 ## November 1 — country review and verified KR/AR draft
 
 The country review selected South Korea and Argentina on the documented
