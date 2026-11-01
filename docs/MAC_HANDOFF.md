@@ -19,27 +19,28 @@ biometrics or an unavailable device PIN. This does not expand spending authority
 One 0.01 WLD deposit/withdrawal test and its necessary costs were approved; this
 is not permission to spend unrelated funds.
 November 1 authority covers autonomous Android verification; only additional
-funding transactions need an amount approval. The user explicitly deferred USDC
-transactions. The previous residual was recovered without an owner network fee.
+funding transactions need an amount approval. The user initially deferred USDC, then approved 0.01 USDC and at most 0.15 WLD
+combined network costs. The completed round trip cost 0.071165159939716087 WLD;
+that approval is for this completed test, not unrelated future spending. The previous residual was recovered without an owner network fee.
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
 ## Current verified checkpoint
 
-- Runtime source: `ff669056266b6a657f06aab6d9f8c39a9120ab74`, descendant of requested baseline `91944cc`.
+- Runtime source: `8cf03afa7fea797ff651190bc64a659449b5ba2b`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
   deployment, native-test and independent-review receipts.
-- Production: https://inheritance.pages.dev ; immutable: https://53df9d87.inheritance.pages.dev.
-  Deployment [41299595719](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595719): passed for this runtime; Pages and notification Worker deployed successfully.
-  CI [41299595762](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595762): passed, all three jobs successful.
+- Production: https://inheritance.pages.dev ; immutable: https://a8cb5626.inheritance.pages.dev.
+  Deployment [41301624928](https://github.com/Daviswhistle/Inheritance/actions/runs/41301624928): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [41301624915](https://github.com/Daviswhistle/Inheritance/actions/runs/41301624915): passed, all three jobs successful.
   Readback: November 1 readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
 - Financial UI separates dated lending/reward rates, live strategy fee, service
   fee and conditional WLD network costs. Review shows per-token deposit amounts
   plus the conditional fee as total-debit components; the SDK does not expose an
   exact preapproval network quote to this mini app. Quote and settled debit differ.
-- Current validation: November 1 discovery/metadata browser scenarios passed 10 checks; typecheck/lint/build and 12 mobile units passed. Independent commit review of `ff66905` found no actionable defect. This runtime consolidates factory event scans and defers optional metadata until details open; actual Android Home/Plan/Assets/details reopened without the earlier RPC warnings.
+- Current validation: November 1 discovery/metadata browser scenarios passed 10 checks; typecheck/lint/build and 12 mobile units passed. Independent commit review of `ff66905` found no actionable defect. The preceding runtime consolidated factory event scans and deferred optional metadata until details open; actual Android Home/Plan/Assets/details reopened without the earlier RPC warnings.
   Earlier full-withdrawal validation: the complete local-chain browser suite passed 92 checks, including refreshed/full/partial withdrawal, identity outage recovery, idle USDC plus WLD exit, and WLD arriving during approval. Separate automated code review: completed against the complete final commit with no actionable findings; its focused checks covered seven withdrawal scenarios and keyboard closing/recovery.
-  Previous runtime iOS: [40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598) — passed on iPhone 16 Pro / iOS 18.5 Simulator: two tests, zero failures and skips; exported screenshots and raw summary independently inspected.
+  Logic-source iOS (`ff66905`): [41299595716](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595716) — passed on iPhone 16 Pro / iOS 18.5 Simulator: two tests, zero failures and skips; exported screenshots and raw summary independently inspected.
 - Physical Android: Samsung SM-S911N / Android 16 / World Money 4.0.4602 on November 1 (4.0.4401 for October tests).
   Login cancel/retry/success, keyboard Done, legal title, contact cancellation,
   manual recovery/selection, notification status, one received self-notification,
@@ -58,26 +59,32 @@ notification, contact message, invitation or external inquiry without authority.
   activate/on. No additional notification was sent. Keyboard Done, background
   draft retention, insufficient-USDC-balance blocking and contact-cancel manual
   recovery passed on the updated World Money host.
-- User explicitly deferred live USDC transactions. Actual beneficiary claim to
-  final receipt still needs a willing heir account and real on-chain deadlines.
-  No extra test principal or fee was spent. Do not label Android as exhaustive.
+- Subsequent live USDC test: 0.01 USDC deposited, restored after close/reopen and
+  fully withdrawn; canonical zero cash/shares/assets/cost basis, hasAssets=false.
+  Quote 0.11 WLD; actual combined network cost 0.071165159939716087 WLD, with no
+  extra withdrawal debit. Existing wallet shares and native ETH were unchanged.
+  Actual beneficiary claim to receipt still needs a willing heir and real deadlines.
+  Do not label Android as exhaustive.
+- `8cf03af` only corrects English/Korean wallet-share fee wording: the screen also
+  shows externally obtained shares, so it cannot claim a prior inheritance fee was
+  paid. Typecheck/lint/build and CI passed; transaction logic is unchanged.
 - Private phone/transaction/contact evidence stays outside Git. Do not publish
   tester-linked addresses, transaction linkage or screenshots in public docs.
 
 ## External decisions still open
 
 Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
-`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was last independently read back on
-October 28 as **unverified after the user withdrew that submission**. The Portal
-was not changed or rechecked during the November 1 Android-only follow-up.
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was independently read back on
+November 1 as **unverified after the user withdrew that submission**. GB/SG were
+removed from the draft and device evidence was updated; no resubmission occurred.
 The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical, not the
-current state. Countries remain KR/US/GB/CA/AU/JP/SG as draft settings, not a
+current state. Countries remain KR/US/CA/AU/JP as draft settings, not a
 cleared launch scope. Production runtime and existing-holder access are unchanged.
 
 The operator is an individual in Korea and wants maximum lawful availability.
 There is no historical pre-deployment TFH source-sharing or legal-review record.
 One approved source-review/remediation inquiry was sent to TFH October 25 at
-15:33 KST. The sent thread was rechecked October 28 with no reply or decision. Earlier
+15:33 KST. The sent thread was rechecked November 1 with no reply or decision. Earlier
 related-inbox checks also found no decision. The Korean classification inquiry remains unsent. Do not duplicate
 messages or treat a sent email as TFH acceptance. [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md)
 records specific lending/fee/relay and financial-promotion questions. Do not invent
@@ -89,7 +96,12 @@ not establish legal clearance or TFH acceptance of the historical sharing gap.
 
 This is the user's project-specific readiness requirement, not a claim that the
 Portal imposes a universal legal certificate or physical-device attachment.
-Do not resubmit merely by listing these gaps in a changelog.
+Do not resubmit merely by listing these gaps in a changelog. The original review
+rejection concerned UI/UX and tab distinction, not contracts or countries; do not
+conflate it with our separate compliance findings. The official Portal is the
+submission route; @MateoSauton is an official post-rejection contact, not a newly
+invented mandatory preapproval. A prepared Telegram message remains unsent after
+the user corrected the rejection premise instead of authorizing it.
 
 1. Obtain the actual TFH review/remediation route for the existing immutable
    contracts and satisfy the case-specific steps. Public source and the sent

@@ -118,8 +118,14 @@ background/foreground. A zero cash balance correctly blocked review. Native
 contact cancellation followed by explicit manual recovery preserved the original
 recipient and focused manual input. No recipient setting was changed.
 
-The user explicitly deferred live USDC transactions on November 1. Existing
-wallet-held USDC receipt shares were not redeemed. Full beneficiary claim through
+The user initially deferred USDC testing, then funded the wallet and approved
+0.01 USDC principal plus at most 0.15 WLD combined network costs. The actual
+USDC deposit, close/reopen recovery without duplicate approval, and All withdrawal
+then passed on runtime `ff66905`. Both canonical receipts have status 1. The
+0.01 USDC returned to the owner; post-state has zero idle cash, shares, gross/net
+assets and cost basis, with hasAssets=false. Deposit quote: 0.11 WLD; actual
+combined WLD debit: 0.071165159939716087. Withdrawal added no WLD debit. Existing
+wallet-held USDC receipt shares and native ETH balance were unchanged. Full beneficiary claim through
 final receipt still needs a willing recipient account and the real on-chain
 waiting periods; no new funds were committed for it. These remain separate from
 passing local-chain contract/browser coverage. A public-RPC burst and persistent
@@ -197,7 +203,7 @@ No message to an heir or other person is needed for this check.
 | Deposit cancel / no receipt | Native 0.01 WLD request cancelled; 0.094 WLD network quote; editable saved plan and zero factory vault confirmed |
 | Approved deposit / receipt | October 27: canonical success; full 0.01 WLD principal in new vault; actual network fee 0.063726535762749712 WLD |
 | Reopen without duplicate approval | Actual close/reopen and sign-in restored funded 30-day plan; no second deposit request |
-| Withdrawal / receipt | October 27 principal recovered; November 1 remaining 2923 wei returned with zero owner WLD debit; canonical zero shares/assets/cost basis and hasAssets=false |
+| Withdrawal / receipt | WLD principal and residual recovered; November 1 0.01 USDC round trip also passed; both test positions have zero shares/assets/cost basis and hasAssets=false |
 | Self-test notification delivery (if performed) | One authorized test: app acceptance and actual phone receipt observed separately, 14:48 KST |
 
 Record failures with the action and visible error. A user report is operator-
@@ -261,3 +267,15 @@ configuration. The exception does not identify its cause in readable form.
 As of this October 25 BlueStacks experiment, actual World App acceptance was
 incomplete and no resubmission had been performed. The later physical Android
 results above supersede that device-testing gap only for their observed flows.
+
+## iOS host result checked November 1
+
+[Run 41299595716](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595716)
+for `ff66905` passed on iPhone 16 Pro / iOS 18.5 Simulator: two tests, zero
+failures and skips. Downloaded xcresult/JSON and exported screenshots were
+inspected. Coverage includes real MiniKit transport in the owned WKWebView host,
+login/rejected approvals, decimal keyboard and dismissal, rotation, background
+input persistence, and pending-deposit recovery after process termination.
+The host models approvals and uses fixture funds; this is not actual World App
+iOS approval/permission evidence. The later `8cf03af` change only revises English
+and Korean wallet-share fee wording; monetary and host logic are unchanged.

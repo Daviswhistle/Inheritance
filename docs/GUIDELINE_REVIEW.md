@@ -1,4 +1,4 @@
-# World App guideline review — updated October 28, 2026
+# World App guideline review — updated November 1, 2026
 
 This is an implementation and evidence review, not a claim of World App approval,
 legal certification, or independent security audit. The previous submission was
@@ -127,8 +127,9 @@ actual Android results supersede that gap only for the observed flows. The later
 real deposit and principal-withdrawal receipts are confirmed, with round-trip
 network cost `0.063726535762749712 WLD`. The October 27 withdrawal left `2923` wei. On November 1 the repaired All
 action returned that residual with zero owner WLD debit, and canonical reads
-confirmed zero shares, assets and cost basis. Live USDC transactions were
-explicitly deferred by the user; beneficiary claim through final receipt remains
+confirmed zero shares, assets and cost basis. The subsequent approved 0.01 USDC deposit/reopen/All-withdrawal also passed with
+zero shares/assets/cost basis and combined network cost 0.071165159939716087 WLD.
+Unrelated wallet-held shares were unchanged. Beneficiary claim through final receipt remains
 unverified on the actual host. Physical iPhone acceptance, first-use human comprehension and an
 independent security audit have not been established. See the acceptance table
 for the precise boundary.

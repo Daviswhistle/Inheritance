@@ -1,9 +1,9 @@
-# Launch scope assessment — updated October 28, 2026
+# Launch scope assessment — updated November 1, 2026
 
 The operator reports individual operation from Korea and wants the maximum lawful
-availability. The October 28 request was withdrawn by the operator. KR, US, GB,
-CA, AU, JP and SG remain Portal draft settings, not a determined lawful launch
-scope; no runtime access restriction has been changed. No legal determination
+availability. The October 28 request was withdrawn by the operator. On November 1, GB and SG were removed from the Portal draft. KR, US, CA, AU and JP
+remain candidates, not a determined lawful launch scope; no runtime access
+restriction has been changed. No legal determination
 or pre-deployment TFH source-sharing record was supplied. The source is public.
 Public access supplies present review access, not evidence of a historical sharing step.
 
@@ -130,3 +130,77 @@ automatically a legal exemption, and neither has been adopted without a product
 decision. Preserve the intended product while evaluating a defensible country
 scope; use a narrowly scoped external opinion only where it resolves a concrete
 decision that cannot be supported from the available law and facts.
+
+## November 1 decision and review-procedure correction
+
+The recorded October 21 rejection requested app/design-guideline compliance,
+better UX and distinct tabs. It did **not** state that contracts or countries
+caused the rejection. The source-sharing and jurisdiction questions below are
+our separate compliance findings, not additional rejection reasons supplied by
+TFH. Do not describe the app as having failed a contract or country review.
+
+The [official Mini App Store guide](https://docs.world.org/mini-apps/quick-start/app-store)
+identifies the Developer Portal as the submission route and @MateoSauton on
+Telegram for information after rejection. This establishes a contact route,
+not a required separate preapproval. The October 25 general-support email still
+has only its sent message on November 1; no answer was found in the related
+inbox search. A direct-contact message was prepared but **not sent**: the user
+corrected the rejection premise instead of approving that new message.
+The contract guidelines separately require sharing before deployment and
+agreement on documented protocol fees during code review. No historical sharing
+record or case-specific disposition of that gap has been obtained. No mandatory
+new deployment, paid audit or written legal certificate has been asserted.
+
+### Concrete launch decisions
+
+- **GB: exclude from the first launch.** The current retail lending/rate/fee
+  presentation has no evidenced lawful financial-promotion route under the
+  [FCA's four routes](https://www.fca.org.uk/firms/cryptoassets/marketing-uk-consumers).
+  This is a launch-risk decision, not a ruling that all noncustodial software is
+  prohibited in the UK.
+- **SG: exclude from the first launch.** MAS explicitly brought some
+  [non-possessory token-transfer facilitation](https://www.mas.gov.sg/news/media-releases/2024/mas-expands-scope-of-regulated-payment-services)
+  into scope. Our recurring funded settlement and lending interface cannot be
+  treated as exempt just because we do not hold keys. No applicable licence or
+  exemption has been established.
+- **KR: resolve the operator question first.** The current
+  [Specific Financial Information Act definition](https://www.law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1031461059)
+  imports the Virtual Asset User Protection Act definition cited above. User
+  signing, separate immutable vaults and absence of operator disposal powers
+  support the software/noncustodial case. The unresolved fact-to-law question
+  is the operator's repeated paid-gas execution to a fixed heir in the same
+  gain-fee service. Excluding Korean customers alone does not establish that
+  Korea-based operation is outside Korean law.
+- **US/CA/AU/JP: retain as unapproved draft candidates only.** The FinCEN
+  developer/operator distinction, FINTRAC client-requested virtual-currency
+  transfers, ASIC financial-investment/common-enterprise test, and FSA wallet
+  control/stablecoin-intermediation rules require applying the full activity,
+  not just checking whether the tokens are allowed. No exclusion has yet been
+  established for the complete current product. These countries are not launch
+  approvals merely because they remain selected in an unsubmitted draft.
+
+Two additional possible software-exclusion markets were considered rather than
+assuming the original seven were exhaustive:
+
+- [Argentina CNV RG 1172/2026, Chapter III Article 2](https://www.argentina.gob.ar/normativa/nacional/norma-431259/texto)
+  excludes certain decentralized protocols and providers exclusively supplying
+  self-custody wallet software, subject to control/influence and regulated-
+  activity conditions. The funded relay and gain-fee service prevent assuming
+  those conditions are met. The foreign-entity targeting provisions also make
+  store availability relevant. **Not added** as a cleared market.
+- [FINMA's DeFi guidance](https://www.finma.ch/en/documentation/dossier/dossier-fintech/decentralized-finance-defi/)
+  distinguishes genuine operatorless arrangements from identifiable operators
+  and applies economic substance. Noncustodial-wallet guidance does not by
+  itself settle lending and commercial operation. **CH not added** as a cleared
+  market.
+
+The resulting defensible conclusion is limited: GB/SG are removed, and no other
+country is falsely certified as cleared. A free, narrowly scoped FIU
+classification inquiry could resolve the common Korean operator question; it
+is an evidence route, not mandatory preclearance. The held draft now asks
+explicitly about overseas-only availability. No inquiry has been submitted.
+
+Portal country removal is a store-availability change, **not public-site
+geoblocking**. Before a restricted launch, implement any necessary new-user and
+new-deposit controls while retaining withdrawals and existing-holder access.
+No runtime gate is being claimed or introduced without a settled country policy.

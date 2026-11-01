@@ -3,6 +3,48 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 1 — USDC round trip, verified iOS host and launch-scope narrowing
+
+Runtime `8cf03afa7fea797ff651190bc64a659449b5ba2b` changes only English/Korean
+wallet-held-share fee wording. These shares can originate outside Inheritance,
+so the screen no longer claims its service fee was previously paid. Redemption
+charges no Inheritance service fee; a network fee may apply. No transaction,
+contract, strategy or fee-rate logic changed. Typecheck, lint and build passed.
+[CI 41301624915](https://github.com/Daviswhistle/Inheritance/actions/runs/41301624915)
+and [deployment 41301624928](https://github.com/Daviswhistle/Inheritance/actions/runs/41301624928)
+passed. Production HTML and all six imported JS/CSS files matched
+https://a8cb5626.inheritance.pages.dev; three legal documents returned 200 and
+Worker automation was ready, funded, fresh and not halted. Worker version:
+`5393bb30-8b32-48ad-8dc2-e4d50715f329`.
+
+The user funded USDC and approved one 0.01 USDC deposit/full-withdrawal with
+combined network costs capped at 0.15 WLD. Actual World Money 4.0.4602 on Samsung
+SM-S911N / Android 16 completed deposit, close/reopen restoration and All
+withdrawal using `ff66905`. Both canonical receipts succeeded. Principal returned
+in full; cash, strategy shares, gross/net assets and cost basis are zero and
+hasAssets=false. Quote: 0.11 WLD. Actual combined WLD cost:
+0.071165159939716087; withdrawal added no WLD cost. Unrelated wallet-held strategy
+shares and native ETH balance were unchanged. No heir transaction or message
+was made.
+
+[Native iOS run 41299595716](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595716)
+for the same `ff66905` logic passed on iPhone 16 Pro / iOS 18.5 Simulator: two
+tests, zero failures and skips. Downloaded raw result summary and exported
+screenshots were inspected. This is the owned WKWebView/MiniKit test host with
+fixture funds and simulated approvals, not the actual World Money iOS app.
+The copy-only commit triggered another native host run; its result is tracked
+separately and no pass is inferred from the earlier run.
+
+Portal draft readback remains **unverified**. GB and SG were removed from country
+selection; KR/US/CA/AU/JP remain unapproved candidates, not legal-clearance
+claims. The current Android/iOS evidence replaced stale residual-withdrawal
+wording in the draft. No review request was submitted. Existing rejection
+feedback concerned UI/UX and tab distinction, not a contract/country rejection.
+TFH's October 25 email has no reply in the November 1 readback. The official
+post-rejection contact route was identified, but the prepared Telegram message
+was not authorized or sent. See [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) for the bounded
+country assessment and the remaining Korean operator-activity question.
+
 ## November 1 — Android full exit and bounded discovery reads
 
 Runtime source: `ff669056266b6a657f06aab6d9f8c39a9120ab74`, a descendant of
