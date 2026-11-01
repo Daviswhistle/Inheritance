@@ -25,12 +25,15 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
-## Current release — Korea-only verified; ready for resubmission
+## Current release — Korea-only resubmitted; awaiting review
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal
-readback confirms **unverified**, exactly **KR**, with only availability copy
-and supported countries changed. Developer allowlisting remains enabled.
+configuration readback confirmed **unverified**, exactly **KR**, with only
+availability copy and supported countries changed. After final verification,
+the Korea-only request was submitted. Independent readback at **November 2
+02:45:23 KST / November 1 17:45:23 UTC** confirms **awaiting_review**, exactly
+**KR**, developer allowlisting preserved, and only verification_status changed.
 
 Runtime `afd5bab` limits new plans and deposits to KR residence and KR network
 location. Prior AR/CO residence records cannot authorize new requests. Existing

@@ -3,12 +3,15 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## Current release — Korea-only verified; ready for resubmission
+## Current release — Korea-only resubmitted; awaiting review
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal
-readback confirms **unverified**, exactly **KR**, with only availability copy
-and supported countries changed. Developer allowlisting remains enabled.
+configuration readback confirmed **unverified**, exactly **KR**, with only
+availability copy and supported countries changed. After final verification,
+the Korea-only request was submitted. Independent readback at **November 2
+02:45:23 KST / November 1 17:45:23 UTC** confirms **awaiting_review**, exactly
+**KR**, developer allowlisting preserved, and only verification_status changed.
 
 Runtime `afd5bab` limits new plans and deposits to KR residence and KR network
 location. Prior AR/CO residence records cannot authorize new requests. Existing
@@ -28,6 +31,25 @@ The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
 submission receipts below are historical and no longer the active request.
 
+## November 2 02:45 KST — Korea-only resubmission receipt
+
+After final native, CI, independent review, production and Android checks, the
+operator-authorized Korea-only request was submitted. Independent readback at
+**2026-11-01T17:45:23.343Z / November 2 02:45:23 KST** confirms
+**awaiting_review**, exactly **KR**, developer allowlisting true. Only
+`verification_status` changed from the verified pre-submit snapshot. App and
+metadata IDs are unchanged. Pre-submit main: `713fe00`; deployed source:
+`4a35244`; native test source: `340fefd`.
+
+The improvement-focused changelog describes distinct tabs, the corrected Done
+interaction, precise amount/fee presentation, live rates and interrupted-request
+recovery, actual Android round trips and Korea-only new-request controls. It
+links the reviewer walkthrough and source/fee/test evidence. The existing
+immutable-contract review request remains explicit. This is a review submission,
+not TFH approval or publication. No extra real-money transaction, notification,
+email or Telegram message was sent. The exact changelog and readback receipt
+are retained privately outside Git.
+
 ## November 2 KST — final native fixture verification
 
 Test source `340fefd0cb347256767e4025a32a74458a93e685` passed
@@ -46,8 +68,8 @@ actionable defect after its minimum-step finding was corrected. The two earlier
 pre-action failures, raw coordinates and remediation are retained in
 [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). They are not counted as successful
 tests or hidden by a retry. No further app deployment or actual-money test was
-needed for the test-only correction. The authorized Korea-only request can now
-be submitted; receipt follows after an independent Portal readback.
+needed for the test-only correction. The authorized Korea-only request was submitted after these checks; the
+independent receipt is recorded above.
 
 ## November 2 KST — Korea-only production and device acceptance
 
