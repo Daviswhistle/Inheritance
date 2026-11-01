@@ -107,11 +107,17 @@ final class HostTests: XCTestCase {
         capture("keyboard-dismissed-actions-restored", app)
         // Repeat the same native foreground/dismissal path: a prior run moved
         // focus to the period field after Done despite a passing next run.
-        for cycle in 1...3 {
+        for cycle in 1...12 {
             scrollInputAboveFixedFooter(recipient, in: web, app: app)
             recipient.tap()
             XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
             waitForStableControl(recipient, in: web)
+            XCUIDevice.shared.orientation = .landscapeLeft
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
+            assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
+                               text: "@sam", screenshot: "repeat-landscape-\(cycle)")
+            XCUIDevice.shared.orientation = .portrait
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: portrait, object: nil)], timeout: 10), .completed)
             XCUIDevice.shared.press(.home)
             app.activate()
             assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
