@@ -267,6 +267,14 @@ for (const [name, sentence] of [
 ]) {
   check(name + " yield revert", errorText(ethersShaped(REVERT_IFACE.encodeErrorResult(name, []))), sentence);
 }
+// The availability gate uses authored copy, but it shares the wrapper's normal
+// message sanitizer. Preserve these exact strings so Korean localization still
+// resolves and network/SDK payloads never need a separate raw-output exception.
+const { accessBlockMessage } = await vite.ssrLoadModule("/src/new-plan-eligibility.ts");
+for (const reason of ["unsupported-location", "location-unavailable", "residence-unconfirmed", "account-changed"]) {
+  const message = accessBlockMessage(reason);
+  check(`availability copy survives the shared sanitizer: ${reason}`, humanizeRevertText(message), message);
+}
 await vite.close();
 
 if (fails.length) {

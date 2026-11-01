@@ -104,7 +104,7 @@ async function sendWorldChainTxInternal(calls: ContractCall[], beforeSend?: () =
     }));
 
     const blocked = await beforeSend?.();
-    if (blocked) return { ok: false, error: blocked, userFacing: true, definitelyNotSubmitted: true };
+    if (blocked) return { ok: false, error: humanizeRevertText(blocked), userFacing: true, definitelyNotSubmitted: true };
 
     walletRequestStarted = true;
     const result = await MiniKit.sendTransaction({
