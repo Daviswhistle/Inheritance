@@ -1,206 +1,166 @@
-# Launch scope assessment — updated November 1, 2026
+# Launch scope — November 1, 2026
 
-The operator reports individual operation from Korea and wants the maximum lawful
-availability. The October 28 request was withdrawn by the operator. On November 1, GB and SG were removed from the Portal draft. KR, US, CA, AU and JP
-remain candidates, not a determined lawful launch scope; no runtime access
-restriction has been changed. No legal determination
-or pre-deployment TFH source-sharing record was supplied. The source is public.
-Public access supplies present review access, not evidence of a historical sharing step.
+## Decision and actual state
 
-## Product facts relevant to the decision
+The intended first-store-release scope is **South Korea (KR) and Argentina (AR)**.
+The Portal draft was changed from KR/US/CA/AU/JP to KR/AR and independently read
+back as **unverified** on November 1. Only `supported_countries` changed. GB/SG
+were already absent. No review request, publication or runtime deployment was
+performed by this country-setting update.
 
-Users sign with their own World App wallets; the operator does not hold, generate
-or decrypt their keys. Immutable vaults have no developer upgrade or asset-redirection
-power. New WLD and USDC deposits use fixed Morpho strategies after consent. The
-service earns 10% of realized positive gains, separately from strategy fees.
+This is a reasoned operational classification of the current service, not a
+regulator's ruling, legal certification or proof that every other country is
+prohibited. The user authorized the widest supportable scope. The research
+screened the markets below, including the EU common framework; it did not
+complete an individual legal opinion for every country in the world. Unexamined
+markets are not automatically cleared or permanently excluded.
 
-Users choose a recipient and timer. After expiry the recipient can claim; the
-seven-day review then precedes settlement. The owner can renew until actual payment.
-Anyone, including the operator's paid-gas relay, can execute an eligible transfer,
-but only to the fixed recipient. There is no fiat exchange, token sale, discretionary
-strategy switching, guaranteed return, death determination or legal-will service.
+A government response is **not** imposed as a prerequisite for KR/AR. This
+supersedes the earlier conclusion that the Korean operator question had to remain
+open until an FIU inquiry was answered. The inquiry remains unsent. TFH's
+separate existing-contract review issue is not resolved by selecting countries.
 
-The remaining issue is legal classification of these known facts, including the
-lending route, fee and relay. It is not uncertainty about arbitrary admin seizure.
+## Facts on which this decision depends
 
-## Primary-source assessment
+- Users sign with their own wallets. The operator cannot access their keys,
+  upgrade their vaults, change their fixed strategy or choose how to dispose of
+  their funds. Each vault belongs to one owner, who chooses its heir and timer.
+- New WLD/USDC deposits use the specified third-party Morpho strategy after risk
+  and fee consent. The service receives 10% of realized positive gains, after
+  strategy fees and loss recovery. This is a commercial service; lack of a
+  separate transfer fee does not make it noncommercial.
+- The named heir must file a claim after expiry. Seven days must then pass.
+  Until settlement the owner can cancel by renewing. The public executor can
+  only settle an eligible claim to the contract's then-fixed heir. It cannot
+  invent a claim, alter the destination or withdraw the owner's active balance.
+- The operator-funded relay uses that same public executor. Its gas spending
+  and the gain fee do not themselves establish custody or discretion. The
+  competing interpretation is that regular execution is transfer on behalf of
+  another person; it must be assessed, not hidden behind the word noncustodial.
+- The service does not take fiat deposits, issue its own investment token,
+  promise principal/returns, sell a legal will, verify death or offer personal
+  investment recommendations. Morpho shares nevertheless represent economic
+  rights: absence of an Inheritance-issued token does not remove all possible
+  financial-product or distribution questions.
 
-| Scope | Relevant current source | Consequence for this product |
+These facts are implemented in `InheritanceVaultMorpho.sol`,
+`InheritanceVaultUSDC.sol`, their factories and `backend/src/finalizer.mjs`.
+The two factory `executeInheritance` functions are permissionless wrappers for
+claim finalization, not general-purpose transfers. Third-party strategy
+curator/governance powers are distinct from the operator's immutable vault powers.
+
+## Included markets: basis and limits
+
+### South Korea — include
+
+The [current statutory definition](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1024562465)
+and [current transfer decree](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lspttninfSeq=188933)
+must be used. The decree is broader than the wording relied on by some 2021
+staking interpretations; that old wording is not the basis for this decision.
+The [FIU's August 2026 reporting manual](https://www.fsc.go.kr/no010101/87521)
+assesses software/keyless wallets by their actual control and signing structure.
+The [NeoFly interpretation](https://better.fsc.go.kr/fsc_new/replyCase/LawreqDetail.do?lawreqIdx=3828&muGpNo=75&muNo=171&stNo=11)
+is supporting precedent for keyless software, not an approval of Morpho lending.
+
+Our inference is that this fixed, nonexclusive execution mechanism is technical
+implementation of owner/heir actions, rather than the operator taking control
+of assets to provide a discretionary transfer/custody service. Lending decisions
+and deposits are user-signed; the operator has no investment mandate or strategy
+switch. The commercial fee is acknowledged, but does not independently identify
+a regulated activity. On these concrete facts, proceeding on a non-reportable
+software-service interpretation is reasonable. No FIU exemption or project-
+specific government approval has been received. Reassess if keys, discretion,
+upgrade powers, general transfer routing or the investment arrangement change.
+
+### Argentina — include
+
+[CNV RG 1172/2026, Chapter III Articles 1–4](https://www.argentina.gob.ar/normativa/nacional/norma-431259/texto)
+provides exclusions for qualifying decentralized protocols and exclusively
+self-custody software/hardware. They are conditional: a person controlling or
+sufficiently influencing a protocol to perform PSAV services is not exempt merely
+because contracts are public. Targeting local residents matters for covered
+foreign providers; choosing Argentina is not reverse solicitation.
+
+The inference here relies on the absence of operator asset disposition and on
+nonexclusive deterministic execution, not on claiming that an identifiable UI
+operator does not exist. The UI and profit fee are commercial, but do not confer
+key custody, discretionary administration or a general transfer mandate. The
+wallet-software clause alone is not treated as covering every lending feature;
+the protocol's control/activity condition is assessed against the whole service.
+This supports inclusion under the current no-control structure. No CNV ruling
+on Inheritance or endorsement of the underlying Morpho shares is claimed. A
+change in control, activity or financial-product classification reopens it.
+
+## Closest additional candidates: not yet added
+
+| Market | Positive evidence | Specific remaining distinction |
 | --- | --- | --- |
-| World | [Review policy](https://docs.world.org/mini-apps/guidelines/policy) and [contract guidelines](https://docs.world.org/mini-apps/guidelines/smart-contract-development-guidelines) | Applicable legal compliance is required, without a universal lawyer-certificate attachment. Repository sharing with TFH before deployment is stated separately. Ask TFH for the appropriate review/remediation route for the existing immutable contracts. An independent audit is strongly recommended, not a universal certificate condition. |
-| Korea | [FSC/FIU August 13, 2026 revised reporting manual notice](https://www.fsc.go.kr/no010101/87521) | Keyless wallet services may be outside custody reporting, assessed through transfer power, key access, individual wallets and actual signing. This supports the wallet-control facts but does not itself classify the full lending/fee/fixed-recipient relay service. Obtain the applicable reporting/service classification, starting with the Korean operator's activity. |
-| United States | [FinCEN 2019 CVC guidance, sections 4.4 and 5.2.2](https://www.fincen.gov/system/files/2019-05/FinCEN%20Guidance%20CVC%20FINAL%20508.pdf) | Merely creating software differs from operating it to transmit value. DApp terminology or public source alone does not settle the operator's role. Federal/state transfer and investment-service questions remain; no nationwide determination was supplied. |
-| United Kingdom | [FCA overseas cryptoasset marketing](https://www.fca.org.uk/firms/cryptoassets/marketing-uk-consumers) and [registration scope](https://www.fca.org.uk/firms/cryptoassets/who-needs-register) | The financial-promotion regime can apply to overseas firms and app/site communications. No applicable lawful communication route has been identified for this listing. This is a specific issue, not a finding that all UK software distribution is prohibited. |
-| Canada | [FINTRAC MSB scope](https://fintrac-canafe.canada.ca/msb-esm/msb-eng?wbdisable=false) | Virtual-currency transfer services and foreign businesses directing services to Canada can fall within MSB/FMSB rules. Determine how the actual relay and claim arrangement are classified; Portal selection alone does not resolve it. |
-| Australia | [ASIC digital-asset financial products/services, INFO 225](https://www.asic.gov.au/regulatory-resources/digital-transformation/digital-assets-financial-products-and-services) | Self-custody can narrow custody questions while product/service licensing still depends on actual rights and activities. No determination covers this variable lending/fee arrangement. |
-| Japan | [FSA FinTech Support Desk FAQ](https://www.fsa.go.jp/en/news/2018/20180717.html) | Exchange/intermediation/management activities and the separate stablecoin framework require classifying the actual UI, relay and assets. The FSA offers business-outline inquiries; none has been sent. |
-| Singapore | [MAS expanded payment-service scope, April 2, 2024](https://www.mas.gov.sg/news/media-releases/2024/mas-expands-scope-of-regulated-payment-services) | Some digital-payment-token transfer/exchange facilitation can be regulated even without possession. Noncustodial terminology alone does not decide scope. Assess the actual facilitation/lending role and each asset before selecting availability. |
+| Peru (PE) | [SBS 2648-2024](https://intranet2.sbs.gob.pe/dv_int_cn/2424/v1.0/Adjuntos/2648-2024.R.pdf), Articles 1–2, applies the PSAV AML framework to locally domiciled/constituted providers, including registered foreign branches. The current operator is a Korean individual with no reported Peru establishment. | Territorial AML scope is not a complete product/marketing analysis. [SMV's official notice](https://www.smv.gob.pe/uploads/SobreAdquisicionTokens.pdf) identifies restrictions on public promotion of regulated financial rights/returns, including through foreign internet servers. Resolve whether the actual Morpho receipt-share route falls within those rights before adding the full product; do not infer a global crypto ban from that notice. |
+| Panama (PA) | [SMV Opinion 04-2025](https://supervalores.gob.pa/opiniones/opiniones-2025/), conclusion on page 10, finds the described noncustodial BTC/ETH exchange-facilitation model outside its licensing regime. | The opinion is expressly tied to its facts and the non-financial-instrument analysis. WLD/USDC lending receipt shares and a gain-fee interface are not the model decided there. Classify those rights/distribution against the securities definitions used in the opinion; do not extend the BTC/ETH result automatically. |
+| Austria / EU | [FMA guidance](https://www.fma.gv.at/en/investments/which-crypto-assets-and-services-are-regulated-and-which-are-not/) identifies generally unregulated lending/borrowing. [MiCA](https://eur-lex.europa.eu/legal-content/en/TXT/?uri=CELEX%3A32023R1114), recitals 22 and 94, addresses fully decentralized services without intermediaries and excludes lending/borrowing from MiCA itself. | That does not exempt an associated transfer/intermediary service or displace national financial-product law. The identifiable commercial UI plus funded settlement needs to satisfy the intermediary/activity boundary. A consumer explanation from Austria does not clear all 27 EU states. |
+| Switzerland (CH) | [FINMA's fintech guidance](https://www.finma.ch/en/documentation/dossier/dossier-fintech/entwicklungen-im-bereich-fintech/) distinguishes wallets lacking disposal power. | [FINMA's DeFi assessment](https://www.finma.ch/en/documentation/dossier/dossier-fintech/decentralized-finance-defi/) applies substance over form to identifiable operators. Assess the complete lending-share/service arrangement, rather than relying on a wallet-only analogy. |
 
-These sources do not establish that the app is illegal in all seven countries.
-They also do not support declaring the full current product cleared for those
-countries. No universal paid legal report, incorporation or audit certificate is
-being invented as a requirement. A current classification of the concrete
-activities is the missing decision evidence; ordinary software tests cannot supply it.
+These are prioritized, bounded questions, not demands for regulator letters.
+They are not promoted to launch markets by the absence of an enforcement case.
 
-## Narrower alternative assessed
+## Markets screened out of this release
 
-A basic inheritance-only launch could omit new lending and performance-fee routes
-and leave settlement to users/recipients, while preserving existing holders'
-management and withdrawal access. This would reduce the lending, fee and operator
-relay questions. It has not been shown to permit more countries, still needs its
-own classification and would change the product/revenue scope. It has not been
-adopted or silently implemented.
+“Not selected” below is a release decision, not a finding that every form of
+noncustodial software is unlawful. Framework screening is shallower than the
+KR/AR activity analysis and must not be represented as individual clearance.
 
-## Next evidence
-
-The operator approved one factual source-review/remediation email to TFH. It was
-sent to the official general support address on October 25 at 15:33 KST; Gmail
-SENT headers and the approved body were read back. This confirms sending, not
-TFH receipt, review-team routing or a decision. The sent thread was
-rechecked October 28 with no reply or decision. Earlier related-inbox checks
-also found no decision. The Korean classification inquiry
-remains an unsent draft; no adviser or paid service has been engaged. Country
-settings remain unchanged. The October 28 resubmission disclosed these
-classification/source-review gaps and requested review; it did not assert that
-the selected countries have been legally cleared. The October 27 WLD deposit/reopen/principal-withdrawal results are
-recorded separately in [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md). Store restrictions alone do not restrict the public
-website; any later required access control must preserve existing holders' funds.
-
-## Review request versus launch clearance
-
-The official rules do not state that a TFH reply or a universal legal-opinion
-certificate must precede a review request. Historical repository sharing with the review team is not verified in the
-searched records. Present public access and a sent inquiry do not establish
-that historical fact; absence of a found record is not proof it never happened. Requesting review with that fact disclosed is not a
-claim that the gap has been accepted. Applicable legal compliance remains the
-operator's responsibility; a submitted or approved store listing is not a legal
-determination. No new country is being added.
-
-## Current decision after withdrawal
-
-No selected country is being represented as cleared for the complete service.
-The next step is precise activity classification against current statutory
-definitions, covering the immutable vault, fixed Morpho route, realized-gain
-fee and operator-funded permissionless relay together. The relay does not charge
-a separate transfer fee to the user. A formal classification inquiry is one
-option if a specific decision-changing issue remains; it is not a legally
-required preclearance step. The FIU's official
-[civil inquiry page](https://www.kofiu.go.kr/kor/etc/fcsc.do) directs questions on
-FSC/FIU law and work to the National Petition System. A draft is prepared but
-currently held; no regulator submission or decision is claimed. A response is evidence about its
-specified scope, not a universal certificate for every law or foreign market.
-
-The current UK proposal should remain on hold until an applicable lawful
-financial-promotion route is evidenced or an appropriately assessed exclusion
-is implemented. The [FCA's current guidance](https://www.fca.org.uk/firms/cryptoassets/marketing-uk-consumers)
-covers overseas firms and website/mobile-app communications and identifies four
-lawful routes. No applicable route has been established for this app. Store
-country removal alone is insufficient to claim that the public website is
-restricted; no such runtime block has yet been implemented.
-
-Retain the full product only in a launch scope supported by the actual facts
-and applicable requirements. The previously assessed basic-only alternative is
-not presumed exempt or adopted merely to avoid obtaining the classification.
-Resubmission remains on hold under the user's explicit readiness instruction.
-
-## Narrow Korean classification point
-
-The current [Virtual Asset User Protection Act, Article 2(2)](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1024562465)
-includes transfer as a business activity. Its current
-[Enforcement Decree, Article 3](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lspttninfSeq=188933)
-covers address-to-address transfers for that business, including user-to-user
-transfers; it should not be replaced with the narrower wording of an older
-Specific Financial Information Act decree.
-
-The [August 2026 FIU manual](https://www.fsc.go.kr/comm/getFile?fileNo=5&fileTy=ATTACH&srvcId=BBSTY1&upperNo=87521)
-printed pages 1 and 3 (PDF pages 3 and 5) describe recurring profit-oriented
-activity and case-specific software/keyless-wallet exclusions. Those exclusions
-are relevant to custody/intermediation; they do not establish a universal DApp
-exemption or an automatic government-inquiry requirement.
-
-| Actual conduct | Decision relevance |
+| Market | Decision-relevant primary evidence and reason |
 | --- | --- |
-| Each user signs; the operator has no user key, upgrade power or arbitrary recipient/strategy control. | Supports a software/noncustodial characterization rather than discretionary custody. |
-| The operator-funded relay submits eligible fixed-heir execution transactions; any caller can execute the same contract path. | The remaining transfer-business question is attribution of this recurring execution to the operator versus provision of immutable software. Permissionlessness alone does not decide it. |
-| The service earns 10% of realized positive gains. There is no separate user-paid relay fee. | Commercial context matters, but the fee alone does not decide which statutory activity is performed. |
+| United Kingdom (GB) | [FCA financial promotions](https://www.fca.org.uk/firms/cryptoassets/marketing-uk-consumers): overseas app/site promotion can require one of four lawful routes. No applicable route established for the current lending/rate presentation. |
+| Singapore (SG) | [MAS's expanded payment-service scope](https://www.mas.gov.sg/news/media-releases/2024/mas-expands-scope-of-regulated-payment-services) expressly includes some nonpossessory token-transfer facilitation. A no-key argument alone cannot remove the settlement service from scope. |
+| United States (US) | [FinCEN CVC guidance](https://www.fincen.gov/system/files/2019-05/FinCEN%20Guidance%20CVC%20FINAL%20508.pdf) separates software creation from operating transmission. Federal/state transfer and investment-product/distribution requirements are not resolved by self-custody. Remove the previous unassessed draft selection. |
+| Canada (CA) | [FINTRAC scope](https://fintrac-canafe.canada.ca/msb-esm/msb-eng) includes virtual-currency transfer services and covered foreign businesses directing services at Canada. The funded relay requires an activity-specific conclusion. Remove the previous draft selection. |
+| Australia (AU) | [AUSTRAC VASP scope](https://www.austrac.gov.au/industry-and-business/your-industry/virtual-asset-service-providers/virtual-asset-service-providers-overview) and [ASIC digital assets](https://www.asic.gov.au/regulatory-resources/digital-transformation/digital-assets-financial-products-and-services) raise separate transfer and financial-product tests for this gain-fee lending service. Remove the previous draft selection. |
+| Japan (JP) | [FSA FAQ](https://www.fsa.go.jp/en/news/2018/20180717.html): cryptoasset and stablecoin intermediation require activity-specific treatment. USDC and the lending route prevent relying solely on a no-key wallet conclusion. Remove the previous draft selection; do not treat proposed/future provisions as already effective. |
+| Uruguay (UY) | [BCU Circular 2507](https://www.bcu.gub.uy/Circulares/seggci2507.pdf), Article 127.22, expressly covers applicable direct-user smart-contract services; the software-development exclusion requires no active service provision. Our live UI/relay/fee arrangement is materially different. |
+| Costa Rica (CR) | [Law 10961, June 19, 2026 Gazette](https://www.imprentanacional.go.cr/pub/2026/06/19/ALCA78_19_06_2026.pdf), Article 15 quater, establishes PSAV AML/registration duties and includes transfer/administration/financial-offer services. Its three-month commencement invalidates reliance on old “no regulation” summaries. |
+| Guatemala (GT) | [Congress's Decree 15-2026 implementation report](https://www.congreso.gob.gt/noticias_congreso/16365/2026/4) records the new AML framework. Old central-bank crypto warnings alone cannot establish the current software-service scope; current activity/commencement rules need application. |
+| Brazil (BR) | [BCB Resolution 520/2025](https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?numero=520&tipo=resolu%C3%A7%C3%A3o+bcb): provider/intermediary authorization framework; no current full-service exclusion established in this screening. |
+| Mexico (MX) | [SAT virtual-asset guidance](https://www.sat.gob.mx/minisitio/ActividadesVulnerables/documentos/Formatos/Fraccion_XVI/folleto.pdf): AML scope can include foreign-provided services. Neither foreign hosting nor no fiat is sufficient. |
+| Colombia (CO) | [UIAF Resolution 314/2021](https://www.uiaf.gov.co/resolucion-314-de-2021): reporting obligations exist despite the absence of a single comprehensive crypto law. Full transfer/service attribution remains to be applied. |
+| Chile (CL) | [CMF fintech rules](https://www.cmfchile.cl/portal/prensa/625/w4-article-77135.html): advice, financial instruments and order-routing services have distinct requirements. No automatic equivalence between lending software and a covered trading venue is asserted; full-service treatment remains unestablished. |
+| New Zealand (NZ) | [DIA July 2026 territorial guidance](https://www.dia.govt.nz/diawebsite.nsf/Files/AML-CFT-2026/$file/AML-CFT-Guidance-Territorial-Scope-of-the-AMLCFT-Act-July-2026.pdf): mere web accessibility differs from directed service/repeated local business. A deliberately selected store market cannot rely only on no local office. [FMA financial-product scope](https://www.fma.govt.nz/business/services/cryptocurrencies/) remains relevant to shares. |
+| Hong Kong (HK) | [SFC DeFi guidance](https://www.sfc.hk/-/media/EN/files/COM/Speech/Web3-Festival_Eng_20230412.pdf?hash=58C08F1AB276D03628BC5DA60B1292FA&rev=a837fed76ffc438db98ce61151d8166a): decentralization terminology does not displace regulated activities/collective-investment analysis. |
+| Taiwan (TW) | [FSC VASP AML rules](https://law.fsc.gov.tw/LawContent.aspx?id=GL004000): transfer and asset-control services need classification. Proposed technical-provider exclusions are not treated as enacted exemptions. |
+| India (IN) | [FIU January 2026 VDA guidelines](https://fiuindia.gov.in/pdfs/downloads/VDA08012026.pdf): current service-provider AML scope needs applying to the whole interface/relay; no positive software-only determination completed. |
+| Thailand (TH) | [SEC deposit/lending restrictions](https://www.sec.or.th/TH/Pages/News_Detail.aspx?Lang=TH&NewsNo=111&NewsYear=2566&SECID=10018) make the lending feature important. The rules for covered operators are not described as a ban on every software tool. |
+| Indonesia (ID) | [OJK POJK 27/2024](https://ojk.go.id/id/regulasi/Pages/POJK-27-2024-AKD-AK.aspx) and its amendments regulate digital-asset activity. No complete interface/lending exclusion established. |
+| Vietnam (VN) | [Resolution 05/2025 pilot](https://xaydungchinhsach.chinhphu.vn/toan-van-nghi-quyet-so-5-2025-nq-cp-ve-trien-khai-thi-diem-thi-truong-tai-san-ma-hoa-tai-viet-nam-119250909184045221.htm): a controlled market pilot is not general permission for an overseas lending app. |
+| Malaysia (MY) | [SC digital-asset framework](https://www.sc.com.my/digital-assets): trading, offering and custody have distinct rules. Screening did not determine the full receipt-share interface outside them. |
+| Georgia (GE) | [NBG VASP FAQ](https://nbg.gov.ge/en/faq/125): registration framework exists. No project-specific territorial/activity exclusion established by this screening. |
+| Mauritius (MU) | [VAITOS Act](https://www.fscmauritius.org/media/119928/the-virtual-asset-and-initial-token-offering-services-act.pdf): software/noncustodial exclusions require checking the actual business/facilitation conditions. A full foreign-service analysis was not completed. |
+| Kenya (KE) | [CBK notice on VASP Act 2025](https://www.centralbank.go.ke/uploads/press_releases/665231223_Public%20Notice%20on%20the%20Virtual%20Assets%20Service%20Providers%20Act%202025.pdf): new framework; no full-service software determination completed. |
+| South Africa (ZA) | [FSCA CASP update](https://www.fsca.co.za/News%20Documents/FSCA%20Press%20Release%20-%20FSCA%20update%20on%20Crypto%20Asset%20Service%20Providers%2012%20December%202024.pdf): licensing/intermediary treatment must be evaluated rather than assuming no keys resolves it. |
 
-Removing operator execution, or offering a noncommercial basic-only variant,
-would change the relevant facts and may reduce these concerns. Neither is
-automatically a legal exemption, and neither has been adopted without a product
-decision. Preserve the intended product while evaluating a defensible country
-scope; use a narrowly scoped external opinion only where it resolves a concrete
-decision that cannot be supported from the available law and facts.
+The Philippines, UAE, Bahrain and Dominican Republic were source-discovery
+checks only, not completed full-service assessments. Paraguay and Nigeria searches
+did not establish adequate primary-source coverage. They remain unassessed, not
+classified prohibited. EU-wide screening does not cover EEA implementation dates
+or every member state's residual law. No unsupported “all countries reviewed”
+count is used.
 
-## November 1 decision and review-procedure correction
+## Store selection, access and remaining release work
 
-The recorded October 21 rejection requested app/design-guideline compliance,
-better UX and distinct tabs. It did **not** state that contracts or countries
-caused the rejection. The source-sharing and jurisdiction questions below are
-our separate compliance findings, not additional rejection reasons supplied by
-TFH. Do not describe the app as having failed a contract or country review.
+The Portal setting controls store availability; it does **not** geoblock the
+public website, deep links or immutable contracts. This change does not claim
+that access is restricted to KR/AR. Existing owners/heirs retain fund access.
+Before representing an actual launch as territorially restricted, implement and
+verify the necessary onboarding/new-deposit restrictions, including treatment of
+unknown locations; preserve withdrawal, renewal and existing-claim access. An IP
+check cannot establish residence or make immutable contracts inaccessible.
 
-The [official Mini App Store guide](https://docs.world.org/mini-apps/quick-start/app-store)
-identifies the Developer Portal as the submission route and @MateoSauton on
-Telegram for information after rejection. This establishes a contact route,
-not a required separate preapproval. The October 25 general-support email still
-has only its sent message on November 1; no answer was found in the related
-inbox search. A direct-contact message was prepared but **not sent**: the user
-corrected the rejection premise instead of approving that new message.
-The contract guidelines separately require sharing before deployment and
-agreement on documented protocol fees during code review. No historical sharing
-record or case-specific disposition of that gap has been obtained. No mandatory
-new deployment, paid audit or written legal certificate has been asserted.
-
-### Concrete launch decisions
-
-- **GB: exclude from the first launch.** The current retail lending/rate/fee
-  presentation has no evidenced lawful financial-promotion route under the
-  [FCA's four routes](https://www.fca.org.uk/firms/cryptoassets/marketing-uk-consumers).
-  This is a launch-risk decision, not a ruling that all noncustodial software is
-  prohibited in the UK.
-- **SG: exclude from the first launch.** MAS explicitly brought some
-  [non-possessory token-transfer facilitation](https://www.mas.gov.sg/news/media-releases/2024/mas-expands-scope-of-regulated-payment-services)
-  into scope. Our recurring funded settlement and lending interface cannot be
-  treated as exempt just because we do not hold keys. No applicable licence or
-  exemption has been established.
-- **KR: resolve the operator question first.** The current
-  [Specific Financial Information Act definition](https://www.law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1031461059)
-  imports the Virtual Asset User Protection Act definition cited above. User
-  signing, separate immutable vaults and absence of operator disposal powers
-  support the software/noncustodial case. The unresolved fact-to-law question
-  is the operator's repeated paid-gas execution to a fixed heir in the same
-  gain-fee service. Excluding Korean customers alone does not establish that
-  Korea-based operation is outside Korean law.
-- **US/CA/AU/JP: retain as unapproved draft candidates only.** The FinCEN
-  developer/operator distinction, FINTRAC client-requested virtual-currency
-  transfers, ASIC financial-investment/common-enterprise test, and FSA wallet
-  control/stablecoin-intermediation rules require applying the full activity,
-  not just checking whether the tokens are allowed. No exclusion has yet been
-  established for the complete current product. These countries are not launch
-  approvals merely because they remain selected in an unsubmitted draft.
-
-Two additional possible software-exclusion markets were considered rather than
-assuming the original seven were exhaustive:
-
-- [Argentina CNV RG 1172/2026, Chapter III Article 2](https://www.argentina.gob.ar/normativa/nacional/norma-431259/texto)
-  excludes certain decentralized protocols and providers exclusively supplying
-  self-custody wallet software, subject to control/influence and regulated-
-  activity conditions. The funded relay and gain-fee service prevent assuming
-  those conditions are met. The foreign-entity targeting provisions also make
-  store availability relevant. **Not added** as a cleared market.
-- [FINMA's DeFi guidance](https://www.finma.ch/en/documentation/dossier/dossier-fintech/decentralized-finance-defi/)
-  distinguishes genuine operatorless arrangements from identifiable operators
-  and applies economic substance. Noncustodial-wallet guidance does not by
-  itself settle lending and commercial operation. **CH not added** as a cleared
-  market.
-
-The resulting defensible conclusion is limited: GB/SG are removed, and no other
-country is falsely certified as cleared. A free, narrowly scoped FIU
-classification inquiry could resolve the common Korean operator question; it
-is an evidence route, not mandatory preclearance. The held draft now asks
-explicitly about overseas-only availability. No inquiry has been submitted.
-
-Portal country removal is a store-availability change, **not public-site
-geoblocking**. Before a restricted launch, implement any necessary new-user and
-new-deposit controls while retaining withdrawals and existing-holder access.
-No runtime gate is being claimed or introduced without a settled country policy.
+The original October 21 rejection concerned UI/UX and distinct tabs, not a
+country/contract rejection. The [official submission guide](https://docs.world.org/mini-apps/quick-start/app-store)
+identifies the Portal and a post-rejection contact route. The separate
+[contract guidelines](https://docs.world.org/mini-apps/guidelines/smart-contract-development-guidelines)
+require pre-deployment repository sharing and agreement on documented fees during
+code review. The historical sharing step remains unverified; the approved
+October 25 email has no reply in the last November 1 check. No new outreach was
+sent, and no universal legal certificate, paid audit or fresh deployment is
+invented as mandatory. Resubmission remains pending substantive readiness, not
+an FIU letter or validation in every unselected country.

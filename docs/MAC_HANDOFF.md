@@ -78,8 +78,10 @@ Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
 November 1 as **unverified after the user withdrew that submission**. GB/SG were
 removed from the draft and device evidence was updated; no resubmission occurred.
 The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical, not the
-current state. Countries remain KR/US/CA/AU/JP as draft settings, not a
-cleared launch scope. Production runtime and existing-holder access are unchanged.
+current state. The later November 1 country review changed the draft to **KR/AR**
+and independently verified that only supported countries changed. These are the
+reasoned intended launch markets, not regulator approvals or publication.
+Production runtime and existing-holder access are unchanged.
 
 The operator is an individual in Korea and wants maximum lawful availability.
 There is no historical pre-deployment TFH source-sharing or legal-review record.
@@ -87,9 +89,10 @@ One approved source-review/remediation inquiry was sent to TFH October 25 at
 15:33 KST. The sent thread was rechecked November 1 with no reply or decision. Earlier
 related-inbox checks also found no decision. The Korean classification inquiry remains unsent. Do not duplicate
 messages or treat a sent email as TFH acceptance. [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md)
-records specific lending/fee/relay and financial-promotion questions. Do not invent
-a universal paid legal report, incorporation, audit or device-certificate rule;
-do not declare all seven countries cleared. A disclosed review request does
+records the KR/AR decision and the broader country screening, including specific
+reasons other markets were not added. The Korean no-reporting software-service
+interpretation is now the operational basis; an FIU reply is not a prerequisite.
+Do not invent a universal paid legal report, incorporation, audit or device-certificate rule. A disclosed review request does
 not establish legal clearance or TFH acceptance of the historical sharing gap.
 
 ## Required before another submission
@@ -106,11 +109,12 @@ the user corrected the rejection premise instead of authorizing it.
 1. Obtain the actual TFH review/remediation route for the existing immutable
    contracts and satisfy the case-specific steps. Public source and the sent
    October 25 inquiry do not retroactively prove pre-deployment sharing.
-2. Justify a concrete launch scope against the actual Morpho/fee/relay activity.
-   Start with the concrete Korean transfer-business question about the
-   operator-funded permissionless relay; do not equate lack of an official
-   opinion with illegality. The current UK promotion route is not established. Changing store countries alone does not restrict the public
-   site, and any required controls must preserve existing holders' fund access.
+2. The current reasoned country scope is KR/AR; do not reopen it solely for lack
+   of an official opinion. Before claiming a geographically restricted launch,
+   verify the necessary onboarding/new-deposit controls. Store selection alone
+   does not restrict the public site or contracts; preserve existing-holder
+   withdrawals, renewals and claim access. Other markets have specific review
+   distinctions in LAUNCH_SCOPE.md, not a blanket illegality finding.
 3. Retain the verified iOS evidence and its scope: the actual WebKit/MiniKit
    native-host tests passed on local iOS 27.0 and final-source CI iOS 18.5; actual
    Android World App testing covered native flows and the principal round trip.

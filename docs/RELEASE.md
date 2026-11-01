@@ -3,6 +3,30 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 1 — country review and verified KR/AR draft
+
+The country review selected South Korea and Argentina on the documented
+no-control software-service interpretation. It assessed the full fixed Morpho,
+realized-gain fee and permissionless funded execution structure, not only wallet
+key custody. No official project-specific clearance or global legal opinion is
+claimed. The earlier requirement to keep the Korean question open awaiting an
+FIU answer is superseded; no inquiry was sent.
+
+Portal `supported_countries` changed from KR/US/CA/AU/JP to KR/AR. A separate
+`get_app_config` readback confirmed exactly that list, **unverified** status and
+no other metadata field change. No submission occurred. Peru/Panama and the
+other reviewed markets have their positive evidence and specific unresolved
+boundaries recorded in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md). The document also
+separates framework screening from unassessed countries and corrects reliance
+on outdated Costa Rica/Guatemala “no regulation” summaries.
+
+This revision changes documentation and the Portal draft only. Runtime remains
+`8cf03afa7fea797ff651190bc64a659449b5ba2b`; no new transaction or outreach was
+performed. Store selection is not runtime geoblocking. Territorial onboarding/
+new-deposit controls must be verified before claiming a restricted launch,
+without blocking existing-holder fund access. The separate TFH existing-contract
+review issue remains open. Historical sections below describe older snapshots.
+
 ## November 1 — USDC round trip, verified iOS host and launch-scope narrowing
 
 Runtime `8cf03afa7fea797ff651190bc64a659449b5ba2b` changes only English/Korean

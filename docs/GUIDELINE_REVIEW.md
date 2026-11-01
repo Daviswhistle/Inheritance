@@ -45,10 +45,11 @@ Earlier emulator installation failures are historical; use the connected phone.
 Physical-iPhone acceptance has not been performed.
 
 The operator confirmed individual operation in Korea and wants the maximum
-lawful availability. The seven Portal countries are unchanged. The source is
-public; the operator has no pre-deployment TFH sharing or legal-review record
-to supply. [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) records the concrete classification
-questions rather than inventing a universal legal-opinion attachment.
+lawful availability. The November 1 country review selected KR/AR in the
+unverified Portal draft, with an independent readback. The source is public;
+no historical pre-deployment TFH sharing record was supplied.
+[LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) records the reasoned activity classification,
+broader screening and limits; no universal legal-opinion attachment is required.
 
 ## Official references
 
@@ -134,12 +135,12 @@ unverified on the actual host. Physical iPhone acceptance, first-use human compr
 independent security audit have not been established. See the acceptance table
 for the precise boundary.
 
-Existing Portal countries are KR, US, GB, CA, AU, JP and SG. This revision does
-not expand that list or assert lawful financial/inheritance service availability
-in those countries. Legal review cannot be replaced with software tests or a
-Terms disclaimer. The now-withdrawn submission disclosed these limitations;
-it was not a declaration that every
-external requirement was satisfied. The later October 28 request was also
-withdrawn. Its disclosures do not resolve the unverified historical source-sharing fact or
-the operator/service classification. Those remain concrete work before another
-review request under the user's current direction.
+The current Portal draft countries are KR/AR. US/CA/AU/JP were removed during
+this review; GB/SG had already been removed. This is a store-scope decision, not
+a government approval or public-site geoblock. The operational KR/AR software-
+service interpretation does not depend on receiving an FIU letter. Other markets
+were not assumed illegal merely because this screening did not establish their
+full-service treatment. See LAUNCH_SCOPE.md for the source-to-product reasoning.
+The withdrawn requests remain historical. TFH's existing-contract review route
+and necessary territorial access implementation remain separate release work;
+country selection does not satisfy them or authorize a readiness claim.
