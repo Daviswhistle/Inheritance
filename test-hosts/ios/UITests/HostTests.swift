@@ -268,7 +268,9 @@ final class HostTests: XCTestCase {
             if abs(delta) < 4 { break }
             let origin = web.coordinate(withNormalizedOffset: .zero)
             let start = web.frame.height * 0.5
-            let step = max(-80, min(80, delta))
+            // UIKit consumes the initial pan-recognition distance. A 12pt drag
+            // can otherwise leave a 2pt gap forever instead of scrolling.
+            let step = (delta < 0 ? -1.0 : 1.0) * (min(80, abs(delta)) + 12)
             origin.withOffset(CGVector(dx: 8, dy: start))
                 .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: 8, dy: start - step)))
         }
