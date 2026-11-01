@@ -105,6 +105,22 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in amount.value as? String == "12.345678" }, object: nil)], timeout: 10), .completed)
         capture("keyboard-dismissed-actions-restored", app)
+        // Repeat the same native foreground/dismissal path: a prior run moved
+        // focus to the period field after Done despite a passing next run.
+        for cycle in 1...3 {
+            scrollInputAboveFixedFooter(recipient, in: web, app: app)
+            recipient.tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+            waitForStableControl(recipient, in: web)
+            XCUIDevice.shared.press(.home)
+            app.activate()
+            assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
+                               text: "@sam", screenshot: "repeat-foreground-\(cycle)")
+            dismissKeyboard(in: web, app: app)
+            XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10),
+                          "Repeated foreground dismissal must restore actions (cycle \(cycle))")
+            XCTAssertEqual(recipient.value as? String, "@sam")
+        }
     }
 
     func testZPendingDepositSurvivesProcessTermination() throws {
@@ -230,6 +246,7 @@ final class HostTests: XCTestCase {
         let done = web.buttons["Done"].firstMatch
         waitForStableControl(done, in: web)
         done.tap()
+        print("AFTER DONE: \(app.staticTexts["test-host-status"].value ?? "missing")")
     }
 
     private func waitForStableControl(_ control: XCUIElement, in web: XCUIElement) {

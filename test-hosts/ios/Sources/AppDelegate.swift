@@ -50,6 +50,15 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             (() => {
               if (new URLSearchParams(location.search).get('trace') !== '1') return;
               let previous = '';
+              const interactionTrace = [];
+              for (const type of ['pointerdown', 'pointerup', 'click', 'focusin', 'focusout']) {
+                document.addEventListener(type, event => {
+                  const target = event.target;
+                  interactionTrace.push({type, target: target?.id || target?.className || target?.tagName,
+                    x: event.clientX, y: event.clientY, at: Math.round(performance.now())});
+                  if (interactionTrace.length > 12) interactionTrace.shift();
+                }, true);
+              }
               const report = () => {
                 const element = document.activeElement;
                 const rect = element?.getBoundingClientRect();
@@ -69,7 +78,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                       return {x, y, input: hit === element || element.contains(hit),
                         target: hit ? hit.tagName + '#' + hit.id + '.' + hit.className : null};
                     })) : [];
-                const metrics = {innerHeight, innerWidth, scrollY,
+                const metrics = {innerHeight, innerWidth, scrollY, interactionTrace,
                   actionsHidden: hidden('.plan-primary-actions'),
                   navigationHidden: hidden('.tab-bar'),
                   inputUnobscured: hits.length === 9 && hits.every(hit => hit.input),
