@@ -3,7 +3,7 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## Current release — Korea-only deployed; native fixture verification pending
+## Current release — Korea-only verified; ready for resubmission
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal
@@ -18,14 +18,36 @@ layouts), translation, type, lint and build checks passed; independent commit
 review found no actionable defect. Production `4a35244` was deployed and independently checked; actual Android
 Korea-only acceptance passed. Native policy run 41329500340 passed two tests
 with no failures, including all five traced Done gestures without extra clicks.
-Two subsequent native runs failed before the Done action: one while arranging
-the overlap fixture, one while awaiting an accessibility snapshot. Test-only
-`340fefd` addresses those paths; CI and independent review passed, and native
-run 41331879980 is pending. Submission remains held until its result is checked.
+Two subsequent native fixture failures were diagnosed before the Done action.
+Test-only `340fefd` corrects the fixture and query timing; final native run
+41331879980 passed both tests, all five Done gesture assertions and pending
+recovery. CI and independent review passed. The failure evidence and corrections
+remain in KEYBOARD_DISMISSAL.md; the submission receipt is tracked in RELEASE.md.
 
 The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
 submission receipts below are historical and no longer the active request.
+
+## November 2 KST — final native fixture verification
+
+Test source `340fefd0cb347256767e4025a32a74458a93e685` passed
+[native run 41331879980](https://github.com/Daviswhistle/Inheritance/actions/runs/41331879980):
+both lifecycle and pending-deposit recovery tests, zero failures. The raw event
+log confirms five Done gestures with prevented touchend, zero extra clicks,
+no remaining input focus and visible actions. Alignment logs record measured
+pan corrections reaching the unchanged exact-overlap gate before each tap.
+Production application source remains identical to deployed `4a35244`; the
+follow-up changed only tests and records.
+
+[CI 41331880094](https://github.com/Daviswhistle/Inheritance/actions/runs/41331880094)
+and [documentation checkpoint CI 41332134580](https://github.com/Daviswhistle/Inheritance/actions/runs/41332134580)
+passed. Independent review of the complete test delta found no remaining
+actionable defect after its minimum-step finding was corrected. The two earlier
+pre-action failures, raw coordinates and remediation are retained in
+[KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). They are not counted as successful
+tests or hidden by a retry. No further app deployment or actual-money test was
+needed for the test-only correction. The authorized Korea-only request can now
+be submitted; receipt follows after an independent Portal readback.
 
 ## November 2 KST — Korea-only production and device acceptance
 

@@ -114,6 +114,9 @@ visible size, bounds, three stable observations and 0.8-second stability gate.
 Per-observation frame logs now expose any further wait failure. All exact overlap,
 native gesture, prevented touchend, zero-click and keyboard-close assertions
 remain required. Application code is unchanged. The complete test-only delta
-passed independent review and CI; native execution/readback remains pending in
-[RELEASE.md](RELEASE.md). The superseded intermediate run was cancelled when the
+passed independent review and CI. Final native [41331879980](https://github.com/Daviswhistle/Inheritance/actions/runs/41331879980)
+passed both tests with zero failures: all five Done gestures cancelled touchend,
+generated no extra click, cleared input focus and restored controls. The measured
+pans reached the exact label-overlap condition before each applicable tap; the
+process-termination deposit-recovery test also passed. See [RELEASE.md](RELEASE.md). The superseded intermediate run was cancelled when the
 review correction was committed; it is not counted as acceptance.
