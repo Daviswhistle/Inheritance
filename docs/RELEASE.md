@@ -3,6 +3,46 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 KST — regional controls verified; ready for review
+
+Runtime: `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd`.
+[CI 41318884336](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884336)
+and [deployment 41318884309](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884309)
+passed. Production HTML and all six imported JS/CSS files match
+https://44791c55.inheritance.pages.dev; three legal documents return 200, and the
+Worker is ready, funded, fresh and not halted. `/api/eligibility` returns KR with
+`Cache-Control: no-store`; forged client country headers/query do not override it.
+
+Independent reviews of `fcd9627` and `b7d5a1d` found no actionable defect. The
+first CI run caught a new message bypassing the common error sanitizer; the
+follow-up uses that path and preserves all four availability messages exactly.
+The 66 error-message checks and 10 eligibility checks passed.
+
+Actual Android regional-access acceptance passed on Samsung SM-N986N / Android 13
+/ World Money 4.0.4602; see [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md).
+No new funds, notification, support email or Telegram message was used. A Portal
+availability-description update was independently read back; only description
+changed, with KR/AR/CO and unverified status preserved.
+
+[Runtime iOS 41318884346](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884346)
+passed two tests with zero failures/skips on iPhone 16 Pro / iOS 18.5 Simulator.
+Raw summary and restored-keyboard/recovered-deposit screenshots were inspected.
+The preceding run failed once on foreground/Done, with focus moving to the period
+input. Test-host-only `dcec319` added event tracing and three repeated foreground
+cycles. [Repeated native run 41320004172](https://github.com/Daviswhistle/Inheritance/actions/runs/41320004172)
+and [CI 41320004149](https://github.com/Daviswhistle/Inheritance/actions/runs/41320004149)
+passed. Both native tests passed; every traced Done tap reached the real button,
+blurred the input, closed the keyboard and restored actions. The prior single
+failure did not recur in either subsequent execution. Its cause is unconfirmed;
+no runtime keyboard fix is claimed. Retained event tracing and repeated coverage
+make any recurrence diagnosable. This is a bounded acceptance judgment, not a
+claim of exhaustive reliability or actual World App iOS native-screen coverage.
+
+Technical preparation is complete for the selected KR/AR/CO scope. The authorized
+Portal request will ask TFH to review the existing immutable contracts and service
+fee, disclose the missing pre-deployment sharing record, and request a separate
+intake/remediation route if required. This does not claim external acceptance.
+
 ## November 1 — territorial new-request controls (local verification)
 
 New vaults and deposits now require a fresh trusted edge-country result and

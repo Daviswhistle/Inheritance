@@ -1,4 +1,4 @@
-# World App guideline review — updated November 1, 2026
+# World App guideline review — updated November 2, 2026
 
 This is an implementation and evidence review, not a claim of World App approval,
 legal certification, or independent security audit. The previous submission was
@@ -41,7 +41,7 @@ exit and exercised native notification re-grant/cancellation; exact boundaries a
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md). Native test hosts remain
 separate evidence because they simulate approval responses.
 
-The working device is a Samsung SM-S911N / Android 16 / World Money 4.0.4602 as of November 1.
+November 1 financial tests used Samsung SM-S911N / Android 16 / World Money 4.0.4602. November 2 regional checks used Samsung SM-N986N / Android 13 with the same World Money version.
 Earlier emulator installation failures are historical; use the connected phone.
 Physical-iPhone acceptance has not been performed.
 
@@ -146,7 +146,7 @@ The withdrawn requests remain historical. The subsequent territorial controls
 and Portal intake decision are recorded below. Country selection by itself
 does not establish TFH acceptance or deployment readiness.
 
-## November 1 territorial controls and contract-review intake
+## November 1–2 territorial controls and contract-review intake
 
 The official interface now gates new vault/deposit requests on KR/AR/CO edge
 country plus explicit per-wallet residence confirmation. No default residence is
@@ -160,3 +160,11 @@ and fee review in the Portal rather than sending another support email. The
 October 25 thread still has no reply. The review request explicitly discloses the
 unverified source-sharing history and requests any separate remediation/intake
 steps. None of this is described as TFH acceptance or a completed external audit.
+
+November 2 completion: the regional controls are deployed and matched by live
+asset readback. Physical Android residence, reset and blocked-top-up checks passed.
+Current-source native iOS checks and the follow-up with three additional
+foreground/Done cycles passed; one earlier non-reproduced native dismissal failure
+is retained in RELEASE.md. The Portal availability description was independently
+read back with KR/AR/CO preserved. Technical preparation is complete; external
+contract/fee acceptance remains a question for the authorized review request.

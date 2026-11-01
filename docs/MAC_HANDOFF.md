@@ -1,4 +1,4 @@
-# Mac continuation — 2026-11-01
+# Mac continuation — 2026-11-02
 
 ## Objective and authority
 
@@ -27,13 +27,13 @@ notification, contact message, invitation or external inquiry without authority.
 
 ## Current verified checkpoint
 
-- Runtime source: `8cf03afa7fea797ff651190bc64a659449b5ba2b`, descendant of requested baseline `91944cc`.
+- Runtime source: `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
   deployment, native-test and independent-review receipts.
-- Production: https://inheritance.pages.dev ; immutable: https://a8cb5626.inheritance.pages.dev.
-  Deployment [41301624928](https://github.com/Daviswhistle/Inheritance/actions/runs/41301624928): passed for this runtime; Pages and notification Worker deployed successfully.
-  CI [41301624915](https://github.com/Daviswhistle/Inheritance/actions/runs/41301624915): passed, all three jobs successful.
-  Readback: November 1 readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
+- Production: https://inheritance.pages.dev ; immutable: https://44791c55.inheritance.pages.dev.
+  Deployment [41318884309](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884309): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [41318884336](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884336): passed, all three jobs successful.
+  Readback: November 2 KST readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
 - Financial UI separates dated lending/reward rates, live strategy fee, service
   fee and conditional WLD network costs. Review shows per-token deposit amounts
   plus the conditional fee as total-debit components; the SDK does not expose an
@@ -71,6 +71,25 @@ notification, contact message, invitation or external inquiry without authority.
 - Private phone/transaction/contact evidence stays outside Git. Do not publish
   tester-linked addresses, transaction linkage or screenshots in public docs.
 
+## November 2 readiness checkpoint
+
+Regional controls are deployed and production readback passed. The actual
+Samsung SM-N986N / Android 13 / World Money 4.0.4602 passed residence blank,
+unsupported-country choice, explicit KR confirmation, Help reset, close/reopen
+persistence and blocked/unblocked top-up controls; no new money or notification
+was used. The Portal description now explains the controls; an independent
+readback confirmed only description changed and KR/AR/CO remains unverified.
+
+Runtime iOS run [41318884346](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884346)
+passed two tests with zero failures/skips; raw summary and screenshots were read.
+The preceding run failed once after foreground/Done moved focus to the period
+field. Test-host-only `dcec319` added event tracing and three repeated foreground/
+dismissal cycles. Native run 41320004172 and CI 41320004149 passed. All traced Done
+taps reached the button and restored controls. The original failure did not recur
+in two subsequent executions; its cause remains unconfirmed, and no runtime
+keyboard fix is claimed. This bounded retest supports submission, with the test
+history retained. See RELEASE.md for the exact evidence boundaries.
+
 ## External decisions still open
 
 Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
@@ -81,7 +100,7 @@ The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical, not t
 current state. The later November 1 country review changed the draft to **KR/AR/CO**
 and independently verified that only supported countries changed. These are the
 reasoned intended launch markets, not regulator approvals or publication.
-Production runtime and existing-holder access are unchanged.
+The subsequent regional-control deployment is recorded above; existing-holder access is preserved.
 
 The operator is an individual in Korea and wants maximum lawful availability.
 There is no historical pre-deployment TFH source-sharing or legal-review record.

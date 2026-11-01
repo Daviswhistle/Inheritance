@@ -6,7 +6,7 @@ The intended first-store-release scope is **South Korea (KR), Argentina (AR), an
 The November 1 follow-up added CO to KR/AR. A separate Portal readback confirmed
 exactly **KR/AR/CO**, **unverified**, with only `supported_countries` changed.
 This is a draft store configuration, not publication or a review submission.
-Runtime remains `8cf03afa7fea797ff651190bc64a659449b5ba2b`.
+Runtime `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd` now enforces the official-interface controls below. November 2 production readback and actual Android residence/blocked-top-up checks passed. The Portal description was updated with availability; an independent readback confirmed description was the only changed field.
 
 This completes the release-selection assessment of the candidates named below,
 replacing the earlier framework-only screening. It is a reasoned operational

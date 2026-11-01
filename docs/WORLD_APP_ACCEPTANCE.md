@@ -1,7 +1,7 @@
 # Actual World App acceptance
 
 Status: physical Android checks observed on October 25, October 27 and
-November 1, 2026. The WLD deposit/withdrawal test now includes a confirmed
+November 1–2, 2026. The WLD deposit/withdrawal test now includes a confirmed
 zero-share full exit, and the native notification permission dialog was exercised. This is acceptance of the observed flows, not proof of every asset,
 claim path or physical iPhone behavior. Native test hosts simulate the wallet
 host; their results are recorded separately.
@@ -11,6 +11,26 @@ Record the device model, OS version, World App version, date and UI language.
 The October 27 real-money test used runtime
 `e4be10c5225cd05504c3cb3f02082f16b1b4a623`. Current deployed source and exact
 CI/native-test results are in [RELEASE.md](RELEASE.md).
+
+## Physical device — November 2, 2026: regional access
+
+Runtime `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd` was deployed at
+https://44791c55.inheritance.pages.dev and matched the production HTML and six
+imported assets. A newly connected Samsung SM-N986N / Android 13 / World Money
+4.0.4602 (4004602), Korean UI, exercised the actual production Mini App.
+
+Residence starts blank. Selecting Another country explains the restriction and
+disables confirmation. Explicit Korea selection and confirmation enables new
+amount controls. Help's Change residence clears that confirmation; Assets stays
+accessible and the additional-deposit button is disabled until reconfirmed.
+Close/reopen preserved the residence choice, and existing Home/Assets/Plan/Help
+and check-in controls remained available. No transaction or notification was sent.
+Private XML/screenshots and a compact receipt are retained outside Git.
+
+The network-country readback was KR, including a request with spoofed client
+country headers/query. Other network locations and outages were exercised in
+isolated automated tests, not by relocating the phone. This is targeted acceptance
+of the new gate, not a repeat of every earlier financial test.
 
 ## Physical device — October 25 and 27, 2026
 

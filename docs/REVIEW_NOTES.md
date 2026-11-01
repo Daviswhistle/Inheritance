@@ -145,3 +145,13 @@ Plan creation, settings changes and deposits require a retained recovery record 
 Local verification uses real Anvil transactions, contract state, browser automation, actual Pages SIWE verification and SQLite-backed notification/automation paths. These tests do not certify native World App permission dialogs or real device behavior. Actual Android sign-in cancel/retry/success, keyboard Done, one self-notification delivery and deployed contact-cancel recovery have been observed. Contact selection and native deposit-approval cancellation also passed. On October 27 the actual World App also completed one user-approved 0.01 WLD deposit, close/reopen recovery without a second deposit request, and principal withdrawal. The original withdrawal left 2923 wei WLD after an All-selection quote-refresh race; the repaired All action recovered it on the actual Android host November 1 with zero remaining shares/assets/cost basis. A subsequent approved 0.01 USDC deposit, close/reopen and All withdrawal also completed with zero remaining shares/assets/cost basis. Physical-iPhone acceptance remains open; see WORLD_APP_ACCEPTANCE.md. There is no independent third-party security audit; the app and store do not claim one.
 
 Privacy and terms disclose session data, monitoring records, automatic transfer rules, risks and support. Source and contract information are linked from Help.
+
+## November 2 regional-control verification
+
+Production runtime is `b7d5a1d`; the immutable build is
+https://44791c55.inheritance.pages.dev. Actual Android residence/reset/top-up
+blocking checks and production asset readback passed. Current iOS host checks and
+three additional foreground/Done cycles passed, with the earlier one-off failure
+and host-versus-World-App limits retained in RELEASE.md. Reviewers outside the
+supported network/residence scope can inspect existing-holder functions and run
+the isolated test hosts; production has no reviewer bypass for new deposits.
