@@ -5,7 +5,10 @@
 The intended first-store-release scope is **South Korea (KR), Argentina (AR), and Colombia (CO)**.
 The November 1 follow-up added CO to KR/AR. A separate Portal readback confirmed
 exactly **KR/AR/CO**, **unverified**, with only `supported_countries` changed.
-This is a draft store configuration, not publication or a review submission.
+After verified regional-control deployment and device checks, the November 2
+resubmission was independently read back as **awaiting_review** at 00:23:28 KST
+(15:23:28 UTC November 1), with KR/AR/CO preserved. This is a pending review,
+not publication or regulator approval.
 Runtime `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd` now enforces the official-interface controls below. November 2 production readback and actual Android residence/blocked-top-up checks passed. The Portal description was updated with availability; an independent readback confirmed description was the only changed field.
 
 This completes the release-selection assessment of the candidates named below,
@@ -296,8 +299,8 @@ require pre-deployment repository sharing and agreement on documented fees durin
 code review. The historical sharing step remains unverified; the approved
 October 25 email has no reply in the last November 1 check. No new outreach was
 sent, and no universal legal certificate, paid audit or fresh deployment is
-invented as mandatory. Resubmission remains pending substantive readiness, not
-an FIU letter or further research into every unselected country.
+invented as mandatory. Verified preparation led to the November 2 resubmission;
+an FIU letter or further research into every unselected country was not required.
 
 The subsequent November 1 instruction authorizes submission **after preparation
 is complete**, with existing-source/fee review requested through the official

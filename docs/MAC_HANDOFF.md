@@ -71,7 +71,7 @@ notification, contact message, invitation or external inquiry without authority.
 - Private phone/transaction/contact evidence stays outside Git. Do not publish
   tester-linked addresses, transaction linkage or screenshots in public docs.
 
-## November 2 readiness checkpoint
+## November 2 submission checkpoint
 
 Regional controls are deployed and production readback passed. The actual
 Samsung SM-N986N / Android 13 / World Money 4.0.4602 passed residence blank,
@@ -90,14 +90,23 @@ in two subsequent executions; its cause remains unconfirmed, and no runtime
 keyboard fix is claimed. This bounded retest supports submission, with the test
 history retained. See RELEASE.md for the exact evidence boundaries.
 
+The authorized resubmission is complete. Independent Portal readback at
+2026-11-01 15:23:28 UTC / November 2 00:23:28 KST confirmed **awaiting_review**,
+metadata `meta_9cf3b324ec9a1838a56c5b6d98be8674`, KR/AR/CO unchanged and developer
+allowlisting preserved. Only verification_status changed after submission.
+The submitted changelog requests review of existing contracts and the service fee,
+reports the pre-deployment sharing gap and asks for a separate intake if required.
+Do not resubmit again or send an inquiry automatically; the next step is the
+actual review outcome. No additional money, notification or email was used.
+
 ## External decisions still open
 
 Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
 `meta_9cf3b324ec9a1838a56c5b6d98be8674`, was independently read back on
 November 1 as **unverified after the user withdrew that submission**. GB/SG were
 removed from the draft and device evidence was updated; no resubmission occurred.
-The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical, not the
-current state. The later November 1 country review changed the draft to **KR/AR/CO**
+The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical; the
+November 2 receipt above is current. The later November 1 country review changed the draft to **KR/AR/CO**
 and independently verified that only supported countries changed. These are the
 reasoned intended launch markets, not regulator approvals or publication.
 The subsequent regional-control deployment is recorded above; existing-holder access is preserved.
@@ -114,7 +123,7 @@ interpretation is now the operational basis; an FIU reply is not a prerequisite.
 Do not invent a universal paid legal report, incorporation, audit or device-certificate rule. A disclosed review request does
 not establish legal clearance or TFH acceptance of the historical sharing gap.
 
-## Required before another submission
+## Readiness criteria applied to this resubmission
 
 This is the user's project-specific readiness requirement, not a claim that the
 Portal imposes a universal legal certificate or physical-device attachment.

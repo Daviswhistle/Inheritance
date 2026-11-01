@@ -3,7 +3,7 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## November 2 KST — regional controls verified; ready for review
+## November 2 KST — resubmitted and independently read back
 
 Runtime: `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd`.
 [CI 41318884336](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884336)
@@ -38,10 +38,14 @@ no runtime keyboard fix is claimed. Retained event tracing and repeated coverage
 make any recurrence diagnosable. This is a bounded acceptance judgment, not a
 claim of exhaustive reliability or actual World App iOS native-screen coverage.
 
-Technical preparation is complete for the selected KR/AR/CO scope. The authorized
-Portal request will ask TFH to review the existing immutable contracts and service
-fee, disclose the missing pre-deployment sharing record, and request a separate
-intake/remediation route if required. This does not claim external acceptance.
+After preparation, the authorized Portal request was submitted and independently
+read back at **2026-11-01 15:23:28 UTC / November 2 00:23:28 KST** as
+**awaiting_review**, metadata `meta_9cf3b324ec9a1838a56c5b6d98be8674`, for app
+`app_28c40a2a42b7f6c95789c2d5231b1314`. KR/AR/CO and developer allowlisting remained
+unchanged; only verification_status changed after submission. The changelog asks
+TFH to review the existing immutable contracts and service fee, discloses the
+missing pre-deployment sharing record, and requests a separate intake/remediation
+route if required. Submission is not approval, publication or TFH acceptance.
 
 ## November 1 — territorial new-request controls (local verification)
 

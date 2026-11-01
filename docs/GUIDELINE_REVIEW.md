@@ -10,7 +10,11 @@ withdrawn by the operator before this revision. The Portal was read back as
 The operator withdrew the October 24 request. After technical remediation, a
 new request on October 28 was read back as `awaiting_review` at 04:09 UTC
 (13:09 KST). The user subsequently withdrew that request; a fresh Portal readback
-confirmed **unverified**. No new submission has followed that withdrawal.
+confirmed **unverified**. After the November 2 preparation documented in RELEASE.md,
+the app was resubmitted. An independent readback at 15:23:28 UTC November 1
+(00:23:28 KST November 2) confirmed **awaiting_review**, KR/AR/CO unchanged.
+Existing-contract/fee review and any required separate intake are explicitly
+requested; no TFH acceptance or publication is claimed.
 
 The earlier request did not resolve source-sharing or jurisdiction questions.
 The later November 1 instruction authorizes submission after technical preparation,
@@ -166,5 +170,5 @@ asset readback. Physical Android residence, reset and blocked-top-up checks pass
 Current-source native iOS checks and the follow-up with three additional
 foreground/Done cycles passed; one earlier non-reproduced native dismissal failure
 is retained in RELEASE.md. The Portal availability description was independently
-read back with KR/AR/CO preserved. Technical preparation is complete; external
-contract/fee acceptance remains a question for the authorized review request.
+read back with KR/AR/CO preserved. The authorized submission is now awaiting_review; external
+contract/fee acceptance remains a question for TFH.
