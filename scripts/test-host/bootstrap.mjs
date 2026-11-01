@@ -15,6 +15,13 @@ if (!config.testOnly || config.chainId !== 480) throw new Error("Missing isolate
 window.__INHERITANCE_TEST_CONFIG__ = config;
 const parameters = new URLSearchParams(location.search);
 const account = parameters.get("account") === "heir" ? "heir" : "owner";
+// Explicit local-only fixture for native lifecycle tests. Browser access tests
+// omit this parameter and exercise the residence form itself.
+if (parameters.get("residence") === "KR") {
+  const address = config[account].toLowerCase();
+  localStorage.setItem(`inheritance:residence:${address}`,
+    JSON.stringify({ version: 1, account: address, country: "KR", confirmed: true }));
+}
 // A direct URL edit/back navigation must not pair the owner's session with heir signing.
 try {
   const session = JSON.parse(sessionStorage.getItem("wld-session") || "null");

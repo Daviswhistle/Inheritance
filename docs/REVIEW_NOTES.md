@@ -4,6 +4,31 @@ App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`
 URL: https://inheritance.pages.dev/
 Languages: English and Korean. Platform: World App iOS and Android.
 
+## Regional access and existing-contract review
+
+New vaults and deposits require a supported current network location and explicit
+residence confirmation for South Korea, Argentina or Colombia. An unknown location
+or failed lookup blocks only new requests. Existing owners and heirs can still
+sign in, withdraw, renew, manage settings and claims, and recover previously
+submitted transactions. Help lets users change residence. The check runs again
+immediately before each new wallet request; it does not gate existing exits.
+
+Reviewers outside these markets can inspect the app and manage existing assets;
+new deposits remain restricted without a reviewer bypass. The isolated test host
+in `scripts/test-host` provides disposable assets and explicit simulated-country
+controls. Native iOS lifecycle tests use an explicit local residence fixture;
+browser tests exercise actual first-use confirmation. Production Android
+confirmation is checked separately after deployment.
+No fixture is present in the production build.
+
+Please review the existing immutable contracts and documented service fee with
+this submission. The WLD factory is `0x1a856aE8c3abd8a3746F542688a1846Bc6208435`;
+the USDC factory is `0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2`.
+Pre-deployment TFH repository sharing cannot be confirmed. The October 25 support
+inquiry remains unanswered. Public source is not prior approval; if these existing
+addresses require a separate intake or remediation step, please identify it before
+approval. No new contract deployment or independent audit is claimed.
+
 ## October 25 rate and fee clarification
 
 Plan entry and final review show separate dated lending and general WLD reward
@@ -40,7 +65,7 @@ control roles, coverage limits, current evidence and unresolved real-device and
 jurisdictional review are in [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md).
 The intended store scope is KR/AR/CO, with the reasoning and other-market release decisions
 in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md). No independent audit or government
-clearance is claimed; store selection does not geoblock the public app. Actual Android
+clearance is claimed; the interface restriction does not geoblock immutable contracts. Actual Android
 acceptance is partial; the current results and remaining checks are in
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md).
 

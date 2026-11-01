@@ -22,6 +22,7 @@ async function until(fn,label,ms=45000){const end=Date.now()+ms;while(Date.now()
 async function tab(page,index){await page.ev(`document.querySelectorAll('.tab-item')[${index}].click();`);await sleep(60);}
 async function locale(page,value){await tab(page,3);await page.ev(`const s=document.querySelector('.locale-picker select');s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));`);await sleep(60);}
 async function click(page,label){await until(()=>page.ev(`__q.revealButton(${JSON.stringify(label)});return __q.btns().some(b=>b.t===${JSON.stringify(label)}&&!b.d)`),label);assert.match(await page.ev(`return __q.click(${JSON.stringify(label)})`),/^clicked/);}
+async function setEligibilityCountry(country){const response=await fetch(origin+'/__host/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eligibility-country',country})});assert.equal(response.status,200,`eligibility fixture ${country}`);}
 async function shot(page,label,top=true){if(top)await page.ev('window.scrollTo(0,0)');await sleep(80);const result=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});const path=`${OUT}/${label}.png`;writeFileSync(path,Buffer.from(result.data,'base64'));evidence.screenshots.push(path);}
 async function help(page,label){
  assert.equal(await page.ev("return document.querySelectorAll('.help-topic-list > details').length"),8);
@@ -66,7 +67,16 @@ try{
  console.log('PASS localized guest navigation, one heading, 44px tabs, action hit testing and scroll clearance across 24 layouts');
  await locale(page,'en');await tab(page,2);
  await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
- await click(page,'Agree and sign in');assert.ok(await page.waitFor('#heir-input',30000));
+ await click(page,'Agree and sign in');assert.ok(await page.waitFor('#plan-residence-country',30000));
+ assert.equal(await page.ev("return document.getElementById('plan-residence-country').value"),'','residence must not be preselected');
+ assert.equal(await page.ev("return document.getElementById('plan-residence-attestation').checked"),false,'residence consent must not be prechecked');
+ assert.equal(await page.ev("return [...document.querySelectorAll('.plan-residence-confirmation button')].some(button=>button.textContent.trim()==='Confirm residence'&&!button.disabled)"),false);
+ await page.ev("const select=document.getElementById('plan-residence-country');select.value='other';select.dispatchEvent(new Event('change',{bubbles:true}));");
+ await until(()=>page.ev("return document.getElementById('plan-residence-attestation').disabled"),'unsupported residence blocks confirmation');
+ assert.equal(await page.ev("return !!document.getElementById('heir-input')"),false);
+ assert.equal(await page.ev("return document.querySelector('.plan-residence-confirmation .btn-primary').disabled"),true);
+ await page.ev("const select=document.getElementById('plan-residence-country');select.value='KR';select.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(r=>setTimeout(r,30));document.getElementById('plan-residence-attestation').click();");
+ await click(page,'Confirm residence');assert.ok(await page.waitFor('#heir-input',30000));
  await page.ev(`await __q.setInput('heir-input',${JSON.stringify(config.heir)});await __q.setInput('plan-wld','10');await __q.setInput('plan-usdc','12.345678');`);
  for(const lang of ['en','ko']){
   await locale(page,lang);await tab(page,2);assert.ok(await page.waitFor('#heir-input'));
@@ -88,7 +98,14 @@ try{
   assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),0,'review sends no transaction');
   if(lang==='en')await click(page,'Edit plan');
  }
- await page.ev("document.getElementById('yield-consent').click();");await click(page,'거래 승인 화면 열기');
+ await page.ev("document.getElementById('yield-consent').click();");
+ const beforeLocationBlock=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
+ await setEligibilityCountry('US');await click(page,'거래 승인 화면 열기');
+ await until(()=>page.ev("return document.body.innerText.includes('현재 네트워크 지역에서는 새 금고와 예치를 이용할 수 없습니다.')"),'fresh location check before create');
+ assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeLocationBlock,'a stale supported result must not reach the wallet');
+ await setEligibilityCountry('KR');await click(page,'다시 확인');
+ await until(()=>page.ev("return !!document.querySelector('.plan-resume')&&!document.querySelector('.plan-access-notice')"),'explicit retry restores supported setup');
+ await click(page,'남은 설정 이어하기');
  await until(()=>page.ev("return !!document.querySelector('.invite-disclosure')"),'created plan',60000);
  console.log('PASS real localized setup, exact six-decimal review, unchecked consent, safe editing and approved creation');
  await page.send('Browser.grantPermissions',{origin,permissions:['clipboardReadWrite','clipboardSanitizedWrite']});
@@ -105,6 +122,26 @@ try{
  }
  await page.ev("document.querySelector('.invite-disclosure').open=false");
  console.log('PASS copied recipient link and nonblocking feedback below the header at 320px and 390px');
+ await setEligibilityCountry('US');
+ await tab(page,1);await page.ev("document.querySelector('.deposit-controls').open=true;await __q.setInput('deposit-amount','0.01');");
+ const beforeBlockedTopUp=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
+ await click(page,'추가 예치');
+ await until(()=>page.ev("return document.body.innerText.includes('현재 네트워크 지역에서는 새 금고와 예치를 이용할 수 없습니다.')"),'fresh location check before existing-vault top-up');
+ assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeBlockedTopUp,'an unsupported-location top-up made no wallet request');
+ await tab(page,2);await click(page,'내 플랜에 자산 추가');
+ await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='이 지역에서는 새 플랜과 예치를 이용할 수 없습니다'"),'early plan restriction');
+ assert.equal(await page.ev("return !!document.querySelector('#plan-wld,.plan-submit')"),false,'unsupported users do not see actionable plan promotions');
+ await locale(page,'en');await tab(page,2);
+ assert.equal(await page.ev("return document.querySelector('.plan-access-notice h3')?.textContent"),'New plans and deposits are unavailable here');
+ assert.ok(await page.ev("return document.querySelector('.plan-access-notice').innerText.includes('withdraw')&&document.querySelector('.plan-access-notice').innerText.includes('claims')"));
+ await setEligibilityCountry('ZZ');await click(page,'Check again');
+ await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='Availability could not be confirmed'"),'unknown-location retry state');
+ assert.equal(await page.ev("return !!document.querySelector('#plan-wld,.plan-submit')"),false);
+ await locale(page,'ko');await tab(page,2);
+ assert.equal(await page.ev("return document.querySelector('.plan-access-notice h3')?.textContent"),'이용 가능 지역을 확인하지 못했습니다');
+ await setEligibilityCountry('US');await click(page,'다시 확인');
+ await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='이 지역에서는 새 플랜과 예치를 이용할 수 없습니다'"),'unsupported retry state');
+ console.log('PASS unsupported and unknown location panels are localized, retryable, and do not offer new-plan actions');
  for(const lang of ['en','ko']){
   await locale(page,lang);
   for(const[width,height]of [[320,640],[390,844]]){

@@ -21,7 +21,7 @@ final class HostTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1"]
+                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1&residence=KR"]
         app.launch()
         let initialPortrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initialPortrait, object: nil)], timeout: 20), .completed)
@@ -115,7 +115,7 @@ final class HostTests: XCTestCase {
         let factory = try XCTUnwrap(config["usdcFactory"] as? String)
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&account=heir&approval=auto"]
+                               "-testURL", "http://localhost:7777/?platform=ios&account=heir&approval=auto&residence=KR"]
         app.launch()
         let initialPortrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initialPortrait, object: nil)], timeout: 20), .completed)

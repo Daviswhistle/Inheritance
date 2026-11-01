@@ -3,6 +3,7 @@ import type { InterfaceAbi } from "ethers";
 import { CHAIN_ID } from "@/config";
 import { humanizeRevertText } from "./errors";
 import { isDefinitelyNotSubmittedCode, isDefinitelyNotSubmittedResponse } from "./transaction-safety";
+import { accessBlockMessage, checkNewPlanAccess } from "./new-plan-eligibility";
 
 /**
  * MiniKit 2.x 로 보내는 트랜잭션의 한 건.
@@ -74,6 +75,21 @@ function isUserRejection(msg: string): boolean {
  * 순서를 지켜야 한다 — 먼저 꺼내낼 승인이 없으면 transferFrom 이 revert 된다.
  */
 export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult> {
+  return sendWorldChainTxInternal(calls);
+}
+
+/** New vault creation and new deposits share one required, just-in-time gate. */
+export async function sendNewPlanWorldChainTx(calls: ContractCall[], account: string,
+  isAccountCurrent: () => boolean): Promise<TxResult> {
+  return sendWorldChainTxInternal(calls, async () => {
+    if (!isAccountCurrent()) return accessBlockMessage("account-changed");
+    const access = await checkNewPlanAccess(account);
+    if (!access.allowed) return accessBlockMessage(access.reason);
+    return isAccountCurrent() ? null : accessBlockMessage("account-changed");
+  });
+}
+
+async function sendWorldChainTxInternal(calls: ContractCall[], beforeSend?: () => Promise<string | null>): Promise<TxResult> {
   if (!calls.length) return { ok: false, error: "Nothing to send", userFacing: true, definitelyNotSubmitted: true };
   let walletRequestStarted = false;
   try {
@@ -86,6 +102,9 @@ export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult>
       ),
       value: "0x0",
     }));
+
+    const blocked = await beforeSend?.();
+    if (blocked) return { ok: false, error: blocked, userFacing: true, definitelyNotSubmitted: true };
 
     walletRequestStarted = true;
     const result = await MiniKit.sendTransaction({

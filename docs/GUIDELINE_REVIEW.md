@@ -12,9 +12,10 @@ new request on October 28 was read back as `awaiting_review` at 04:09 UTC
 (13:09 KST). The user subsequently withdrew that request; a fresh Portal readback
 confirmed **unverified**. No new submission has followed that withdrawal.
 
-The disclosed source-sharing and jurisdiction gaps were not resolved by sending
-the request. Under the user's current instruction, they must be substantively
-addressed before resubmission. Native iOS Simulator tests and actual Android
+The earlier request did not resolve source-sharing or jurisdiction questions.
+The later November 1 instruction authorizes submission after technical preparation,
+requesting existing-contract/fee review through the Portal and disclosing the
+unverified sharing history. No separate support follow-up is authorized. Native iOS Simulator tests and actual Android
 World App results are the current engineering evidence; a physical iPhone is
 not treated as a mandatory attachment or a standalone readiness blocker.
 See [MAC_HANDOFF.md](MAC_HANDOFF.md) for the current readiness gate and
@@ -141,6 +142,21 @@ a government approval or public-site geoblock. The selected-market assessment
 does not depend on receiving an FIU letter. Other markets
 were assessed against their specific transfer, offering and marketing rules;
 non-selection is a release judgment, not a blanket illegality finding. See LAUNCH_SCOPE.md for the source-to-product reasoning.
-The withdrawn requests remain historical. TFH's existing-contract review route
-and necessary territorial access implementation remain separate release work;
-country selection does not satisfy them or authorize a readiness claim.
+The withdrawn requests remain historical. The subsequent territorial controls
+and Portal intake decision are recorded below. Country selection by itself
+does not establish TFH acceptance or deployment readiness.
+
+## November 1 territorial controls and contract-review intake
+
+The official interface now gates new vault/deposit requests on KR/AR/CO edge
+country plus explicit per-wallet residence confirmation. No default residence is
+selected; Help permits correction. Unknown/unavailable location blocks new
+requests while preserving existing exits, renewals, claims and receipt recovery.
+Direct contract access remains permissionless; IP location and self-attestation
+are not independently verified residence or sanctions screening.
+
+The user authorized resubmission after preparation, requesting existing-contract
+and fee review in the Portal rather than sending another support email. The
+October 25 thread still has no reply. The review request explicitly discloses the
+unverified source-sharing history and requests any separate remediation/intake
+steps. None of this is described as TFH acceptance or a completed external audit.

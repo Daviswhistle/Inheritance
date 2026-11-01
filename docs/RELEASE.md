@@ -3,6 +3,33 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 1 — territorial new-request controls (local verification)
+
+New vaults and deposits now require a fresh trusted edge-country result and
+explicit per-wallet residence confirmation in KR/AR/CO. Unknown/outage cases
+block new requests; direct contract calls remain permissionless. Existing
+withdrawals, renewals, claims and prior transaction recovery are preserved.
+Residence is initially blank, includes an unsupported-country choice, and can be
+changed from Help. Location checks time out and cancel on page exit.
+
+Local verification passed: typecheck, lint, production build, Pages Functions
+bundle, 10 eligibility tests, 12 mobile units, CSS consistency and 9 locale tests.
+The real-SDK/disposable-chain product suite passed 68 Chromium layouts, including
+stale-allow creation/top-up blocking, retry, existing withdrawals and check-ins.
+WebKit passed 31 layouts and interrupted-deposit recovery from an unsupported
+location without a second transaction. Its intentional offline/navigation tests
+record the narrowly matched WebKit resource-cancellation diagnostics separately;
+all other page errors remain failures. These are local fixtures, not geographic
+field tests or real World App iOS approval screens.
+
+No contract code changed. A live World Chain code-hash readback of the two current
+income factories and gas-funding contract matched the prior verification. No new
+money or notification was used. The user declined another TFH email and instructed
+us to finish preparation, then submit with existing-source/fee review requested
+through the official Portal. Deployment, current-source native iOS CI, physical
+Android eligibility recheck and the submission receipt must be recorded before
+claiming those subsequent steps completed.
+
 ## November 1 — completed candidate review and verified KR/AR/CO draft
 
 The follow-up assessment added Colombia. The UIAF territorial reporting guidance

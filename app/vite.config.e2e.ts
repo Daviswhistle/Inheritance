@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { onRequestGet as getNonce } from "./functions/api/auth/nonce";
 import { onRequestPost as verifyLogin } from "./functions/api/auth/verify";
+import { onRequestGet as getEligibility } from "./functions/api/eligibility";
 import { preflight, type Env } from "./functions/_lib/siwe";
 
 // The local fixture has one factory. Never inherit the production legacy address
@@ -27,7 +28,7 @@ process.env.VITE_YIELD_FACTORY_DEPLOY_BLOCK ??= "";
  * 그래서 이 스텁은 "로그인이 된 것처럼 보이게 하는 것"이 아니라, 서명이 실제로
  * 틀리면 여기서 거부된다.
  */
-export function localAuth(): Plugin {
+export function localAuth(options: { getCountry?: () => string | undefined } = {}): Plugin {
   // A test-only in-memory D1 adapter. The real Pages handlers issue and consume
   // nonces and return the same signed session contract as production.
   const db = new DatabaseSync(":memory:");
@@ -50,6 +51,7 @@ export function localAuth(): Plugin {
       for (const [endpoint, method, handler] of [
         ["/api/auth/nonce", "GET", getNonce],
         ["/api/auth/verify", "POST", verifyLogin],
+        ["/api/eligibility", "GET", getEligibility],
       ] as const) {
         server.middlewares.use(endpoint, async (req, res) => {
           try {
@@ -59,9 +61,10 @@ export function localAuth(): Plugin {
             if (typeof req.headers.origin === "string") headers.set("Origin", req.headers.origin);
             let raw = "";
             for await (const chunk of req) raw += chunk;
-            const request = new Request(frontendOrigin + endpoint, {
+            const request = new Request(frontendOrigin + (req.url || endpoint), {
               method: req.method, headers, ...(req.method === "POST" ? { body: raw } : {}),
             });
+            Object.defineProperty(request, "cf", { value: { country: options.getCountry ? options.getCountry() : "KR" } });
             const response = req.method === "OPTIONS" ? preflight(request.headers.get("Origin"), env)
               : req.method === method ? await handler({ request, env }) : new Response(null, { status: 405 });
             res.statusCode = response.status;

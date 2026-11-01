@@ -83,7 +83,11 @@ try {
   `), 401);
   pass('Reusing a signed login fails the actual backend nonce check');
 
-  await until(() => owner.ev('return !!document.getElementById("heir-input") || __q.btns().some(b => b.t === "Create plan" && !b.d)'), 'initial plan loading');
+  await until(() => owner.ev('return !!document.getElementById("plan-residence-country") || !!document.getElementById("heir-input") || __q.btns().some(b => b.t === "Create plan" && !b.d)'), 'initial plan loading');
+  if (await owner.ev('return !!document.getElementById("plan-residence-country")')) {
+    await owner.ev(`const select=document.getElementById('plan-residence-country');select.value='KR';select.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(r=>setTimeout(r,30));document.getElementById('plan-residence-attestation').click();return true;`);
+    await click(owner, 'Confirm residence');
+  }
   if (!await owner.ev('return !!document.getElementById("heir-input")')) await click(owner, 'Create plan');
   await until(() => owner.ev('return !!document.getElementById("heir-input")'), 'plan form');
   await owner.ev(`await __q.setInput('heir-input', ${JSON.stringify(config.heir)}); await __q.setInput('period-input','30'); await __q.setInput('plan-wld','10'); await __q.setInput('plan-usdc','12.345678'); return true;`);

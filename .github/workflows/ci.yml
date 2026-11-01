@@ -84,6 +84,10 @@ jobs:
         working-directory: .
         run: npm ci --no-audit --no-fund
 
+      - name: Test country eligibility and fail-closed client checks
+        working-directory: .
+        run: node --experimental-strip-types scripts/test-eligibility.mjs
+
       - name: Typecheck
         run: pnpm typecheck
 

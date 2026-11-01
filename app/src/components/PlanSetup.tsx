@@ -7,7 +7,9 @@ import { useLocale } from "@/locale-context";
 import { calculateIllustrativeFeeAmounts, isValidStrategyFeePercent } from "@/plan-fee-illustration";
 import { useActionClearance } from "@/use-action-clearance";
 import { YieldRateSummary } from "@/components/YieldVault";
+import { NewPlanAccessNotice, type PlanAccessLocation } from "@/components/NewPlanAccessNotice";
 import type { YieldRates } from "@/yield-rates";
+import type { SupportedResidenceCountry } from "../../shared/new-plan-policy.ts";
 import type { ContactPickerStatus } from "@/contact-picker";
 import type { LocaleKeyType } from "@/locale";
 import "./PlanSetup.css";
@@ -108,7 +110,13 @@ export function PlanSetup({
   period, periodValid, onPeriodChange, onPreset, onAmountChange, yieldConsent, onYieldConsent, pendingPlan,
   heirSuspicious, alignmentConflicts, onConfirmAlignment, onCancelAlignment, onCreate, onResume, yieldRateInfoByAsset,
   busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining, onRefreshBalances,
+  account, accessLocation, accessResidence, onRetryEligibility, onConfirmResidence,
 }: {
+  account: string;
+  accessLocation: PlanAccessLocation;
+  accessResidence: SupportedResidenceCountry | null;
+  onRetryEligibility: () => void;
+  onConfirmResidence: (country: SupportedResidenceCountry) => boolean;
   rows: PlanRouteRow[];
   heir: string;
   onHeirChange: (value: string) => void;
@@ -142,6 +150,7 @@ export function PlanSetup({
   resumeDisabled: boolean;
 }) {
   const { t, locale } = useLocale();
+  const newPlanAccessAllowed = accessLocation.state === "supported" && Boolean(accessResidence);
   const actionRef = useActionClearance(!pendingPlan);
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(null);
   const [legalDocument, setLegalDocument] = useState<"terms" | "privacy" | null>(null);
@@ -464,14 +473,16 @@ export function PlanSetup({
   </section>;
 
   return <Card className={`plan-setup-card ${pendingPlan ? "" : "plan-setup-with-actions"}`}>
-    {!pendingPlan && <ol className="plan-steps" aria-label={t("plan.steps.label")}>
+    {!pendingPlan && newPlanAccessAllowed && <ol className="plan-steps" aria-label={t("plan.steps.label")}>
       <li aria-current={!showReview ? "step" : undefined}><span aria-hidden="true">1</span>{t("plan.steps.details")}</li>
       <li aria-current={showReview ? "step" : undefined}><span aria-hidden="true">2</span>{t("plan.steps.review")}</li>
     </ol>}
-    {!showReview && !pendingPlan && <CardHeader>
+    {!showReview && !pendingPlan && newPlanAccessAllowed && <CardHeader>
       <p className="plan-card-intro">{t("plan.intro")}</p>
     </CardHeader>}
     <CardContent className="plan-setup-content">
+      {!newPlanAccessAllowed && <NewPlanAccessNotice account={account} location={accessLocation} residence={accessResidence}
+        onRetry={onRetryEligibility} onConfirmResidence={onConfirmResidence} />}
       {pendingPlan && <section className="plan-resume" aria-labelledby="plan-resume-title">
         <div>
           <h3 id="plan-resume-title" tabIndex={-1} ref={resumeHeadingRef}>{t("plan.pending.title")}</h3>
@@ -495,10 +506,10 @@ export function PlanSetup({
           <Button disabled={busy} onClick={onEditRemaining}>{t("plan.pending.edit")}</Button>
           <p className="plan-pending-settings">{t("plan.pending.editNote")}</p>
         </>}
-        {disclosedYieldRows.map(row => <div key={row.symbol}>{rateSummary(row.symbol)}</div>)}
+        {newPlanAccessAllowed && disclosedYieldRows.map(row => <div key={row.symbol}>{rateSummary(row.symbol)}</div>)}
       </section>}
 
-      {!showReview && !pendingPlan && <>
+      {!showReview && !pendingPlan && newPlanAccessAllowed && <>
         {amountSection}
         <Button size="sm" variant="ghost" className="plan-balance-refresh" disabled={busy} onClick={onRefreshBalances}>{t("plan.balance.refresh")}</Button>
         {rows.length > 0 && rows.every(row => !row.balanceUnavailable && row.walletBalance === 0n) && <div className="plan-funding-note" role="status">
@@ -546,7 +557,7 @@ export function PlanSetup({
         </div>
       </>}
 
-      {showReview && reviewSnapshot && <section className="plan-review plan-final-review" aria-labelledby="plan-review-title">
+      {showReview && reviewSnapshot && newPlanAccessAllowed && <section className="plan-review plan-final-review" aria-labelledby="plan-review-title">
         <h3 id="plan-review-title" tabIndex={-1} ref={reviewHeadingRef}>{t("plan.review.title")}</h3>
         <dl className="plan-review-list">
           <div>
@@ -616,9 +627,9 @@ export function PlanSetup({
       </section>}
 
       {alignmentReview}
-      {pendingPlan && hasYieldRoute && riskDisclosure}
+      {pendingPlan && hasYieldRoute && newPlanAccessAllowed && riskDisclosure}
 
-      {showReview && <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("terms"); }}>{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("privacy"); }}>{t("plan.legal.privacy")}</a>.</p>}
+      {showReview && newPlanAccessAllowed && <p className="plan-legal-copy">{t("plan.legal")} <a href="/terms.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("terms"); }}>{t("plan.legal.terms")}</a> {t("plan.legal.join")} <a href="/privacy.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("privacy"); }}>{t("plan.legal.privacy")}</a>.</p>}
       {legalDocument && <PlanLegalDialog document={legalDocument} onClose={() => setLegalDocument(null)} />}
       <Button className="plan-keyboard-done" onClick={() => {
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -630,7 +641,7 @@ export function PlanSetup({
       {validationReason && pendingPlan && (selectedRows.length > 0 || trimmedHeir || !intervalValid)
         && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
-      {!pendingPlan && <div className="plan-primary-actions" ref={actionRef}>
+      {!pendingPlan && newPlanAccessAllowed && <div className="plan-primary-actions" ref={actionRef}>
       <p className="plan-action-hint" role="status">{validationReason || t(showReview ? "plan.action.confirmHint" : "plan.action.reviewHint")}</p>
       {showReview
         ? <div className="plan-step-actions">

@@ -271,13 +271,22 @@ route, not repeated speculative searches or a universal government letter.
 
 ## Store selection, access and remaining release work
 
-The Portal setting controls store availability; it does **not** geoblock the
-public website, deep links or immutable contracts. This change does not claim
-that access is restricted to KR/AR/CO. Existing owners/heirs retain fund access.
-Before representing an actual launch as territorially restricted, implement and
-verify the necessary onboarding/new-deposit restrictions, including treatment of
-unknown locations; preserve withdrawal, renewal and existing-claim access. An IP
-check cannot establish residence or make immutable contracts inaccessible.
+The Portal setting controls store availability. The official interface now
+checks Cloudflare's request-country metadata plus a separately confirmed,
+wallet-specific residence choice before requesting a new vault or deposit.
+Both must be in KR/AR/CO. Unknown locations, outages and unsupported countries
+fail closed for new requests. Each new wallet request checks the edge again;
+a display snapshot never authorizes it. Residence is not preselected, and can
+be changed from Help. The endpoint stores neither IPs nor eligibility records;
+residence confirmation stays on the device.
+
+Sign-in, existing balances, withdrawals, renewals, settings, claims, rewards
+already owed and recovery of prior submissions remain available. This is an
+official-interface restriction, not a block on direct immutable-contract calls,
+a residence verification service or reliable VPN detection. Source/test entry
+points are `app/functions/api/eligibility.ts`, `app/shared/new-plan-policy.ts`,
+`app/src/new-plan-eligibility.ts`, `scripts/test-eligibility.mjs` and the existing
+product/WebKit suites. Region fixtures are limited to isolated test hosts.
 
 The original October 21 rejection concerned UI/UX and distinct tabs, not a
 country/contract rejection. The [official submission guide](https://docs.world.org/mini-apps/quick-start/app-store)
@@ -289,3 +298,11 @@ October 25 email has no reply in the last November 1 check. No new outreach was
 sent, and no universal legal certificate, paid audit or fresh deployment is
 invented as mandatory. Resubmission remains pending substantive readiness, not
 an FIU letter or further research into every unselected country.
+
+The subsequent November 1 instruction authorizes submission **after preparation
+is complete**, with existing-source/fee review requested through the official
+Portal. The user declined another support email. The Portal request must disclose
+the unverified sharing history and ask TFH to specify any separate intake or
+remediation step; source availability is not prior acceptance. This replaces
+waiting indefinitely for an unanswered support email as a prerequisite to asking
+for that review. It does not declare the historical requirement satisfied.

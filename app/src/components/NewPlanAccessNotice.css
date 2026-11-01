@@ -1,0 +1,10 @@
+.plan-access-notice { display: grid; gap: 8px; padding: 16px; border: 1px solid #d5c9a0; border-radius: 12px; background: #fff9e8; color: #26362a; }
+.plan-access-notice h3 { margin: 0; color: #294432; font-size: 16px; line-height: 1.4; }
+.plan-access-notice p { margin: 0; font-size: 14px; line-height: 1.55; }
+.plan-access-notice-compact { margin-block: 8px; padding: 12px; }
+.plan-residence-confirmation { display: grid; gap: 10px; margin-top: 4px; }
+.plan-residence-confirmation select { width: 100%; min-height: 48px; padding: 10px 12px; color: #1c2c20; background: #fff; border: 1px solid #8f9e90; border-radius: 8px; }
+.plan-residence-attestation { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; gap: 10px; min-height: 44px; font-size: 14px; line-height: 1.5; }
+.plan-residence-attestation input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: #315a37; }
+.plan-access-error { color: #9b2525; }
+.help-region { margin-block: 12px; }

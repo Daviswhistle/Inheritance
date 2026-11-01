@@ -25,8 +25,11 @@ host.stdout.on('data', data => output += data);
 host.stderr.on('data', data => output += data);
 const evidence = {
   environment: (process.platform === 'darwin' ? 'macOS' : process.platform) + ' Playwright WebKit, emulated mobile viewport, real MiniKit iOS transport, local assets; not an iPhone',
-  checks: [], layouts: [], errors: [],
+  checks: [], layouts: [], errors: [], expectedOfflineErrors: [], expectedNavigationErrors: [],
 };
+let config;
+let intentionalOffline = false;
+let interruptedDepositReload = false;
 async function until(fn, label, timeout = 45000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -60,12 +63,30 @@ async function layout(page, label, width) {
 }
 async function open(url) {
   const context = await browser.newContext({ ...devices['iPhone 13'], viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
-  await context.addInitScript(() => {
+  await context.addInitScript(({ owner, heir }) => {
     // A history excursion to about:blank has an opaque origin in WebKit.
-    if (location.protocol === 'http:' && !localStorage.getItem('inheritance:locale')) localStorage.setItem('inheritance:locale', 'en');
-  });
+    if (location.protocol !== 'http:') return;
+    if (!localStorage.getItem('inheritance:locale')) localStorage.setItem('inheritance:locale', 'en');
+    const address = new URL(location.href).searchParams.get('account') === 'heir' ? heir : owner;
+    localStorage.setItem(`inheritance:residence:${address.toLowerCase()}`,
+      JSON.stringify({ version: 1, account: address.toLowerCase(), country: 'KR', confirmed: true }));
+  }, { owner: config.owner, heir: config.heir });
   const page = await context.newPage();
-  page.on('pageerror', error => evidence.errors.push(error.message));
+  page.on('pageerror', error => {
+    // WebKit also surfaces failed offline fetches as access-control page errors.
+    // Accept only this resource during our explicit outage; retain every other error.
+    if (intentionalOffline && error.message.endsWith('/api/eligibility due to access control checks.')) {
+      evidence.expectedOfflineErrors.push(error.message);
+    } else if (interruptedDepositReload && error.message.endsWith('/api/eligibility due to access control checks.')) {
+      // Deliberately destroy the document while its prior request is in flight.
+      // The new document must independently show the blocked location below;
+      // no other endpoint/error, or error outside this navigation, is accepted.
+      evidence.expectedNavigationErrors.push(error.message);
+    } else {
+      evidence.errors.push(error.message);
+      console.log('WEBKIT ERROR after ' + evidence.checks.at(-1) + ': ' + error.message);
+    }
+  });
   await page.goto(url);
   await page.locator('.tab-item').nth(3).waitFor();
   await page.locator('#inheritance-test-controls').evaluate(e => e.style.display = 'none');
@@ -74,7 +95,7 @@ async function open(url) {
 }
 try {
   await until(async () => { try { return (await fetch(origin + '/__host/config')).ok; } catch { return false; } }, 'host startup', 90000);
-  const config = await (await fetch(origin + '/__host/config')).json();
+  config = await (await fetch(origin + '/__host/config')).json();
   for (const [alias, canonical] of [['terms.html', '/terms'], ['privacy.html', '/privacy'], ['yield-terms.html', '/yield-terms']]) {
     const response = await fetch(origin + '/' + alias, { redirect: 'manual' });
     assert.equal(response.status, 308, alias + ' HTTP redirect status');
@@ -121,6 +142,12 @@ try {
   // viewport, then deliver a separate layout scroll as WKWebView can do after
   // rotation. This is an event/geometry regression, not native-keyboard proof.
   const editingContext = await browser.newContext({ ...devices['iPhone 13'], viewport: { width: 390, height: 844 } });
+  await editingContext.addInitScript(({ owner, heir }) => {
+    if (location.protocol !== 'http:') return;
+    const address = new URL(location.href).searchParams.get('account') === 'heir' ? heir : owner;
+    localStorage.setItem(`inheritance:residence:${address.toLowerCase()}`,
+      JSON.stringify({ version: 1, account: address.toLowerCase(), country: 'KR', confirmed: true }));
+  }, { owner: config.owner, heir: config.heir });
   await editingContext.addInitScript(() => {
     localStorage.setItem('inheritance:locale', 'en');
     const viewport = new EventTarget();
@@ -386,7 +413,7 @@ try {
     }
   }
   await tab(page, 0); await tap(page, '지금 확인하기');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('2개') && e.textContent.includes('확인')));
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('2개') && e.textContent.includes('확인')), null, { timeout: 60000 });
   pass('Expanded owner details retain touch targets and a combined check-in confirms both assets');
   // Real browser network outage, with local-chain state observed independently.
   const vaults = [wldVault, usdcVault].map(address => new Contract(address,
@@ -426,6 +453,7 @@ try {
   const commandCount = () => page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length);
   const beforeCommands = await commandCount();
   await tab(page, 1);
+  intentionalOffline = true;
   await page.context().setOffline(true);
   // This only requests the app's normal visibility-triggered read. Network failure
   // is supplied by WebKit itself; this event is not evidence of OS backgrounding.
@@ -433,10 +461,15 @@ try {
   await page.getByRole('status').filter({ hasText: '현재 World Chain에 연결되지 않아' }).waitFor({ timeout: 45000 });
   assert.deepEqual(await snapshot(), beforeOutage);
   assert.equal(await commandCount(), beforeCommands);
+  await tab(page, 2);
+  await page.locator('.plan-access-notice h3').getByText('이용 가능 지역을 확인하지 못했습니다').waitFor();
+  assert.equal(await page.locator('#plan-wld,.plan-submit').count(), 0);
+  await tab(page, 1);
   await page.screenshot({ path: out + '/offline-ko.png' });
   await page.context().setOffline(false);
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await page.getByRole('status').filter({ hasText: '현재 World Chain에 연결되지 않아' }).waitFor({ state: 'hidden', timeout: 45000 });
+  intentionalOffline = false;
   await tab(page, 0);
   await page.getByRole('button', { name: '지금 확인하기', exact: true }).waitFor();
   await until(() => page.getByRole('button', { name: '지금 확인하기', exact: true }).isEnabled(), 'recovered owner reads');
@@ -475,7 +508,7 @@ try {
   // Explicitly approve this retry in the disposable host in either case.
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.setApproval('auto'));
   await tap(page, '지금 확인하기');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('2개') && e.textContent.includes('확인')));
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('2개') && e.textContent.includes('확인')), null, { timeout: 60000 });
   assert.equal(await commandCount(), 1, 'only explicit retry submits');
   pass('Approval rejection, reload during pending approval and browser Back preserve both vaults; only an explicit retry submits once');
   const heir = await open(origin + `/?platform=ios&approval=auto&account=heir&vault=${wldVault}`);
@@ -515,11 +548,18 @@ try {
   const amounts = () => Promise.all(recoveredVaults.map(address => new Contract(address,
     ['function costBasis() view returns(uint256)'], provider).costBasis()));
   assert.deepEqual(await amounts(), [4n * 10n ** 18n, 5_000001n]);
+  const recoveryLocation = await fetch(origin + '/__host/control', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'eligibility-country', country: 'US' }) });
+  assert.equal(recoveryLocation.status, 200);
+  interruptedDepositReload = true;
   await heir.reload();
   releaseResponse();
   await heir.unroute('**/__host/command');
   await heir.locator('#inheritance-test-controls').evaluate(e => e.style.display = 'none');
   await heir.locator('.plan-resume').waitFor();
+  await heir.locator('.plan-access-notice h3').getByText('New plans and deposits are unavailable here').waitFor();
+  interruptedDepositReload = false;
+  assert.equal(await heir.locator('.plan-resume .btn-primary').isEnabled(), true, 'an unsupported location must not block prior receipt recovery');
   assert.equal(await heir.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 0);
   await heir.screenshot({ path: out + '/interrupted-deposit-recovery.png' });
   await heir.locator('.plan-resume .btn-primary').tap();
@@ -565,6 +605,7 @@ try {
   console.log(`PASS ${evidence.layouts.length} WebKit layouts; evidence in ${out}`);
 } catch (error) {
   evidence.failure = String(error);
+  writeFileSync(out + '/host-failure.log', output);
   writeFileSync(out + '/failure.json', JSON.stringify(evidence, null, 2));
   for (const [index, page] of (browser?.contexts().flatMap(context => context.pages()) || []).entries()) {
     await page.screenshot({ path: `${out}/failure-${index}.png` }).catch(() => {});

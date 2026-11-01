@@ -106,15 +106,17 @@ submission route; @MateoSauton is an official post-rejection contact, not a newl
 invented mandatory preapproval. A prepared Telegram message remains unsent after
 the user corrected the rejection premise instead of authorizing it.
 
-1. Obtain the actual TFH review/remediation route for the existing immutable
-   contracts and satisfy the case-specific steps. Public source and the sent
-   October 25 inquiry do not retroactively prove pre-deployment sharing.
-2. The current reasoned country scope is KR/AR/CO; do not reopen it solely for lack
-   of an official opinion. Before claiming a geographically restricted launch,
-   verify the necessary onboarding/new-deposit controls. Store selection alone
-   does not restrict the public site or contracts; preserve existing-holder
-   withdrawals, renewals and claim access. Other markets have specific review
-   distinctions in LAUNCH_SCOPE.md, not a blanket illegality finding.
+1. The latest November 1 instruction is to finish preparation and then submit,
+   requesting review of the existing public source and fees through the official
+   Portal. The user explicitly declined another support email. Include the
+   unverified pre-deployment sharing history and ask for any required separate
+   intake/remediation step. This authorizes requesting review; it does not
+   establish TFH acceptance or retroactively satisfy source sharing.
+2. KR/AR/CO remains the reasoned country scope. The official UI now checks trusted
+   edge country and explicit local residence confirmation before new vaults and
+   deposits, including retries and top-ups. Unknown/outage cases fail closed.
+   Preserve withdrawals, renewals, settings, existing claims and receipt recovery.
+   Verify runtime deployment/readback and device results before submitting.
 3. Retain the verified iOS evidence and its scope: the actual WebKit/MiniKit
    native-host tests passed on local iOS 27.0 and final-source CI iOS 18.5; actual
    Android World App testing covered native flows and the principal round trip.
@@ -127,7 +129,7 @@ A TFH follow-up and Korean classification inquiry were prepared but not sent.
 The government inquiry is optional and currently held, not a required launch
 process. First apply current legal definitions to the actual service and narrow
 any remaining decision-changing question. A separate outbound approval is still
-needed before sending a new message or government inquiry; the original TFH
+needed before sending a new email, contact message or government inquiry; the original TFH
 permission covered one send. No new funds transaction or paid service was used.
 
 Read [RELEASE.md](RELEASE.md), [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md),
