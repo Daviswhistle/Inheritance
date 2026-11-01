@@ -280,18 +280,47 @@ final class HostTests: XCTestCase {
         // The reported failure had the fixed Done button over this label. A tap
         // must not activate that label when keyboard dismissal changes layout.
         let done = web.buttons["Done"].firstMatch
-        let label = web.staticTexts["Check-in interval"].firstMatch
         waitForStableControl(done, in: web)
-        for _ in 0..<6 {
-            let delta = label.frame.midY - done.frame.midY
-            if abs(delta) < 4 { break }
+        func geometry() -> (button: [Double], interval: [Double])? {
+            guard let raw = app.staticTexts["test-host-status"].value as? String,
+                  let data = raw.data(using: .utf8),
+                  let metrics = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let button = metrics["doneRect"] as? [Double], button.count == 4,
+                  let interval = metrics["intervalRect"] as? [Double], interval.count == 4,
+                  button[2] > 0, button[3] > 0, interval[3] > 0 else { return nil }
+            return (button, interval)
+        }
+        var panAllowance = 20.0
+        for attempt in 0..<12 {
+            guard let before = geometry() else { XCTFail("Missing overlap geometry"); return }
+            let x = before.button[0] + before.button[2] / 2
+            let y = before.button[1] + before.button[3] / 2
+            if x >= before.interval[0] && x <= before.interval[0] + before.interval[2]
+                && y >= before.interval[1] && y <= before.interval[1] + before.interval[3] { break }
+            let delta = before.interval[1] + before.interval[3] / 2 - y
             let origin = web.coordinate(withNormalizedOffset: .zero)
             let start = web.frame.height * 0.5
-            // UIKit consumes the initial pan-recognition distance. A 12pt drag
-            // can otherwise leave a 2pt gap forever instead of scrolling.
-            let step = (delta < 0 ? -1.0 : 1.0) * (min(80, abs(delta)) + 12)
+            // Short drags can be entirely consumed by UIKit pan recognition.
+            // Measure actual DOM movement, not the possibly clipped AX label,
+            // and adapt the next gesture while preserving the exact overlap gate.
+            let distance = min(120, max(44, abs(delta) + panAllowance))
+            let step = delta < 0 ? -distance : distance
             origin.withOffset(CGVector(dx: 8, dy: start))
                 .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: 8, dy: start - step)))
+            var previous: [Double] = []
+            var stableSince = Date()
+            let settled = NSPredicate { _, _ in
+                guard let value = geometry() else { return false }
+                let current = value.button + value.interval
+                if current != previous { previous = current; stableSince = Date(); return false }
+                return Date().timeIntervalSince(stableSince) >= 0.5
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 5), .completed,
+                           "Wait for the native pan and input-clearance reflow to settle")
+            guard let after = geometry() else { XCTFail("Missing settled overlap geometry"); return }
+            let moved = (before.interval[1] - after.interval[1]) * (delta < 0 ? -1 : 1)
+            print("OVERLAP ALIGN \(attempt): before=\(before.interval) button=\(before.button) step=\(step) after=\(after.interval) moved=\(moved)")
+            panAllowance = moved > 1 ? min(80, max(12, distance - moved)) : min(80, panAllowance + 16)
         }
         let overlapping = NSPredicate { _, _ in
             guard let raw = app.staticTexts["test-host-status"].value as? String,
