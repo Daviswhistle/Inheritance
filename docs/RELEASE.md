@@ -3,7 +3,7 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## Current release — Korea-only preparation
+## Current release — Korea-only verified and ready for review
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal
@@ -15,12 +15,58 @@ location. Prior AR/CO residence records cannot authorize new requests. Existing
 balances, withdrawals, renewals, claims and submitted-transaction recovery remain
 accessible outside KR. Local eligibility (11 tests), WebKit (21 checks / 31
 layouts), translation, type, lint and build checks passed; independent commit
-review found no actionable defect. Deployment/device verification and the new
-submission receipt will be recorded below when completed.
+review found no actionable defect. Production `4a35244` was deployed and independently checked; actual Android
+Korea-only acceptance passed. Native policy run 41329500340 passed two tests
+with no failures, including all five traced Done gestures without extra clicks.
+The new submission receipt is recorded in RELEASE.md after Portal readback.
 
 The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
 submission receipts below are historical and no longer the active request.
+
+## November 2 KST — Korea-only production and device acceptance
+
+The operator explicitly selected Korea-only launch. Runtime `afd5bab` restricts
+both trusted network-country classification and per-wallet residence to KR.
+Old AR/CO residence confirmations cannot authorize new vaults/deposits; existing
+exits, renewals, claims and submitted-request recovery remain available. The
+public Terms and English/Korean availability copy match the narrower scope.
+
+Production source: `4a35244cf06fbad0965725446f61f2fe351137b2`.
+[Deployment 41329915849](https://github.com/Daviswhistle/Inheritance/actions/runs/41329915849)
+and [CI 41329915837](https://github.com/Daviswhistle/Inheritance/actions/runs/41329915837)
+passed. Production HTML and all six imported assets match
+https://3d748bd1.inheritance.pages.dev; all three legal documents return 200 and
+Terms names KR only. Worker `f334c9a8-f718-4593-bc26-577c017ddee9` reports ready,
+funded, a fresh cycle, no halt and no last error. The read-only eligibility
+endpoint returns KR with no-store; spoofed AR/CO client headers/query do not
+change that trusted result.
+
+Local checks: 11 eligibility tests, nine translation tests, typecheck, lint,
+build, and WebKit 21 checks / 31 layouts all passed. WebKit explicitly rejects
+saved AR/CO residence and preserves receipt recovery from a removed CO location
+without a duplicate deposit. Independent native commit review of `afd5bab` found
+no actionable defect; it independently ran eligibility, translation, type and
+changed-file lint checks. The full WebKit run was performed by the maintainer.
+
+Native policy [run 41329500340](https://github.com/Daviswhistle/Inheritance/actions/runs/41329500340)
+passed both tests with zero failures. Event-level inspection confirms five Done
+gestures, each with cancelled touchend, zero extra click, no remaining input
+focus and restored controls. Pending-deposit process-restart recovery passed.
+This is the native WKWebView host with simulated approvals, not actual iOS
+World App approval/permission validation.
+
+Actual Samsung SM-N986N / Android 13 / World Money 4.0.4602 passed cold-start
+login, existing KR recognition, Help reset, the native KR/Other selector,
+Other-country blocking, continued existing Assets/withdrawal access, and
+restoration of enabled amount fields after explicit KR confirmation. No funds,
+notifications or external messages were sent. See
+[WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md) for the targeted scope.
+
+Portal readback after withdrawal/configuration confirmed unverified, exactly
+KR, developer allowlisting preserved, and only description/supported_countries
+changed. The previous three-country request is historical. The new submission
+receipt will be added after Portal readback.
 
 ## Historical November 2 01:52 KST — corrected release, since withdrawn
 

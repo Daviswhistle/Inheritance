@@ -5,7 +5,7 @@ legal certification, or independent security audit. The previous submission was
 withdrawn by the operator before this revision. The Portal was read back as
 `unverified` before changes.
 
-## Current release — Korea-only preparation
+## Current release — Korea-only verified and ready for review
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal
@@ -17,8 +17,10 @@ location. Prior AR/CO residence records cannot authorize new requests. Existing
 balances, withdrawals, renewals, claims and submitted-transaction recovery remain
 accessible outside KR. Local eligibility (11 tests), WebKit (21 checks / 31
 layouts), translation, type, lint and build checks passed; independent commit
-review found no actionable defect. Deployment/device verification and the new
-submission receipt will be recorded below when completed.
+review found no actionable defect. Production `4a35244` was deployed and independently checked; actual Android
+Korea-only acceptance passed. Native policy run 41329500340 passed two tests
+with no failures, including all five traced Done gestures without extra clicks.
+The new submission receipt is recorded in RELEASE.md after Portal readback.
 
 The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country

@@ -12,6 +12,29 @@ The October 27 real-money test used runtime
 `e4be10c5225cd05504c3cb3f02082f16b1b4a623`. Current deployed source and exact
 CI/native-test results are in [RELEASE.md](RELEASE.md).
 
+## Physical device — November 2, 2026: Korea-only scope
+
+Production `4a35244cf06fbad0965725446f61f2fe351137b2` / immutable
+https://3d748bd1.inheritance.pages.dev was checked after a full World App process
+restart on Samsung SM-N986N / Android 13 / World Money 4.0.4602, Korean UI.
+Existing KR residence remained recognized. Help reset showed the Korea-only
+explanation and a blank country choice; the native selector contained only
+blank, South Korea and Another country. Another country displayed the restriction
+and disabled confirmation. With residence unconfirmed, Assets and its existing
+wallet-share withdrawal control remained accessible. No withdrawal was executed.
+
+Explicit KR selection plus attestation enabled confirmation and restored the
+empty enabled setup amount fields. No amount, review or wallet transaction was
+submitted; the app was returned to Home. Existing assets and notifications were
+not changed. Production eligibility returned KR with no-store even with spoofed
+AR/CO caller headers/query.
+
+Removed AR/CO residence records, unsupported locations and old supported-country
+responses were tested in isolated fixtures, not by relocating the phone. The
+21-check WebKit suite also recovered a previously submitted deposit from CO
+without submitting it twice. This is targeted scope acceptance; earlier financial
+and keyboard acceptance remains separately recorded below.
+
 ## Physical device — November 2, 2026: keyboard correction
 
 Runtime `c7da250` / immutable https://1f8e6827.inheritance.pages.dev was checked

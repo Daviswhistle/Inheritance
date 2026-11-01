@@ -25,7 +25,7 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
-## Current release — Korea-only preparation
+## Current release — Korea-only verified and ready for review
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal
@@ -37,8 +37,10 @@ location. Prior AR/CO residence records cannot authorize new requests. Existing
 balances, withdrawals, renewals, claims and submitted-transaction recovery remain
 accessible outside KR. Local eligibility (11 tests), WebKit (21 checks / 31
 layouts), translation, type, lint and build checks passed; independent commit
-review found no actionable defect. Deployment/device verification and the new
-submission receipt will be recorded below when completed.
+review found no actionable defect. Production `4a35244` was deployed and independently checked; actual Android
+Korea-only acceptance passed. Native policy run 41329500340 passed two tests
+with no failures, including all five traced Done gestures without extra clicks.
+The new submission receipt is recorded in RELEASE.md after Portal readback.
 
 The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
@@ -46,12 +48,12 @@ submission receipts below are historical and no longer the active request.
 
 ## Current verified checkpoint
 
-- Runtime source: `c7da2501240cba4adccdb235f8609730762d9afe`, descendant of requested baseline `91944cc`.
+- Runtime source: `4a35244cf06fbad0965725446f61f2fe351137b2`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
   deployment, native-test and independent-review receipts.
-- Production: https://inheritance.pages.dev ; immutable: https://1f8e6827.inheritance.pages.dev.
-  Deployment [41327125672](https://github.com/Daviswhistle/Inheritance/actions/runs/41327125672): passed for this runtime; Pages and notification Worker deployed successfully.
-  CI [41327125634](https://github.com/Daviswhistle/Inheritance/actions/runs/41327125634): passed, all three jobs successful.
+- Production: https://inheritance.pages.dev ; immutable: https://3d748bd1.inheritance.pages.dev.
+  Deployment [41329915849](https://github.com/Daviswhistle/Inheritance/actions/runs/41329915849): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [41329915837](https://github.com/Daviswhistle/Inheritance/actions/runs/41329915837): passed, all three jobs successful.
   Readback: November 2 KST readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
 - Financial UI separates dated lending/reward rates, live strategy fee, service
   fee and conditional WLD network costs. Review shows per-token deposit amounts
@@ -121,22 +123,18 @@ actual review outcome. No additional money, notification or email was used.
 ## External decisions still open
 
 Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
-`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was independently read back on
-November 1 as **unverified after the user withdrew that submission**. GB/SG were
-removed from the draft and device evidence was updated; no resubmission occurred.
-The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical; the
-November 2 receipt above is current. The later November 1 country review changed the draft to **KR/AR/CO**
-and independently verified that only supported countries changed. These are the
-reasoned intended launch markets, not regulator approvals or publication.
-The subsequent regional-control deployment is recorded above; existing-holder access is preserved.
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`, is now configured for **KR only**.
+Earlier KR/AR/CO requests were withdrawn. Use the current release section and
+[RELEASE.md](RELEASE.md) for the latest verified submission status.
 
-The operator is an individual in Korea and wants maximum lawful availability.
+The operator is an individual in Korea and explicitly selected Korea-only launch
+on November 2, superseding the earlier maximum-country instruction.
 There is no historical pre-deployment TFH source-sharing or legal-review record.
 One approved source-review/remediation inquiry was sent to TFH October 25 at
 15:33 KST. The sent thread was rechecked November 1 with no reply or decision. Earlier
 related-inbox checks also found no decision. The Korean classification inquiry remains unsent. Do not duplicate
 messages or treat a sent email as TFH acceptance. [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md)
-records the KR/AR/CO decision and the completed candidate release assessment, including specific
+records the Korea-only decision and the previous candidate assessment, including specific
 reasons other markets were not added. The Korean no-reporting software-service
 interpretation is now the operational basis; an FIU reply is not a prerequisite.
 Do not invent a universal paid legal report, incorporation, audit or device-certificate rule. A disclosed review request does
@@ -159,8 +157,8 @@ the user corrected the rejection premise instead of authorizing it.
    unverified pre-deployment sharing history and ask for any required separate
    intake/remediation step. This authorizes requesting review; it does not
    establish TFH acceptance or retroactively satisfy source sharing.
-2. KR/AR/CO remains the reasoned country scope. The official UI now checks trusted
-   edge country and explicit local residence confirmation before new vaults and
+2. KR only is the authorized initial scope. The official UI checks trusted KR
+   edge country and explicit KR residence confirmation before new vaults and
    deposits, including retries and top-ups. Unknown/outage cases fail closed.
    Preserve withdrawals, renewals, settings, existing claims and receipt recovery.
    Verify runtime deployment/readback and device results before submitting.
