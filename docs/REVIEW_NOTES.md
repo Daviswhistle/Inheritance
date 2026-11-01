@@ -97,8 +97,9 @@ verification or a legal will. Current contracts support one heir.
 
 ## Availability
 
-New plans and deposits require both a supported current network location and
-explicit residence confirmation for South Korea, Argentina or Colombia. A fresh
+The initial release is limited to South Korea. New plans and deposits require
+both a KR network location and explicit South Korea residence confirmation.
+Earlier AR/CO confirmations do not authorize new requests. A fresh
 location check runs before each new wallet request. Help allows residence
 changes. Unknown location and lookup failures block new requests while keeping
 sign-in, existing withdrawals, renewals, claims and submitted-request recovery

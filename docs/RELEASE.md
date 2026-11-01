@@ -3,23 +3,26 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## Current correction — keyboard cause reproduced and fixed
+## Current release — Korea-only preparation
 
-The prior November 2 request was withdrawn; a fresh Portal readback confirmed
-**unverified**, KR/AR/CO preserved. The original failure is now reproduced:
-Done's touch release blurred the recipient, then an extra click activated the
-interval label and focused its input. Runtime correction `aef7fe6` consumes that
-extra click. The same native reproduction failed before the fix and passed on
-`5209fd4`, including all five traced Done gestures and pending-deposit recovery.
-See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
-[REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
-Production deployment/readback and actual Android confirmation are complete.
-The corrected request was submitted after those checks; independent readback at
-**November 2 01:52:33 KST / November 1 16:52:33 UTC** confirmed
-**awaiting_review**, KR/AR/CO and developer allowlisting unchanged.
-Earlier awaiting_review and unexplained-pass acceptance statements are historical.
+The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
+KR/AR/CO submission was withdrawn for this scope change. Independent Portal
+readback confirms **unverified**, exactly **KR**, with only availability copy
+and supported countries changed. Developer allowlisting remains enabled.
 
-## November 2 01:52 KST — corrected release resubmitted
+Runtime `afd5bab` limits new plans and deposits to KR residence and KR network
+location. Prior AR/CO residence records cannot authorize new requests. Existing
+balances, withdrawals, renewals, claims and submitted-transaction recovery remain
+accessible outside KR. Local eligibility (11 tests), WebKit (21 checks / 31
+layouts), translation, type, lint and build checks passed; independent commit
+review found no actionable defect. Deployment/device verification and the new
+submission receipt will be recorded below when completed.
+
+The keyboard cause and fix remain established by the before/after native trace:
+see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
+submission receipts below are historical and no longer the active request.
+
+## Historical November 2 01:52 KST — corrected release, since withdrawn
 
 The authorized corrected request was submitted after deployment, Android
 acceptance and final checks. Independent Portal readback at

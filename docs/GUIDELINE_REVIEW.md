@@ -5,21 +5,24 @@ legal certification, or independent security audit. The previous submission was
 withdrawn by the operator before this revision. The Portal was read back as
 `unverified` before changes.
 
-## Current correction — keyboard cause reproduced and fixed
+## Current release — Korea-only preparation
 
-The prior November 2 request was withdrawn; a fresh Portal readback confirmed
-**unverified**, KR/AR/CO preserved. The original failure is now reproduced:
-Done's touch release blurred the recipient, then an extra click activated the
-interval label and focused its input. Runtime correction `aef7fe6` consumes that
-extra click. The same native reproduction failed before the fix and passed on
-`5209fd4`, including all five traced Done gestures and pending-deposit recovery.
-See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
-[REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
-Production deployment/readback and actual Android confirmation are complete.
-The corrected request was submitted after those checks; independent readback at
-**November 2 01:52:33 KST / November 1 16:52:33 UTC** confirmed
-**awaiting_review**, KR/AR/CO and developer allowlisting unchanged.
-Earlier awaiting_review and unexplained-pass acceptance statements are historical.
+The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
+KR/AR/CO submission was withdrawn for this scope change. Independent Portal
+readback confirms **unverified**, exactly **KR**, with only availability copy
+and supported countries changed. Developer allowlisting remains enabled.
+
+Runtime `afd5bab` limits new plans and deposits to KR residence and KR network
+location. Prior AR/CO residence records cannot authorize new requests. Existing
+balances, withdrawals, renewals, claims and submitted-transaction recovery remain
+accessible outside KR. Local eligibility (11 tests), WebKit (21 checks / 31
+layouts), translation, type, lint and build checks passed; independent commit
+review found no actionable defect. Deployment/device verification and the new
+submission receipt will be recorded below when completed.
+
+The keyboard cause and fix remain established by the before/after native trace:
+see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
+submission receipts below are historical and no longer the active request.
 
 ## Current submission status and requirement classification
 
@@ -31,7 +34,8 @@ the app was resubmitted. An independent readback at 15:23:28 UTC November 1
 (00:23:28 KST November 2) confirmed **awaiting_review**, KR/AR/CO unchanged.
 That request was subsequently withdrawn. The corrected release was submitted
 after the cause-specific fix, production and Android checks. November 2 01:52:33
-KST readback confirmed awaiting_review. Existing-contract/fee review is requested
+KST readback confirmed awaiting_review. That request was subsequently withdrawn
+for the operator-authorized Korea-only release. Existing-contract/fee review is requested
 in the revised package; no TFH acceptance or publication is claimed.
 
 The earlier request did not resolve source-sharing or jurisdiction questions.
@@ -67,9 +71,9 @@ November 1 financial tests used Samsung SM-S911N / Android 16 / World Money 4.0.
 Earlier emulator installation failures are historical; use the connected phone.
 Physical-iPhone acceptance has not been performed.
 
-The operator confirmed individual operation in Korea and wants the maximum
-lawful availability. The November 1 country review selected KR/AR/CO in the
-unverified Portal draft, with an independent readback. The source is public;
+The operator confirmed individual operation in Korea. The November 1 country
+review selected KR/AR/CO; on November 2 the operator narrowed the initial release
+to KR only. Independent Portal readback confirms that new scope. The source is public;
 no historical pre-deployment TFH sharing record was supplied.
 [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) records the reasoned activity classification,
 broader screening and limits; no universal legal-opinion attachment is required.
@@ -158,7 +162,7 @@ unverified on the actual host. Physical iPhone acceptance, first-use human compr
 independent security audit have not been established. See the acceptance table
 for the precise boundary.
 
-The current Portal draft countries are KR/AR/CO. US/CA/AU/JP were removed during
+The current Portal draft country is KR only. AR/CO were deferred by the operator. US/CA/AU/JP were removed during
 this review; GB/SG had already been removed. This is a store-scope decision, not
 a government approval or public-site geoblock. The selected-market assessment
 does not depend on receiving an FIU letter. Other markets
@@ -170,7 +174,7 @@ does not establish TFH acceptance or deployment readiness.
 
 ## November 1–2 territorial controls and contract-review intake
 
-The official interface now gates new vault/deposit requests on KR/AR/CO edge
+The official interface now gates new vault/deposit requests on KR-only edge
 country plus explicit per-wallet residence confirmation. No default residence is
 selected; Help permits correction. Unknown/unavailable location blocks new
 requests while preserving existing exits, renewals, claims and receipt recovery.
@@ -188,5 +192,5 @@ asset readback. Physical Android residence, reset and blocked-top-up checks pass
 Current-source native iOS checks and the follow-up with three additional
 foreground/Done cycles passed; one earlier non-reproduced native dismissal failure
 is retained in RELEASE.md. The Portal availability description was independently
-read back with KR/AR/CO preserved. The authorized submission is now awaiting_review; external
-contract/fee acceptance remains a question for TFH.
+read back with KR/AR/CO preserved. That request was later withdrawn for the Korea-only scope change; the current
+status is recorded above. External contract/fee acceptance remains a question for TFH.

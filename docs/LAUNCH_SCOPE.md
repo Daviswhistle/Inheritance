@@ -1,32 +1,36 @@
-# Launch scope — November 1, 2026
+# Launch scope — November 2, 2026
 
-## Current correction — keyboard cause reproduced and fixed
+## Current release — Korea-only preparation
 
-The prior November 2 request was withdrawn; a fresh Portal readback confirmed
-**unverified**, KR/AR/CO preserved. The original failure is now reproduced:
-Done's touch release blurred the recipient, then an extra click activated the
-interval label and focused its input. Runtime correction `aef7fe6` consumes that
-extra click. The same native reproduction failed before the fix and passed on
-`5209fd4`, including all five traced Done gestures and pending-deposit recovery.
-See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
-[REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
-Production deployment/readback and actual Android confirmation are complete.
-The corrected request was submitted after those checks; independent readback at
-**November 2 01:52:33 KST / November 1 16:52:33 UTC** confirmed
-**awaiting_review**, KR/AR/CO and developer allowlisting unchanged.
-Earlier awaiting_review and unexplained-pass acceptance statements are historical.
+The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
+KR/AR/CO submission was withdrawn for this scope change. Independent Portal
+readback confirms **unverified**, exactly **KR**, with only availability copy
+and supported countries changed. Developer allowlisting remains enabled.
+
+Runtime `afd5bab` limits new plans and deposits to KR residence and KR network
+location. Prior AR/CO residence records cannot authorize new requests. Existing
+balances, withdrawals, renewals, claims and submitted-transaction recovery remain
+accessible outside KR. Local eligibility (11 tests), WebKit (21 checks / 31
+layouts), translation, type, lint and build checks passed; independent commit
+review found no actionable defect. Deployment/device verification and the new
+submission receipt will be recorded below when completed.
+
+The keyboard cause and fix remain established by the before/after native trace:
+see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
+submission receipts below are historical and no longer the active request.
 
 ## Decision and actual state
 
-The intended first-store-release scope is **South Korea (KR), Argentina (AR), and Colombia (CO)**.
-The November 1 follow-up added CO to KR/AR. A separate Portal readback confirmed
-exactly **KR/AR/CO**, **unverified**, with only `supported_countries` changed.
-After verified regional-control deployment and device checks, the November 2
-resubmission was independently read back as **awaiting_review** at 00:23:28 KST
-(15:23:28 UTC November 1), with KR/AR/CO preserved. That request was withdrawn;
-the corrected release was resubmitted after its verified keyboard fix. The latest
-readback at November 2 01:52:33 KST is awaiting_review, still exactly KR/AR/CO.
-Runtime `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd` now enforces the official-interface controls below. November 2 production readback and actual Android residence/blocked-top-up checks passed. The Portal description was updated with availability; an independent readback confirmed description was the only changed field.
+The intended first-store-release scope is **South Korea (KR) only**. The operator
+explicitly narrowed the launch on November 2 to reduce the initial operational
+scope. Argentina and Colombia are deferred by that choice; this does not reverse
+the prior country assessment or declare the product prohibited there. The
+country-specific analysis below is retained for future decisions, not permission
+to re-enable those markets without authorization.
+
+The Portal draft is now unverified with exactly KR. Runtime `afd5bab` applies the
+same scope to new vault/deposit requests. Deployment and device receipts are
+tracked in [RELEASE.md](RELEASE.md). Earlier KR/AR/CO submissions are withdrawn.
 
 This completes the release-selection assessment of the candidates named below,
 replacing the earlier framework-only screening. It is a reasoned operational
@@ -76,7 +80,7 @@ The two factory `executeInheritance` functions are permissionless wrappers for
 claim finalization, not general-purpose transfers. Third-party strategy
 curator/governance powers are distinct from the operator's immutable vault powers.
 
-## Included markets: basis and limits
+## Selected and previously assessed markets: basis and limits
 
 ### South Korea — include
 
@@ -99,7 +103,7 @@ software-service interpretation is reasonable. No FIU exemption or project-
 specific government approval has been received. Reassess if keys, discretion,
 upgrade powers, general transfer routing or the investment arrangement change.
 
-### Argentina — include
+### Argentina — previously assessed; deferred by operator
 
 [CNV RG 1172/2026, Chapter III Articles 1–4](https://www.argentina.gob.ar/normativa/nacional/norma-431259/texto)
 provides exclusions for qualifying decentralized protocols and exclusively
@@ -118,7 +122,7 @@ This supports inclusion under the current no-control structure. No CNV ruling
 on Inheritance or endorsement of the underlying Morpho shares is claimed. A
 change in control, activity or financial-product classification reopens it.
 
-### Colombia — include
+### Colombia — previously assessed; deferred by operator
 
 [UIAF's official FAQ, section 5.1 footnote 16](https://uiaf.gov.co/sites/default/files/inline-images/Preguntas_Frecuentes_PSAV.pdf)
 identifies providers domiciled in Colombia as reporting subjects. Its
@@ -285,16 +289,17 @@ route could eliminate several financial-product questions, but would not remove
 AU's payment-facility issue or every transfer/marketing rule. Disabling the
 operator relay would address a different subset and would change the service
 promise. Neither change is a cosmetic disclaimer, and neither was made during
-this review. Keeping the approved product and selecting KR/AR/CO is the current
-release choice; broader access needs a separately evaluated product or licensed
-route, not repeated speculative searches or a universal government letter.
+this review. Keeping the approved product and selecting KR only is the current release
+choice. Re-enabling previously assessed AR/CO requires a new operator decision;
+other broader access needs a separately evaluated product or licensed route,
+not repeated speculative searches or a universal government letter.
 
 ## Store selection, access and remaining release work
 
 The Portal setting controls store availability. The official interface now
 checks Cloudflare's request-country metadata plus a separately confirmed,
 wallet-specific residence choice before requesting a new vault or deposit.
-Both must be in KR/AR/CO. Unknown locations, outages and unsupported countries
+Both must be KR. Stored AR/CO confirmations are rejected for new requests. Unknown locations, outages and unsupported countries
 fail closed for new requests. Each new wallet request checks the edge again;
 a display snapshot never authorizes it. Residence is not preselected, and can
 be changed from Help. The endpoint stores neither IPs nor eligibility records;
