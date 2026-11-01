@@ -126,6 +126,24 @@ current facts, rather than an assumption that all yield is exempt. Reopen for a
 Colombian establishment, operator asset control, new investment obligations, or a
 material token-classification change. No SFC endorsement is claimed.
 
+**World host and privacy cross-check:** SIC confirmed the shutdown of World
+Foundation/TFH's sensitive-data operation in Resolution 45710 (June 18, 2026).
+Its [July 8 statement](https://sedeelectronica.sic.gov.co/international-relations/sic-confirms-immediate-and-permanent-shutdown-sensitive-data-processing-operation-carried-out-world-foundation-and-tools)
+was unavailable directly (HTTP 403); the [attributed reproduction](https://provimarcas.com/en/the-sic-confirms-the-immediate-and-permanent-shutdown-of-the-sensitive-data-processing-operation-carried-out-by-world-foundation-and-tools-for-humanity-corporation-in-colombian-territory/)
+describes the Orb/World ID biometric operation, erasure obligations, and Colombian
+privacy law's application to foreign processors. This is not merely an Orb
+hardware restriction. Conversely, World’s [current wallet help](https://support.world.org/hc/en-us/articles/44413326159635-What-is-a-Virtual-Account)
+explicitly lists Colombian wallet funding/withdrawal support through Ripio.
+That is provider availability information, not proof of regulatory clearance.
+Inheritance's current login uses `MiniKit.walletAuth`; it neither requests World
+ID verification nor collects iris data. **Inference:** the available evidence
+does not establish a prohibition on this independent, non-biometric mini app,
+so CO remains selected. No local-device availability test or full appellate
+decision review is claimed. Do not require biometric enrollment for this release;
+reassess if the host makes it necessary or restricts Colombian Mini Apps.
+Ordinary personal-data obligations still apply: UIAF's domicile boundary is not
+a privacy-law exemption, and this review does not certify TFH's compliance.
+
 ## Close candidates: completed assessment, not selected for this product
 
 ### Australia — do not add; payment-facility issue remains material
