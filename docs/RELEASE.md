@@ -13,8 +13,42 @@ extra click. The same native reproduction failed before the fix and passed on
 `5209fd4`, including all five traced Done gestures and pending-deposit recovery.
 See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
 [REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
-Deployment/readback and actual Android confirmation precede resubmission.
+Production deployment/readback and actual Android confirmation are complete.
+The Portal remains unverified until the corrected request is resubmitted.
 Earlier awaiting_review and unexplained-pass acceptance statements are historical.
+
+## November 2 KST — corrected release deployed and checked
+
+Production source: `c7da2501240cba4adccdb235f8609730762d9afe` (runtime fix
+`aef7fe6`, test-only alignment `5209fd4`, reviewer/evidence documentation).
+[Deployment 41327125672](https://github.com/Daviswhistle/Inheritance/actions/runs/41327125672)
+and [CI 41327125634](https://github.com/Daviswhistle/Inheritance/actions/runs/41327125634)
+passed. Production HTML and all six imported JS/CSS assets match
+https://1f8e6827.inheritance.pages.dev. All three legal documents return 200;
+the notification/automation Worker is ready, funded, fresh and not halted.
+Worker version: `c1f273f2-c63d-466d-8c11-51fb3297e073`.
+
+The deployed app and native-test source are identical to validated `5209fd4`;
+only documentation changed after its passing native run. Its raw test summary
+reports two passed, zero failed and zero skipped on iPhone 16 Pro / iOS 18.5.
+The before/failure, label-overlap and restored-action screenshots were inspected.
+
+After a full process restart, actual World Money 4.0.4602 on Samsung SM-N986N /
+Android 13 passed numeric Done (0.01 draft only), background-return draft
+retention and recipient Done after refocus. The Android host closes its keyboard
+on backgrounding while retaining DOM focus; refocusing and Done then leaves no
+input focused, closes the keyboard and restores review/navigation. Recipient
+and interval remained unchanged. The test draft was discarded by closing the
+Mini App and restarting World App. No wallet transaction, notification or external
+message was sent. Detailed phone evidence is private; see
+[WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md).
+
+The rewritten [reviewer walkthrough](REVIEW_NOTES.md) leads with the design/UX
+improvements and concrete checks. Contract/source/fee information and native-host
+scope are stated once in their relevant sections. The verified
+[keyboard diagnosis](KEYBOARD_DISMISSAL.md) replaces the earlier unexplained-pass
+readiness judgment. Portal scope remains KR/AR/CO; submission receipt follows
+when the authorized request is sent.
 
 ## November 2 KST — corrected source validation
 

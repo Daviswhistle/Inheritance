@@ -10,7 +10,8 @@ extra click. The same native reproduction failed before the fix and passed on
 `5209fd4`, including all five traced Done gestures and pending-deposit recovery.
 See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
 [REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
-Deployment/readback and actual Android confirmation precede resubmission.
+Production deployment/readback and actual Android confirmation are complete.
+The Portal remains unverified until the corrected request is resubmitted.
 Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Decision and actual state

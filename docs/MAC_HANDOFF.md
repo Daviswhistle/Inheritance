@@ -25,7 +25,7 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
-## Current task — verified keyboard correction, preparing deployment
+## Current task — corrected release verified, preparing resubmission
 
 The prior November 2 request was withdrawn; a fresh Portal readback confirmed
 **unverified**, KR/AR/CO preserved. The original failure is now reproduced:
@@ -35,17 +35,18 @@ extra click. The same native reproduction failed before the fix and passed on
 `5209fd4`, including all five traced Done gestures and pending-deposit recovery.
 See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
 [REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
-Deployment/readback and actual Android confirmation precede resubmission.
+Production deployment/readback and actual Android confirmation are complete.
+The Portal remains unverified until the corrected request is resubmitted.
 Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Current verified checkpoint
 
-- Runtime source: `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd`, descendant of requested baseline `91944cc`.
+- Runtime source: `c7da2501240cba4adccdb235f8609730762d9afe`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
   deployment, native-test and independent-review receipts.
-- Production: https://inheritance.pages.dev ; immutable: https://44791c55.inheritance.pages.dev.
-  Deployment [41318884309](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884309): passed for this runtime; Pages and notification Worker deployed successfully.
-  CI [41318884336](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884336): passed, all three jobs successful.
+- Production: https://inheritance.pages.dev ; immutable: https://1f8e6827.inheritance.pages.dev.
+  Deployment [41327125672](https://github.com/Daviswhistle/Inheritance/actions/runs/41327125672): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [41327125634](https://github.com/Daviswhistle/Inheritance/actions/runs/41327125634): passed, all three jobs successful.
   Readback: November 2 KST readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
 - Financial UI separates dated lending/reward rates, live strategy fee, service
   fee and conditional WLD network costs. Review shows per-token deposit amounts

@@ -12,6 +12,27 @@ The October 27 real-money test used runtime
 `e4be10c5225cd05504c3cb3f02082f16b1b4a623`. Current deployed source and exact
 CI/native-test results are in [RELEASE.md](RELEASE.md).
 
+## Physical device — November 2, 2026: keyboard correction
+
+Runtime `c7da250` / immutable https://1f8e6827.inheritance.pages.dev was checked
+after a full World App process restart on Samsung SM-N986N / Android 13 /
+World Money 4.0.4602, Korean UI. The blank WLD setup field accepted a 0.01 draft;
+**입력 완료** closed the native keyboard, preserved the value and restored the
+review action and bottom tabs. No approval screen was opened.
+
+Backgrounding with the recipient field focused preserved the draft and the
+recipient. This Android host closed the native keyboard on backgrounding while
+retaining input focus. After refocusing the recipient, **입력 완료** closed the
+keyboard, left no input focused, restored the controls and preserved the
+recipient/30-day interval. Android's input-method state independently reported
+`mInputShown=false` after both dismissals. The temporary draft was discarded by
+closing the Mini App and restarting World App; no transaction or notification
+was sent. One UI-tree capture returned a transient null root; its successful
+retry and input-method readback supplied the final evidence.
+
+The original iOS click-retargeting failure and native before/after regression
+are documented in [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md).
+
 ## Physical device — November 2, 2026: regional access
 
 Runtime `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd` was deployed at
