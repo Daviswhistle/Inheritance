@@ -533,8 +533,10 @@ export default function App() {
    */
   const [chainNow, setChainNow] = useState<number>(0);
   const [vaultLastPing, setVaultLastPing] = useState<number>(0);
-  const [vaultCreatedBlock, setVaultCreatedBlock] = useState<number | null>(null);
-  const [vaultCreatedTime, setVaultCreatedTime] = useState<number | null>(null);
+  const [vaultCreation, setVaultCreation] = useState<{ vault: string; block: number; time: number } | null>(null);
+  const vaultCreationRequest = useRef<string | null>(null);
+  const vaultCreatedBlock = vaultCreation?.vault === vault ? vaultCreation.block : null;
+  const vaultCreatedTime = vaultCreation?.vault === vault ? vaultCreation.time : null;
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
 
   /**
@@ -899,7 +901,7 @@ export default function App() {
    */
   const safeGetLogs = async (
     p: ethers.AbstractProvider,
-    params: { address?: string; topics?: (string | null | string[])[]; toBlock?: number | string; fromBlock?: number },
+    params: { address?: string | string[]; topics?: (string | null | string[])[]; toBlock?: number | string; fromBlock?: number },
     onIncomplete?: () => void,
   ): Promise<ethers.Log[]> => {
     const head = await p.getBlockNumber();
@@ -1956,61 +1958,37 @@ export default function App() {
     };
   }, [vaultCtr, refreshVaultDetails]);
 
-  // 금고가 생성된 블록/시각을 이벤트 로그에서 역추적한다 (표시 전용, 실패해도 무방)
-  const loadVaultCreationMeta = useCallback(async () => {
-    if (!vault || !(signer || provider)) return;
+  // Creation date is optional metadata. Read it only when account details open,
+  // and never let a late response or RPC error overwrite another vault or action.
+  const loadVaultCreationMeta = async () => {
+    if (!vault || !vaultOwner || !vaultFactory || !provider || vaultCreatedBlock !== null) return;
+    const scope = balanceScope;
+    if (vaultCreationRequest.current === scope) return;
+    vaultCreationRequest.current = scope;
     try {
-      const p = (signer?.provider as ethers.AbstractProvider | null) ?? provider;
-      if (!p) return;
-      const sig = ethers.id("VaultCreated(address,address,address,uint256)");
       const iface = new ethers.Interface(FACTORY_ABI);
-      const tryQuery = async (topics: (string | null | string[])[]) => {
-        const logs = await safeGetLogs(p, {
-          address: vaultFactory,
-          fromBlock: yieldRouteFor(vaultFactory) ? (yieldRouteFor(vaultFactory)!.block ?? undefined) : vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase() ? (LEGACY_FACTORY_DEPLOY_BLOCK ?? undefined) : (FACTORY_DEPLOY_BLOCK ?? undefined),
-          topics,
-          toBlock: "latest",
-        });
-        for (const lg of logs) {
-          try {
-            const parsed = iface.parseLog({ topics: lg.topics, data: lg.data });
-            const parsedVault = String(parsed?.args?.[2] ?? "");
-            if (parsedVault && parsedVault.toLowerCase() === vault.toLowerCase()) {
-              setVaultCreatedBlock(lg.blockNumber);
-              const blk = await p.getBlock(lg.blockNumber);
-              setVaultCreatedTime(Number(blk?.timestamp || 0));
-              return true;
-            }
-          } catch {
-            // Skip malformed logs.
-            void 0;
-          }
+      const logs = await safeGetLogs(provider, {
+        address: vaultFactory,
+        topics: [ethers.id("VaultCreated(address,address,address,uint256)"),
+          ethers.zeroPadValue(ethers.getAddress(vaultOwner), 32)],
+        fromBlock: selectedYieldRoute?.block ?? (vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase()
+          ? LEGACY_FACTORY_DEPLOY_BLOCK : FACTORY_DEPLOY_BLOCK) ?? undefined,
+      });
+      for (const log of logs) {
+        const parsed = iface.parseLog({ topics: log.topics, data: log.data });
+        if (String(parsed?.args?.[2] ?? "").toLowerCase() !== vault.toLowerCase()) continue;
+        const block = await provider.getBlock(log.blockNumber);
+        if (scope === balanceScopeRef.current) {
+          setVaultCreation({ vault, block: log.blockNumber, time: Number(block?.timestamp ?? 0) });
         }
-        return false;
-      };
-
-      // 1) filter by owner
-      if (vaultOwner) {
-        const ownerTopic = ethers.zeroPadValue(ethers.getAddress(vaultOwner), 32);
-        if (await tryQuery([sig, ownerTopic])) return;
+        break;
       }
-      // 2) filter by heir
-      if (vaultHeir) {
-        const heirTopic = ethers.zeroPadValue(ethers.getAddress(vaultHeir), 32);
-        if (await tryQuery([sig, null, heirTopic])) return;
-      }
-      // 3) try with current account
-      if (account) {
-        const accTopic = ethers.zeroPadValue(ethers.getAddress(account), 32);
-        if (await tryQuery([sig, accTopic])) return;
-        if (await tryQuery([sig, null, accTopic])) return;
-      }
-    } catch (e: unknown) {
-      // Meta query failure is non-critical
-      setStatus((s) => s || ("Meta error: " + errorText(e)));
+    } catch {
+      // Keep the date unavailable; balances and transaction status are independent.
+    } finally {
+      if (vaultCreationRequest.current === scope) vaultCreationRequest.current = null;
     }
-  }, [vault, signer, provider, vaultOwner, vaultHeir, account, vaultFactory]);
-  useEffect(() => { if (vault) loadVaultCreationMeta(); }, [vault, loadVaultCreationMeta]);
+  };
 
   // ---- balances & timer
   const refreshBalances = useCallback(async () => {
@@ -3310,12 +3288,14 @@ export default function App() {
           }
         } catch { indexIncomplete = true; /* Recent events and shared links remain available. */ }
       }
-      const logs = (await Promise.all(sources.map(source => safeGetLogs(p, {
-        address: source.address,
+      // One address filter covers primary and legacy routes. Separate parallel
+      // scans multiply identical block-range work and exhaust public RPC limits.
+      const logs = await safeGetLogs(p, {
+        address: [...new Set(sources.map(source => source.address))],
         topics: [sig, null, heirTopic],
-        fromBlock: source.block ?? undefined,
+        fromBlock: Math.min(...sources.map(source => source.block ?? FACTORY_DEPLOY_BLOCK ?? 0)),
         toBlock: "latest",
-      }, () => { indexIncomplete = true; })))).flat();
+      }, () => { indexIncomplete = true; });
       const iface = new ethers.Interface(FACTORY_ABI);
       const candidates = new Set(indexed.map(v => ethers.getAddress(v)));
       for (const lg of logs) {
@@ -3334,7 +3314,12 @@ export default function App() {
           const beneficiary = position.claimedAt > 0n ? position.recipient : position.heir;
           return beneficiary.toLowerCase() === account.toLowerCase() && position.owner.toLowerCase() !== account.toLowerCase()
             ? candidate : null;
-        } catch { indexIncomplete = true; return null; }
+        } catch (error) {
+          // A confirmed foreign factory is not a failed read of a supported plan.
+          // Keep every other read/identity failure visible as an incomplete scan.
+          if (!(error instanceof Error && error.message === "Unsupported inheritance source")) indexIncomplete = true;
+          return null;
+        }
       }))).filter((v): v is string => v !== null);
       rememberInheritances(account, vaults);
       setHeirFoundVaults(vaults);
@@ -4670,7 +4655,7 @@ export default function App() {
                   </div></details>
                 </>
               )}
-              <details className="money-metadata"><summary>{t("assets.metadata")}</summary><div className="text-sm grid gap-1">
+              <details className="money-metadata" key={balanceScope} onToggle={event => { if (event.currentTarget.open) void loadVaultCreationMeta(); }}><summary>{t("assets.metadata")}</summary><div className="text-sm grid gap-1">
                 <div className="flex items-center gap-2">
                   <div>{t("assets.ownerLabel")}</div>
                   <div>

@@ -25,6 +25,7 @@ const rpc = `http://127.0.0.1:${await freePort()}`;
 const anvil = spawn("anvil", ["--port", new URL(rpc).port, "--chain-id", "480",
   "--block-time", "1", "--mixed-mining", "--silent"], { stdio: "ignore" });
 let provider, proxy, vite, page, failLogs = false, failures = 0, logFailures = 0, passed = 0;
+const eventFilters = [];
 const failingVaults = new Set();
 const pass = name => { passed++; console.log("  PASS  " + name); };
 try {
@@ -38,11 +39,13 @@ try {
   }
   const token = await deploy("MockERC20", ["Worldcoin", "WLD"]);
   const factory = await deploy("InheritanceVaultWLDFactoryOnePerOwner", [await token.getAddress()]);
+  const legacy = await deploy("InheritanceVaultWLDFactoryOnePerOwner", [await token.getAddress()]);
   const vaults = [];
   for (const index of [0, 2]) {
     const signer = await provider.getSigner(index);
-    await (await factory.connect(signer).createVault(ACCOUNTS.a1.a, 30 * 86400)).wait();
-    vaults.push(await factory.vaultOf(await signer.getAddress()));
+    const source = index === 0 ? factory : legacy;
+    await (await source.connect(signer).createVault(ACCOUNTS.a1.a, 30 * 86400)).wait();
+    vaults.push(await source.vaultOf(await signer.getAddress()));
   }
   const foreign = await deploy("InheritanceVaultWLDFactoryOnePerOwner", [await token.getAddress()]);
   await (await foreign.createVault(ACCOUNTS.a1.a, 30 * 86400)).wait();
@@ -58,6 +61,7 @@ try {
       let raw = ""; for await (const chunk of request) raw += chunk;
       const body = JSON.parse(raw);
       const result = await Promise.all((Array.isArray(body) ? body : [body]).map(async call => {
+        if (call.method === "eth_getLogs") eventFilters.push(call.params[0]);
         const identityFailure = call.method === "eth_call" && call.params[0].data === "0x91f2ebb8"
           && failingVaults.has(call.params[0].to.toLowerCase());
         const logFailure = failLogs && call.method === "eth_getLogs";
@@ -72,8 +76,8 @@ try {
   });
   await new Promise(resolve => proxy.listen(0, "127.0.0.1", resolve));
   const notify = "https://discovery-test.example";
-  const watchers = [...vaults, foreignVault].map(vaultAddress => ({ vaultAddress, heirAddress: ACCOUNTS.a1.a }));
-  const preload = `const realFetch = window.fetch.bind(window);
+  const watchers = [vaults[0], foreignVault].map(vaultAddress => ({ vaultAddress, heirAddress: ACCOUNTS.a1.a }));
+  const preload = `localStorage.setItem("inheritance:locale", "en"); const realFetch = window.fetch.bind(window);
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' ? input : input.url, location.origin);
       if (url.origin === ${JSON.stringify(notify)}) return Response.json(url.pathname === '/api/notifications'
@@ -84,7 +88,7 @@ try {
   Object.assign(process.env, {
     VITE_FACTORY_ADDRESS: await factory.getAddress(), VITE_WLD_ADDRESS: await token.getAddress(),
     VITE_RPC: `http://127.0.0.1:${proxy.address().port}`, VITE_FACTORY_DEPLOY_BLOCK: "1",
-    VITE_LEGACY_FACTORY_ADDRESS: "", VITE_LEGACY_FACTORY_DEPLOY_BLOCK: "",
+    VITE_LEGACY_FACTORY_ADDRESS: await legacy.getAddress(), VITE_LEGACY_FACTORY_DEPLOY_BLOCK: "1",
     VITE_NOTIFY_BACKEND_URL: notify, VITE_REQUIRE_VERIFY: "false",
   });
   vite = await createVite({ root: process.cwd() + "/app", configFile: process.cwd() + "/app/vite.config.e2e.ts", logLevel: "error", server: { host: "127.0.0.1", port: await freePort() } });
@@ -92,37 +96,65 @@ try {
   page = await launch({ pk: ACCOUNTS.a1.pk, url: vite.resolvedUrls.local[0], preload }); await page.ev(HELPERS);
   await page.ev("return __q.click('Agree and sign in')");
   await until(() => failures > 0);
-  await page.ev("return __q.tab('Help')");
-  await until(() => page.ev("return __q.btns().some(b => b.t === 'Check again' && !b.d)"));
-  let text = await page.ev("return document.body.innerText");
-  assert.match(text, /heir of 1 vault/); assert.match(text, /incomplete/i);
-  pass("Partial discovery keeps a verified vault and exposes the failed candidate read");
-  failingVaults.add(vaults[0].toLowerCase()); await sleep(500);
-  await page.ev("return __q.click('Check again')");
-  await until(() => page.ev("return __q.btns().some(b => b.t === 'Check again' && !b.d)"));
-  text = await page.ev("return document.body.innerText");
-  assert.match(text, /incomplete/i); assert.doesNotMatch(text, /No registered or recent vaults found|Checked registered vaults/);
   await page.ev("return __q.tab('Plan')");
-  text = await page.ev("return document.body.innerText");
-  assert.match(text, /incomplete|Some vaults could not be checked/i); assert.doesNotMatch(text, /No vaults found in this check/);
-  await page.ev("return __q.tab('Help')");
+  const count = () => page.ev("return document.querySelectorAll('.heir-plans [data-vault]').length");
+  const incomplete = () => page.ev("return !!document.querySelector('.heir-plans .plan-inline-error')");
+  const settled = () => page.ev("return [...document.querySelectorAll('.heir-plans button')].some(b => b.textContent === 'Refresh' && !b.disabled)");
+  const refresh = async () => {
+    await until(settled);
+    await page.ev("[...document.querySelectorAll('.heir-plans button')].find(b => b.textContent === 'Refresh').click()");
+    await sleep(150);
+  };
+  await until(async () => await settled() && await count() === 1 && await incomplete());
+  pass("Partial discovery keeps a verified vault and exposes the failed candidate read");
+  failingVaults.add(vaults[0].toLowerCase());
+  await refresh();
+  await until(async () => await settled() && await count() === 0 && await incomplete());
+  assert.doesNotMatch(await page.ev("return document.body.innerText"), /No vaults found in this check/);
   pass("An unavailable check is never reported as a successful empty search");
-  failingVaults.clear(); await sleep(500);
-  await page.ev("return __q.click('Check again')");
-  await until(() => page.ev("return /heir of 2 vaults/.test(document.body.innerText)"));
-  text = await page.ev("return document.body.innerText");
-  assert.match(text, /Checked registered vaults/); assert.doesNotMatch(text, /incomplete/i);
-  pass("Retry recovers both genuine registered vaults without signing in again");
-  assert.doesNotMatch(text, /heir of 3 vaults/);
+  failingVaults.clear();
+  await refresh();
+  await until(async () => await settled() && await count() === 2 && !await incomplete());
+  pass("Retry recovers primary indexed and legacy event-only vaults without signing in again");
+  const addresses = [await factory.getAddress(), await legacy.getAddress()].map(x => x.toLowerCase()).sort();
+  assert.ok(eventFilters.length > 0);
+  assert.ok(eventFilters.every(filter => Array.isArray(filter.address)
+    && JSON.stringify(filter.address.map(x => x.toLowerCase()).sort()) === JSON.stringify(addresses)));
+  pass("Discovery combines primary and legacy factories into one event scan");
+  const visibleVaults = await page.ev("return [...document.querySelectorAll('.heir-plans [data-vault]')].map(e => e.dataset.vault.toLowerCase()).sort()");
+  assert.deepEqual(visibleVaults, vaults.map(v => v.toLowerCase()).sort());
   pass("A confirmed foreign factory is excluded without a false incomplete warning");
-  failLogs = true; await sleep(500); await page.ev("return __q.click('Check again')");
-  await until(() => page.ev("return __q.btns().some(b => b.t === 'Check again' && !b.d)"));
-  text = await page.ev("return document.body.innerText");
-  assert.ok(logFailures > 0); assert.match(text, /heir of 2 vaults/); assert.match(text, /incomplete/i);
-  pass("Failed recent-event chunks remain explicit while verified indexed vaults stay visible");
-  failLogs = false; await sleep(500); await page.ev("return __q.click('Check again')");
-  await until(() => page.ev("return /Checked registered vaults/.test(document.body.innerText)"));
-  assert.doesNotMatch(await page.ev("return document.body.innerText"), /incomplete/i);
+  failLogs = true;
+  await refresh();
+  await until(async () => logFailures > 0 && await settled() && await count() === 2 && await incomplete());
+  pass("Failed recent-event chunks remain explicit while verified remembered vaults stay visible");
+  failLogs = false;
+  await refresh();
+  await until(async () => await settled() && await count() === 2 && !await incomplete());
   pass("Restored event reads clear the incomplete warning on retry");
+  await page.close();
+  eventFilters.length = 0;
+  page = await launch({ pk: ACCOUNTS.a0.pk, url: vite.resolvedUrls.local[0], preload });
+  await page.ev(HELPERS);
+  assert.match(await page.ev("return __q.click('Agree and sign in')"), /clicked/);
+  await until(() => page.ev("return document.body.innerText.includes('Your plan') && !!document.querySelector('.account-row')"));
+  await page.ev("return __q.tab('Assets')");
+  await until(() => page.ev("return !!document.querySelector('.money-metadata')"));
+  assert.ok(eventFilters.every(filter => !filter.topics[1]));
+  pass("Signing in and viewing assets do not start owner creation-date scans");
+  failLogs = true;
+  const beforeFailures = logFailures;
+  await page.ev("document.querySelector('.money-metadata').open = true");
+  await until(() => logFailures > beforeFailures);
+  await sleep(500);
+  assert.doesNotMatch(await page.ev("return document.body.innerText"), /Meta error:/);
+  assert.equal(await page.ev("return !!document.querySelector('.money-metadata a[href*=\"/block/\"]')"), false);
+  pass("Optional creation-date read failure does not overwrite the global action status");
+  failLogs = false;
+  await page.ev("document.querySelector('.money-metadata').open = false");
+  await sleep(100);
+  await page.ev("document.querySelector('.money-metadata').open = true");
+  await until(() => page.ev("return !!document.querySelector('.money-metadata a[href*=\"/block/\"]')"));
+  pass("Reopening account details retries and restores the verified creation date");
   console.log(`\n  Passed ${passed} / failed 0`);
-} finally { await page?.close(); await vite?.close(); await new Promise(resolve => proxy ? proxy.close(resolve) : resolve()); provider?.destroy(); anvil.kill("SIGTERM"); }
+} catch (error) { console.error("Browser state:", await page?.ev("return document.body.innerText")); console.error("Event filters:", eventFilters); throw error; } finally { await page?.close(); await vite?.close(); await new Promise(resolve => proxy ? proxy.close(resolve) : resolve()); provider?.destroy(); anvil.kill("SIGTERM"); }
