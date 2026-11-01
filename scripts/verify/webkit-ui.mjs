@@ -61,16 +61,16 @@ async function layout(page, label, width) {
   assert.deepEqual(data.small, [], label + ' touch targets');
   assert.ok(data.actionVisible, label + ' primary action');
 }
-async function open(url) {
+async function open(url, residence = 'KR') {
   const context = await browser.newContext({ ...devices['iPhone 13'], viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
-  await context.addInitScript(({ owner, heir }) => {
+  await context.addInitScript(({ owner, heir, residence }) => {
     // A history excursion to about:blank has an opaque origin in WebKit.
     if (location.protocol !== 'http:') return;
     if (!localStorage.getItem('inheritance:locale')) localStorage.setItem('inheritance:locale', 'en');
     const address = new URL(location.href).searchParams.get('account') === 'heir' ? heir : owner;
     localStorage.setItem(`inheritance:residence:${address.toLowerCase()}`,
-      JSON.stringify({ version: 1, account: address.toLowerCase(), country: 'KR', confirmed: true }));
-  }, { owner: config.owner, heir: config.heir });
+      JSON.stringify({ version: 1, account: address.toLowerCase(), country: residence, confirmed: true }));
+  }, { owner: config.owner, heir: config.heir, residence });
   const page = await context.newPage();
   page.on('pageerror', error => {
     // WebKit also surfaces failed offline fetches as access-control page errors.
@@ -108,6 +108,25 @@ try {
   browser = await webkit.launch({ headless: true });
   evidence.browser = browser.version();
   provider = new JsonRpcProvider(origin + '/__host/rpc', undefined, { cacheTimeout: -1, batchMaxCount: 1 });
+  for (const residence of ['AR', 'CO']) {
+    const scopePage = await open(origin + '/?platform=ios&approval=auto', residence);
+    try {
+      await tab(scopePage, 2); await tap(scopePage, 'Agree and sign in');
+      const selector = scopePage.locator('#plan-residence-country');
+      await selector.waitFor();
+      assert.equal(await selector.inputValue(), '', 'an old residence must not silently become Korea');
+      assert.deepEqual(await selector.locator('option').evaluateAll(options => options.map(option => option.value)), ['', 'KR', 'other']);
+      assert.equal(await scopePage.locator('#plan-wld').isVisible(), false);
+      await selector.selectOption('other');
+      assert.equal(await scopePage.getByRole('button', { name: 'Confirm residence', exact: true }).isDisabled(), true);
+      await selector.selectOption('KR');
+      await scopePage.locator('#plan-residence-attestation').check();
+      await tap(scopePage, 'Confirm residence');
+      await scopePage.locator('#plan-wld').waitFor();
+      assert.equal(await scopePage.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 0);
+      pass(`Saved ${residence} residence blocks new setup; only explicit KR confirmation unlocks the form without a transaction`);
+    } finally { await scopePage.context().close(); }
+  }
   const page = await open(origin + '/?platform=ios&approval=auto');
   for (const lang of ['en', 'ko']) {
     await language(page, lang);
@@ -565,7 +584,7 @@ try {
     ['function costBasis() view returns(uint256)'], provider).costBasis()));
   assert.deepEqual(await amounts(), [4n * 10n ** 18n, 5_000001n]);
   const recoveryLocation = await fetch(origin + '/__host/control', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'eligibility-country', country: 'US' }) });
+    body: JSON.stringify({ action: 'eligibility-country', country: 'CO' }) });
   assert.equal(recoveryLocation.status, 200);
   interruptedDepositReload = true;
   await heir.reload();
@@ -583,7 +602,7 @@ try {
   assert.deepEqual(await amounts(), [4n * 10n ** 18n, 5_000001n]);
   assert.equal(submittedCommands, 1);
   assert.equal(await heir.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 0);
-  pass('Reload after an approved deposit but before its SDK callback recovers both exact deposits from the receipt without a second transaction');
+  pass('Reload from removed CO after an approved deposit recovers both exact deposits from the receipt without a second transaction');
   // Reach the real empty-plan dialog without modifying React state or contract storage.
   const exit = await page.evaluate(async ({ factory, owner }) => {
     const { sendWorldChainTx } = await import('/src/minikit.ts');

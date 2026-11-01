@@ -9,8 +9,6 @@ export type PlanAccessLocation = EdgeEligibility | { state: "checking" };
 
 const countryKeys: Record<SupportedResidenceCountry, LocaleKeyType> = {
   KR: "plan.access.country.kr",
-  AR: "plan.access.country.ar",
-  CO: "plan.access.country.co",
 };
 
 export function NewPlanAccessNotice({

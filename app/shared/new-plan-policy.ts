@@ -1,4 +1,4 @@
-export const SUPPORTED_RESIDENCE_COUNTRIES = ["KR", "AR", "CO"] as const;
+export const SUPPORTED_RESIDENCE_COUNTRIES = ["KR"] as const;
 
 export type SupportedResidenceCountry = typeof SUPPORTED_RESIDENCE_COUNTRIES[number];
 export type EdgeEligibility =

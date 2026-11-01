@@ -35,11 +35,9 @@ class MemoryStorage {
 
 const responseFor = location => Response.json({ status: "success", location });
 
-test("Pages eligibility supports only KR, AR and CO and disables caching", async () => {
-  for (const country of ["KR", "AR", "CO"]) {
-    assert.deepEqual(await endpoint(country), { state: "supported", country });
-  }
-  for (const country of ["US", "GB", "SG"]) {
+test("Pages eligibility supports only KR and disables caching", async () => {
+  assert.deepEqual(await endpoint("KR"), { state: "supported", country: "KR" });
+  for (const country of ["AR", "CO", "US", "GB", "SG"]) {
     assert.deepEqual(await endpoint(country), { state: "unsupported", country });
   }
 });
@@ -82,7 +80,7 @@ test("each client authorization performs a fresh no-store request; a prior allow
 
 test("network errors and malformed replies prevent new sends", async () => {
   const storage = new MemoryStorage();
-  saveResidenceAttestation(owner, "AR", storage);
+  saveResidenceAttestation(owner, "KR", storage);
   const failed = await checkNewPlanAccess(owner, async () => { throw new Error("offline"); }, storage);
   assert.equal(failed.allowed, false);
   assert.equal(failed.reason, "location-unavailable");
@@ -93,7 +91,7 @@ test("network errors and malformed replies prevent new sends", async () => {
 
 test("missing, mismatched or old-version residence confirmation is denied", async () => {
   const storage = new MemoryStorage();
-  const fetcher = async () => responseFor({ state: "supported", country: "AR" });
+  const fetcher = async () => responseFor({ state: "supported", country: "KR" });
   assert.equal((await checkNewPlanAccess(owner, fetcher, storage)).reason, "residence-unconfirmed");
   assert.equal(saveResidenceAttestation(owner, "KR", storage), true);
   assert.equal(readResidenceAttestation(other, storage), null);
@@ -103,18 +101,38 @@ test("missing, mismatched or old-version residence confirmation is denied", asyn
   assert.equal((await checkNewPlanAccess(owner, fetcher, storage)).reason, "residence-unconfirmed");
 });
 
-test("network location and user-declared residence are independent checks", async () => {
+test("legacy AR and CO confirmations cannot authorize new deposits from Korea", async () => {
+  for (const country of ["AR", "CO"]) {
+    const storage = new MemoryStorage();
+    storage.setItem(`inheritance:residence:${owner}`, JSON.stringify({
+      version: RESIDENCE_ATTESTATION_VERSION, account: owner, country, confirmed: true,
+    }));
+    assert.equal(readResidenceAttestation(owner, storage), null);
+    const result = await checkNewPlanAccess(owner,
+      async () => responseFor({ state: "supported", country: "KR" }), storage);
+    assert.equal(result.allowed, false);
+    assert.equal(result.reason, "residence-unconfirmed");
+    assert.equal(saveResidenceAttestation(owner, country, storage), false);
+  }
+});
+
+test("Korean residence cannot authorize new requests from a removed network country", async () => {
   const storage = new MemoryStorage();
   saveResidenceAttestation(owner, "KR", storage);
-  const result = await checkNewPlanAccess(owner,
-    async () => responseFor({ state: "supported", country: "AR" }), storage);
-  assert.equal(result.allowed, true);
-  if (result.allowed) assert.equal(result.residence, "KR");
+  for (const country of ["AR", "CO"]) {
+    const result = await checkNewPlanAccess(owner,
+      async () => responseFor({ state: "unsupported", country }), storage);
+    assert.equal(result.allowed, false);
+    assert.equal(result.reason, "unsupported-location");
+    // A stale pre-restriction server reply must not reopen the client gate.
+    assert.deepEqual(await fetchEdgeEligibility(async () => responseFor({ state: "supported", country })),
+      { state: "unavailable" });
+  }
 });
 
 test("unavailable local storage cannot record an attestation", () => {
   const broken = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
-  assert.equal(saveResidenceAttestation(owner, "CO", broken), false);
+  assert.equal(saveResidenceAttestation(owner, "KR", broken), false);
   assert.equal(readResidenceAttestation(owner, broken), null);
 });
 
@@ -128,8 +146,8 @@ test("a hanging availability request times out to a retryable unavailable state"
 test("changing residence removes the prior confirmation without affecting another wallet", () => {
   const storage = new MemoryStorage();
   saveResidenceAttestation(owner, "KR", storage);
-  saveResidenceAttestation(other, "CO", storage);
+  saveResidenceAttestation(other, "KR", storage);
   assert.equal(clearResidenceAttestation(owner, storage), true);
   assert.equal(readResidenceAttestation(owner, storage), null);
-  assert.equal(readResidenceAttestation(other, storage), "CO");
+  assert.equal(readResidenceAttestation(other, storage), "KR");
 });
