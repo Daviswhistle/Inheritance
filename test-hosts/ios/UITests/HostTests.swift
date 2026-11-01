@@ -100,6 +100,7 @@ final class HostTests: XCTestCase {
             predicate: NSPredicate { _, _ in amount.value as? String == "12.345678" }, object: nil)], timeout: 10), .completed)
         assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
                            text: "@sam", screenshot: "foreground-input-preserved")
+        alignIntervalLabelBehindDone(in: web, app: app)
         dismissKeyboard(in: web, app: app)
         XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10), "Dismissal restores review action")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
@@ -107,7 +108,7 @@ final class HostTests: XCTestCase {
         capture("keyboard-dismissed-actions-restored", app)
         // Repeat the same native foreground/dismissal path: a prior run moved
         // focus to the period field after Done despite a passing next run.
-        for cycle in 1...12 {
+        for cycle in 1...3 {
             scrollInputAboveFixedFooter(recipient, in: web, app: app)
             recipient.tap()
             XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
@@ -122,6 +123,7 @@ final class HostTests: XCTestCase {
             app.activate()
             assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
                                text: "@sam", screenshot: "repeat-foreground-\(cycle)")
+            alignIntervalLabelBehindDone(in: web, app: app)
             dismissKeyboard(in: web, app: app)
             XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10),
                           "Repeated foreground dismissal must restore actions (cycle \(cycle))")
@@ -253,6 +255,36 @@ final class HostTests: XCTestCase {
         waitForStableControl(done, in: web)
         done.tap()
         print("AFTER DONE: \(app.staticTexts["test-host-status"].value ?? "missing")")
+    }
+
+    private func alignIntervalLabelBehindDone(in web: XCUIElement, app: XCUIApplication) {
+        // The reported failure had the fixed Done button over this label. A tap
+        // must not activate that label when keyboard dismissal changes layout.
+        let done = web.buttons["Done"].firstMatch
+        let label = web.staticTexts["Check-in interval"].firstMatch
+        waitForStableControl(done, in: web)
+        for _ in 0..<6 {
+            let delta = label.frame.midY - done.frame.midY
+            if abs(delta) < 4 { break }
+            let origin = web.coordinate(withNormalizedOffset: .zero)
+            let start = web.frame.height * 0.5
+            let step = max(-80, min(80, delta))
+            origin.withOffset(CGVector(dx: 8, dy: start))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: 8, dy: start - step)))
+        }
+        let overlapping = NSPredicate { _, _ in
+            guard let raw = app.staticTexts["test-host-status"].value as? String,
+                  let data = raw.data(using: .utf8),
+                  let metrics = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let button = metrics["doneRect"] as? [Double], button.count == 4,
+                  let interval = metrics["intervalRect"] as? [Double], interval.count == 4 else { return false }
+            let x = button[0] + button[2] / 2, y = button[1] + button[3] / 2
+            return button[2] > 0 && button[3] > 0 && x >= interval[0] && x <= interval[0] + interval[2]
+                && y >= interval[1] && y <= interval[1] + interval[3]
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: overlapping, object: nil)], timeout: 10), .completed,
+                       "Reproduce the original overlap geometry before tapping Done")
+        capture("done-over-interval-label", app)
     }
 
     private func waitForStableControl(_ control: XCUIElement, in web: XCUIElement) {

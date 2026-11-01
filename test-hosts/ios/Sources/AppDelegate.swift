@@ -69,6 +69,8 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
               const report = () => {
                 const element = document.activeElement;
                 const rect = element?.getBoundingClientRect();
+                const doneRect = document.querySelector('.plan-keyboard-done')?.getBoundingClientRect();
+                const intervalRect = document.querySelector('label[for="period-input"]')?.getBoundingClientRect();
                 const viewport = window.visualViewport;
                 const editing = rect && element?.matches('input,textarea');
                 const hidden = selector => {
@@ -86,6 +88,8 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                         target: hit ? hit.tagName + '#' + hit.id + '.' + hit.className : null};
                     })) : [];
                 const metrics = {innerHeight, innerWidth, scrollY, interactionTrace,
+                  doneRect: doneRect ? [doneRect.x, doneRect.y, doneRect.width, doneRect.height] : null,
+                  intervalRect: intervalRect ? [intervalRect.x, intervalRect.y, intervalRect.width, intervalRect.height] : null,
                   actionsHidden: hidden('.plan-primary-actions'),
                   navigationHidden: hidden('.tab-bar'),
                   inputUnobscured: hits.length === 9 && hits.every(hit => hit.input),
