@@ -1,13 +1,17 @@
 # Launch scope — November 1, 2026
 
-## Current correction — withdrawn for keyboard diagnosis
+## Current correction — keyboard cause reproduced and fixed
 
-The user withdrew the November 2 request after questioning acceptance of the
-unexplained keyboard failure. An independent Portal readback confirmed
-**unverified**, with KR/AR/CO preserved. Earlier awaiting_review and readiness
-statements below are historical. Resubmission now requires cause-specific
-keyboard diagnosis, correction and verification; later passing repetitions alone
-are not the acceptance criterion.
+The prior November 2 request was withdrawn; a fresh Portal readback confirmed
+**unverified**, KR/AR/CO preserved. The original failure is now reproduced:
+Done's touch release blurred the recipient, then an extra click activated the
+interval label and focused its input. Runtime correction `aef7fe6` consumes that
+extra click. The same native reproduction failed before the fix and passed on
+`5209fd4`, including all five traced Done gestures and pending-deposit recovery.
+See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
+[REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
+Deployment/readback and actual Android confirmation precede resubmission.
+Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Decision and actual state
 
@@ -16,8 +20,8 @@ The November 1 follow-up added CO to KR/AR. A separate Portal readback confirmed
 exactly **KR/AR/CO**, **unverified**, with only `supported_countries` changed.
 After verified regional-control deployment and device checks, the November 2
 resubmission was independently read back as **awaiting_review** at 00:23:28 KST
-(15:23:28 UTC November 1), with KR/AR/CO preserved. This is a pending review,
-not publication or regulator approval.
+(15:23:28 UTC November 1), with KR/AR/CO preserved. That request was withdrawn;
+current Portal status is unverified while the corrected release is prepared.
 Runtime `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd` now enforces the official-interface controls below. November 2 production readback and actual Android residence/blocked-top-up checks passed. The Portal description was updated with availability; an independent readback confirmed description was the only changed field.
 
 This completes the release-selection assessment of the candidates named below,

@@ -5,14 +5,18 @@ legal certification, or independent security audit. The previous submission was
 withdrawn by the operator before this revision. The Portal was read back as
 `unverified` before changes.
 
-## Current correction — withdrawn for keyboard diagnosis
+## Current correction — keyboard cause reproduced and fixed
 
-The user withdrew the November 2 request after questioning acceptance of the
-unexplained keyboard failure. An independent Portal readback confirmed
-**unverified**, with KR/AR/CO preserved. Earlier awaiting_review and readiness
-statements below are historical. Resubmission now requires cause-specific
-keyboard diagnosis, correction and verification; later passing repetitions alone
-are not the acceptance criterion.
+The prior November 2 request was withdrawn; a fresh Portal readback confirmed
+**unverified**, KR/AR/CO preserved. The original failure is now reproduced:
+Done's touch release blurred the recipient, then an extra click activated the
+interval label and focused its input. Runtime correction `aef7fe6` consumes that
+extra click. The same native reproduction failed before the fix and passed on
+`5209fd4`, including all five traced Done gestures and pending-deposit recovery.
+See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
+[REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
+Deployment/readback and actual Android confirmation precede resubmission.
+Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Current submission status and requirement classification
 
@@ -22,8 +26,9 @@ new request on October 28 was read back as `awaiting_review` at 04:09 UTC
 confirmed **unverified**. After the November 2 preparation documented in RELEASE.md,
 the app was resubmitted. An independent readback at 15:23:28 UTC November 1
 (00:23:28 KST November 2) confirmed **awaiting_review**, KR/AR/CO unchanged.
-Existing-contract/fee review and any required separate intake are explicitly
-requested; no TFH acceptance or publication is claimed.
+That request was subsequently withdrawn. The current status is unverified while
+the corrected release is prepared. Existing-contract/fee review is requested in
+the revised package; no TFH acceptance or publication is claimed.
 
 The earlier request did not resolve source-sharing or jurisdiction questions.
 The later November 1 instruction authorizes submission after technical preparation,

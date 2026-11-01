@@ -3,16 +3,36 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## Current correction — withdrawn for keyboard diagnosis
+## Current correction — keyboard cause reproduced and fixed
 
-The user withdrew the November 2 request after questioning acceptance of the
-unexplained keyboard failure. An independent Portal readback confirmed
-**unverified**, with KR/AR/CO preserved. Earlier awaiting_review and readiness
-statements below are historical. Resubmission now requires cause-specific
-keyboard diagnosis, correction and verification; later passing repetitions alone
-are not the acceptance criterion.
+The prior November 2 request was withdrawn; a fresh Portal readback confirmed
+**unverified**, KR/AR/CO preserved. The original failure is now reproduced:
+Done's touch release blurred the recipient, then an extra click activated the
+interval label and focused its input. Runtime correction `aef7fe6` consumes that
+extra click. The same native reproduction failed before the fix and passed on
+`5209fd4`, including all five traced Done gestures and pending-deposit recovery.
+See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
+[REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
+Deployment/readback and actual Android confirmation precede resubmission.
+Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
-## November 2 KST — resubmitted and independently read back
+## November 2 KST — corrected source validation
+
+Runtime correction: `aef7fe6cf23508985e6ef86a8b1e38799782dd0c`; test arrangement:
+`5209fd488cae36eaafbb0f76642e39df472fe2cc`.
+[CI 41325955121](https://github.com/Daviswhistle/Inheritance/actions/runs/41325955121)
+and [native iOS 41325954954](https://github.com/Daviswhistle/Inheritance/actions/runs/41325954954)
+passed. The unchanged-runtime cause-specific reproduction
+[41325963205](https://github.com/Daviswhistle/Inheritance/actions/runs/41325963205)
+failed on the original period-focus/review-hidden symptom. The fixed run passed
+both native tests and all five traced Done gestures cancelled touchend with zero
+extra clicks. Typecheck/lint/build, WebKit 19 checks/31 layouts and native
+build-for-testing passed. Independent native commit review of `aef7fe6` found no
+actionable findings and independently reran WebKit checks. No transaction logic,
+contract, country policy or fee changed. Deployment readback follows below when
+complete; these source checks alone do not claim a new production version.
+
+## Historical November 2 request — subsequently withdrawn
 
 Runtime: `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd`.
 [CI 41318884336](https://github.com/Daviswhistle/Inheritance/actions/runs/41318884336)

@@ -25,16 +25,18 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
-## Current task — prior submission withdrawn
+## Current task — verified keyboard correction, preparing deployment
 
-The user rejected the earlier readiness judgment because the keyboard failure
-remained unexplained. They directly withdrew the November 2 request, and a fresh
-Portal readback confirmed **unverified**, KR/AR/CO preserved. The awaiting_review
-receipt below is historical. Current task: reproduce and diagnose the failure,
-fix it, verify the cause-specific regression, rewrite reviewer materials around
-confirmed improvements, then resubmit only when ready. Passing later repetitions
-alone does not resolve the earlier failure. No additional outreach or funds are
-authorized by this correction.
+The prior November 2 request was withdrawn; a fresh Portal readback confirmed
+**unverified**, KR/AR/CO preserved. The original failure is now reproduced:
+Done's touch release blurred the recipient, then an extra click activated the
+interval label and focused its input. Runtime correction `aef7fe6` consumes that
+extra click. The same native reproduction failed before the fix and passed on
+`5209fd4`, including all five traced Done gestures and pending-deposit recovery.
+See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
+[REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
+Deployment/readback and actual Android confirmation precede resubmission.
+Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Current verified checkpoint
 
@@ -82,7 +84,7 @@ authorized by this correction.
 - Private phone/transaction/contact evidence stays outside Git. Do not publish
   tester-linked addresses, transaction linkage or screenshots in public docs.
 
-## November 2 submission checkpoint
+## Historical November 2 submission — subsequently withdrawn
 
 Regional controls are deployed and production readback passed. The actual
 Samsung SM-N986N / Android 13 / World Money 4.0.4602 passed residence blank,
@@ -98,8 +100,8 @@ field. Test-host-only `dcec319` added event tracing and three repeated foregroun
 dismissal cycles. Native run 41320004172 and CI 41320004149 passed. All traced Done
 taps reached the button and restored controls. The original failure did not recur
 in two subsequent executions; its cause remains unconfirmed, and no runtime
-keyboard fix is claimed. This bounded retest supports submission, with the test
-history retained. See RELEASE.md for the exact evidence boundaries.
+keyboard fix is claimed. That earlier readiness judgment was rejected; the cause-specific reproduction
+and correction above supersede it. See RELEASE.md for the exact evidence boundaries.
 
 The authorized resubmission is complete. Independent Portal readback at
 2026-11-01 15:23:28 UTC / November 2 00:23:28 KST confirmed **awaiting_review**,
