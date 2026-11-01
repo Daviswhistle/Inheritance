@@ -5,6 +5,15 @@ legal certification, or independent security audit. The previous submission was
 withdrawn by the operator before this revision. The Portal was read back as
 `unverified` before changes.
 
+## Current correction — withdrawn for keyboard diagnosis
+
+The user withdrew the November 2 request after questioning acceptance of the
+unexplained keyboard failure. An independent Portal readback confirmed
+**unverified**, with KR/AR/CO preserved. Earlier awaiting_review and readiness
+statements below are historical. Resubmission now requires cause-specific
+keyboard diagnosis, correction and verification; later passing repetitions alone
+are not the acceptance criterion.
+
 ## Current submission status and requirement classification
 
 The operator withdrew the October 24 request. After technical remediation, a

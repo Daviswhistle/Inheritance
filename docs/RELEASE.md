@@ -3,6 +3,15 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## Current correction — withdrawn for keyboard diagnosis
+
+The user withdrew the November 2 request after questioning acceptance of the
+unexplained keyboard failure. An independent Portal readback confirmed
+**unverified**, with KR/AR/CO preserved. Earlier awaiting_review and readiness
+statements below are historical. Resubmission now requires cause-specific
+keyboard diagnosis, correction and verification; later passing repetitions alone
+are not the acceptance criterion.
+
 ## November 2 KST — resubmitted and independently read back
 
 Runtime: `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd`.

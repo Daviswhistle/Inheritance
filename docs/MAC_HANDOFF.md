@@ -25,6 +25,17 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
+## Current task — prior submission withdrawn
+
+The user rejected the earlier readiness judgment because the keyboard failure
+remained unexplained. They directly withdrew the November 2 request, and a fresh
+Portal readback confirmed **unverified**, KR/AR/CO preserved. The awaiting_review
+receipt below is historical. Current task: reproduce and diagnose the failure,
+fix it, verify the cause-specific regression, rewrite reviewer materials around
+confirmed improvements, then resubmit only when ready. Passing later repetitions
+alone does not resolve the earlier failure. No additional outreach or funds are
+authorized by this correction.
+
 ## Current verified checkpoint
 
 - Runtime source: `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd`, descendant of requested baseline `91944cc`.
