@@ -14,8 +14,38 @@ extra click. The same native reproduction failed before the fix and passed on
 See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
 [REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
 Production deployment/readback and actual Android confirmation are complete.
-The Portal remains unverified until the corrected request is resubmitted.
+The corrected request was submitted after those checks; independent readback at
+**November 2 01:52:33 KST / November 1 16:52:33 UTC** confirmed
+**awaiting_review**, KR/AR/CO and developer allowlisting unchanged.
 Earlier awaiting_review and unexplained-pass acceptance statements are historical.
+
+## November 2 01:52 KST — corrected release resubmitted
+
+The authorized corrected request was submitted after deployment, Android
+acceptance and final checks. Independent Portal readback at
+**2026-11-01 16:52:33.571 UTC / November 2 01:52:33 KST** confirmed
+**awaiting_review**, app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`. Exactly KR/AR/CO and developer allowlisting
+were preserved; only verification_status changed. This is a review request,
+not approval or publication.
+
+Main at submission: `e16700fca75123847487a591f21953791266e211`;
+[its CI 41328325998](https://github.com/Daviswhistle/Inheritance/actions/runs/41328325998)
+passed all three jobs. Deployed source `c7da250` also passed its second native
+[iOS run 41327125650](https://github.com/Daviswhistle/Inheritance/actions/runs/41327125650):
+two tests, zero failures, all five traced Done touches cancelled touchend and
+produced zero extra clicks. The earlier passing `5209fd4` raw summary/screenshots
+and this final-source event log were independently inspected by the maintainer.
+
+The submitted changelog leads with distinct tab roles, the reproduced/fixed
+keyboard issue, exact amounts and costs, live rates, interrupted-request recovery,
+actual Android WLD/USDC full exits and supported-country controls. It links the
+rewritten review walkthrough, release evidence and public contract/source/fee
+review. The final paragraph requests review of existing immutable contracts and
+states the missing pre-deployment source-sharing record without presenting it as
+a reason to reject. The private receipt retains the exact submitted text. No
+additional email, Telegram message, real-money transaction or notification was
+sent during this correction.
 
 ## November 2 KST — corrected release deployed and checked
 
@@ -47,8 +77,7 @@ The rewritten [reviewer walkthrough](REVIEW_NOTES.md) leads with the design/UX
 improvements and concrete checks. Contract/source/fee information and native-host
 scope are stated once in their relevant sections. The verified
 [keyboard diagnosis](KEYBOARD_DISMISSAL.md) replaces the earlier unexplained-pass
-readiness judgment. Portal scope remains KR/AR/CO; submission receipt follows
-when the authorized request is sent.
+readiness judgment. Portal scope remains KR/AR/CO; the verified submission receipt is recorded above.
 
 ## November 2 KST — corrected source validation
 

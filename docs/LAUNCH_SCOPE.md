@@ -11,7 +11,9 @@ extra click. The same native reproduction failed before the fix and passed on
 See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
 [REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
 Production deployment/readback and actual Android confirmation are complete.
-The Portal remains unverified until the corrected request is resubmitted.
+The corrected request was submitted after those checks; independent readback at
+**November 2 01:52:33 KST / November 1 16:52:33 UTC** confirmed
+**awaiting_review**, KR/AR/CO and developer allowlisting unchanged.
 Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Decision and actual state
@@ -22,7 +24,8 @@ exactly **KR/AR/CO**, **unverified**, with only `supported_countries` changed.
 After verified regional-control deployment and device checks, the November 2
 resubmission was independently read back as **awaiting_review** at 00:23:28 KST
 (15:23:28 UTC November 1), with KR/AR/CO preserved. That request was withdrawn;
-current Portal status is unverified while the corrected release is prepared.
+the corrected release was resubmitted after its verified keyboard fix. The latest
+readback at November 2 01:52:33 KST is awaiting_review, still exactly KR/AR/CO.
 Runtime `b7d5a1d8dd383ca2a86349684a7b72a0a833c7fd` now enforces the official-interface controls below. November 2 production readback and actual Android residence/blocked-top-up checks passed. The Portal description was updated with availability; an independent readback confirmed description was the only changed field.
 
 This completes the release-selection assessment of the candidates named below,

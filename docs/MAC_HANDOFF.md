@@ -25,7 +25,7 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
-## Current task — corrected release verified, preparing resubmission
+## Current task — corrected release resubmitted; awaiting review
 
 The prior November 2 request was withdrawn; a fresh Portal readback confirmed
 **unverified**, KR/AR/CO preserved. The original failure is now reproduced:
@@ -36,7 +36,9 @@ extra click. The same native reproduction failed before the fix and passed on
 See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
 [REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
 Production deployment/readback and actual Android confirmation are complete.
-The Portal remains unverified until the corrected request is resubmitted.
+The corrected request was submitted after those checks; independent readback at
+**November 2 01:52:33 KST / November 1 16:52:33 UTC** confirmed
+**awaiting_review**, KR/AR/CO and developer allowlisting unchanged.
 Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Current verified checkpoint

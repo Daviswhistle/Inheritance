@@ -16,7 +16,9 @@ extra click. The same native reproduction failed before the fix and passed on
 See [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md) for causal evidence and
 [REVIEW_NOTES.md](REVIEW_NOTES.md) for the rewritten improvement-focused walkthrough.
 Production deployment/readback and actual Android confirmation are complete.
-The Portal remains unverified until the corrected request is resubmitted.
+The corrected request was submitted after those checks; independent readback at
+**November 2 01:52:33 KST / November 1 16:52:33 UTC** confirmed
+**awaiting_review**, KR/AR/CO and developer allowlisting unchanged.
 Earlier awaiting_review and unexplained-pass acceptance statements are historical.
 
 ## Current submission status and requirement classification
@@ -27,9 +29,10 @@ new request on October 28 was read back as `awaiting_review` at 04:09 UTC
 confirmed **unverified**. After the November 2 preparation documented in RELEASE.md,
 the app was resubmitted. An independent readback at 15:23:28 UTC November 1
 (00:23:28 KST November 2) confirmed **awaiting_review**, KR/AR/CO unchanged.
-That request was subsequently withdrawn. The current status is unverified while
-the corrected release is prepared. Existing-contract/fee review is requested in
-the revised package; no TFH acceptance or publication is claimed.
+That request was subsequently withdrawn. The corrected release was submitted
+after the cause-specific fix, production and Android checks. November 2 01:52:33
+KST readback confirmed awaiting_review. Existing-contract/fee review is requested
+in the revised package; no TFH acceptance or publication is claimed.
 
 The earlier request did not resolve source-sharing or jurisdiction questions.
 The later November 1 instruction authorizes submission after technical preparation,
