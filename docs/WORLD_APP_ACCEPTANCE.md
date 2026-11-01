@@ -1,8 +1,8 @@
 # Actual World App acceptance
 
-Status: physical Android checks observed on October 25 and 27, 2026, including
-one successful user-approved WLD deposit, close/reopen recovery and principal
-withdrawal. This is acceptance of the observed flows, not proof of every asset,
+Status: physical Android checks observed on October 25, October 27 and
+November 1, 2026. The WLD deposit/withdrawal test now includes a confirmed
+zero-share full exit, and the native notification permission dialog was exercised. This is acceptance of the observed flows, not proof of every asset,
 claim path or physical iPhone behavior. Native test hosts simulate the wallet
 host; their results are recorded separately.
 
@@ -77,8 +77,8 @@ The withdrawal recovered the original principal and a small positive return,
 but left `2923` token wei (`0.000000000000002923 WLD`) in the vault. A balance
 refresh after tapping All changed the gross quote and caused the existing UI to
 choose a partial withdrawal. The follow-up fix and fixture regression are recorded
-in [RELEASE.md](RELEASE.md); no additional live transaction is claimed to clear
-that residual. Do not describe the real test as a zero-share full exit.
+in [RELEASE.md](RELEASE.md). This October 27 receipt alone is not a zero-share
+full exit; the November 1 follow-up below cleared the residual.
 
 Only this test WLD position was used. Unrelated existing wallet-held USDC receipt
 shares were not redeemed. No new invitation or notification was sent. The initial
@@ -89,6 +89,42 @@ and authentication steps; unavailable PIN or biometric input still needs the hum
 
 Mac environment inspection is complete. Use this connected phone; no emulator
 retry is needed. Earlier Windows installation experiments below are historical.
+
+## Physical Android follow-up — November 1, 2026
+
+The same Samsung SM-S911N / Android 16 now runs World Money 4.0.4602
+(versionCode 4004602). Production source `3e675010e5c0e5641a2b433a01e76f5cfec2e529`
+was independently matched to its immutable deployment before testing.
+
+All selected the remaining `2923` wei WLD. The native approval displayed a
+rounded `0 WLD` receipt amount and no additional network fee. The successful
+canonical receipt returned exactly `2923` wei to the owner; owner WLD debits
+were zero. Subsequent canonical reads confirmed zero idle assets, zero strategy
+shares, zero gross/net value, zero cost basis and `hasAssets=false`. Closing and
+reopening the Mini App and signing in restored the empty position and unchanged
+check-in deadline without another transaction approval. This completes the live
+zero-share exit check for this WLD test vault; it does not prove every liquidity
+or market scenario.
+
+Notification banners/sound were temporarily muted through the native app menu.
+Enable reminders then opened the actual World App notification activation sheet.
+Android Back cancelled it and the Mini App reported notifications off. Retrying
+and activating restored enabled status. This is a native re-grant/cancellation
+check, not a fresh-account installation test. Notifications were left enabled;
+no additional self-test notification, invitation or contact message was sent.
+
+A `0.01 USDC` draft survived the Android keyboard Done action and OS
+background/foreground. A zero cash balance correctly blocked review. Native
+contact cancellation followed by explicit manual recovery preserved the original
+recipient and focused manual input. No recipient setting was changed.
+
+The user explicitly deferred live USDC transactions on November 1. Existing
+wallet-held USDC receipt shares were not redeemed. Full beneficiary claim through
+final receipt still needs a willing recipient account and the real on-chain
+waiting periods; no new funds were committed for it. These remain separate from
+passing local-chain contract/browser coverage. A public-RPC burst and persistent
+raw metadata error found during this session are addressed in the November 1
+release record.
 
 ## Mac actual-host installation check — October 28, 2026
 
@@ -152,16 +188,16 @@ No message to an heir or other person is needed for this check.
 
 | Field | Result |
 | --- | --- |
-| Device / OS / World App version / date | SM-S911N / Android 16 / World Money 4.0.4401 / October 25 and 27, 2026 |
+| Device / OS / World App version / date | SM-S911N / Android 16 / 4.0.4401 on October 25/27; 4.0.4602 on November 1, 2026 |
 | Guest navigation and legal links | Guest navigation observed; deployed Privacy modal title and close passed |
 | Sign-in cancel → retry → success | Observed native cancel/retry; user completed login, authenticated UI independently observed |
 | Keyboard input and Done | Observed: draft 0.01 WLD retained, keyboard dismissed, no transaction |
 | Contact cancel / selection | Deployed manual recovery, own-recipient rejection and native selected username/address passed |
-| Notification permission | Existing permission, deployed status and Enable reminders retry passed; no new grant dialog |
+| Notification permission | November 1: native activation sheet, cancellation/off state, retry and activation/on state passed; not a fresh-account test |
 | Deposit cancel / no receipt | Native 0.01 WLD request cancelled; 0.094 WLD network quote; editable saved plan and zero factory vault confirmed |
 | Approved deposit / receipt | October 27: canonical success; full 0.01 WLD principal in new vault; actual network fee 0.063726535762749712 WLD |
 | Reopen without duplicate approval | Actual close/reopen and sign-in restored funded 30-day plan; no second deposit request |
-| Withdrawal / receipt | Canonical success; 0.010000000000056801 WLD returned, no owner WLD network fee; 2923 wei residual remains, so not a zero-share full exit |
+| Withdrawal / receipt | October 27 principal recovered; November 1 remaining 2923 wei returned with zero owner WLD debit; canonical zero shares/assets/cost basis and hasAssets=false |
 | Self-test notification delivery (if performed) | One authorized test: app acceptance and actual phone receipt observed separately, 14:48 KST |
 
 Record failures with the action and visible error. A user report is operator-

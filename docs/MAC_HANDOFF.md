@@ -1,4 +1,4 @@
-# Mac continuation — 2026-10-28
+# Mac continuation — 2026-11-01
 
 ## Objective and authority
 
@@ -18,25 +18,29 @@ handle authentication/confirmation steps; human input is still required for
 biometrics or an unavailable device PIN. This does not expand spending authority.
 One 0.01 WLD deposit/withdrawal test and its necessary costs were approved; this
 is not permission to spend unrelated funds.
+November 1 authority covers autonomous Android verification; only additional
+funding transactions need an amount approval. The user explicitly deferred USDC
+transactions. The previous residual was recovered without an owner network fee.
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
 ## Current verified checkpoint
 
-- Runtime source: `3e675010e5c0e5641a2b433a01e76f5cfec2e529`, descendant of requested baseline `91944cc`.
+- Runtime source: `ff669056266b6a657f06aab6d9f8c39a9120ab74`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
   deployment, native-test and independent-review receipts.
-- Production: https://inheritance.pages.dev ; immutable: https://6fff670a.inheritance.pages.dev.
-  Deployment [40629700530](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700530): passed for this runtime; Pages and notification Worker deployed successfully.
-  CI [40629700573](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700573): passed, all three jobs successful.
-  Readback: October 28 readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
+- Production: https://inheritance.pages.dev ; immutable: https://53df9d87.inheritance.pages.dev.
+  Deployment [41299595719](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595719): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [41299595762](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595762): passed, all three jobs successful.
+  Readback: November 1 readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
 - Financial UI separates dated lending/reward rates, live strategy fee, service
   fee and conditional WLD network costs. Review shows per-token deposit amounts
   plus the conditional fee as total-debit components; the SDK does not expose an
   exact preapproval network quote to this mini app. Quote and settled debit differ.
-- Current validation: the complete local-chain browser suite passed 92 checks, including refreshed/full/partial withdrawal, identity outage recovery, idle USDC plus WLD exit, and WLD arriving during approval. Separate automated code review: completed against the complete final commit with no actionable findings; its focused checks covered seven withdrawal scenarios and keyboard closing/recovery.
-  iOS: [40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598) — passed on iPhone 16 Pro / iOS 18.5 Simulator: two tests, zero failures and skips; exported screenshots and raw summary independently inspected.
-- Physical Android: Samsung SM-S911N / Android 16 / World Money 4.0.4401.
+- Current validation: November 1 discovery/metadata browser scenarios passed 10 checks; typecheck/lint/build and 12 mobile units passed. Independent commit review of `ff66905` found no actionable defect. This runtime consolidates factory event scans and defers optional metadata until details open; actual Android Home/Plan/Assets/details reopened without the earlier RPC warnings.
+  Earlier full-withdrawal validation: the complete local-chain browser suite passed 92 checks, including refreshed/full/partial withdrawal, identity outage recovery, idle USDC plus WLD exit, and WLD arriving during approval. Separate automated code review: completed against the complete final commit with no actionable findings; its focused checks covered seven withdrawal scenarios and keyboard closing/recovery.
+  Previous runtime iOS: [40629700598](https://github.com/Daviswhistle/Inheritance/actions/runs/40629700598) — passed on iPhone 16 Pro / iOS 18.5 Simulator: two tests, zero failures and skips; exported screenshots and raw summary independently inspected.
+- Physical Android: Samsung SM-S911N / Android 16 / World Money 4.0.4602 on November 1 (4.0.4401 for October tests).
   Login cancel/retry/success, keyboard Done, legal title, contact cancellation,
   manual recovery/selection, notification status, one received self-notification,
   deposit cancellation, real deposit, close/reopen and principal withdrawal passed
@@ -46,18 +50,26 @@ notification, contact message, invitation or external inquiry without authority.
   0.073726535762749712 WLD after the unused reserve was refunded. Withdrawal
   returned 0.010000000000056801 WLD with zero owner WLD network fee.
 - The original live All action left 2923 token wei after a quote-refresh race.
-  The follow-up fix preserves explicit All intent, reads fresh output protection,
-  and retains manually entered partial withdrawals. Fixture evidence is separate
-  from the real receipt. Do not claim the live vault was emptied unless a later
-  canonical receipt establishes it. No unrelated wallet-held USDC shares were used.
+  On November 1 the fixed All action recovered the remaining 2923 wei. The
+  canonical receipt and post-state confirm zero idle/shares/assets/cost basis,
+  hasAssets=false, and zero owner WLD fee. Close/reopen restored the empty
+  position. No unrelated wallet-held USDC shares were used.
+- November 1 also exercised native notification re-grant: cancel/off, retry,
+  activate/on. No additional notification was sent. Keyboard Done, background
+  draft retention, insufficient-USDC-balance blocking and contact-cancel manual
+  recovery passed on the updated World Money host.
+- User explicitly deferred live USDC transactions. Actual beneficiary claim to
+  final receipt still needs a willing heir account and real on-chain deadlines.
+  No extra test principal or fee was spent. Do not label Android as exhaustive.
 - Private phone/transaction/contact evidence stays outside Git. Do not publish
   tester-linked addresses, transaction linkage or screenshots in public docs.
 
 ## External decisions still open
 
 Portal app `app_28c40a2a42b7f6c95789c2d5231b1314`, metadata
-`meta_9cf3b324ec9a1838a56c5b6d98be8674`, is **unverified after the user withdrew
-the October 28 submission**. This was independently read back from the Portal.
+`meta_9cf3b324ec9a1838a56c5b6d98be8674`, was last independently read back on
+October 28 as **unverified after the user withdrew that submission**. The Portal
+was not changed or rechecked during the November 1 Android-only follow-up.
 The earlier 04:09 UTC / 13:09 KST `awaiting_review` receipt is historical, not the
 current state. Countries remain KR/US/GB/CA/AU/JP/SG as draft settings, not a
 cleared launch scope. Production runtime and existing-holder access are unchanged.

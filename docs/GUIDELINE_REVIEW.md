@@ -35,12 +35,12 @@ contact-cancel manual recovery also passed. This is partial device acceptance;
 contact selection and updated notification handling also passed. Native
 deposit cancellation passed with a 0.094 WLD network quote. On October 27 a user-
 approved 0.01 WLD deposit, actual close/reopen recovery and principal withdrawal
-were confirmed on-chain and in the phone UI. A tiny residual remained after the
-withdrawal; exact acceptance boundaries and costs are in
+were confirmed on-chain and in the phone UI. The November 1 follow-up cleared the tiny residual with a confirmed zero-share
+exit and exercised native notification re-grant/cancellation; exact boundaries and costs are in
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md). Native test hosts remain
 separate evidence because they simulate approval responses.
 
-The working device is a Samsung SM-S911N / Android 16 / World Money 4.0.4401.
+The working device is a Samsung SM-S911N / Android 16 / World Money 4.0.4602 as of November 1.
 Earlier emulator installation failures are historical; use the connected phone.
 Physical-iPhone acceptance has not been performed.
 
@@ -125,10 +125,11 @@ the normal optimized deployment build.
 On October 24 no device acceptance record was available. October 25 and 27
 actual Android results supersede that gap only for the observed flows. The later
 real deposit and principal-withdrawal receipts are confirmed, with round-trip
-network cost `0.063726535762749712 WLD`. The post-withdrawal `2923` wei residual
-means the live test is not evidence of a zero-share full exit. The follow-up
-All-selection race fix is verified with local fixture funds, not another real
-transaction. Physical iPhone acceptance, first-use human comprehension and an
+network cost `0.063726535762749712 WLD`. The October 27 withdrawal left `2923` wei. On November 1 the repaired All
+action returned that residual with zero owner WLD debit, and canonical reads
+confirmed zero shares, assets and cost basis. Live USDC transactions were
+explicitly deferred by the user; beneficiary claim through final receipt remains
+unverified on the actual host. Physical iPhone acceptance, first-use human comprehension and an
 independent security audit have not been established. See the acceptance table
 for the precise boundary.
 

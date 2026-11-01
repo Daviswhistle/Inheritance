@@ -3,6 +3,51 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 1 — Android full exit and bounded discovery reads
+
+Runtime source: `ff669056266b6a657f06aab6d9f8c39a9120ab74`, a descendant of
+`91944cc`. [Deployment 41299595719](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595719)
+and [CI 41299595762](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595762)
+passed. Production https://inheritance.pages.dev matched the HTML and all six
+imported JS/CSS assets at https://53df9d87.inheritance.pages.dev. Three legal
+pages returned 200; the Worker reported ready, funded, fresh and not halted.
+Worker version: `63fa351f-f5e6-49c6-b58c-328a87a0d288`.
+
+On Samsung SM-S911N / Android 16 / World Money 4.0.4602, the fixed All action
+recovered the prior `2923` wei WLD residual. Canonical receipt/post-state prove
+zero idle assets, strategy shares and cost basis, `hasAssets=false`, and zero
+owner WLD debit for this withdrawal. The wallet received the full residual.
+This financial check ran on `3e67501` before the new read-only lookup changes.
+Native notification cancellation/re-grant, keyboard Done, OS background draft
+retention, insufficient-USDC-balance blocking and contact cancellation/manual
+recovery also passed. No extra test notification or invitation was sent.
+
+The phone exposed a public-RPC throughput error from eager creation metadata
+and parallel per-factory recent-event scans. Factory addresses now share one
+bounded event query per block chunk. Optional creation metadata is read only
+when account details open, scoped to the selected vault and isolated from global
+transaction status. A confirmed unsupported factory is excluded; other identity
+or read failures still produce an incomplete result. The 90-block chunk and
+1800-block lookback remain; registered/remembered plans and shared links still
+support older positions.
+
+Typecheck, lint, production build, 12 mobile unit checks and 10 local-chain
+browser discovery/metadata scenarios passed. The latter cover a primary indexed
+vault, an event-only legacy vault, unsupported factories, partial/all read
+outages, retry recovery, lazy metadata and failure isolation. Independent
+commit review of the complete `ff66905` found no actionable defect and separately
+repeated these focused checks. After deployment, actual Android sign-in restored
+the empty WLD position, and Home/Plan/Assets/account details were observed without
+the previous raw metadata error or incomplete-search warning.
+
+The user explicitly deferred live USDC transactions; no existing USDC receipt
+shares were redeemed. Actual beneficiary claim through final receipt remains
+unverified and requires a willing heir account plus the real on-chain deadlines.
+The earlier iOS native-host results do not prove the actual World Money iOS app.
+TFH procedure/country decisions remain open; no resubmission or new outreach
+occurred in this follow-up. Full device scope is in
+[WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md).
+
 ## October 28 withdrawal and substantive readiness work
 
 The operator withdrew the October 28 review request after the technical release.
