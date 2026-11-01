@@ -86,3 +86,34 @@ These tests ran on iPhone 16 Pro / iOS 18.5 Simulator with a native WKWebView,
 real MiniKit transport and disposable local assets. They establish native
 keyboard and lifecycle behavior; the host simulates approval responses and is
 not a physical-iPhone World App approval test.
+
+## Korea-only follow-up: native fixture failures
+
+Policy run [41329500340](https://github.com/Daviswhistle/Inheritance/actions/runs/41329500340)
+passed two tests with no failures/skips and five verified Done gestures. Two
+subsequent executions stopped **before** the next Done action:
+
+- [41329874448](https://github.com/Daviswhistle/Inheritance/actions/runs/41329874448):
+  fixture overlap failed. Done's center was y=315 while the interval label covered
+  y=320–340; the last gesture targeted main content. Two earlier Done gestures
+  passed. The fixed 12pt pan allowance did not reliably produce enough movement.
+- [41329915903](https://github.com/Daviswhistle/Inheritance/actions/runs/41329915903):
+  the 20-second visible-control wait expired during slow XCTest accessibility
+  queries. DOM geometry was stable with an unobscured recipient, Done at
+  [314,292,64,46], and the interval at [45,303,312,20]. The failure screenshot
+  shows Done, and the native hierarchy exposes it at [314,424,64,47], inside the
+  WebView. No Done touch occurred at that failure. Pending-deposit recovery
+  passed in both runs. This evidence distinguishes a pre-action timeout from
+  the original post-touch click-retargeting failure.
+
+Test-only `17a9f69` measures DOM geometry and actual pan movement, waits for
+settling, and adapts the allowance. Independent review identified a new 44pt
+minimum-step oscillation; `340fefd` removes that floor and allows fine correction.
+It also gives the Done accessibility query 60 seconds while retaining the same
+visible size, bounds, three stable observations and 0.8-second stability gate.
+Per-observation frame logs now expose any further wait failure. All exact overlap,
+native gesture, prevented touchend, zero-click and keyboard-close assertions
+remain required. Application code is unchanged. The complete test-only delta
+passed independent review and CI; native execution/readback remains pending in
+[RELEASE.md](RELEASE.md). The superseded intermediate run was cancelled when the
+review correction was committed; it is not counted as acceptance.

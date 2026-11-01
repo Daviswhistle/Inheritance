@@ -5,7 +5,7 @@ legal certification, or independent security audit. The previous submission was
 withdrawn by the operator before this revision. The Portal was read back as
 `unverified` before changes.
 
-## Current release — Korea-only verified and ready for review
+## Current release — Korea-only deployed; native fixture verification pending
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal
@@ -20,7 +20,10 @@ layouts), translation, type, lint and build checks passed; independent commit
 review found no actionable defect. Production `4a35244` was deployed and independently checked; actual Android
 Korea-only acceptance passed. Native policy run 41329500340 passed two tests
 with no failures, including all five traced Done gestures without extra clicks.
-The new submission receipt is recorded in RELEASE.md after Portal readback.
+Two subsequent native runs failed before the Done action: one while arranging
+the overlap fixture, one while awaiting an accessibility snapshot. Test-only
+`340fefd` addresses those paths; CI and independent review passed, and native
+run 41331879980 is pending. Submission remains held until its result is checked.
 
 The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
