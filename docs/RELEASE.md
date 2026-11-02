@@ -3,7 +3,32 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## Current release — Korea-only resubmitted; awaiting review
+## Current work — UX revision after operator withdrawal
+
+The operator withdrew the 02:45 KST request and requested clearer mobile UI/UX.
+Portal readback confirms **unverified**, with **KR only** unchanged. Resubmission
+is authorized after the revised release passes validation.
+
+The review now leads with exact amounts, recipient and interval. A separate
+wallet-debit receipt distinguishes the deposit from an additional WLD network
+fee whose quote is shown in World App. Asset-manager and service fees remain
+visible before unchecked risk consent. Per-asset calculation tables replace
+long prose examples. Setup keeps live rate details available on demand;
+recovery leads with completed deposits, remaining work and its next action.
+The store setup preview has been regenerated from the revised test screen.
+
+Runtime verification also reproduced a mined-receipt confirmation stall on an
+idle Anvil chain: the provider cached the preceding block height and waited for
+a future block event. Under the same 250 ms cache, the old block-event wait timed
+out at 1,804 ms; direct receipt/confirmation polling confirmed at 309 ms without
+mining another block. `529668f` retains canonical-hash, confirmation-count,
+receipt-status, expected-event and post-state gates while polling the receipt.
+The 14 confirmation tests pass, including delayed confirmation, reverted and
+mismatched receipts. Browser/production/native acceptance is recorded below
+when complete. No additional real funds or notifications are authorized by this
+record.
+
+## November 2 02:45 KST — previous Korea-only request (withdrawn)
 
 The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
 KR/AR/CO submission was withdrawn for this scope change. Independent Portal

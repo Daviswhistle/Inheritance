@@ -21,8 +21,11 @@ balances. Browsing, opening legal documents and changing tabs do not request a
 wallet signature. **Agree and sign in** starts the explicit sign-in flow.
 
 Setup now separates entry, review and wallet approval. **Review plan** shows the
-exact token amounts, full recipient address, check-in interval, current rates,
-fees and total-debit components. **Open approval screen** then opens World App's
+exact token amounts, full recipient address and check-in interval first. A
+separate cost receipt shows deposit and additional WLD network-fee components.
+Asset-manager and service fees stay visible before consent; per-token tables
+show the deductions and remaining example profit. Live rates and their source
+remain available in expandable details. **Open approval screen** then opens World App's
 native transaction review. Risk consent starts unchecked.
 
 Keyboard handling keeps the active field visible through rotation and return
@@ -33,8 +36,9 @@ reproduction failed before the fix and passed after it; all five traced Done
 gestures in the final run dismissed the keyboard without an extra click. See
 [the before/after evidence](KEYBOARD_DISMISSAL.md).
 
-Interrupted setup restores the original request and checks its receipt before
-allowing another deposit. The repaired **All** withdrawal reads the complete
+Interrupted setup leads with completed deposits and the next unfinished action,
+then offers detailed network-fee information. It restores the original request
+and checks its receipt before allowing another deposit. The repaired **All** withdrawal reads the complete
 position at execution; actual Android WLD and USDC round trips finished with
 zero remaining shares, assets and cost basis.
 
