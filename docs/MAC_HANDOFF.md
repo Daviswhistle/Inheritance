@@ -25,12 +25,16 @@ transaction, notification, external message or submission was performed.
 
 ## Latest presentation revision
 
-`ecce410` is deployed (see the 18:55 KST RELEASE.md receipt). Home now explains
-what to do and when a recipient can request assets. The sign-in money-movement
-sentence was removed; wallet-data notice, legal links and explicit agreement
-remain. The death-verification limitation is visible before deposit approval.
-Android pixels, Chromium/WebKit layouts and CI were checked. Submission remains
-stopped. Earlier runtime references above describe the broader UI revision.
+`481b34f` is deployed (see the 19:50 KST RELEASE.md receipt); the whole-app
+revision is `b643e0f`, followed only by a more precise registration success message. The whole-app copy
+review covers entry, balances, setup, owner/recipient actions, fees, recovery,
+alerts, history, errors and Korean legal reading. See COPY_REVIEW.md for the
+criteria and examples. Typecheck/lint/build, CI, Chromium/WebKit, local financial
+journeys and bilingual legal checks pass. Production files match the immutable
+deployment and Android pixels confirm the revised Help and Korean legal dialog.
+Native runs 41430777472 and 41431460190 are separate and were still in progress
+at this update.
+Submission remains stopped. Earlier runtime references above are historical.
 
 ## Historical objective and standing authority
 

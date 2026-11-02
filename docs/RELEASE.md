@@ -3,6 +3,44 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 19:50 KST — whole-app copy, Korean legal reading, no submission
+
+Runtime `481b34ffa283ca185f748cc92cac208363e46315` is deployed at
+https://b344271b.inheritance.pages.dev by successful deployment 41431460152.
+The whole-app change is `b643e0f`; `481b34f` only clarifies that successful
+automation registration is per-plan registration, not a global service-health
+guarantee.
+The public alias matches its HTML, all four imported runtime assets and all
+three legal documents plus their language script and stylesheet. CI 41431460239
+passed all jobs. See [COPY_REVIEW.md](COPY_REVIEW.md) for the writing rules,
+coverage and examples.
+
+This reviews the whole user journey: 229 existing Korean strings and 57 English
+strings changed, plus 46 keys for known failures and crash recovery. Waiting
+periods, check-ins, recipient actions, investment tokens, amounts, fees, setup
+recovery, alerts and history now explain the action and result in plain terms.
+Full Korean translations of Terms, Privacy and Yield Terms retain the English
+text and provide a language switch. Financial conditions and transaction logic
+are unchanged. Diagnostics remain available in details.
+
+Validation passed: typecheck, lint, production build, CSS registration, Korean
+registration (787 distinct strings), ten i18n checks, 66 error-text checks,
+68 Chromium layouts, 31 WebKit layouts, ten disposable-chain journey checks,
+and twelve bilingual legal checks (both engines, 320px, including blocked
+storage). Legal dialog tests preserve the exact draft, consent and focus while
+switching documents/languages. Initial WebKit failures were stale expected copy
+and an ambiguous link selector after translation; the final run preserves all
+behavioral assertions and passes.
+
+Actual Android World App rendered the deployed Home, revised Help/three-step
+sequence and Korean Privacy/Terms dialogs, language switching and return to Home.
+The final production comparison was recorded at 2026-11-02T10:49:22Z. No sign-in,
+real transaction, notification, invitation, external inquiry or submission was
+performed. Automatically triggered native simulator runs 41430777472 and
+41431460190 were still in progress at 19:51 KST; do not count them as passes.
+They are extra native-host regression runs, not actual iOS World App tests.
+These checks are not a recruited first-time-user comprehension study.
+
 ## November 2 18:55 KST — entry copy revised, submission stopped
 
 Runtime `ecce410` deployed via run 41424288549 at
