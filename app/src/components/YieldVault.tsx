@@ -75,7 +75,7 @@ export function YieldRewardsCard({ data, error, loading, settled, recipient, rec
   const { t } = useLocale();
   return <Card><CardHeader><CardTitle>{t("yield.rewards.title")}</CardTitle></CardHeader><CardContent className="grid gap-3">
     {loading && <p role="status">{t("yield.rewards.loading")}</p>}
-    {error && <p role="status" className="text-xs text-yellow-800">{error} {t("yield.rewards.error")}</p>}
+    {error && <div><p role="status" className="text-xs text-yellow-800">{t("yield.rewards.error")}</p><details><summary>{t("crash.details")}</summary><p className="break-all">{error}</p></details></div>}
     {data && <dl className="yield-values"><div><dt>{t("yield.rewards.ready")}</dt><dd>{formatYieldAmount(data.claimable)} WLD</dd></div><div><dt>{t("yield.rewards.pending")}</dt><dd>{formatYieldAmount(data.pending)} WLD</dd></div></dl>}
     {received !== null && <dl className="yield-values"><div><dt>{t(usdc ? "yield.rewards.held" : "yield.rewards.received")}</dt><dd>{formatYieldAmount(received)} WLD</dd></div></dl>}
     <p className="text-xs text-gray-600">{t(settled ? usdc ? "yield.rewards.lateUsdc" : "yield.rewards.lateWld" : usdc ? "yield.rewards.activeUsdc" : "yield.rewards.activeWld")}</p>

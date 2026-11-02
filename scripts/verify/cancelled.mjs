@@ -317,7 +317,7 @@ await sleep(1200);
 const relNow = await b.ev(
   `return !([...document.querySelectorAll("button")].find(x=>/release slot/i.test(x.innerText))||{}).disabled;`,
 );
-check("해제 버튼이 눌릴 수 있다", relNow === true, relNow ? "활성" : "비활성/없음");
+check("해제 버튼이 눌릴 수 있다", relNow === true, relNow ? "진행 중" : "비활성/없음");
 await b.ev(`return (()=>{const btn=[...document.querySelectorAll("button")].find(x=>/release slot/i.test(x.innerText));if(!btn)return false;btn.click();return true;})()`);
 await sleep(900);
 const acked = await b.ev(
@@ -361,7 +361,7 @@ if (formAfter.heir && formAfter.create) {
   const canCreate = await b.ev(
     `return !([...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan")||{}).disabled;`,
   );
-  check("상속인을 넣으면 Create 가 활성화된다", canCreate === true, canCreate ? "활성" : "비활성");
+  check("상속인을 넣으면 Create 가 활성화된다", canCreate === true, canCreate ? "진행 중" : "비활성");
   await b.ev(`return (()=>{const btn=[...document.querySelectorAll("button")].find(x=>x.innerText.trim()==="Review plan");if(!btn||btn.disabled)return false;btn.click();return true;})()`);
   await b.waitFor('.plan-final-review');
   const reviewed = await b.ev("const button = [...document.querySelectorAll('button')].find(item => item.innerText.trim() === 'Open approval screen'); if (!button || button.disabled) return false; button.click(); return true;");

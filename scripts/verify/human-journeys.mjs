@@ -76,8 +76,8 @@ try{
  await advance(31);
  const heir=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await heir.addInitScript(()=>localStorage.setItem('inheritance:locale','ko'));
  await heir.goto(origin+`/?account=heir&approval=auto&vault=${await wf.vaultOf(c.owner)}`);await heir.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
- await heir.getByRole('button',{name:'상속 신청',exact:true}).click();await heir.locator('.inheritance-state.state-waiting').waitFor();await advance(7);await heir.reload();
- await heir.getByRole('button',{name:'상속 수령 완료',exact:true}).click();await heir.getByText('WLD를 Morpho 투자 자산으로 받았습니다',{exact:true}).waitFor();
+ await heir.getByRole('button',{name:'수령 신청하기',exact:true}).click();await heir.locator('.inheritance-state.state-waiting').waitFor();await advance(7);await heir.reload();
+ await heir.getByRole('button',{name:'자산 받기',exact:true}).click();await heir.getByText('WLD를 Morpho 투자 자산으로 받았습니다',{exact:true}).waitFor();
  const completed=heir.locator('.inheritance-asset').filter({hasText:'WLD를 Morpho 투자 자산으로 받았습니다'});
  assert.equal(await completed.locator('.inheritance-amount').count(),0);assert.equal(await completed.locator('details').getAttribute('open'),null);
  await heir.locator('#inheritance-test-controls').evaluate(e=>e.style.display='none');await heir.screenshot({path:out+'/heir-investment-receipt-ko.png'});

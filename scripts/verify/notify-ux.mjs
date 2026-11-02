@@ -211,17 +211,17 @@ const detail = await b.ev(`return (() => {
   const notice = document.querySelector('.automation-note');
   const selected = [...document.querySelectorAll('[role=alert],[role=status]')]
     .find(el => /Notifications are off|Notifications are on for this wallet/i.test(el.innerText || ''));
-  const monitor = [...(notice?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Enable vault monitoring');
+  const monitor = [...(notice?.querySelectorAll('button') || [])].find(button => button.innerText.trim() === 'Enable automatic payment and alerts');
   return { notice: notice?.innerText || '', selected: selected?.innerText || '', monitor: !!monitor && !monitor.disabled };
 })();`);
 check("selected-vault notification detail remains in Inherit", !!detail && /Notifications are off/i.test(detail.selected)
   && /Enable monitoring so this vault/i.test(detail.notice),
   detail ? `${detail.selected.slice(0, 80)} / ${detail.notice.split("\n")[0]}` : "selected-vault details missing");
 check("selected-vault monitoring action remains available separately", !!detail?.monitor,
-  detail?.monitor ? "Enable vault monitoring" : "monitor action missing/disabled");
+  detail?.monitor ? "Enable automatic payment and alerts" : "monitor action missing/disabled");
 const monitorClick = await b.ev(`return (() => {
   const button = [...(document.querySelector('.automation-note')?.querySelectorAll('button') || [])]
-    .find(el => el.innerText.trim() === 'Enable vault monitoring');
+    .find(el => el.innerText.trim() === 'Enable automatic payment and alerts');
   if (!button || button.disabled) return false;
   button.click(); return true;
 })();`);

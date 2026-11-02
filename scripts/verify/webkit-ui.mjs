@@ -302,7 +302,7 @@ try {
   assert.equal(await page.locator('#heir-input').inputValue(), config.heir);
   await page.waitForFunction(() => window.__INHERITANCE_TEST_HOST__.history
     .filter(command => command.command === 'share-contacts').at(-1)?.state === 'success');
-  await page.waitForFunction(() => document.querySelector('[role="status"].plan-field-help')?.textContent.includes('직접 입력한 수령인'));
+  await page.waitForFunction(() => document.querySelector('[role="status"].plan-field-help')?.textContent.includes('직접 입력한 사람을 받을 사람으로 사용합니다.'));
   assert.equal(await page.locator('#heir-input').inputValue(), config.heir);
   assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(command => command.command === 'share-contacts').length), 1);
   pass('Cancelling a pending contacts request preserves manual recipient entry and ignores its late result');
@@ -380,12 +380,17 @@ try {
     assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/' + legalDocument);
     await page.waitForFunction(title => document.querySelector('.plan-legal-dialog h2')?.textContent === title, expectedTitle);
     assert.equal(await page.locator('.plan-legal-dialog iframe').getAttribute('title'), expectedTitle);
+    assert.equal(await frame.locator('h1').innerText(), expectedTitle);
+    await frame.getByRole('button', { name: 'English', exact: true }).tap();
+    assert.equal(await frame.locator('h1').innerText(), legalDocument === 'privacy' ? 'Privacy Policy' : 'Terms');
+    await frame.getByRole('button', { name: '한국어', exact: true }).tap();
+    assert.equal(await frame.locator('h1').innerText(), expectedTitle);
     if (legalDocument === 'privacy') {
-      await frame.getByRole('link', { name: 'Terms', exact: true }).tap();
+      await frame.getByRole('link', { name: '이용약관', exact: true }).tap();
       await frame.locator('h1').waitFor();
       await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '이용약관');
       assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/terms');
-      await frame.getByRole('link', { name: 'Privacy', exact: true }).tap();
+      await frame.locator('nav').getByRole('link', { name: '개인정보 처리방침', exact: true }).tap();
       await frame.locator('h1').waitFor();
       await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '개인정보 처리방침');
       assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/privacy');
@@ -395,7 +400,7 @@ try {
       await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '운용 약관 보기');
       assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/yield-terms');
       assert.equal(await page.locator('.plan-legal-dialog iframe').getAttribute('title'), '운용 약관 보기');
-      await frame.getByRole('link', { name: 'General terms', exact: true }).tap();
+      await frame.getByRole('link', { name: '일반 이용약관', exact: true }).tap();
       await frame.locator('h1').waitFor();
       await page.waitForFunction(() => document.querySelector('.plan-legal-dialog h2')?.textContent === '이용약관');
       assert.equal(await frame.locator('body').evaluate(body => body.ownerDocument.location.pathname), '/terms');
@@ -407,7 +412,7 @@ try {
     assert.ok(await page.locator('#yield-consent').isChecked());
   }
   await page.locator('.plan-legal-copy a[href="/terms.html"]').tap();
-  await page.frameLocator('.plan-legal-dialog iframe').getByRole('link', { name: 'Back to Inheritance', exact: true }).tap();
+  await page.frameLocator('.plan-legal-dialog iframe').getByRole('link', { name: 'Inheritance로 돌아가기', exact: true }).tap();
   await page.locator('.plan-legal-dialog').waitFor({ state: 'detached' });
   await page.locator('.plan-legal-copy a[href="/privacy.html"]').tap();
   await page.frameLocator('.plan-legal-dialog iframe').locator('a').first().focus();
@@ -518,7 +523,7 @@ try {
   // This only requests the app's normal visibility-triggered read. Network failure
   // is supplied by WebKit itself; this event is not evidence of OS backgrounding.
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await page.getByRole('status').filter({ hasText: '현재 World Chain에 연결되지 않아' }).waitFor({ timeout: 45000 });
+  await page.getByRole('status').filter({ hasText: '네트워크에 연결하지 못해' }).waitFor({ timeout: 45000 });
   assert.deepEqual(await snapshot(), beforeOutage);
   assert.equal(await commandCount(), beforeCommands);
   await tab(page, 2);
@@ -528,7 +533,7 @@ try {
   await page.screenshot({ path: out + '/offline-ko.png' });
   await page.context().setOffline(false);
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await page.getByRole('status').filter({ hasText: '현재 World Chain에 연결되지 않아' }).waitFor({ state: 'hidden', timeout: 45000 });
+  await page.getByRole('status').filter({ hasText: '네트워크에 연결하지 못해' }).waitFor({ state: 'hidden', timeout: 45000 });
   intentionalOffline = false;
   await tab(page, 0);
   await page.getByRole('button', { name: '지금 확인하기', exact: true }).waitFor();

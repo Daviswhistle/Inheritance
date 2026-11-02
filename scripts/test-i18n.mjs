@@ -75,11 +75,11 @@ await test("wallet debit review and network fee copy keep deposits and fees sepa
     assert.match(i18n.translate("en", "plan.review.networkPending"), /Confirmed in World App.*WLD/);
     assert.match(i18n.translate("ko", "plan.review.networkPending"), /World App에서 확인.*WLD/);
     assert.match(i18n.translate("en", "fees.network.body"), /on top of deposits.*full entered amount goes to the vault/);
-    assert.match(i18n.translate("ko", "fees.network.body"), /예치액에 더해.*입력한 금액 전부가 금고에 들어갑니다/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /맡기는 금액에서 빼지 않고 더해서.*입력한 금액 전부가 예치/);
     assert.match(i18n.translate("en", "fees.network.body"), /Vault creation.*additional deposits.*withdrawals.*can each incur a fee.*existing vaults are not guaranteed free/);
-    assert.match(i18n.translate("ko", "fees.network.body"), /금고 생성.*추가 예치.*출금.*비용이 들 수 있고.*기존 금고도 무료가 보장되지 않습니다/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /플랜 생성.*자산 추가.*출금.*네트워크 수수료.*기존 플랜도 마찬가지/);
     assert.match(i18n.translate("en", "fees.network.body"), /Inheritance’s service fee.*Re7’s strategy performance fee/);
-    assert.match(i18n.translate("ko", "fees.network.body"), /Inheritance 서비스 수수료.*Re7 전략 성과 수수료와 별도/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /Inheritance 서비스 수수료.*Re7 운용 수수료.*별도/);
 });
 
 await test("Korean fee disclosures keep the 10 percent fee off principal", () => {
@@ -98,7 +98,7 @@ await test("Korean fee disclosures keep the 10 percent fee off principal", () =>
 await test("completed transaction messages reproject when language changes without losing diagnostics", () => {
     const completed = "Income collected. Your principal remains in the inheritance vault.";
     assert.equal(i18n.localizeAppMessage("en", completed), completed);
-    assert.match(i18n.localizeAppMessage("ko", completed), /이자를 수령.*원금/);
+    assert.match(i18n.localizeAppMessage("ko", completed), /수익을 받았습니다.*나머지 자산/);
     assert.match(i18n.localizeAppMessage("ko", "Checked in to all 3 active vaults."), /다음 확인 날짜가 갱신/);
     assert.match(i18n.localizeAppMessage("ko", "Pending… verifying USDC deposit"), /USDC 예치/);
     assert.equal(i18n.localizeAppMessage("ko", "Deposit error: RPC diagnostic 0x1234"), "예치 오류: RPC diagnostic 0x1234");
@@ -121,6 +121,19 @@ await test("completed transaction messages reproject when language changes witho
       symbol: "USDC", gross: "10 USDC", strategyFee: "1 USDC", strategyPercent: 10,
       remaining: "9 USDC", serviceFee: "0.9 USDC", net: "8.1 USDC",
     }), /USDC별 예시: 대출 수익 10 USDC → Re7 전략 성과 수수료 1 USDC \(10%\) → 남은 금액 9 USDC → Inheritance 서비스 수수료 0\.9 USDC/);
+});
+
+await test("known contract failures and unresolved transactions give Korean next steps", () => {
+    const errors = readFileSync(new URL("../app/src/errors.ts", import.meta.url), "utf8");
+    const hints = errors.split("const REVERT_HINTS: Record<string, string> = {")[1].split("\n};")[0];
+    for (const [, literal] of hints.matchAll(/\w+: (".*"),/g)) {
+      const canonical = JSON.parse(literal);
+      assert.match(i18n.localizeAppMessage("ko", canonical), /[가-힣]/, canonical);
+    }
+    const pending = "World App is still confirming this request. Check your vault before trying again.";
+    assert.match(i18n.localizeAppMessage("ko", pending), /아직 확인.*다시 보내지 말고/);
+    assert.match(i18n.localizeAppMessage("ko", "Deposit error: " + pending), /예치 오류:.*아직 확인/);
+    assert.match(i18n.translate("ko", "crash.body"), /승인.*다시 보내기 전에.*결과/);
 });
 
 await test("locale provider uses React context without mutating the document", () => {

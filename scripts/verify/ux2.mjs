@@ -148,12 +148,12 @@ const v = await vaultOf(owner.a);
 await tx(WLD, "approve(address,uint256)", [FACTORY, E(5)], owner);
 await tx(FACTORY, "deposit(uint256)", [E(5)], owner);
 
-// 소유자: 활성 상태
+// 맡긴 사람: 활성 상태
 await audit("owner-active", owner);
-// 소유자: 만료 후 (아직 신청 없음)
+// 맡긴 사람: 만료 후 (아직 신청 없음)
 await setTime((await now()) + 86401n * 2n);
 await audit("owner-expired", owner);
-// 소유자: 상속인이 신청한 상태
+// 맡긴 사람: 상속인이 신청한 상태
 await tx(FACTORY, "fileClaimFor(address)", [v], heir);
 await audit("owner-claimed", owner);
 // 상속인: 이의제기 기간 중

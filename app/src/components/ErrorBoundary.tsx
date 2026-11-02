@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { resolveLocalePreference, translate } from "../locale";
+
 type Props = { children: ReactNode };
 type State = { error: Error | null };
 
@@ -25,12 +27,18 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error } = this.state;
     if (!error) return this.props.children;
 
+    let storage: Storage | null = null;
+    try { storage = window.localStorage; } catch { /* Fall back to browser language. */ }
+    const locale = resolveLocalePreference(storage, navigator.languages);
+    const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
+
     return (
       <div style={{ padding: "24px", fontFamily: "system-ui, sans-serif", lineHeight: 1.5 }}>
-        <h1 style={{ fontSize: "18px", margin: "0 0 8px" }}>Something went wrong</h1>
+        <h1 style={{ fontSize: "18px", margin: "0 0 8px" }}>{t("crash.title")}</h1>
         <p style={{ margin: "0 0 12px", color: "#555" }}>
-          The app hit an unexpected error. Reloading usually clears it.
+          {t("crash.body")}
         </p>
+        <details><summary style={{ minHeight: "44px", padding: "10px 0", cursor: "pointer" }}>{t("crash.details")}</summary>
         <pre
           style={{
             padding: "12px",
@@ -43,12 +51,14 @@ export class ErrorBoundary extends Component<Props, State> {
           }}
         >
           {error.message}
-        </pre>
+        </pre></details>
         <button
           type="button"
           onClick={() => window.location.reload()}
           style={{
             marginTop: "16px",
+            minHeight: "44px",
+            font: "inherit",
             padding: "10px 16px",
             borderRadius: "8px",
             border: "1px solid #ccc",
@@ -56,7 +66,7 @@ export class ErrorBoundary extends Component<Props, State> {
             cursor: "pointer",
           }}
         >
-          Reload
+          {t("crash.reload")}
         </button>
       </div>
     );

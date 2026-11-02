@@ -177,7 +177,7 @@ final class HostTests: XCTestCase {
         let ready = NSPredicate { _, _ in review.exists && review.isEnabled }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: nil)], timeout: 30), .completed)
         review.tap()
-        let consent = web.staticTexts["I have reviewed the fees and understand the loss, liquidity and unaudited-contract risks."].firstMatch
+        let consent = web.staticTexts["I understand and accept the fees, risk of losing principal, withdrawal delays and lack of an independent contract audit."].firstMatch
         XCTAssertTrue(consent.waitForExistence(timeout: 20))
         for _ in 0..<6 {
             if consent.isHittable && consent.frame.maxY < app.frame.maxY - 150 { break }

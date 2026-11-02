@@ -305,7 +305,7 @@ try {
   const fee = (await child.position()).fee; assert.ok(fee > 0n); await page.shot("usdc-position");
   const storeScreen = await page.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
   writeFileSync(`${process.env.VERIFY_TMP || '/tmp/wld-verify'}/shots/usdc-store-position.png`, Buffer.from(storeScreen.data, "base64"));
-  await click("Move all receipt shares to my wallet"); await until(async () => await usdcStrategy.balanceOf(vault) === 0n);
+  await click("Move my investment to my wallet"); await until(async () => await usdcStrategy.balanceOf(vault) === 0n);
   const chargedShares = await usdcStrategy.balanceOf(ACCOUNTS.a2.a); assert.ok(chargedShares > 0n);
   await click("Redeem available shares to USDC"); await until(async () => await usdcStrategy.balanceOf(ACCOUNTS.a0.a) === 0n);
   assert.equal(await usdcStrategy.balanceOf(ACCOUNTS.a2.a), chargedShares);
@@ -316,12 +316,12 @@ try {
   await until(async () => await child.costBasis() === 20_000000n); await externalReward(parseEther("20"));
   await (await usdcStrategy.setLiquidity(0)).wait(); await provider.send("evm_increaseTime", [30 * 86400 + 1]); await provider.send("evm_mine", []);
   await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
-  await click("File claim"); await until(async () => await child.claimFiledAt() > 0n);
+  await click("Request inheritance"); await until(async () => await child.claimFiledAt() > 0n);
   await until(() => page.ev("return /Claim confirmed for the listed assets/.test(document.body.innerText)"), "canonical combined file receipt");
   await provider.send("evm_increaseTime", [7 * 86400 + 1]); await provider.send("evm_mine", []);
   await open(ACCOUNTS.a1, vault); await until(() => page.ev("return __q.tabs().includes('Plan')")); await page.ev("return __q.tab('Plan')");
   await page.ev("window.__E2E_REWARDS_DOWN__=true;return true;"); await click("Refresh rewards");
-  await click("Complete inheritance"); await until(async () => await child.claimedAt() > 0n);
+  await click("Receive assets"); await until(async () => await child.claimedAt() > 0n);
   assert.equal(await usdcStrategy.balanceOf(ACCOUNTS.a1.a), parseEther("20"));
   assert.equal(await wld.balanceOf(ACCOUNTS.a1.a), parseEther("39")); assert.equal(await plainVaultContract.claimedAt() > 0n, true); assert.equal(await existingWldVault.claimedAt() > 0n, true); assert.equal(await child.inheritanceRecipient(), ACCOUNTS.a1.a);
   assert.equal(await child.hasAssets(), false); await page.shot("usdc-inheritance");

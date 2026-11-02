@@ -4979,7 +4979,7 @@ export default function App() {
           <CardContent className="grid gap-2"><p role="status">{t("journey.owner.pending")}</p>
             <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("journey.action.resume")}</Button>
           </CardContent></Card>}
-        {settingsRecoveryError && <p role="alert">{settingsRecoveryError}</p>}
+        {settingsRecoveryError && <p role="alert">{localizeAppMessage(locale, settingsRecoveryError)}</p>}
         {tab === "inherit" && isMyVault && !vaultIdentity?.released && isSettledClaim && <Card><CardHeader><CardTitle>{t("journey.owner.completed", { symbol: wldSymbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
           <p>{t("journey.owner.completedBody")}</p>
           {vaultHasAssets && <Button disabled={pendingAction || !miniInstalled || sweeping} onClick={() => void runVaultAction(sweepSettled)}>{t("journey.owner.sweep")}</Button>}

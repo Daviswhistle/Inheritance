@@ -101,7 +101,7 @@ try{
  await page.ev("document.getElementById('yield-consent').click();");
  const beforeLocationBlock=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
  await setEligibilityCountry('US');await click(page,'거래 승인 화면 열기');
- await until(()=>page.ev("return document.body.innerText.includes('현재 네트워크 지역에서는 새 금고와 예치를 이용할 수 없습니다.')"),'fresh location check before create');
+ await until(()=>page.ev("return document.body.innerText.includes('현재 접속 지역에서는 새 플랜을 만들거나 자산을 추가할 수 없습니다.')"),'fresh location check before create');
  assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeLocationBlock,'a stale supported result must not reach the wallet');
  await setEligibilityCountry('KR');await click(page,'다시 확인');
  await until(()=>page.ev("return !!document.querySelector('.plan-resume')&&!document.querySelector('.plan-access-notice')"),'explicit retry restores supported setup');
@@ -126,7 +126,7 @@ try{
  await tab(page,1);await page.ev("document.querySelector('.deposit-controls').open=true;await __q.setInput('deposit-amount','0.01');");
  const beforeBlockedTopUp=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
  await click(page,'금액 추가하기');await click(page,'거래 승인 화면 열기');
- await until(()=>page.ev("return document.body.innerText.includes('현재 네트워크 지역에서는 새 금고와 예치를 이용할 수 없습니다.')"),'fresh location check before existing-vault top-up');
+ await until(()=>page.ev("return document.body.innerText.includes('현재 접속 지역에서는 새 플랜을 만들거나 자산을 추가할 수 없습니다.')"),'fresh location check before existing-vault top-up');
  assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeBlockedTopUp,'an unsupported-location top-up made no wallet request');
  await tab(page,2);await click(page,'내 플랜에 자산 추가');
  await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='이 지역에서는 새 플랜과 예치를 이용할 수 없습니다'"),'early plan restriction');
