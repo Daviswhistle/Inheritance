@@ -46,14 +46,15 @@ is not resubmitted automatically. Existing asset-withdrawal paths remain usable.
 
 Run `node scripts/verify/plan-exit.mjs` with `CHROME_BIN` and
 `PLAYWRIGHT_MODULE` configured as described in `scripts/verify/README.md`.
+Use `EXIT_BROWSER=webkit` for the WebKit engine and iOS SDK transport.
 `EXIT_UX_OUT` selects the private evidence directory. The test host creates its
 own disposable local chain and uses the installed MiniKit SDK and atomic wallet.
 
-Fourteen checks cover net amount/fees/destination and small-screen review,
+Fifteen checks cover net amount/fees/destination and small-screen review and accessibility,
 review dismissal, wallet rejection, insufficient liquidity, quote failure,
 changed quote, a second-asset revert rolling back all earlier calls, process
 loss after approval, missing operation identifier, cancelled-recipient recovery,
-empty-plan semantics, redundant-transaction prevention and negative receipt
+empty-plan semantics, redundant-transaction prevention, basic WLD plus reward-only USDC recovery, and negative receipt
 proofs. The principal-plus-yield scenario returns 11.9 WLD (including 1 WLD from
 the USDC plan) and 10.9 USDC; both vaults become empty and both heirs are the
 owner. All funds are test tokens. This is not a production-money transaction or

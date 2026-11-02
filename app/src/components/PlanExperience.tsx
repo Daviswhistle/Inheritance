@@ -127,10 +127,10 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
         </div></details>
         {disabled && <p>{t("journey.owner.checkInFirst")}</p>}
         <Button variant="outline" disabled={busy} onClick={onCheckIn}>{t("home.checkin.direct")}</Button>
-        <details><summary>{t("journey.owner.stop")}</summary><p>{t("journey.owner.stopExplanation")}</p>
+        <details><summary>{t("journey.owner.stop")}</summary><p>{t(hasExitAssets ? "journey.owner.stopExplanation" : "exit.noFunds")}</p>
           <div className="grid gap-3"><Button variant="primary" disabled={busy || exitDisabled} onClick={onExit}>{t(hasExitAssets ? "exit.action" : "journey.owner.stop")}</Button>
-          <details><summary>{t("exit.keepTitle")}</summary><p>{t("exit.detachBody")}</p>
-            <Button variant="outline" disabled={busy || disabled} onClick={onCancel}>{t("journey.action.cancelInheritance")}</Button></details></div></details>
+          {hasExitAssets && <details><summary>{t("exit.keepTitle")}</summary><p>{t("exit.detachBody")}</p>
+            <Button variant="outline" disabled={busy || disabled} onClick={onCancel}>{t("journey.action.cancelInheritance")}</Button></details>}</div></details>
       </>}
     </CardContent></Card>;
 }

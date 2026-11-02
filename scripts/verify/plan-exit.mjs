@@ -83,10 +83,15 @@ try{
  pass('Lost operation identifier recovers from matching Ping and transfer receipt even when recipients were already removed');
  pass('Previously removed recipients expose retained assets on Home and complete recovery without reassigning a recipient');
  for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();
- await p.reload();await review();assert.match(await p.locator('.money-review').innerText(),/돌려받을 자산이 없습니다/);assert.equal(await p.locator('.money-review h2').innerText(),'상속 종료');assert.doesNotMatch(await p.locator('.money-review').innerText(),/입금 지갑|출금과 수령인/);await confirm();await p.getByText('상속을 종료했습니다. 회수할 자산은 없었습니다.',{exact:true}).first().waitFor();
+ await p.reload();await review();assert.match(await p.locator('.money-review').innerText(),/돌려받을 자산이 없습니다/);assert.equal(await p.locator('.money-review h2').innerText(),'상속 종료');assert.equal(await p.getByText('자산은 계속 운용하고 싶어요',{exact:true}).count(),0);assert.doesNotMatch(await p.locator('.money-review').innerText(),/입금 지갑|출금과 수령인/);await confirm();await p.getByText('상속을 종료했습니다. 회수할 자산은 없었습니다.',{exact:true}).first().waitFor();
  pass('Empty plans can end without falsely claiming a payment');
  const countBeforeEmpty=await requests();await openExit();await p.getByText('종료할 상속 플랜이 없습니다.',{exact:true}).waitFor();assert.equal(await requests(),countBeforeEmpty);
  pass('Already empty, recipient-free plans do not request a redundant paid transaction');
+ const basic=new Contract(c.plain,[...fAbi,'function deposit(uint256)'],signer);await(await basic.createVault(c.heir,30*86400)).wait();await(await wld.approve(c.plain,parseEther('2'))).wait();await(await basic.deposit(parseEther('2'))).wait();
+ await(await wld.transfer(await uv.getAddress(),parseEther('1'))).wait();await p.reload();await p.locator('.retained-assets').waitFor();await p.locator('.retained-assets .btn-primary').click();await p.locator('.money-review').waitFor();
+ assert.match(await p.locator('.money-review').innerText(),/2.0 WLD/);assert.match(await p.locator('.money-review').innerText(),/1.0 WLD/);const beforeMixed=await wld.balanceOf(c.owner);await confirm();await p.getByText('상속을 종료하고 자산을 돌려받았습니다.',{exact:true}).first().waitFor();
+ assert.equal(await wld.balanceOf(c.owner)-beforeMixed,parseEther('3'));assert.equal(await wld.balanceOf(await basic.vaultOf(c.owner)),0n);assert.equal(await uv.hasAssets(),false);
+ pass('Basic WLD and reward-only USDC plans recover together: exactly 3 WLD arrives with no assets left');
  const events=new Interface(['event Transfer(address indexed from,address indexed to,uint256 value)']);
  const target={factory:c.wldFactory,vault:await wv.getAddress(),nextHeir:c.owner,symbol:'WLD',exit:{minNet:'10',minRewards:'0'}};
  const logFor=(token,from,to,value)=>({address:token,...events.encodeEventLog(events.getEvent('Transfer'),[from,to,value])});
