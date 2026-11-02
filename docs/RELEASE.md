@@ -3,6 +3,46 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 21:24 KST — action-based Korean wording, no submission
+
+Runtime `b5842aecae480f1042b7907394610e36d799539a` is deployed at
+https://e2f8e217.inheritance.pages.dev (deployment 41443966906, CI 41443966864:
+both success). Main revision `ca7d390` changes the Korean wording across entry,
+setup, funded/empty Home, assets, owner settings, recipient states, help,
+notifications and errors. It aligns the Korean legal wording with the visible
+action. `b5842ae` then shortens three first-use strings read on Android.
+
+The main action now says **기한 연장하기**. Setup explains that a 30-day period
+starts again from each approved extension; the funded Home displays its actual
+deadline date prominently. Recipient copy distinguishes expiry, request, the
+seven-day wait and cancellation until actual payment. The setup confirmation
+says **이 금액 맡기기**, followed by native wallet approval. Financial, transaction
+and eligibility behavior is unchanged. See [COPY_REVIEW.md](COPY_REVIEW.md) for
+why the earlier copy review was insufficient and the scope of this follow-up.
+
+Typecheck, lint, build, ten translation checks, 66 known-error checks, 68 Chromium
+layouts, 31 WebKit layouts and ten disposable-chain journey checks passed.
+Final short-copy build and translation registration passed (786 distinct Korean
+strings). The translation validator now compares required parameter names and
+verifies repeated day values interpolate; it still rejects missing parameters.
+Initial local checks encountered a misnamed checker command, a missing default
+Playwright Chromium binary and stale wording expectations. The correct checker,
+installed Chrome and updated expectations passed without removing behavior
+assertions. No application failure was inferred from those harness issues.
+
+At 12:23:03 UTC, public and immutable HTML, four imported assets and five legal
+files matched; Korean text was verified in the served bundle. Actual Android
+World App showed the revised Home, Plan introduction and expanded explanation;
+after the final deployment, Home and Plan were re-opened and captured again.
+The phone was returned to guest Home. No sign-in, real transaction, notification,
+external message or submission was performed. Private evidence is outside Git
+under `work/evidence/plain-language-nov02/`.
+
+Native simulator runs 41443475080 and 41443966856 were still running at 21:24 KST.
+Their results are not counted as passes here. Browser regression and editorial
+screen reading are not a recruited comprehension study or actual iOS World App
+approval/permission validation.
+
 ## November 2 20:21 KST — native iOS results confirmed, no submission
 
 Both previously pending native runs passed on the iPhone 16 Pro / iOS 18.5

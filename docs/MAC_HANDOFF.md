@@ -25,6 +25,21 @@ transaction, notification, external message or submission was performed.
 
 ## Latest presentation revision
 
+`b5842ae` is deployed at https://e2f8e217.inheritance.pages.dev after the operator
+rejected the earlier wording review. Main change `ca7d390` replaces unexplained
+Korean check-in labels with **기한 연장하기**, explains the chosen period with
+concrete days, leads the funded Home with the deadline date, and reconciles the
+owner/recipient, empty, asset, help, error and legal copy. The setup approval
+action is **이 금액 맡기기**; the native wallet still requests final approval.
+`b5842ae` shortens three first-use strings after actual Android reading.
+See COPY_REVIEW.md's follow-up and the 21:24 KST RELEASE.md receipt.
+CI/deployment and browser checks pass, public files match, and Android Home/Plan
+show the final revision. New native runs 41443475080 and 41443966856 were still
+running at 21:24 KST; do not reuse earlier native passes as results for this code.
+Submission remains stopped. No new login or real transaction was performed.
+
+### Previous presentation revision
+
 `481b34f` is deployed (see the 19:50 KST RELEASE.md receipt); the whole-app
 revision is `b643e0f`, followed only by a more precise registration success message. The whole-app copy
 review covers entry, balances, setup, owner/recipient actions, fees, recovery,
