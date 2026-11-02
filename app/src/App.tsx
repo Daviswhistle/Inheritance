@@ -16,6 +16,8 @@ import { ReleasePlanDialog } from "@/components/ReleasePlanDialog";
 import { HeirPlans, OwnerPlanSettings, InviteHeir } from "@/components/PlanExperience";
 import { readInheritancePosition, ownerInheritancePositions, inheritanceStage, rememberedInheritances, rememberInheritances, readSettingsRequest, saveSettingsRequest, clearSettingsRequest, settingsFingerprint, verifySettingsReceipt, SETTING_EVENTS } from "@/inheritance";
 import type { InheritancePosition, HeirReadiness, SettingsTarget, SettingsRequest } from "@/inheritance";
+import { MoneyReview } from "@/components/MoneyReview";
+import { WalletInvestment } from "@/components/WalletInvestment";
 import { AssetNavigation } from "@/components/AssetNavigation";
 import { IncomeHistoryCard, type IncomeHistoryView } from "@/components/IncomeHistory";
 import { IncomePositionCard, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
@@ -488,7 +490,7 @@ export default function App() {
   const [ownedPlanRead, setOwnedPlanRead] = useState<{
     account: string; loading: boolean; incomplete: boolean;
     unavailableSymbols: AssetSymbol[];
-    items: Array<{ address: string; factory: string; symbol: AssetSymbol; balance: bigint | null; additionalWld: bigint | null; heir: string; period: number; periodSeconds: bigint; lastPing: bigint; settled: boolean | null; active: boolean | null }>;
+    items: Array<{ address: string; factory: string; symbol: AssetSymbol; balance: bigint | null; hasAssets: boolean | null; additionalWld: bigint | null; heir: string; period: number; periodSeconds: bigint; lastPing: bigint; settled: boolean | null; active: boolean | null }>;
   }>({ account: "", loading: false, incomplete: false, unavailableSymbols: [], items: [] });
   const ownedPlanRequest = useRef(0);
   type OwnedVault = { address: string; factory: string };
@@ -759,7 +761,14 @@ export default function App() {
   const [sweeping, setSweeping] = useState<boolean>(false);
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
   const [creating, setCreating] = useState(false);
+  const [moneyReview, setMoneyReview] = useState<{ kind: "deposit" | "withdraw" | "income"; scope: string; amount: string; to: string } | null>(null);
   const [pendingAction, setPendingAction] = useState(false);
+  const statusLocation = useRef({ tab, vault });
+  useEffect(() => {
+    if (!pendingAction && (statusLocation.current.tab !== tab || statusLocation.current.vault !== vault)) setStatus("");
+    statusLocation.current = { tab, vault };
+    setMoneyReview(null);
+  }, [tab, vault, pendingAction]);
   const actionInFlight = useRef(false);
   const runWalletAction = async (action: () => Promise<void>, needsResolvedSettings = false) => {
     if (actionInFlight.current) return;
@@ -1027,9 +1036,9 @@ export default function App() {
   const activeOwnedPlans = ownedPlanRead.account === account.toLowerCase()
     ? ownedPlanRead.items.filter(item => item.active === true) : [];
   const unsettledOwnedPlans = ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items.filter(item => item.settled === false) : [];
-  const showOwnerPlanSettings = isMyVault && unsettledOwnedPlans.length > 0;
+  const showOwnerPlanSettings = isMyVault && unsettledOwnedPlans.length > 0 && !showPlanSetup && !pendingPlan;
   const ownedPlanTotal = (symbol: AssetSymbol) => {
-    const rows = activeOwnedPlans.filter(item => item.symbol === symbol
+    const rows = (ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items : []).filter(item => item.settled === false || item.hasAssets === true).filter(item => item.symbol === symbol
       || symbol === "WLD" && item.symbol === "USDC" && item.additionalWld !== 0n);
     const valueOf = (item: typeof rows[number]) => item.symbol === symbol ? item.balance : item.additionalWld;
     const unavailable = ownedPlanRead.account === account.toLowerCase()
@@ -1038,6 +1047,10 @@ export default function App() {
       amount: !unavailable && rows.every(item => valueOf(item) !== null)
         ? rows.reduce((sum, item) => sum + (valueOf(item) ?? 0n), 0n) : null };
   };
+  const inheritanceEmpty = !ownedPlanLoading && !ownedPlanRead.incomplete
+    && ownedPlanRead.items.every(item => item.hasAssets === false);
+  const selectedBalanceKnown = isYieldVault ? Boolean(selectedYieldPosition?.valued) : vaultBalanceRead.scope === balanceScope;
+  const selectedAssetEmpty = selectedBalanceKnown && !vaultHasAssets;
   const commonPlanSettings = activeOwnedPlans.length > 0
     && activeOwnedPlans.every(item => item.heir.toLowerCase() === activeOwnedPlans[0].heir.toLowerCase()
       && item.periodSeconds === activeOwnedPlans[0].periodSeconds);
@@ -1847,12 +1860,13 @@ export default function App() {
         ]);
         if (String(canonical).toLowerCase() !== item.address.toLowerCase()) {
           return { address: item.address, factory: item.factory, symbol, balance: null, heir: String(heirAddress),
-            additionalWld: 0n, period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), settled: BigInt(claimedAt) > 0n, active: false };
+            hasAssets: null, additionalWld: 0n, period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), settled: BigInt(claimedAt) > 0n, active: false };
         }
         if (String(owner).toLowerCase() !== key || String(sourceFactory).toLowerCase() !== item.factory.toLowerCase()
           || String(tokenAddress).toLowerCase() !== asset.toLowerCase()) throw new Error("Owner or asset identity mismatch");
         let balance: bigint | null;
         let additionalWld = 0n;
+        let hasAssets = false;
         if (route) {
           const [strategy, distributor, known] = await Promise.all([
             child.strategy(), child.MERKL_DISTRIBUTOR(), source.knownVaults(item.address),
@@ -1861,24 +1875,26 @@ export default function App() {
             || String(distributor).toLowerCase() !== MERKL_DISTRIBUTOR.toLowerCase() || !known) throw new Error("Yield identity mismatch");
           if (route.symbol === "USDC" && String(await child.rewardToken()).toLowerCase() !== WLD_ADDRESS.toLowerCase()) throw new Error("Reward token mismatch");
           const position = await child.position();
-          balance = position.valued ? BigInt(position.gross) : null;
-          if (route.symbol === "USDC") additionalWld = BigInt(await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(item.address));
+          balance = position.valued ? BigInt(position.net) : null;
+          hasAssets = position.shares > 0n || position.idle > 0n;
+          if (route.symbol === "USDC") additionalWld = BigInt((await child.rewardPosition()).net);
         } else {
           const token = new ethers.Contract(asset, ERC20_ABI, provider);
           const decimals = Number(await token.decimals());
           if (decimals !== 18) throw new Error("Vault asset precision mismatch");
           balance = BigInt(await token.balanceOf(item.address));
+          hasAssets = balance > 0n;
         }
         const heir = String(heirAddress);
         const activePlan = BigInt(claimedAt) === 0n && heir !== ethers.ZeroAddress && heir.toLowerCase() !== key;
-        return { address: item.address, factory: item.factory, symbol, balance, additionalWld, heir,
+        return { address: item.address, factory: item.factory, symbol, balance, hasAssets: hasAssets || additionalWld > 0n, additionalWld, heir,
           period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), settled: BigInt(claimedAt) > 0n, active: activePlan };
       }));
       if (!active || request !== ownedPlanRequest.current || key !== account.toLowerCase()) return;
       const items = results.map((result, index) => result.status === "fulfilled" ? result.value : {
         address: sources[index].address, factory: sources[index].factory,
         symbol: yieldRouteFor(sources[index].factory)?.symbol ?? "WLD" as AssetSymbol,
-        balance: null, additionalWld: null, heir: "", period: 0, periodSeconds: 0n, lastPing: 0n, settled: null, active: null,
+        balance: null, hasAssets: null, additionalWld: null, heir: "", period: 0, periodSeconds: 0n, lastPing: 0n, settled: null, active: null,
       });
       const unavailableSymbols = new Set<AssetSymbol>();
       const markUnavailable = (factoryAddress: string) => {
@@ -3628,7 +3644,8 @@ export default function App() {
         return timestamp === undefined ? item : { ...item, lastPing: timestamp };
       }) }));
       setCheckinReview(null);
-      setStatus(`Checked in to all ${targets.length} active vaults.`);
+      setStatus("");
+      pushToast("success", t("status.allCheckedIn", { count: targets.length }));
     } catch (error) {
       setStatus("Check-in error: " + errorText(error));
       pushToast("error", errorText(error));
@@ -4179,7 +4196,7 @@ export default function App() {
       await Promise.all([refreshBalances(), refreshRewards()]);
     } catch (error) { if (scope === balanceScopeRef.current) { setStatus(errorText(error)); pushToast("error", errorText(error)); } }
   };
-  const redeemYieldShares = async (route: YieldRoute) => {
+  const redeemYieldShares = async (route: YieldRoute, reviewedShares: bigint, reviewedMinimum: bigint) => {
     if (!provider || !HAS_YIELD_ROUTES || !account || !miniInstalled) return;
     try {
       const receipt = new ethers.Contract(route.strategy, MORPHO_ABI, provider);
@@ -4187,9 +4204,13 @@ export default function App() {
       const fullQuote: bigint = await receipt.previewRedeem(held);
       // maxRedeem can round down one share even when all quoted cash is liquid.
       // Redeeming the full holding in that case avoids a stranded receipt dust.
-      const shares: bigint = held > 0n && fullQuote > 0n && fullQuote <= cash ? held : held < available ? held : available;
+      const availableShares: bigint = held > 0n && fullQuote > 0n && fullQuote <= cash ? held : held < available ? held : available;
+      if (reviewedShares <= 0n || reviewedShares > availableShares) throw new Error(t("assets.reviewChanged"));
+      const shares = reviewedShares;
       if (shares === 0n) throw new Error("Cash liquidity is currently unavailable. Your receipt shares remain in your wallet.");
-      const minAssets = minimumOutput(await receipt.previewRedeem(shares));
+      const currentQuote: bigint = await receipt.previewRedeem(shares);
+      if (currentQuote < reviewedMinimum) throw new Error(t("assets.reviewChanged"));
+      const minAssets = reviewedMinimum;
       const sent = await sendWorldChainTx([
         { address: route.strategy, abi: MORPHO_ABI, functionName: "approve", args: [route.factory, shares.toString()] },
         { address: route.factory, abi: route.factoryAbi, functionName: "redeemWalletShares", args: [shares.toString(), minAssets.toString()] },
@@ -4349,6 +4370,28 @@ export default function App() {
           </Card>
         </div>
       )}
+      {moneyReview && moneyReview.scope === balanceScope && <MoneyReview
+        title={t(moneyReview.kind === "deposit" ? "assets.action.deposit" : moneyReview.kind === "income" ? "income.title" : "assets.action.withdrawPrincipal")}
+        busy={pendingAction} onClose={() => setMoneyReview(null)} onConfirm={() => {
+          const review = moneyReview;
+          const unchanged = review.kind === "deposit" ? review.amount === amountStr
+            : review.kind === "withdraw" ? review.amount === withdrawAmountInput && review.to === withdrawTo
+            : review.to === incomeTo && selectedIncome && review.amount === fmtUnits(selectedIncome.withdrawableNet, wldDecimals);
+          setMoneyReview(null);
+          if (!unchanged) { pushToast("info", t("assets.reviewChanged")); return; }
+          void runVaultAction(review.kind === "deposit" ? deposit : review.kind === "withdraw" ? ownerWithdraw : ownerWithdrawIncome);
+        }}>
+        {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <div className="review-receive-amount"><span>{t("assets.reviewNet")}</span><strong>{formatYieldAmount(selectedYieldPosition.net, wldDecimals)} {wldSymbol}</strong></div>}
+        <dl className="yield-values">
+          <div><dt>{t(moneyReview.kind === "deposit" ? "plan.review.depositTotal" : moneyReview.kind === "income" ? "income.net" : "assets.reviewGross")}</dt><dd>{moneyReview.amount} {wldSymbol}</dd></div>
+          {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <div><dt>{t("income.fee")}</dt><dd>{formatYieldAmount(selectedYieldPosition.fee, wldDecimals)} {wldSymbol}</dd></div>}
+          <div><dt>{t("assets.reviewDestination")}</dt><dd>{moneyReview.kind === "deposit" ? t("home.overview.title") : moneyReview.to.toLowerCase() === account.toLowerCase() ? t("assets.reviewMyWallet") : moneyReview.to}</dd></div>
+        </dl>
+        {moneyReview.kind === "deposit" && <p>{t("assets.reviewDeposit", { amount: moneyReview.amount, symbol: wldSymbol })}</p>}
+        {moneyReview.kind === "withdraw" && isYieldVault && !withdrawAllSelected && <p>{t("assets.withdrawBeforeFee")}</p>}
+        {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <p>{t("assets.reviewVariable")}</p>}
+        {moneyReview.kind === "income" && <p>{t("income.explainer")}</p>}
+      </MoneyReview>}
       <header className="app-header">
         <div className="container-narrow header-content">
           <Brand />
@@ -4386,8 +4429,9 @@ export default function App() {
         {!account && !CONFIG_ERROR && tab !== "support" && <AccountEntry view={tab} installed={miniInstalled} busy={ctaLoading}
           onConnect={continueWorldApp2} onNavigate={next => { navigationChosenFor.current = account.toLowerCase(); setTab(next); }} linkedVault={linkedVault} />}
         {status && (account || !/Open in World App.*bridge unavailable/i.test(status)) && (
-          <div className="text-xs text-gray-600" role="status" aria-live="polite" aria-atomic="true">
-            {localizeAppMessage(locale, status)}
+          <div className="app-action-status" role="status" aria-live="polite" aria-atomic="true">
+            <span>{localizeAppMessage(locale, status)}</span>
+            {!pendingAction && <Button variant="ghost" onClick={() => setStatus("")}>{t("common.close")}</Button>}
           </div>
         )}
         {account && pendingPlan && (tab === "vault" || tab === "money") && <section className="app-empty-state" aria-labelledby="pending-setup-title">
@@ -4400,13 +4444,29 @@ export default function App() {
         {tab === "inherit" && account && (notifyHeirWorthShowing || inheritedPositions.length > 0) && heirStatusCard}
         {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
           <CardContent className="grid gap-3">
-            {nextCheckIn !== null && <div className="home-checkin-date">
+            {!inheritanceEmpty && <><h2 className="home-assets-heading">{t("home.overview.title")}</h2>
+            <div className="plan-overview-assets">
+              {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
+                const total = ownedPlanTotal(symbol);
+                const decimals = symbol === "USDC" ? 6 : 18;
+                const value = ownedPlanLoading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
+                  : formatYieldAmount(total.amount, decimals);
+                return <div className="plan-overview-asset" key={symbol}>
+                  <span>{symbol}</span><strong>{value}</strong>
+                  <small>{ownedPlanLoading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
+                    : total.amount === 0n ? t("home.empty.label") : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
+                </div>;
+              })}
+            </div>
+            </>}
+            {!inheritanceEmpty && !ownedPlanLoading && !ownedPlanRead.incomplete && activeOwnedPlans.length === 0 && <p className="text-sm text-gray-600">{t("home.savingsWithoutPlan")}</p>}
+            {!inheritanceEmpty && nextCheckIn !== null && <div className="home-checkin-date">
               <span>{chainNow > 0 && nextCheckIn <= chainNow ? t("home.checkin.overdue") : t("home.checkin.next")}</span>
               {chainNow > 0 && <strong>{nextCheckIn <= chainNow ? t("home.checkin.direct") : t("home.checkin.remaining", { days: Math.ceil((nextCheckIn - chainNow) / 86400) })}</strong>}
               <time dateTime={new Date(nextCheckIn * 1000).toISOString()}>{new Date(nextCheckIn * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}</time>
               {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
-            {unsettledOwnedPlans.length > 0 && !checkinReview && <div className="home-checkin-action">
+            {!inheritanceEmpty && unsettledOwnedPlans.length > 0 && !checkinReview && <div className="home-checkin-action">
               <Button variant="primary" aria-describedby="home-checkin-help" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
                 onClick={() => void runWalletAction(() => checkInAllPlans(), true)}>{t("home.checkin.direct")}</Button>
               <p id="home-checkin-help">{t(!miniInstalled ? "home.checkin.openApp" : ownedPlanRead.loading ? "home.checkin.loading"
@@ -4431,20 +4491,12 @@ export default function App() {
               </div>
             </section>}
 
-            <h2 className="home-assets-heading">{t("home.overview.title")}</h2>
-            <div className="plan-overview-assets">
-              {(["WLD", ...(USDC_ENABLED ? ["USDC"] : [])] as AssetSymbol[]).map(symbol => {
-                const total = ownedPlanTotal(symbol);
-                const decimals = symbol === "USDC" ? 6 : 18;
-                const value = ownedPlanLoading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
-                  : formatYieldAmount(total.amount, decimals);
-                return <div className="plan-overview-asset" key={symbol}>
-                  <span>{symbol}</span><strong>{value}</strong>
-                  <small>{ownedPlanLoading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
-                    : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
-                </div>;
-              })}
-            </div>
+            {inheritanceEmpty && <section className="savings-empty">
+              <span className="eyebrow">Inheritance</span><h2>{t("home.empty.title")}</h2>
+              <p>{t(activeOwnedPlans.length ? "home.empty.body" : "home.empty.noPlan")}</p>
+              {nextCheckIn !== null && chainNow >= nextCheckIn && <p>{t("home.empty.deadline")}</p>}
+              <Button variant="primary" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab(activeOwnedPlans.length ? "money" : "inherit"); }}>{t("home.empty.action")}</Button>
+            </section>}
             {activeOwnedPlans.some(item => item.symbol === "USDC" && (item.additionalWld ?? 0n) > 0n)
               && <p className="text-xs text-gray-600">{t("home.additionalWld")}</p>}
             {ownedPlanLoading
@@ -4454,7 +4506,7 @@ export default function App() {
               : activeOwnedPlans.length > 0 ? commonPlanSettings
                 ? <p className="plan-common-settings">{t("home.heir")} <strong title={activeOwnedPlans[0].heir}>{homeHeirUsername ? `@${homeHeirUsername}` : short(activeOwnedPlans[0].heir)}</strong><span>·</span> {t("home.checkin.every")} <strong>{activeOwnedPlans[0].period} {t("home.days")}</strong></p>
                 : <p className="plan-settings-differ">{t("home.settingsDiffer")}</p>
-                : <p className="text-sm text-gray-600">{t("home.noActivePlan")}</p>}
+                : null}
 
             {NOTIFY_BACKEND_ENABLED && activeOwnedPlans.length > 0
               && (["WLD", "USDC"] as AssetSymbol[]).some(symbol => (ownedPlanTotal(symbol).amount ?? 0n) > 0n) && (
@@ -4472,7 +4524,7 @@ export default function App() {
               </div>
             )}
             <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" disabled={pendingAction} onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("money"); }}>{t("home.assetsIncome")}</Button>
+              {!inheritanceEmpty && <Button variant="outline" disabled={pendingAction} onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("money"); }}>{t("home.assetsIncome")}</Button>}
               <Button variant="ghost" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab("inherit"); }}>{t("home.updatePlan")}</Button>
             </div>
           </CardContent>
@@ -4515,13 +4567,7 @@ export default function App() {
           settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
           busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
           onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
-        {walletShareRoutes.map(route => ["money", "inherit", "support"].includes(tab) && <Card key={route.factory}>
-          <CardHeader><CardTitle>{t("walletShares.title", { symbol: route.symbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
-            <p>{t("walletShares.amount", { amount: formatYieldAmount(walletYieldShares(route)), symbol: route.symbol })}</p>
-            <p className="text-xs text-gray-600">{t("walletShares.body")}</p>
-            <Button disabled={pendingAction || !miniInstalled} onClick={() => void runWalletAction(() => redeemYieldShares(route))}>{t("walletShares.redeem", { symbol: route.symbol })}</Button>
-            <Button disabled={pendingAction} onClick={() => void refreshBalances()}>{t("walletShares.refresh")}</Button>
-          </CardContent></Card>)}
+
 
         {/* 연결이 끊기면 화면이 멈춘다. 예전에는 여기에 아무 표시가 없어서 사용자가
             "내 갱신이 반영되지 않았다", 혹은 더 나쁘게 "내 돈이 사라졌다" 고 읽었다.
@@ -4543,9 +4589,10 @@ export default function App() {
               <div className="flex items-center justify-between gap-2">
                 <CardTitle>{t("assets.balanceTitle", { symbol: wldSymbol })}</CardTitle>
                 <div className="flex items-center gap-2">
-                  {account && vaultOwner && account.toLowerCase() === vaultOwner.toLowerCase() && badge("Owner", "blue")}
+
                   {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
                   {(() => {
+                    if (selectedAssetEmpty) return badge(t("home.empty.label"), "gray");
                     if (vaultHeir && vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()) return badge("Inheritance cancelled", "yellow");
                     if (canClaim) return badge("Claimable", "green");
                     /* "갱신하라" 는 **소유자에게만** 줄 수 있는 지시다. 상속인에게는 갱신
@@ -4579,16 +4626,19 @@ export default function App() {
                 {/* 이 탭의 질문은 "내 지갑에 얼마가 있고, 금고에 얼마가 들어갔는가" 다.
                     메타데이터(누가/언제/어느 체인)가 그 앞에 오는 동안 화면은 이 질문에
                     답하지 않았다. 두 숫자를 카드로 올려 화면이 답하게 한다. */}
-                <div className="stat-row">
-                  <div className="stat">
-                    <div className="stat-label">{t("assets.wallet")}</div>
-                    <div className="stat-value">{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : t("home.value.updating")}</div>
-                  </div>
-                  <div className="stat">
-                    <div className="stat-label">{t(isYieldVault ? "assets.valueBeforeFee" : "assets.plan")}</div>
-                    <div className="stat-value">{isYieldVault ? selectedYieldPosition?.valued ? `${formatYieldAmount(vaultWld, wldDecimals)} ${wldSymbol}` : t("home.value.unavailable") : `${fmtUnits(vaultWld)} ${wldSymbol}`}</div>
-                  </div>
+                <div className="savings-balance">
+                  <span>{t(isYieldVault && !selectedAssetEmpty ? "assets.valueBeforeFee" : "assets.plan")}</span>
+                  <strong>{selectedBalanceKnown ? `${formatYieldAmount(isYieldVault ? selectedYieldPosition!.net : vaultWld, wldDecimals)} ${wldSymbol}` : t("home.value.updating")}</strong>
+                  {selectedAssetEmpty && <p>{t("assets.empty.body", { symbol: wldSymbol })}</p>}
+                  {isYieldVault && selectedYieldPosition?.valued && !selectedAssetEmpty && <details className="balance-calculation"><summary>{t("assets.amountDetails")}</summary>
+                    <dl className="yield-values">
+                      <div><dt>{t("assets.amountGross")}</dt><dd>{formatYieldAmount(selectedYieldPosition.gross, wldDecimals)} {wldSymbol}</dd></div>
+                      <div><dt>{t("assets.amountFee")}</dt><dd>−{formatYieldAmount(selectedYieldPosition.fee, wldDecimals)} {wldSymbol}</dd></div>
+                      <div><dt>{t("assets.amountNet")}</dt><dd>{formatYieldAmount(selectedYieldPosition.net, wldDecimals)} {wldSymbol}</dd></div>
+                    </dl><p>{t("assets.amountNote")}</p>
+                  </details>}
                 </div>
+                <div className="wallet-balance-line"><span>{t("assets.wallet")}</span><strong>{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : t("home.value.updating")}</strong></div>
               {isMyVault && (
                 <details className="deposit-controls"><summary>{t("assets.action.deposit")}</summary><div className="deposit-controls-content">
                   {!newPlanAccessAllowed && <NewPlanAccessNotice account={account} location={currentPlanEligibility.location}
@@ -4612,7 +4662,7 @@ export default function App() {
                     <Button
                       variant="primary"
                       className="deposit-primary"
-                      onClick={() => void runVaultAction(deposit)}
+                      onClick={() => setMoneyReview({ kind: "deposit", scope: balanceScope, amount: amountStr, to: vault })}
                       disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || !depositEntryValid || !newPlanAccessAllowed}
                     >
                       {t("assets.action.deposit")}
@@ -4659,7 +4709,7 @@ export default function App() {
                 </div>
               )}
 
-              {isMyVault && (
+              {isMyVault && !selectedAssetEmpty && (
                 <>
                 <details className="principal-controls"><summary>{t("assets.action.withdrawPrincipal")}</summary><div className="space-y-2">
                   <div className="text-xs text-gray-500">
@@ -4675,6 +4725,8 @@ export default function App() {
                       ? t("assets.withdrawCancelled")
                       : t("assets.withdrawBeforeDeadline")}
                   </div>
+                  <p className="withdraw-destination">{withdrawTo.toLowerCase() === account.toLowerCase() ? t("assets.ownWallet") : t("income.toAddress", { address: short(withdrawTo) })}</p>
+                  <details className="withdraw-destination-details"><summary>{t("assets.changeDestination")}</summary>
                   <div className="field-row">
                     <label className="field-row-label" htmlFor="withdraw-to">{t("assets.withdrawTo", { symbol: wldSymbol })}</label>
                     <div className="field-row-controls">
@@ -4686,6 +4738,7 @@ export default function App() {
                   {withdrawTo && !withdrawRecipientValid && (
                     <div id="withdraw-address-error" className="text-xs text-red-600" role="alert">{t("assets.invalidAddress")}</div>
                   )}
+                  </details>
                   <div className="field-row">
                     <label className="field-row-label" htmlFor="withdraw-amount">{t("assets.withdrawAmount")}</label>
                     <div className="field-row-controls">
@@ -4701,7 +4754,7 @@ export default function App() {
                           고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
                           라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
                           이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
-                      <Button className="principal-submit" onClick={() => void runVaultAction(ownerWithdraw)} disabled={pendingAction || !withdrawEntryValid || isExpiredOrLater && !inheritanceCancelled}>
+                      <Button className="principal-submit" onClick={() => setMoneyReview({ kind: "withdraw", scope: balanceScope, amount: withdrawAmountInput, to: withdrawTo })} disabled={pendingAction || !withdrawEntryValid || isExpiredOrLater && !inheritanceCancelled}>
                         {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
                           ? t("assets.action.withdrawMyself")
                           : withdrawTo
@@ -4856,13 +4909,19 @@ export default function App() {
           </Card>
         )}
 
-        {isMyVault && tab === "money" && <IncomePositionCard key={`income:${balanceScope}`}
+        {walletShareRoutes.filter(route => tab === "inherit" && receivedYieldInheritance && route.symbol === wldSymbol
+          || tab === "money" && (!vault || identityMatchesVault && route.symbol === wldSymbol)).map(route => <WalletInvestment
+          key={`${account}:${route.factory}`} route={route} provider={provider} account={account} held={walletYieldShares(route)}
+          busy={pendingAction || !miniInstalled}
+          onRedeem={(shares, minimum) => runWalletAction(() => redeemYieldShares(route, shares, minimum))} />)}
+
+        {isMyVault && tab === "money" && !selectedAssetEmpty && <IncomePositionCard key={`income:${balanceScope}`}
           state={selectedIncome?.state ?? "loading"}
           position={selectedIncome?.state === "available" ? selectedIncome : null}
           symbol={wldSymbol as "WLD" | "USDC"} decimals={wldDecimals} to={incomeTo} recipientValid={incomeRecipientValid}
           canCollect={Boolean(miniInstalled && selectedIncome?.state === "available" && selectedIncome.valued
             && incomeRecipientValid && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled))}
-          busy={pendingAction} onToChange={setIncomeTo} onCollect={() => void runVaultAction(ownerWithdrawIncome)}
+          busy={pendingAction} onToChange={setIncomeTo} onCollect={() => setMoneyReview({ kind: "income", scope: balanceScope, amount: selectedIncome ? fmtUnits(selectedIncome.withdrawableNet, wldDecimals) : "0", to: incomeTo })}
           account={account}
           disabledReason={!miniInstalled ? t("income.openWorldApp")
             : isSettledClaim ? t("income.inheritanceComplete")
@@ -4877,7 +4936,7 @@ export default function App() {
           busy={pendingAction}
           onRefresh={() => void refreshIncomeHistory()}
           onLoadOlder={() => void refreshIncomeHistory("older")} />}
-        {isYieldVault && tab === "money" && <details className="asset-details" key={`yield:${balanceScope}`}>
+        {isYieldVault && tab === "money" && (!selectedAssetEmpty || hasRewardAction) && <details className="asset-details" key={`yield:${balanceScope}`}>
           <summary>{t("assets.yieldDetails")}</summary>
           <p>{t("assets.yieldBody")}</p>
           <div className="asset-details-content">
@@ -4896,7 +4955,7 @@ export default function App() {
           </div>
         </details>}
 
-        {tab === "inherit" && identityMatchesVault && !isSettledClaim && !inheritanceCancelled && (isMyVault || iAmHeir) && <details className="plan-service-details"><summary>{t("journey.heir.service")}</summary><AutomationNotice
+        {tab === "inherit" && !showPlanSetup && !pendingPlan && identityMatchesVault && !isSettledClaim && !inheritanceCancelled && (isMyVault || iAmHeir) && <details className="plan-service-details"><summary>{t("journey.heir.service")}</summary><AutomationNotice
           factoryAddress={vaultFactory} legacy={Boolean(LEGACY_FACTORY_ADDRESS && vaultFactory.toLowerCase() === LEGACY_FACTORY_ADDRESS.toLowerCase())}
           registered={notifyWatchState === "registered"} canEnable={NOTIFY_BACKEND_ENABLED && (isMyVault || iAmHeir)} busy={watchBusy || pendingAction} onEnable={registerHeirAlert} />
         </details>}
@@ -4915,7 +4974,7 @@ export default function App() {
           onConfirm={() => void runWalletAction(confirmPlanSettings, true)} onDismiss={() => setSettingsReview(null)}
           pending={settingsPending} onResume={() => void runWalletAction(resumePlanSettings)}
           onCheckIn={() => { navigationChosenFor.current = account.toLowerCase(); setTab("vault"); void runWalletAction(() => checkInAllPlans(), true); }} inconsistent={!commonManagedSettings} />}
-        {tab === "inherit" && isMyVault && !vaultIdentity?.released && inviteCard}
+        {tab === "inherit" && !showPlanSetup && !pendingPlan && isMyVault && !vaultIdentity?.released && inviteCard}
         {tab === "inherit" && settingsPending && !showOwnerPlanSettings && <Card><CardHeader><CardTitle>{t("journey.owner.settings")}</CardTitle></CardHeader>
           <CardContent className="grid gap-2"><p role="status">{t("journey.owner.pending")}</p>
             <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("journey.action.resume")}</Button>
@@ -4938,6 +4997,7 @@ export default function App() {
             if (commonPlanSettings) { setHeir(homeHeirAddress); void onHeirInput(homeHeirAddress); setPeriodInput(String(activeOwnedPlans[0].period)); }
           }}>{t(ownVault ? "journey.owner.addAssets" : "journey.owner.createOwn")}</Button>}
 
+        {tab === "inherit" && showPlanSetup && !pendingPlan && ownVault && <Button variant="ghost" onClick={() => setShowPlanSetup(false)}>{t("journey.owner.return")}</Button>}
         {tab === "inherit" && account && (pendingPlan || showPlanSetup || !ownVault && !linkedVault && inheritedPositions.length === 0 && !findingHeirVaults && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded) && gate2(
           <PlanSetup
             focusOnOpen={showPlanSetup}

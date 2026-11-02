@@ -161,7 +161,7 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, acco
           {!disabledReason && position.withdrawableNet <= 0n && <p className="income-explainer" role="status">{position.net > 0n
             ? t("income.withdrawable")
             : t("income.none")}</p>}
-          <details className="income-recipient"><summary>{t("income.changeRecipient")}</summary><div>
+          {position.withdrawableNet > 0n && <details className="income-recipient"><summary>{t("income.changeRecipient")}</summary><div>
           <div className="field-row">
             <label className="field-row-label" htmlFor="income-to">{t("income.sendTo")}</label>
             <div className="field-row-controls">
@@ -170,7 +170,7 @@ export function IncomePositionCard({ state, symbol, decimals, position, to, acco
             </div>
             {to && !recipientValid && <p role="alert" className="text-xs text-red-700">{t("income.invalidAddress")}</p>}
           </div>
-          </div></details>
+          </div></details>}
           <details className="income-recipient"><summary>{t("income.feeDetails")}</summary><div>
             {position.withdrawableNet <= 0n && <dl className="yield-values">
               <div><dt>{t("income.gross")}</dt><dd>{fmt(position.gross)} {symbol}</dd></div>

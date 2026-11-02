@@ -70,7 +70,7 @@ export function IncomeHistoryCard({ data, symbol, decimals, onRefresh, onLoadOld
                   <Button size="sm" disabled={busy} onClick={onRefresh}>{t("history.refresh")}</Button>
                 </div>
                   : history && <>
-                    {history.status === "ready" && history.finalizedBlock !== null && <p className="income-history-coverage" role="status">
+                    {history.status === "ready" && history.finalizedBlock !== null && <details><summary>{t("history.readDetails")}</summary><p className="income-history-coverage">
                       {complete
                         ? t("history.complete", { from: history.startBlock.toLocaleString(displayLocale), to: history.finalizedBlock.toLocaleString(displayLocale) })
                         : t("history.coverage", {
@@ -78,7 +78,7 @@ export function IncomeHistoryCard({ data, symbol, decimals, onRefresh, onLoadOld
                           start: history.startBlock.toLocaleString(displayLocale),
                           finalized: history.finalizedBlock.toLocaleString(displayLocale),
                         })}
-                    </p>}
+                    </p></details>}
                     {!complete && history.status === "ready" && <p className="income-history-partial" role="status">{t("history.partial")}</p>}
                     {failed.length > 0 && <p className="income-history-partial" role="alert">{t("history.gaps", { ranges: failedLabel })}</p>}
                     {history.error && <p className="income-history-partial" role="status">{t("history.unable")}</p>}

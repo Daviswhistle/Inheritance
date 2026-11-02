@@ -60,7 +60,7 @@ await test("English app and transaction labels match the interface", () => {
     assert.equal(i18n.translate("en", "nav.money"), "Assets");
     assert.equal(i18n.translate("en", "plan.action.review"), "Review plan");
     assert.equal(i18n.translate("en", "plan.action.confirm"), "Open approval screen");
-    assert.equal(i18n.translate("en", "income.title"), "Collect income");
+    assert.equal(i18n.translate("en", "income.title"), "Withdraw earnings only");
     assert.equal(i18n.translate("en", "plan.legal.join"), "and");
     assert.equal(i18n.translate("en", "plan.balance.available", { amount: "1.25", symbol: "WLD" }), "Available: 1.25 WLD");
 });
@@ -99,7 +99,7 @@ await test("completed transaction messages reproject when language changes witho
     const completed = "Income collected. Your principal remains in the inheritance vault.";
     assert.equal(i18n.localizeAppMessage("en", completed), completed);
     assert.match(i18n.localizeAppMessage("ko", completed), /이자를 수령.*원금/);
-    assert.match(i18n.localizeAppMessage("ko", "Checked in to all 3 active vaults."), /3개/);
+    assert.match(i18n.localizeAppMessage("ko", "Checked in to all 3 active vaults."), /다음 확인 날짜가 갱신/);
     assert.match(i18n.localizeAppMessage("ko", "Pending… verifying USDC deposit"), /USDC 예치/);
     assert.equal(i18n.localizeAppMessage("ko", "Deposit error: RPC diagnostic 0x1234"), "예치 오류: RPC diagnostic 0x1234");
     assert.equal(i18n.localizeAppMessage("ko", "unrecognized provider diagnostic"), "unrecognized provider diagnostic");

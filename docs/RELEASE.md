@@ -3,6 +3,28 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 — whole-app usability revision, submission stopped
+
+Current Portal state was independently read as **unverified**, **KR only**.
+The operator explicitly prohibited submission. No submission is performed for
+this revision; the earlier dated receipts below are historical.
+
+[HUMAN_UX_REVIEW.md](HUMAN_UX_REVIEW.md) describes the full journey audit and
+reference material. This revision distinguishes inheritance savings, wallet cash
+and separate Morpho investments; uses net values with a gross/fee calculation;
+provides honest empty and unavailable states; adds amount/destination review;
+and makes settings, status feedback and recipient investment receipts clearer.
+
+The task-based local-chain suite passed ten checks, including partial liquidity,
+quote changes, cancellation, fee math, retained funds after cancellation and an
+actual local investment-only inheritance payout. No production transaction or
+outbound notification/message was used. Chromium passed 68 layouts; WebKit passed 21 checks across 31 layouts.
+Typecheck, lint, production build, CSS registration, Korean translation checks,
+translation tests and mobile regression tests passed. Initial test failures
+were stale copy/direct-approval expectations and local fixture RPC/residence
+setup; the updated tests retain transaction, validation and cancellation gates.
+Final production and device readback will be recorded after deployment.
+
 ## November 2 16:03 KST — first-use revision submitted, Korea only
 
 After the first-use walkthrough, actual Android correction/readback, final

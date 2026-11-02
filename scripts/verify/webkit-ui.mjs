@@ -473,7 +473,7 @@ try {
     }
   }
   await tab(page, 0); await tap(page, '지금 확인하기');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('2개') && e.textContent.includes('확인')), null, { timeout: 60000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('다음 확인 날짜가 갱신')), null, { timeout: 60000 });
   pass('Expanded owner details retain touch targets and a combined check-in confirms both assets');
   // Real browser network outage, with local-chain state observed independently.
   const vaults = [wldVault, usdcVault].map(address => new Contract(address,
@@ -568,7 +568,7 @@ try {
   // Explicitly approve this retry in the disposable host in either case.
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.setApproval('auto'));
   await tap(page, '지금 확인하기');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('2개') && e.textContent.includes('확인')), null, { timeout: 60000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('다음 확인 날짜가 갱신')), null, { timeout: 60000 });
   assert.equal(await commandCount(), 1, 'only explicit retry submits');
   pass('Approval rejection, reload during pending approval and browser Back preserve both vaults; only an explicit retry submits once');
   const heir = await open(origin + `/?platform=ios&approval=auto&account=heir&vault=${wldVault}`);

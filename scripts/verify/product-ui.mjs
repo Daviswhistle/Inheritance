@@ -125,7 +125,7 @@ try{
  await setEligibilityCountry('US');
  await tab(page,1);await page.ev("document.querySelector('.deposit-controls').open=true;await __q.setInput('deposit-amount','0.01');");
  const beforeBlockedTopUp=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
- await click(page,'추가 예치');
+ await click(page,'금액 추가하기');await click(page,'거래 승인 화면 열기');
  await until(()=>page.ev("return document.body.innerText.includes('현재 네트워크 지역에서는 새 금고와 예치를 이용할 수 없습니다.')"),'fresh location check before existing-vault top-up');
  assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeBlockedTopUp,'an unsupported-location top-up made no wallet request');
  await tab(page,2);await click(page,'내 플랜에 자산 추가');
@@ -186,13 +186,13 @@ try{
  const before=await token.balanceOf(config.owner);
  await page.ev(`__q.reveal('#withdraw-to');await __q.setInput('withdraw-to',${JSON.stringify(config.owner)});await __q.setInput('withdraw-amount','1.0000001');`);
  assert.equal(await page.ev("return document.querySelector('.principal-submit').disabled"),true,'USDC precision guard');
- await page.ev("await __q.setInput('withdraw-amount','1');");await click(page,'내 지갑으로 출금');
+ await page.ev("await __q.setInput('withdraw-amount','1');");await click(page,'내 지갑으로 출금');await click(page,'거래 승인 화면 열기');
  await until(async()=>await token.balanceOf(config.owner)===before+1_000000n,'verified USDC principal withdrawal');
  await until(()=>page.ev("return document.body.innerText.includes('출금을 완료했습니다')"),'localized withdrawal receipt');
  console.log('PASS invalid and zero addresses, precision, zero and excess amounts cannot submit; valid USDC withdrawal pays exactly one token');
  const checkinStartBlock=await provider.getBlockNumber();
  await tab(page,0);await click(page,'지금 확인하기');
- await until(()=>page.ev("return document.body.innerText.includes('2개') && document.body.innerText.includes('확인')"),'combined check-in');
+ await until(()=>page.ev("return document.querySelector('.toast-success')?.textContent.includes('다음 확인 날짜가 갱신')"),'combined check-in');
  const factory=new Contract(config.wldFactory,['function vaultOf(address) view returns(address)'],provider);
  const vault=await factory.vaultOf(config.owner);
  const checkinVaults=[vault,await new Contract(config.usdcFactory,['function vaultOf(address) view returns(address)'],provider).vaultOf(config.owner)];

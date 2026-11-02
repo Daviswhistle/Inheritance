@@ -1,0 +1,86 @@
+// Task-based UI checks on disposable contracts; never uses production funds.
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {createServer} from 'node:net';
+import {createRequire} from 'node:module';
+import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {setTimeout as sleep} from 'node:timers/promises';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {Contract,JsonRpcProvider,parseEther}=createRequire(new URL('../../app/package.json',import.meta.url))('ethers');
+const out=process.env.HUMAN_UX_OUT || '/tmp/inheritance-human-ux';mkdirSync(out,{recursive:true});
+const socket=createServer();await new Promise(r=>socket.listen(0,'127.0.0.1',r));const port=socket.address().port;await new Promise(r=>socket.close(r));
+const origin=`http://localhost:${port}`;
+const host=spawn(process.execPath,[new URL('../test-host/start.mjs',import.meta.url).pathname,`--port=${port}`],{stdio:['ignore','pipe','pipe']});let log='';host.stdout.on('data',d=>log+=d);host.stderr.on('data',d=>log+=d);
+let browser,provider;const checks=[];const pass=x=>{checks.push(x);console.log('PASS '+x)};
+async function until(fn,label){for(let i=0;i<300;i++){if(await fn())return;await sleep(100)}throw Error('Timeout: '+label)}
+try{
+ await until(async()=>{try{return(await fetch(origin+'/__host/config')).ok}catch{return false}},'host');
+ const c=await(await fetch(origin+'/__host/config')).json();await until(()=>Promise.resolve(/Fixture: (.+)/.test(log)),'fixture path');const fixture=JSON.parse(readFileSync(log.match(/Fixture: (.+)/)[1],'utf8'));provider=new JsonRpcProvider(fixture.rpc,undefined,{cacheTimeout:-1,batchMaxCount:1});const signer=await provider.getSigner(0);
+ const factoryAbi=['function createVault(address,uint256) returns(address)','function vaultOf(address) view returns(address)','function depositWithMinShares(uint256,uint256)'];
+ const wf=new Contract(c.wldFactory,factoryAbi,signer),uf=new Contract(c.usdcFactory,factoryAbi,signer);
+ await(await wf.createVault(c.heir,30*86400)).wait();await(await uf.createVault(c.heir,30*86400)).wait();
+ const tokenAbi=['function approve(address,uint256) returns(bool)'];
+ const usdc=new Contract(c.usdc,tokenAbi,signer),wld=new Contract(c.wld,tokenAbi,signer);
+ const strategy=new Contract(c.usdcStrategy,['function setRate(uint256)','function setLiquidity(uint256)','function setBrokenQuote(bool)','function deposit(uint256,address)','function balanceOf(address) view returns(uint256)'],signer);
+ await(await strategy.setRate(1_250_000n)).wait();await(await usdc.approve(c.usdcStrategy,50_000_000n)).wait();await(await strategy.deposit(50_000_000n,c.owner)).wait();await(await strategy.setLiquidity(30_000_000n)).wait();
+ browser=await chromium.launch({executablePath:process.env.CHROME_BIN || undefined,headless:true});
+ const p=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await p.addInitScript(()=>localStorage.setItem('inheritance:locale','ko'));
+ await p.goto(origin+'/?approval=auto');await p.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
+ const tab=async index=>{await p.locator('.tab-item').nth(index).click()};
+ const requests=()=>p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length);
+ const shot=async name=>{await p.locator('#inheritance-test-controls').evaluate(e=>e.style.display='none');await p.screenshot({path:`${out}/${name}.png`})};
+ await tab(0);await p.locator('.savings-empty').waitFor();
+ assert.match(await p.locator('.savings-empty').innerText(),/상속을 위해 맡긴 자산이 없습니다/);assert.equal(await p.locator('.home-checkin-action').count(),0);assert.equal(await p.locator('.home-checkin-date').count(),0);
+ await shot('empty-home-ko');pass('Empty contracts show saved settings and an add-funds action, with no urgent timer or routine check-in prompt');
+ await tab(1);await until(async()=> (await p.locator('.savings-balance').innerText()).includes('이 플랜에 맡긴 WLD'),'empty WLD');
+ assert.equal(await p.locator('.wallet-investment').count(),0);assert.equal(await p.locator('.principal-controls,.income-card').count(),0);assert.match(await p.locator('.wallet-balance-line').innerText(),/500.0 WLD/);
+ await shot('empty-wld-ko');pass('WLD empty state separates wallet cash from inheritance savings and contains no unrelated USDC investment or empty withdrawal form');
+ await p.getByRole('button',{name:'USDC',exact:true}).click();await p.locator('.wallet-investment').waitFor();assert.equal(await p.locator('.wallet-investment').getAttribute('open'),null);
+ await p.locator('.wallet-investment > summary').click();await until(async()=> (await p.locator('.wallet-investment-content').innerText()).includes('50.0 USDC'),'underlying quote');
+ assert.match(await p.locator('.wallet-investment-content').innerText(),/30.0 USDC/);assert.equal(await p.locator('.wallet-investment-content details').getAttribute('open'),null);
+ const n=await requests();await p.getByRole('button',{name:'USDC 찾을 금액 확인',exact:true}).click();assert.match(await p.locator('.wallet-investment-review').innerText(),/30.0 USDC/);assert.match(await p.locator('.wallet-investment-review').innerText(),/나머지는/);assert.equal(await requests(),n);
+ await p.locator('.wallet-investment-review').scrollIntoViewIfNeeded();await shot('separate-investment-review-ko');await p.getByRole('button',{name:'취소',exact:true}).click();assert.equal(await requests(),n);
+ pass('Separate Morpho investment uses 50 USDC value, not 40 receipt units; 30 USDC liquidity is reviewed and cancellation sends nothing');
+ await(await strategy.setBrokenQuote(true)).wait();await p.getByRole('button',{name:'금액 새로고침',exact:true}).click();await p.getByText('투자 금액을 조회하지 못했습니다.',{exact:false}).waitFor();assert.equal(await p.locator('.wallet-investment-review').count(),0);assert.equal(await p.getByRole('button',{name:'USDC 찾을 금액 확인',exact:true}).count(),0);
+ await(await strategy.setBrokenQuote(false)).wait();await(await strategy.setLiquidity(0n)).wait();await p.getByRole('button',{name:'금액 새로고침',exact:true}).click();await p.getByText('현재 이 투자 자산을 USDC로 찾을 수 없습니다.',{exact:false}).waitFor();assert.equal(await requests(),n);
+ pass('Failed valuation is not shown as zero; no-liquidity state explains funds remain invested and offers no withdrawal');
+ await(await strategy.setLiquidity(30_000_000n)).wait();await p.getByRole('button',{name:'금액 새로고침',exact:true}).click();await p.getByRole('button',{name:'USDC 찾을 금액 확인',exact:true}).click();
+ await(await strategy.setLiquidity(20_000_000n)).wait();await p.locator('.wallet-investment-review').getByRole('button',{name:'거래 승인 화면 열기',exact:true}).click();
+ await p.getByText('금액이 바뀌었습니다.',{exact:false}).first().waitFor();assert.equal(await requests(),n);
+ await p.getByRole('button',{name:'USDC 찾을 금액 확인',exact:true}).click();await until(async()=> (await p.locator('.wallet-investment-review > strong').innerText()).includes('20.0'),'revised quote');
+ await(await strategy.setLiquidity(50_000_000n)).wait();await p.locator('.wallet-investment-review').getByRole('button',{name:'거래 승인 화면 열기',exact:true}).click();
+ await until(async()=>await strategy.balanceOf(c.owner)===parseEther('24'),'redeem only reviewed 16 shares');
+ assert.equal(await requests(),n+1);
+ pass('A reduced quote sends no wallet request; improved liquidity still redeems only the reviewed 20 USDC, leaving 30 USDC invested');
+
+ await(await wld.approve(c.wldFactory,parseEther('10'))).wait();await(await wf.depositWithMinShares(parseEther('10'),1n)).wait();
+ const ws=new Contract(c.wldStrategy,['function setRate(uint256)'],signer);await(await ws.setRate(parseEther('1.1'))).wait();await p.reload();await tab(0);await until(async()=> (await p.locator('.plan-overview-assets').innerText()).includes('10.9'),'net home');assert.equal(await p.locator('.savings-empty').count(),0);
+ await tab(1);await p.getByRole('button',{name:'WLD',exact:true}).click();await until(async()=> (await p.locator('.savings-balance > strong').innerText()).includes('10.9'),'net asset');
+ await p.locator('.balance-calculation > summary').click();assert.match(await p.locator('.balance-calculation').innerText(),/11.0 WLD/);assert.match(await p.locator('.balance-calculation').innerText(),/0.1 WLD/);await shot('funded-breakdown-ko');
+ pass('Home and asset detail agree on 10.9 WLD after the 0.1 service fee; the 11 WLD gross calculation is available on demand');
+ await p.locator('.principal-controls > summary').click();await p.getByRole('button',{name:'전액',exact:true}).click();const beforeReview=await requests();await p.getByRole('button',{name:'내 지갑으로 출금',exact:true}).click();await p.locator('.money-review').waitFor();assert.match(await p.locator('.money-review').innerText(),/10.9 WLD/);assert.match(await p.locator('.money-review').innerText(),/내 World App 지갑/);assert.equal(await requests(),beforeReview);await shot('withdraw-review-ko');await p.setViewportSize({width:320,height:360});await p.locator('.money-review .btn-primary').scrollIntoViewIfNeeded();assert.ok(await p.locator('.money-review .btn-primary').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===e}));await p.keyboard.press('Escape');assert.equal(await p.locator('.money-review').count(),0);assert.equal(await p.locator('.principal-submit').evaluate(e=>document.activeElement===e),true);await p.setViewportSize({width:390,height:844});assert.equal(await requests(),beforeReview);
+ pass('Full withdrawal shows destination, net estimate and separate network cost; opening and cancelling the review sends nothing');
+ await tab(2);assert.equal(await p.locator('.settings-edit').getAttribute('open'),null);assert.match(await p.locator('.owner-plan-settings').innerText(),/30일마다/);await shot('settings-ko');await p.getByRole('button',{name:'내 플랜에 자산 추가',exact:true}).click();await p.locator('#plan-residence-country').selectOption('KR');await p.locator('#plan-residence-attestation').check();await p.locator('.plan-residence-confirmation .btn-primary').click();await p.locator('#plan-wld').waitFor();assert.equal(await p.locator('.owner-plan-settings').count(),0);await p.getByRole('button',{name:'내 플랜으로 돌아가기',exact:true}).click();await p.locator('.owner-plan-settings').waitFor();assert.equal(await p.locator('#plan-wld').count(),0);
+ await tab(3);await p.locator('.locale-picker select').selectOption('en');await tab(1);assert.match(await p.locator('.savings-balance').innerText(),/Estimated balance after service fee/);await shot('funded-en');
+ for(const width of [320,390]){await p.setViewportSize({width,height:844});for(let i=0;i<4;i++){await tab(i);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.equal(await p.locator('main h1').count(),1)}}
+ pass('Settings lead with recipient and interval; both languages and all four tabs retain one heading and no horizontal overflow');
+
+ const settingsAbi=['function cancelMyInheritance()','function updateMyHeir(address)'];
+ for(const address of [c.wldFactory,c.usdcFactory]) await(await new Contract(address,settingsAbi,signer).cancelMyInheritance()).wait();
+ await p.reload();await tab(0);await until(async()=> (await p.locator('.plan-overview-assets').innerText()).includes('10.9'),'cancelled funds still visible');
+ assert.equal(await p.locator('.savings-empty').count(),0);
+ pass('Cancelling inheritance does not hide the retained 10.9 WLD balance');
+ for(const address of [c.wldFactory,c.usdcFactory]) await(await new Contract(address,settingsAbi,signer).updateMyHeir(c.heir)).wait();
+ await(await new Contract(c.wldStrategy,['function setLiquidity(uint256)'],signer).setLiquidity(0n)).wait();
+ const advance=async days=>{const r=await fetch(origin+'/__host/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'time',days})});assert.equal(r.status,200)};
+ await advance(31);
+ const heir=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await heir.addInitScript(()=>localStorage.setItem('inheritance:locale','ko'));
+ await heir.goto(origin+`/?account=heir&approval=auto&vault=${await wf.vaultOf(c.owner)}`);await heir.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
+ await heir.getByRole('button',{name:'상속 신청',exact:true}).click();await heir.locator('.inheritance-state.state-waiting').waitFor();await advance(7);await heir.reload();
+ await heir.getByRole('button',{name:'상속 수령 완료',exact:true}).click();await heir.getByText('WLD를 Morpho 투자 자산으로 받았습니다',{exact:true}).waitFor();
+ const completed=heir.locator('.inheritance-asset').filter({hasText:'WLD를 Morpho 투자 자산으로 받았습니다'});
+ assert.equal(await completed.locator('.inheritance-amount').count(),0);assert.equal(await completed.locator('details').getAttribute('open'),null);
+ await heir.locator('#inheritance-test-controls').evaluate(e=>e.style.display='none');await heir.screenshot({path:out+'/heir-investment-receipt-ko.png'});
+ pass('A local no-liquidity inheritance payout shows an investment received, not a misleading zero cash balance or receipt units as WLD');
+ writeFileSync(out+'/evidence.json',JSON.stringify({checks,realFundsUsed:false},null,2));
+}finally{await browser?.close();provider?.destroy();host.kill('SIGTERM');}

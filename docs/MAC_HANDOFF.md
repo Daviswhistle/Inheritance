@@ -1,5 +1,19 @@
 # Mac continuation — 2026-11-02
 
+## Current authority — submission stopped
+
+The operator rejected the previous readiness assessment and explicitly said not
+to submit. November 2's fresh Portal readback is **unverified**, **KR only**.
+Do not resubmit this revision without a subsequent explicit instruction. Earlier
+submission receipts below are historical. Code fixes, validation and deployment
+remain authorized; no additional production funds or outbound messages are used.
+
+The current work reviews all user journeys, not just isolated wording. See
+[HUMAN_UX_REVIEW.md](HUMAN_UX_REVIEW.md) for observed failures, reference sources,
+changes and validation boundaries. Empty contracts, separate wallet investments,
+fee-adjusted balances, transaction review and recipient payout states now have
+explicit, different presentations. Do not call browser checks a user study.
+
 ## Objective and authority
 
 Complete World App guideline remediation, actual-device validation, necessary

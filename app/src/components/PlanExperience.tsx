@@ -59,8 +59,8 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
                 <div><strong>{p.symbol}</strong><span className={`inheritance-state state-${stage}`}>{t(`journey.stage.${stage}`)}</span></div>
                 {p.claimedAt > 0n
                   ? r ? <>
-                    <p className="inheritance-amount">{formatYieldAmount(r.cash, p.decimals)} {p.symbol} <small>{t("journey.receipt.cash")}</small></p>
-                    {r.shares > 0n && <p>{formatYieldAmount(r.shares)} <small>{t("journey.receipt.shares")}</small></p>}
+                    {(r.cash > 0n || r.shares === 0n) && <p className="inheritance-amount">{formatYieldAmount(r.cash, p.decimals)} {p.symbol} <small>{t("journey.receipt.cash")}</small></p>}
+                    {r.shares > 0n && <div><p>{t("journey.receipt.investment", { symbol: p.symbol })}</p><details><summary>{t("walletShares.details")}</summary><p>{formatYieldAmount(r.shares)} · {t("walletShares.units")}</p></details></div>}
                     {r.rewardsWld > 0n && <p>{formatYieldAmount(r.rewardsWld)} WLD <small>{t("journey.receipt.rewards")}</small></p>}
                     <small>{date(r.timestamp)} · {t(r.finalized ? "journey.receipt.finalized" : "journey.receipt.confirming")}</small>
                     <a className="receipt-link" href={`${EXPLORER}/tx/${r.transactionHash}`} target="_blank" rel="noreferrer">{t("journey.receipt.transaction")}</a>
@@ -105,6 +105,7 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
   return <Card className="owner-plan-settings"><CardHeader><CardTitle>{t("journey.owner.settings")}</CardTitle>
     <p className="plan-card-intro">{t("journey.owner.shared")}</p></CardHeader><CardContent className="grid gap-3">
       <dl className="plan-review-list"><div><dt>{t("plan.review.recipient")}</dt><dd>{heirLabel || t("home.settingsDiffer")}</dd></div></dl>
+      {!inconsistent && <p className="settings-interval">{t("journey.owner.currentInterval", { days: period })}</p>}
       {inconsistent && <p role="status">{t("journey.owner.inconsistent")}</p>}
       {pending ? <section role="status"><p>{t("journey.owner.pending")}</p><Button disabled={busy} onClick={onResume}>{t("journey.action.resume")}</Button></section> : review ? <section className="plan-review" aria-labelledby="settings-review-title">
         <h3 id="settings-review-title" tabIndex={-1}>{t("journey.owner.review")}</h3>
@@ -114,6 +115,7 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
         {review.some(r => r.nextHeir.toLowerCase() === r.heir.toLowerCase() && r.nextPeriod === r.period) && <p className="text-xs">{t("journey.owner.allIncluded")}</p>}
         <div className="plan-step-actions"><Button variant="primary" disabled={busy} onClick={onConfirm}>{t("journey.action.confirmSettings")}</Button><Button disabled={busy} onClick={onDismiss}>{t("journey.action.edit")}</Button></div>
       </section> : <>
+        <details className="settings-edit"><summary>{t("journey.owner.editSettings")}</summary><div>
         <div className="field-row"><label htmlFor="period-change">{t("journey.owner.interval")}</label><div className="field-row-controls">
           <Input id="period-change" inputMode="numeric" value={period} disabled={busy} onChange={e => onPeriod(e.target.value)} />
           <Button disabled={busy || disabled || !/^\d+$/.test(period) || Number(period) < 1 || Number(period) > 365} onClick={onPeriodReview}>{t("journey.action.changePeriod")}</Button>
@@ -121,6 +123,7 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
         <div className="field-row"><label htmlFor="new-heir-input">{t("journey.owner.heir")}</label><Input id="new-heir-input" value={heir} placeholder={t("plan.recipient.placeholder")} disabled={busy} onChange={e => onHeir(e.target.value)} /></div>
         {heir && <p className={resolvedHeir ? "plan-review-address" : "text-xs"}>{resolving ? t("plan.recipient.checking") : resolvedHeir || t("plan.recipient.notFound")}</p>}
         <Button disabled={busy || disabled || !resolvedHeir || resolving} onClick={onHeirReview}>{t("journey.action.changeHeir")}</Button>
+        </div></details>
         {disabled && <p>{t("journey.owner.checkInFirst")}</p>}
         <Button variant="outline" disabled={busy} onClick={onCheckIn}>{t("home.checkin.direct")}</Button>
         <details><summary>{t("journey.owner.stop")}</summary><p>{t("journey.owner.stopExplanation")}</p>
