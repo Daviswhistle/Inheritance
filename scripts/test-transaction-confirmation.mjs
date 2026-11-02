@@ -96,5 +96,13 @@ try {
     await assert.rejects(confirmTransaction({}, {}), error =>
       !(error instanceof ConfirmedTransactionFailure) && /valid transaction identifier/.test(error.message));
   });
+  await test("a stalled receipt or confirmation RPC retains the overall timeout", async () => {
+    for (const provider of [
+      { getTransactionReceipt: () => new Promise(() => {}) },
+      { getTransactionReceipt: async () => ({ ...receipt(), confirmations: () => new Promise(() => {}) }) },
+    ]) {
+      await assert.rejects(confirmTransaction(provider, { txHash: tx, hashType: "transaction", timeoutMs: 5 }), /still confirming/);
+    }
+  });
 } finally { globalThis.fetch = original; }
 console.log(`${passes} passed, 0 failed`);

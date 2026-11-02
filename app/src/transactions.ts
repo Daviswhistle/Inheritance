@@ -41,6 +41,14 @@ function revertedReceiptMatches(error: unknown, txHash: string): boolean {
 
 const HASH = /^0x[0-9a-fA-F]{64}$/;
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+async function beforeDeadline<T>(task: Promise<T>, deadline: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([task, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("World App is still confirming this request. Check your vault before trying again.")), Math.max(0, deadline - Date.now()));
+    })]);
+  } finally { clearTimeout(timer); }
+}
 const INCOME_EVENT = new Interface([
   "event IncomeWithdrawn(address indexed to,uint256 gross,uint256 fee,uint256 net)",
 ]);
@@ -110,9 +118,9 @@ export async function confirmTransaction(provider: AbstractProvider, options: Co
   // receipt until another block is produced (notably on idle local chains).
   do {
     try {
-      const candidate = await provider.getTransactionReceipt(canonicalHash);
+      const candidate = await beforeDeadline(provider.getTransactionReceipt(canonicalHash), deadline);
       if (candidate?.hash.toLowerCase() === canonicalHash.toLowerCase()
-        && await candidate.confirmations() >= confirmations) {
+        && await beforeDeadline(candidate.confirmations(), deadline) >= confirmations) {
         receipt = candidate;
         break;
       }
