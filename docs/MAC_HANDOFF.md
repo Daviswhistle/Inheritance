@@ -25,7 +25,7 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
-## Current work — UX revision after operator withdrawal
+## November 2 — deployed UX revision after operator withdrawal
 
 The operator withdrew the 02:45 KST request and requested clearer mobile UI/UX.
 Portal readback confirms **unverified**, with **KR only** unchanged. Resubmission
@@ -77,8 +77,15 @@ Done gestures passed. This run is not counted as acceptance. The exported
 accessibility hierarchy from 41395213145 contains the restored “Continue
 unfinished setup” region and heading; the test still searched for “Finish your
 saved plan”. Test-only `a89aec9` corrects that expectation. Final native run
-41396499474 is the acceptance gate; its result is recorded below when complete.
-The native host uses simulated approvals and is not actual iOS World App.
+[41396499474](https://github.com/Daviswhistle/Inheritance/actions/runs/41396499474)
+passed both tests with zero failures and skips on iPhone 16 Pro / iOS 18.5
+Simulator. All five traced Done gestures started on the actual button, prevented
+touchend, emitted no extra click, removed input focus and restored actions.
+The intended exact label-overlap gate was reached before the relevant taps.
+Pending-deposit recovery survived process death. Source `a89aec9` changes only
+the test expectation relative to the deployed runtime. CI 41396499548 and
+documentation CI 41397770996 passed. The native host uses simulated approvals
+and is not actual iOS World App.
 
 ## November 2 02:45 KST — previous Korea-only request (withdrawn)
 

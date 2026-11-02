@@ -120,3 +120,27 @@ generated no extra click, cleared input focus and restored controls. The measure
 pans reached the exact label-overlap condition before each applicable tap; the
 process-termination deposit-recovery test also passed. See [RELEASE.md](RELEASE.md). The superseded intermediate run was cancelled when the
 review correction was committed; it is not counted as acceptance.
+
+
+## November 2 UX revision regression check
+
+The revised setup/review runtime is `fd16206`. Native run 41395213145 passed the
+keyboard lifecycle but failed a stale recovery heading expectation. Its exported
+hierarchy contains the new restored “Continue unfinished setup” heading.
+Test-only `a89aec9` corrects the expectation without changing production code.
+
+Run 41395540414 had a separate pre-action fixture failure. Two Done gestures
+passed; the next overlap setup exhausted its pan attempts. Its failure trace
+shows the last pointer-down on `main-content`, the Done center at Y=314.3125
+and the interval label at Y=339–359. The intended overlap had not been arranged,
+so this was not a failed Done tap. The screenshot confirms the still-open input
+and label below Done. This run remains a failed run, not accepted evidence.
+
+Final [run 41396499474](https://github.com/Daviswhistle/Inheritance/actions/runs/41396499474)
+passed both lifecycle and process-termination recovery tests, zero failures or
+skips. The unchanged strict overlap gate passed before each applicable tap.
+All five native Done traces show a button-targeted pointer-down, prevented
+touchend, no extra click, no remaining focused input and restored actions.
+The earlier fixture alignment remains timing-sensitive; the acceptance evidence
+is the completed gestures and recovery in this final run, not an assertion that
+the fixture never flakes. The production click-retargeting fix is unchanged.
