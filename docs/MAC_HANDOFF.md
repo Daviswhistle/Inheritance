@@ -17,8 +17,10 @@ explicit, different presentations. Do not call browser checks a user study.
 Runtime `55ede20` is deployed and matched against the production alias; native
 host test source `1d4670c` passed both tests in run 41412039522. Android verified
 the final empty state, asset separation, settings and visible setup return.
-The force-stopped World App direct-link blank screen remains unresolved; normal
-entry/sign-in works. See RELEASE.md for evidence and limitations. No new real
+The subsequent cold-start investigation corrected the persistent-blank diagnosis:
+actual pixels render after native loading while UIAutomator omits web content.
+See ANDROID_COLD_START.md for timed captures, action checks and the corrected
+verification procedure; no product runtime fix was claimed for this finding. No new real
 transaction, notification, external message or submission was performed.
 
 ## Historical objective and standing authority

@@ -3,6 +3,17 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 18:33 KST — cold-start diagnosis corrected, submission stopped
+
+Timed captures on unchanged runtime `55ede20` distinguish native startup/loading
+from UIAutomator omitting a visibly rendered WebView. Both the app and static
+Terms control render without a second deep link; navigation responds. The
+previous persistent-blank diagnosis below is superseded by
+[ANDROID_COLD_START.md](ANDROID_COLD_START.md). The capture procedure now records
+pixels and actual process termination, treats missing web XML as inconclusive,
+and cannot reuse a stale XML dump. No application runtime change or submission
+was performed for this correction.
+
 ## November 2 — whole-app usability revision, submission stopped
 
 Current Portal state was independently read as **unverified**, **KR only**.
