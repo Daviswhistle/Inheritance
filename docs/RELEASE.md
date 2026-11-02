@@ -3,7 +3,7 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
-## Current work — first-use clarity review
+## November 2 — first-use clarity verified
 
 After submission, the operator requested another walkthrough from a first-time
 user's perspective and authorized further fixes. The latest Portal readback is
@@ -36,7 +36,13 @@ was Y=314.3125. The first numeric-input Done gesture passed. This is a failed
 fixture arrangement, not a completed failed Done action. Test-only `17d8e89`
 changes the arrangement gesture to slow velocity with a final 0.5-second hold;
 the exact overlap gate and native event-target/no-extra-click assertions remain.
-Final native run 41401681538 is in progress; no submission is claimed yet.
+Final native run
+[41402516155](https://github.com/Daviswhistle/Inheritance/actions/runs/41402516155)
+(test source `74d7667`) passed both tests, zero failures or skips. All five Done
+traces start on the actual button, prevent touchend, emit no extra click, remove
+input focus and restore actions. All four exact-overlap arrangements reached the
+target in one measured adjustment. Pending-deposit recovery passed after process
+termination. CI 41402516259 passed. Production code remains `85b3d2a`. Submission is recorded separately after independent Portal readback.
 
 The first Chromium run failed the expanded-guide clearance gate and could not
 capture its failure screenshot. A controlled same-browser probe isolated the

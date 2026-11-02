@@ -25,7 +25,7 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
-## Current work — first-use clarity review
+## November 2 — first-use clarity verified
 
 The operator requested a first-time-user walkthrough and further UI fixes.
 Runtime `8cf931c` clarifies the deadline trigger, request/seven-day wait,
@@ -41,8 +41,17 @@ opened a form below the visible area. Production is https://89d74460.inheritance
 Actual Android confirms the revised instructions and new form-opening behavior,
 with the keyboard closed. The phone is back on Home and no values were entered.
 Native run 41399668170 passed recovery but failed its pre-Done overlap arrangement;
-test-only `17d8e89` uses a slow drag and a final hold, retaining the exact overlap
-and event-target gates. Final native run 41401681538 is in progress.
+Test-only `17d8e89` uses a slow drag and a final hold. Further geometry analysis
+found the unresolved `@sam` error row makes the overlap infeasible under the
+80px input-clearance floor. `74d7667` uses configured `@test_heir` and waits for
+resolution, retaining the exact overlap and event-target gates. See
+[KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). Final native run
+[41402516155](https://github.com/Daviswhistle/Inheritance/actions/runs/41402516155)
+(test source `74d7667`) passed both tests, zero failures or skips. All five Done
+traces start on the actual button, prevent touchend, emit no extra click, remove
+input focus and restore actions. All four exact-overlap arrangements reached the
+target in one measured adjustment. Pending-deposit recovery passed after process
+termination. CI 41402516259 passed. Production code remains `85b3d2a`.
 No additional funds or notifications are used.
 
 ## November 2 15:08 KST — revised UI submitted, Korea only

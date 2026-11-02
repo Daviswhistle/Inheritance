@@ -164,3 +164,12 @@ background return, button-targeted gesture, prevented touchend, no extra click,
 restored controls and process-recovery assertions remain unchanged. No production
 keyboard or scroll-protection behavior was weakened. Final evidence follows in
 [RELEASE.md](RELEASE.md).
+
+
+Final [run 41402516155](https://github.com/Daviswhistle/Inheritance/actions/runs/41402516155)
+passed both tests with zero failures and skips. Each of four arrangements reached
+the unchanged overlap gate in one adjustment (settled label tops 312, 296, 307
+and 297; Done center 315). All five Done traces show the intended button target,
+prevented touchend, zero extra clicks, no remaining input focus and restored
+actions. The pending-deposit test also passed. CI 41402516259 passed. The native
+host still models approvals and does not establish actual World App iOS behavior.
