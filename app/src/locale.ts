@@ -1053,7 +1053,7 @@ const ko: Record<LocaleKey, string> = {
   "journey.heir.ownerWallet": "피상속인 지갑 확인",
   "journey.heir.changed": "상속 상태가 변경되었습니다. 새 상태를 확인한 뒤 다시 진행하세요.",
   "journey.heir.filed": "표시된 자산의 상속 신청을 확인했습니다. 7일 대기가 시작되었습니다.",
-  "journey.heir.received": "상속 지급을 확인했습니다. 수령 내역과 남은 예치 지분을 확인하세요.",
+  "journey.heir.received": "상속 자산을 받았습니다. 아래에서 받은 내역을 확인하세요.",
   "journey.heir.notRecipient": "다른 지갑에 지정된 상속입니다. 지정된 지갑으로 로그인하거나 피상속인에게 수령인을 확인해 달라고 하세요.",
   "journey.incomplete": "일부 상속 정보를 확인하지 못했습니다. 새로고침하거나 이전 플랜의 초대 링크를 열어 확인하세요.",
   "journey.stage.active": "확인 기한 전",

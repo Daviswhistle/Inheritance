@@ -53,14 +53,14 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
           </section>}
           {sharedNext && <p className="inheritance-next heir-shared-next">{nextStep(group[0])}</p>}
           <div className="inheritance-assets">
-            {group.map(p => {
+            {[...group].sort((a, b) => Number(b.hasAssets || b.claimedAt > 0n) - Number(a.hasAssets || a.claimedAt > 0n)).map(p => {
               const stage = inheritanceStage(p), r = p.receipt;
               return <div className="inheritance-asset" key={p.address} data-vault={p.address}>
-                <div><strong>{p.symbol}</strong><span className={`inheritance-state state-${stage}`}>{t(`journey.stage.${stage}`)}</span></div>
+                <div><strong>{p.symbol}</strong><span className={`inheritance-state state-${stage}`}>{t(p.claimedAt === 0n && !p.hasAssets && p.amount !== null ? "home.empty.label" : `journey.stage.${stage}`)}</span></div>
                 {p.claimedAt > 0n
                   ? r ? <>
                     {(r.cash > 0n || r.shares === 0n) && <p className="inheritance-amount">{formatYieldAmount(r.cash, p.decimals)} {p.symbol} <small>{t("journey.receipt.cash")}</small></p>}
-                    {r.shares > 0n && <div><p>{t("journey.receipt.investment", { symbol: p.symbol })}</p><details><summary>{t("walletShares.details")}</summary><p>{formatYieldAmount(r.shares)} · {t("walletShares.units")}</p></details></div>}
+                    {r.shares > 0n && <div className="inheritance-investment"><p>{t("journey.receipt.investment", { symbol: p.symbol })}</p><details><summary>{t("walletShares.details")}</summary><p>{formatYieldAmount(r.shares)} · {t("walletShares.units")}</p></details></div>}
                     {r.rewardsWld > 0n && <p>{formatYieldAmount(r.rewardsWld)} WLD <small>{t("journey.receipt.rewards")}</small></p>}
                     <small>{date(r.timestamp)} · {t(r.finalized ? "journey.receipt.finalized" : "journey.receipt.confirming")}</small>
                     <a className="receipt-link" href={`${EXPLORER}/tx/${r.transactionHash}`} target="_blank" rel="noreferrer">{t("journey.receipt.transaction")}</a>
