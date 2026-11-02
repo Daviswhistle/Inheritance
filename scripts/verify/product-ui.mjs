@@ -142,6 +142,11 @@ try{
  await setEligibilityCountry('US');await click(page,'다시 확인');
  await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='이 지역에서는 새 플랜과 예치를 이용할 수 없습니다'"),'unsupported retry state');
  console.log('PASS unsupported and unknown location panels are localized, retryable, and do not offer new-plan actions');
+ await setEligibilityCountry('KR');await click(page,'다시 확인');
+ await until(()=>page.ev("const steps=document.querySelector('.plan-steps');const rect=steps?.getBoundingClientRect();return !!steps&&document.activeElement===steps&&rect.top>=0&&rect.bottom<document.querySelector('.plan-primary-actions').getBoundingClientRect().top"),'opening additional funds reveals and focuses setup steps');
+ assert.equal(await page.ev("return !!document.documentElement.dataset.planKeyboard"),false,'opening setup does not open a keyboard');
+ console.log('PASS opening additional funds reveals the new form and moves reading focus without opening a keyboard');
+ await shot(page,'ui-add-setup-focus-ko',false);
  for(const lang of ['en','ko']){
   await locale(page,lang);
   for(const[width,height]of [[320,640],[390,844]]){

@@ -110,9 +110,10 @@ export function PlanSetup({
   period, periodValid, onPeriodChange, onPreset, onAmountChange, yieldConsent, onYieldConsent, pendingPlan,
   heirSuspicious, alignmentConflicts, onConfirmAlignment, onCancelAlignment, onCreate, onResume, yieldRateInfoByAsset,
   busy, createDisabled, resumeDisabled, canEditRemaining, onEditRemaining, onRefreshBalances,
-  account, accessLocation, accessResidence, onRetryEligibility, onConfirmResidence,
+  account, accessLocation, accessResidence, onRetryEligibility, onConfirmResidence, focusOnOpen = false,
 }: {
   account: string;
+  focusOnOpen?: boolean;
   accessLocation: PlanAccessLocation;
   accessResidence: SupportedResidenceCountry | null;
   onRetryEligibility: () => void;
@@ -158,6 +159,14 @@ export function PlanSetup({
   const resumeHeadingRef = useRef<HTMLHeadingElement>(null);
   const resumeAttention = useRef({ pending: false, busy: false });
   const hasPendingPlan = Boolean(pendingPlan);
+  const setupStepsRef = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    if (!focusOnOpen || !newPlanAccessAllowed || hasPendingPlan || !setupStepsRef.current) return;
+    // Opening an additional plan must reveal the new form below existing
+    // settings. Focus its reading position, not an input that opens a keyboard.
+    setupStepsRef.current.focus({ preventScroll: true });
+    setupStepsRef.current.scrollIntoView({ block: "start" });
+  }, [focusOnOpen, newPlanAccessAllowed, hasPendingPlan]);
   const wasReviewingRef = useRef(false);
   const createClickLocked = useRef(false);
   useEffect(() => {
@@ -481,7 +490,7 @@ export function PlanSetup({
   </section>;
 
   return <Card className={`plan-setup-card ${pendingPlan ? "" : "plan-setup-with-actions"}`}>
-    {!pendingPlan && newPlanAccessAllowed && <ol className="plan-steps" aria-label={t("plan.steps.label")}>
+    {!pendingPlan && newPlanAccessAllowed && <ol className="plan-steps" aria-label={t("plan.steps.label")} tabIndex={-1} ref={setupStepsRef}>
       <li aria-current={!showReview ? "step" : undefined}><span aria-hidden="true">1</span>{t("plan.steps.details")}</li>
       <li aria-current={showReview ? "step" : undefined}><span aria-hidden="true">2</span>{t("plan.steps.review")}</li>
     </ol>}

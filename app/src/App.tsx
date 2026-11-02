@@ -4940,6 +4940,7 @@ export default function App() {
 
         {tab === "inherit" && account && (pendingPlan || showPlanSetup || !ownVault && !linkedVault && inheritedPositions.length === 0 && !findingHeirVaults && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded) && gate2(
           <PlanSetup
+            focusOnOpen={showPlanSetup}
             account={account}
             accessLocation={currentPlanEligibility.location}
             accessResidence={currentPlanEligibility.residence}

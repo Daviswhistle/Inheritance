@@ -211,3 +211,5 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
   .plan-cost-list > div { gap: 8px; }
   .plan-fee-example th { width: 58%; }
 }
+
+.plan-steps { scroll-margin-top: 16px; }
