@@ -651,6 +651,7 @@ export function PlanSetup({
             </details>
           </>}
           <h4>{t("plan.review.missedTitle")}</h4><p>{t("plan.review.missedBody")}</p>
+          <p>{t("plan.review.trigger")}</p>
         </section>
         {riskDisclosure}
       </section>}

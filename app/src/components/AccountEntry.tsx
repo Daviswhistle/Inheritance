@@ -73,13 +73,12 @@ export function AccountEntry({ view, installed, busy, onConnect, onNavigate, lin
 
     {view !== "money" && <details className="entry-rules"><summary>{t("guide.title")}</summary><TransferGuide /></details>}
     <div className="entry-action" ref={actionRef}>
-      {installed && <p className="entry-consent">{t("entry.connect.consent")} <a href="/privacy.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("privacy"); }}>{t("plan.legal.privacy")}</a> · <a href="/terms.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("terms"); }}>{t("plan.legal.terms")}</a></p>}
+      {installed && <p className="entry-consent">{t("entry.connect.consent")}<br /><a href="/privacy.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("privacy"); }}>{t("plan.legal.privacy")}</a> · <a href="/terms.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("terms"); }}>{t("plan.legal.terms")}</a></p>}
       {installed
         ? <Button variant="primary" size="lg" onClick={onConnect} disabled={busy}>
           {busy ? <><span className="spinner" />{t("entry.connect.busy")}</> : <>{t("entry.connect.continue")}<Icon name="arrow" size={19} /></>}
         </Button>
         : <a className="btn btn-primary btn-lg" href={worldLink}>{t("entry.connect.open")}<Icon name="arrow" size={19} /></a>}
-      <p>{t("entry.connect.note")}</p>
     </div>
     {legalDocument && <PlanLegalDialog document={legalDocument} onClose={() => setLegalDocument(null)} />}
   </section>;
