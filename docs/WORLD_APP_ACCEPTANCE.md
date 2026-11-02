@@ -12,6 +12,21 @@ The October 27 real-money test used runtime
 `e4be10c5225cd05504c3cb3f02082f16b1b4a623`. Current deployed source and exact
 CI/native-test results are in [RELEASE.md](RELEASE.md).
 
+## Physical device — November 2, 2026: revised review and fee presentation
+
+Runtime `fd162062d79b2f2af52bff98ff017af6dfbbb44a` was checked after restarting
+actual World App on Samsung SM-N986N / Android 13 / World Money 4.0.4602,
+Korean UI. Sign-in succeeded. Done dismissed the numeric keyboard and preserved
+the amount. Live-rate details opened and closed. Display-only inputs of 0.01 WLD
+and 0.01 USDC appeared exactly in review, with a separate conditional WLD network
+fee and total-debit components. Re7 and Inheritance fee roles were visible;
+expanded per-asset tables showed gross profit, each deduction and remaining
+profit. Approval remained disabled with risk consent unchecked. Edit returned
+both original amounts. Both test amounts were then cleared and Home reopened.
+No native transaction approval, real-money movement or notification was used.
+Private XML and visual evidence remain outside Git. This adds UI acceptance;
+it does not repeat or extend the earlier authorized financial round trips.
+
 ## Physical device — November 2, 2026: Korea-only scope
 
 Production `4a35244cf06fbad0965725446f61f2fe351137b2` / immutable

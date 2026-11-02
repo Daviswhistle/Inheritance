@@ -23,10 +23,40 @@ a future block event. Under the same 250 ms cache, the old block-event wait time
 out at 1,804 ms; direct receipt/confirmation polling confirmed at 309 ms without
 mining another block. `529668f` retains canonical-hash, confirmation-count,
 receipt-status, expected-event and post-state gates while polling the receipt.
-The 14 confirmation tests pass, including delayed confirmation, reverted and
-mismatched receipts. Browser/production/native acceptance is recorded below
-when complete. No additional real funds or notifications are authorized by this
-record.
+`fd16206` also bounds receipt RPC waits by the request deadline. All 15
+confirmation tests pass, including a stalled RPC, delayed confirmations, reverted
+and mismatched receipts. No additional real funds or notifications were used.
+
+Production source `fd162062d79b2f2af52bff98ff017af6dfbbb44a` is deployed at
+https://inheritance.pages.dev and immutable https://e52ac60c.inheritance.pages.dev.
+[Deployment 41395540398](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540398)
+and [CI 41395540405](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540405)
+passed. Public HTML and all six imported assets match the immutable release;
+three legal documents return 200; the Worker is ready, funded and cycling without
+a halt or last error. Chromium product checks passed 68 layouts; WebKit passed
+21 checks and 31 layouts with zero page errors. The full local-chain flow passed
+92 checks on the receipt-polling revision, followed by the final bounded-RPC
+unit checks and stable-runtime Chromium/WebKit reruns. Translation (9), mobile
+(12), type, lint, CSS usage and production-build checks passed.
+
+Actual Android World App testing on Samsung SM-N986N / Android 13 confirmed
+sign-in, Done dismissal, retained amounts, live-rate details, exact WLD/USDC
+review amounts, separate conditional network fee, both fee roles and calculation
+tables, disabled approval before consent, and Edit preserving both amounts.
+The display-only 0.01 WLD and 0.01 USDC inputs were cleared and the app returned
+to Home. No transaction approval, new spend or notification occurred. The new
+store setup preview was uploaded and the Portal confirmed the metadata commit.
+
+Native run 41395213145 passed the keyboard lifecycle but failed a stale
+recovery-title assertion after the intended copy change. Run 41395540414 also
+failed that assertion and stopped before a subsequent Done gesture because the
+fixture could not align the interval label beneath the button; its first two
+Done gestures passed. This run is not counted as acceptance. The exported
+accessibility hierarchy from 41395213145 contains the restored “Continue
+unfinished setup” region and heading; the test still searched for “Finish your
+saved plan”. Test-only `a89aec9` corrects that expectation. Final native run
+41396499474 is the acceptance gate; its result is recorded below when complete.
+The native host uses simulated approvals and is not actual iOS World App.
 
 ## November 2 02:45 KST — previous Korea-only request (withdrawn)
 

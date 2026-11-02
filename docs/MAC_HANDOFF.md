@@ -45,10 +45,40 @@ a future block event. Under the same 250 ms cache, the old block-event wait time
 out at 1,804 ms; direct receipt/confirmation polling confirmed at 309 ms without
 mining another block. `529668f` retains canonical-hash, confirmation-count,
 receipt-status, expected-event and post-state gates while polling the receipt.
-The 14 confirmation tests pass, including delayed confirmation, reverted and
-mismatched receipts. Browser/production/native acceptance is recorded below
-when complete. No additional real funds or notifications are authorized by this
-record.
+`fd16206` also bounds receipt RPC waits by the request deadline. All 15
+confirmation tests pass, including a stalled RPC, delayed confirmations, reverted
+and mismatched receipts. No additional real funds or notifications were used.
+
+Production source `fd162062d79b2f2af52bff98ff017af6dfbbb44a` is deployed at
+https://inheritance.pages.dev and immutable https://e52ac60c.inheritance.pages.dev.
+[Deployment 41395540398](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540398)
+and [CI 41395540405](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540405)
+passed. Public HTML and all six imported assets match the immutable release;
+three legal documents return 200; the Worker is ready, funded and cycling without
+a halt or last error. Chromium product checks passed 68 layouts; WebKit passed
+21 checks and 31 layouts with zero page errors. The full local-chain flow passed
+92 checks on the receipt-polling revision, followed by the final bounded-RPC
+unit checks and stable-runtime Chromium/WebKit reruns. Translation (9), mobile
+(12), type, lint, CSS usage and production-build checks passed.
+
+Actual Android World App testing on Samsung SM-N986N / Android 13 confirmed
+sign-in, Done dismissal, retained amounts, live-rate details, exact WLD/USDC
+review amounts, separate conditional network fee, both fee roles and calculation
+tables, disabled approval before consent, and Edit preserving both amounts.
+The display-only 0.01 WLD and 0.01 USDC inputs were cleared and the app returned
+to Home. No transaction approval, new spend or notification occurred. The new
+store setup preview was uploaded and the Portal confirmed the metadata commit.
+
+Native run 41395213145 passed the keyboard lifecycle but failed a stale
+recovery-title assertion after the intended copy change. Run 41395540414 also
+failed that assertion and stopped before a subsequent Done gesture because the
+fixture could not align the interval label beneath the button; its first two
+Done gestures passed. This run is not counted as acceptance. The exported
+accessibility hierarchy from 41395213145 contains the restored “Continue
+unfinished setup” region and heading; the test still searched for “Finish your
+saved plan”. Test-only `a89aec9` corrects that expectation. Final native run
+41396499474 is the acceptance gate; its result is recorded below when complete.
+The native host uses simulated approvals and is not actual iOS World App.
 
 ## November 2 02:45 KST — previous Korea-only request (withdrawn)
 
@@ -80,18 +110,18 @@ submission receipts below are historical and no longer the active request.
 
 ## Current verified checkpoint
 
-- Runtime source: `4a35244cf06fbad0965725446f61f2fe351137b2`, descendant of requested baseline `91944cc`.
+- Runtime source: `fd162062d79b2f2af52bff98ff017af6dfbbb44a`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
   deployment, native-test and independent-review receipts.
-- Production: https://inheritance.pages.dev ; immutable: https://3d748bd1.inheritance.pages.dev.
-  Deployment [41329915849](https://github.com/Daviswhistle/Inheritance/actions/runs/41329915849): passed for this runtime; Pages and notification Worker deployed successfully.
-  CI [41329915837](https://github.com/Daviswhistle/Inheritance/actions/runs/41329915837): passed, all three jobs successful.
+- Production: https://inheritance.pages.dev ; immutable: https://e52ac60c.inheritance.pages.dev.
+  Deployment [41395540398](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540398): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [41395540405](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540405): passed, all three jobs successful.
   Readback: November 2 KST readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
 - Financial UI separates dated lending/reward rates, live strategy fee, service
   fee and conditional WLD network costs. Review shows per-token deposit amounts
   plus the conditional fee as total-debit components; the SDK does not expose an
   exact preapproval network quote to this mini app. Quote and settled debit differ.
-- Current validation: November 1 discovery/metadata browser scenarios passed 10 checks; typecheck/lint/build and 12 mobile units passed. Independent commit review of `ff66905` found no actionable defect. The preceding runtime consolidated factory event scans and deferred optional metadata until details open; actual Android Home/Plan/Assets/details reopened without the earlier RPC warnings.
+- Earlier validation: November 1 discovery/metadata browser scenarios passed 10 checks; typecheck/lint/build and 12 mobile units passed. Independent commit review of `ff66905` found no actionable defect. The preceding runtime consolidated factory event scans and deferred optional metadata until details open; actual Android Home/Plan/Assets/details reopened without the earlier RPC warnings.
   Earlier full-withdrawal validation: the complete local-chain browser suite passed 92 checks, including refreshed/full/partial withdrawal, identity outage recovery, idle USDC plus WLD exit, and WLD arriving during approval. Separate automated code review: completed against the complete final commit with no actionable findings; its focused checks covered seven withdrawal scenarios and keyboard closing/recovery.
   Logic-source iOS (`ff66905`): [41299595716](https://github.com/Daviswhistle/Inheritance/actions/runs/41299595716) — passed on iPhone 16 Pro / iOS 18.5 Simulator: two tests, zero failures and skips; exported screenshots and raw summary independently inspected.
 - Physical Android: Samsung SM-S911N / Android 16 / World Money 4.0.4602 on November 1 (4.0.4401 for October tests).
