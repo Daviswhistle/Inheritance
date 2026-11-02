@@ -55,6 +55,9 @@ without a saved contact. Missed-deadline instructions are visible beside the
 interval field without opening details. These changes apply in English and
 Korean. A first-use walkthrough reached review with WLD alone and USDC alone,
 verified exact amounts and preserved drafts, and requested zero transactions.
+Opening **Add to my plan** now brings the newly opened setup into view and
+moves reading focus to its steps without opening the keyboard. The same behavior
+applies after a location check allows entry.
 This is an engineering walkthrough, not a study with recruited first-time users.
 
 ## Suggested review walkthrough

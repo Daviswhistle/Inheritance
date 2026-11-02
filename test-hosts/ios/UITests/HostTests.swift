@@ -305,8 +305,13 @@ final class HostTests: XCTestCase {
             // and adapt the next gesture while preserving the exact overlap gate.
             let distance = min(120, abs(delta) + panAllowance)
             let step = delta < 0 ? -distance : distance
+            // Release only after the finger has stopped. Default fast drags
+            // can fling past the target while keyboard/input reflow pulls back,
+            // making the measured correction alternate in opposite directions.
             origin.withOffset(CGVector(dx: 8, dy: start))
-                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: 8, dy: start - step)))
+                .press(forDuration: 0.05,
+                       thenDragTo: origin.withOffset(CGVector(dx: 8, dy: start - step)),
+                       withVelocity: .slow, thenHoldForDuration: 0.5)
             var previous: [Double] = []
             var stableSince = Date()
             let settled = NSPredicate { _, _ in

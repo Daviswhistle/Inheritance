@@ -14,6 +14,14 @@ Runtime source `8cf931c` clarifies the check-in trigger rather than death
 verification, the recipient's request and seven-day wait, login versus deposit,
 optional asset selection and manual recipient entry. The interval explanation
 is visible without expanding details. No transaction or inheritance rules changed.
+Actual Android inspection found that **Add to my plan** inserted its form below
+existing settings without moving the view. `85b3d2a` focuses and reveals the new
+setup steps after permitted entry, without focusing an input or opening the
+keyboard. Browser coverage checks the visible reading target and keyboard state,
+including entry after a location retry. The first draft of that assertion was
+mistakenly placed in an explicitly unsupported-country fixture; it was moved to
+the supported retry, keeping the unsupported blocking assertions intact.
+
 The isolated first-use walkthrough reaches review with each asset separately,
 retains exact amounts on Edit, and records zero transaction requests. It is not
 research with recruited users. Final runtime/deployment/native evidence follows
@@ -27,7 +35,9 @@ the same GPU flag. A separate GPU-flag comparison using absolute paths passed
 both cases. The driver now resolves its run/profile directory to an absolute
 path. This fixes the test renderer setup, not production app layout. The final
 run uses the original browser flags and a relative VERIFY_TMP input to exercise
-the path correction. Raw probes remain private outside Git.
+the path correction; all 68 Chromium layouts pass. Final WebKit checks pass
+21 checks / 31 layouts. Actual Android confirms the revised instructions and
+setup-opening focus, without opening a keyboard or moving funds. Raw probes remain private outside Git.
 
 ## November 2 15:08 KST — revised UI submitted, Korea only
 
