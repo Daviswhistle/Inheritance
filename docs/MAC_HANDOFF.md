@@ -23,6 +23,15 @@ See ANDROID_COLD_START.md for timed captures, action checks and the corrected
 verification procedure; no product runtime fix was claimed for this finding. No new real
 transaction, notification, external message or submission was performed.
 
+## Latest presentation revision
+
+`ecce410` is deployed (see the 18:55 KST RELEASE.md receipt). Home now explains
+what to do and when a recipient can request assets. The sign-in money-movement
+sentence was removed; wallet-data notice, legal links and explicit agreement
+remain. The death-verification limitation is visible before deposit approval.
+Android pixels, Chromium/WebKit layouts and CI were checked. Submission remains
+stopped. Earlier runtime references above describe the broader UI revision.
+
 ## Historical objective and standing authority
 
 The submission stop above overrides the earlier resubmission objective below.

@@ -3,6 +3,27 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 18:55 KST — entry copy revised, submission stopped
+
+Runtime `ecce410` deployed via run 41424288549 at
+https://61f9acc8.inheritance.pages.dev. Production HTML and all four directly
+imported assets match. Home describes choosing assets/recipient and checking in;
+the deadline/request/seven-day/cancellation sequence stays visible. Sign-in no
+longer carries a money-movement disclaimer. Its wallet-data notice, legal links
+and Agree and sign in button remain; session details remain in the Privacy Policy.
+The policy's description of the sign-in screen was reconciled with that change.
+The explicit limitation that the app does not verify death, including eligibility
+while alive after a missed deadline, is visible in the final deposit review.
+
+Typecheck, lint, build, registered translations and nine i18n checks passed.
+Chromium passed 68 layouts; WebKit passed 31 layouts. CI 41424288712 passed.
+Actual Android World App pixels show the new home and simplified sign-in area
+following a cold launch. No login, production transaction, notification, inquiry
+or submission was performed. This is a copy/presentation revision; it does not
+change transaction or keyboard behavior. The automatically triggered native
+host run is separate from these completed checks; no new native pass is claimed
+in this receipt.
+
 ## November 2 18:33 KST — cold-start diagnosis corrected, submission stopped
 
 Timed captures on unchanged runtime `55ede20` distinguish native startup/loading
