@@ -104,16 +104,29 @@ export async function confirmTransaction(provider: AbstractProvider, options: Co
   }
   const remaining = deadline - Date.now();
   if (!canonicalHash || remaining <= 0) throw new Error("World App is still confirming this request. Check your vault before trying again.");
-  let receipt: TransactionReceipt | null;
-  try {
-    receipt = await provider.waitForTransaction(canonicalHash, confirmations, remaining);
-  } catch (error) {
-    if (revertedReceiptMatches(error, canonicalHash)) {
-      throw new ConfirmedTransactionFailure("TRANSACTION_REVERTED", txHash,
-        "The transaction reverted. Your vault was not changed by this request.");
+  let receipt: TransactionReceipt | null = null;
+  // Poll the receipt as well as its confirmation count. waitForTransaction
+  // can subscribe after a cached block height and then miss an already mined
+  // receipt until another block is produced (notably on idle local chains).
+  do {
+    try {
+      const candidate = await provider.getTransactionReceipt(canonicalHash);
+      if (candidate?.hash.toLowerCase() === canonicalHash.toLowerCase()
+        && await candidate.confirmations() >= confirmations) {
+        receipt = candidate;
+        break;
+      }
+    } catch (error) {
+      if (revertedReceiptMatches(error, canonicalHash)) {
+        throw new ConfirmedTransactionFailure("TRANSACTION_REVERTED", txHash,
+          "The transaction reverted. Your vault was not changed by this request.");
+      }
+      // An RPC error is ambiguous; never authorize a retry as a reverted tx.
+      throw error;
     }
-    throw error;
-  }
+    if (Date.now() >= deadline) break;
+    await pause(Math.min(intervalMs, Math.max(1, deadline - Date.now())));
+  } while (Date.now() < deadline);
   if (receipt && receipt.status === 0 && typeof receipt.hash === "string"
     && receipt.hash.toLowerCase() === canonicalHash.toLowerCase()) {
     throw new ConfirmedTransactionFailure("TRANSACTION_REVERTED", txHash,

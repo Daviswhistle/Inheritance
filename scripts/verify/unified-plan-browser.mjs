@@ -668,14 +668,21 @@ try {
   assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), /2\.5 WLD[\s\S]*12\.123456 USDC/);
   assert.match(await page.ev("return document.querySelector('.plan-final-review').innerText"), new RegExp(ACCOUNTS.a1.a, 'i'));
   const feeReview = await page.ev("return document.querySelector('.plan-final-review').innerText");
-  assert.match(feeReview, /Fees on gains[\s\S]*WLD \+ USDC:[\s\S]*Re7 vault on Morpho[\s\S]*10%[\s\S]*Inheritance service fee: 10% of positive gains realized after strategy fees and loss recovery/);
-  assert.match(feeReview, /Network fees[\s\S]*may sponsor network fees[\s\S]*charged in WLD on top of deposits[\s\S]*full entered amount goes to the vault[\s\S]*Vault creation, additional deposits and withdrawals can each incur a fee[\s\S]*existing vaults are not guaranteed free/);
-  assert.match(feeReview, /Opening that screen does not send funds/);
+  assert.match(feeReview, /Fees on gains[\s\S]*Asset manager · Re7[\s\S]*WLD \+ USDC: 10% of lending profits[\s\S]*Service · Inheritance[\s\S]*10% of realized gains after the asset manager’s fee and recovery of prior losses/);
+  assert.match(feeReview, /Network fees[\s\S]*Confirmed in World App · WLD[\s\S]*full deposit is invested[\s\S]*network fee is additional/);
+  await page.ev("document.querySelector('.plan-network-details').open=true;return true;");
+  const networkDetails = await page.ev("return document.querySelector('.plan-network-details').innerText");
+  assert.match(networkDetails, /may sponsor network fees[\s\S]*charged in WLD on top of deposits[\s\S]*Vault creation, additional deposits and withdrawals can each incur a fee[\s\S]*existing vaults are not guaranteed free/);
+  assert.match(networkDetails, /Opening that screen does not send funds/);
+  await page.ev("document.querySelector('.plan-network-details').open=false;return true;");
   assert.equal(await page.ev("return document.querySelectorAll('[data-fee-example]').length"), 1, "assets with equal strategy fees should share one example group");
   await page.ev("document.querySelector('[data-fee-example] summary').click(); return true;");
   const initialFeeExample = await page.ev("return document.querySelector('[data-fee-example]').innerText");
-  assert.match(initialFeeExample, /10 WLD gross lending profit[\s\S]*1 WLD Re7 strategy performance fee \(10%\)[\s\S]*9 WLD remaining[\s\S]*0\.9 WLD Inheritance service fee \(10% of the remainder\)[\s\S]*8\.1 WLD illustrative net/);
-  assert.match(initialFeeExample, /10 USDC gross lending profit[\s\S]*1 USDC Re7 strategy performance fee \(10%\)[\s\S]*9 USDC remaining[\s\S]*0\.9 USDC Inheritance service fee \(10% of the remainder\)[\s\S]*8\.1 USDC illustrative net/);
+  const feeTables = await page.ev("return [...document.querySelectorAll('[data-fee-example] table')].map(table=>[...table.querySelectorAll('td')].map(cell=>cell.textContent));");
+  assert.deepEqual(feeTables, [
+    ['10 WLD', '−1 WLD', '9 WLD', '−0.9 WLD', '8.1 WLD'],
+    ['10 USDC', '−1 USDC', '9 USDC', '−0.9 USDC', '8.1 USDC'],
+  ]);
   assert.match(initialFeeExample, /Excludes principal, other gains or losses, rewards, and network costs\. This is not a promised return\./);
   await page.ev("document.querySelector('[data-fee-example]').open = false; return true;");
   const reviewRateSummaries = JSON.parse(await page.ev("return JSON.stringify([...document.querySelectorAll('.plan-final-review .yield-rate-summary')].map(summary => ({symbol:summary.dataset.rateSymbol, strategy:summary.dataset.rateStrategy, text:summary.textContent, source:summary.querySelector('a')?.href || ''})))"));
@@ -706,8 +713,8 @@ try {
     await clickButton(page,"Review plan");
     assert.equal(await page.ev("return document.querySelectorAll('[data-fee-example]').length"), percent === 12 ? 2 : 1, "separate fee groups should be shown when the selected assets have different rates");
     await page.ev("document.querySelector('[data-fee-example] summary').click(); return true;");
-    const currentFeeExample = await page.ev("return document.querySelector('[data-fee-example]').innerText");
-    assert.match(currentFeeExample, new RegExp(`${percent === 12 ? "1.2" : "1"} WLD Re7 strategy performance fee \\(${percent}%\\)[\\s\\S]*${percent === 12 ? "7.92" : "8.1"} WLD illustrative net`));
+    const currentFeeCells = await page.ev("return [...document.querySelector('[data-fee-example] table').querySelectorAll('td')].map(cell=>cell.textContent);");
+    assert.deepEqual(currentFeeCells, ['10 WLD', percent === 12 ? '−1.2 WLD' : '−1 WLD', percent === 12 ? '8.8 WLD' : '9 WLD', percent === 12 ? '−0.88 WLD' : '−0.9 WLD', percent === 12 ? '7.92 WLD' : '8.1 WLD']);
     await page.ev("document.querySelectorAll('[data-fee-example]').forEach(details => details.open = false); return true;");
   }
   await page.ev("window.__E2E_PAUSE_TERM_POLL__=false;return true;");
