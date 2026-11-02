@@ -25,13 +25,35 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
+## November 2 16:03 KST — first-use revision submitted, Korea only
+
+After the first-use walkthrough, actual Android correction/readback, final
+browser checks, native host acceptance and CI, the authorized revision was
+submitted. Independent Portal readback at **2026-11-02T07:03:28.119Z /
+16:03:28 KST** confirms **awaiting_review**, exactly **KR**, developer allowlisting
+true. Only `verification_status` changed from the immediate pre-submit snapshot.
+App/metadata IDs are unchanged. Pre-submit main: `cf6f74f`; deployed runtime:
+`85b3d2a`; native test source: `74d7667` (run 41402516155, two passes, no failures
+or skips). The production alias matches https://89d74460.inheritance.pages.dev.
+
+The improvement-focused submission covers the deadline/request/seven-day
+explanation, separate sign-in and deposit approval, optional assets, recipients
+outside saved contacts, visible interval rules and automatic reading-position
+movement when opening setup. It links the reviewer walkthrough and source/test
+evidence. Hero/setup previews and store copy match the revised interface.
+The existing immutable-contract and realized-profit fee review request is
+included. Native host approvals are described as simulated. This is review
+pending, not TFH approval or public launch. No additional real transaction,
+notification or external inquiry was sent. Private receipts and device evidence
+remain outside Git. The phone was returned to Home without entering amounts.
+
 ## November 2 — first-use clarity verified
 
 The operator requested a first-time-user walkthrough and further UI fixes.
 Runtime `8cf931c` clarifies the deadline trigger, request/seven-day wait,
 login versus deposits, optional assets and recipients outside saved contacts.
-The latest Portal readback is **unverified**, still exactly **KR**; do not use
-the prior awaiting-review receipt as current status. Existing remediation,
+Pre-submit Portal readback was **unverified**, still exactly **KR**. The new
+16:03 KST receipt above is the current status. Existing remediation,
 deployment and Korea-only submission authority remains unchanged.
 See the newest [RELEASE.md](RELEASE.md) section for completed checks and the
 Chromium relative-profile-path diagnosis. Runtime `85b3d2a` also fixes the actual Android issue where Add to my plan

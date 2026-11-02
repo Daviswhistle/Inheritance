@@ -3,12 +3,33 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 16:03 KST — first-use revision submitted, Korea only
+
+After the first-use walkthrough, actual Android correction/readback, final
+browser checks, native host acceptance and CI, the authorized revision was
+submitted. Independent Portal readback at **2026-11-02T07:03:28.119Z /
+16:03:28 KST** confirms **awaiting_review**, exactly **KR**, developer allowlisting
+true. Only `verification_status` changed from the immediate pre-submit snapshot.
+App/metadata IDs are unchanged. Pre-submit main: `cf6f74f`; deployed runtime:
+`85b3d2a`; native test source: `74d7667` (run 41402516155, two passes, no failures
+or skips). The production alias matches https://89d74460.inheritance.pages.dev.
+
+The improvement-focused submission covers the deadline/request/seven-day
+explanation, separate sign-in and deposit approval, optional assets, recipients
+outside saved contacts, visible interval rules and automatic reading-position
+movement when opening setup. It links the reviewer walkthrough and source/test
+evidence. Hero/setup previews and store copy match the revised interface.
+The existing immutable-contract and realized-profit fee review request is
+included. Native host approvals are described as simulated. This is review
+pending, not TFH approval or public launch. No additional real transaction,
+notification or external inquiry was sent. Private receipts and device evidence
+remain outside Git. The phone was returned to Home without entering amounts.
+
 ## November 2 — first-use clarity verified
 
 After submission, the operator requested another walkthrough from a first-time
-user's perspective and authorized further fixes. The latest Portal readback is
-**unverified**, exactly **KR**; this supersedes the earlier awaiting-review
-snapshot below. No inference is made about who changed that status.
+user's perspective and authorized further fixes. Before this revision was submitted, Portal readback was **unverified**, exactly
+**KR**. The new submission receipt above is the current status.
 
 Runtime source `8cf931c` clarifies the check-in trigger rather than death
 verification, the recipient's request and seven-day wait, login versus deposit,
