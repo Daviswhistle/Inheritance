@@ -3,10 +3,45 @@
 Submission remains stopped at the operator's request. This is a product copy and
 presentation review, not a recruited usability study or a claim of perfection.
 
+## Follow-up after the operator rejected the copy
+
+The first pass below did not explain the main action well enough. In particular,
+“정한 주기마다 정기 확인” repeated an internal feature name without explaining
+its purpose. Passing layout and translation tests did not validate that wording.
+
+The Korean interface now calls the action **기한 연장하기**. Its explanation is
+consistent across first use, setup, Home, owner settings, recipient states,
+notifications, errors and legal reading:
+
+- Choose the recipient, amount and period. With 30 days selected, extend within
+  30 days; each approved extension starts a fresh 30 days from approval, rather
+  than adding 30 days to the old deadline.
+- The funded Home leads with the actual month/day and retains the precise local
+  date, time and zone underneath. The button names the action's result.
+- If the deadline passes, the recipient may request the assets. Payment is
+  eligible only after seven days from that request. The owner can cancel the
+  request by extending **until actual payment**, including after the wait ends.
+- Setup review says **이 금액 맡기기**, with the next wallet approval explained
+  beside it. The initial empty amount prompt asks for an amount instead of
+  describing a numeric validation constraint before the user starts typing.
+- Empty savings, separate wallet investments, withdrawal, owner settings,
+  recipient dates and status messages describe their specific state or action.
+  Financial amounts, fees, risks and transaction behavior are unchanged.
+
+The Korean terms define this visible action as the contract's check-in. English
+labels and canonical SDK/contract messages remain compatible. The interpolation
+test compares required parameter names, allowing a translation to repeat a
+number, and checks that all occurrences in the period example are substituted.
+
+Screenshots were read for guest Home, expanded guide, setup period, deposit
+conditions, funded Home, empty assets, withdrawal review and recipient receipt.
+This is an editorial walkthrough and regression verification, not evidence of
+comprehension by an unfamiliar human. The latest receipts are in RELEASE.md.
+
 ## Writing rules
 
 - Explain the user's action, its result and the next step in that order.
-- Use “맡긴 자산 / 받을 사람 / 정기 확인” in the main journey. “플랜” means the
+- Use “맡긴 자산 / 받을 사람 / 기한 연장” in the main journey. “플랜” means the
   amount, recipient and check-in settings; explain it when starting a first plan.
 - Do not call the seven-day wait a review or imply a human approves inheritance.
   The trigger is a missed check-in plus a recipient request, not verified death.
@@ -51,6 +86,9 @@ Examples:
 | 직접 입력한 수령인을 유지하고 연락처 응답은 무시했습니다 | 직접 입력한 사람을 받을 사람으로 사용합니다 |
 | 확정된 수익 이벤트를 확인하는 중 | 수익을 받은 내역을 불러오고 있습니다 |
 | English-only crash screen with raw error first | Korean/English recovery action first; error details collapsed |
+
+The table above records the first pass. Its check-in wording is superseded by
+the follow-up at the top of this document.
 
 ## Validation boundary
 

@@ -326,7 +326,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await layout(page, 'setup-portrait-return-ko', 390);
   pass('Portrait/landscape viewport changes preserve the focused form and exact decimal input');
-  await tap(page, '플랜 검토');
+  await tap(page, '입력한 내용 확인하기');
   await page.locator('#plan-review-title').waitFor();
   assert.equal(await page.locator('#yield-consent').isChecked(), false);
   assert.equal(await page.locator('.plan-submit').isDisabled(), true);
@@ -424,7 +424,7 @@ try {
   pass('Terms/privacy close, document return link and Escape preserve the review, exact amounts and consent; focus returns to the opener');
   await layout(page, 'review-ko', 390);
   await page.screenshot({ path: out + '/review-ko.png' });
-  await tap(page, '거래 승인 화면 열기');
+  await tap(page, '이 금액 맡기기');
   await page.locator('.invite-disclosure').waitFor({ timeout: 60000 });
   const wf = new Contract(config.wldFactory, ['function vaultOf(address) view returns(address)'], provider);
   const uf = new Contract(config.usdcFactory, ['function vaultOf(address) view returns(address)'], provider);
@@ -477,8 +477,8 @@ try {
       await page.locator('main details').evaluateAll(nodes => nodes.forEach(n => n.open = false));
     }
   }
-  await tab(page, 0); await tap(page, '지금 확인하기');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('다음 확인 날짜가 갱신')), null, { timeout: 60000 });
+  await tab(page, 0); await tap(page, '기한 연장하기');
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('기한을 연장했습니다')), null, { timeout: 60000 });
   pass('Expanded owner details retain touch targets and a combined check-in confirms both assets');
   // Real browser network outage, with local-chain state observed independently.
   const vaults = [wldVault, usdcVault].map(address => new Contract(address,
@@ -488,10 +488,10 @@ try {
   await page.setViewportSize({ width: 320, height: 640 });
   await tab(page, 2); await tap(page, '내 플랜에 자산 추가');
   await page.locator('#plan-usdc').fill('1.000001');
-  await tap(page, '플랜 검토');
+  await tap(page, '입력한 내용 확인하기');
   await page.locator('#yield-consent').check();
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.rejectNext('send-transaction'));
-  await tap(page, '거래 승인 화면 열기');
+  await tap(page, '이 금액 맡기기');
   await page.waitForFunction(() => document.activeElement?.id === 'plan-resume-title');
   const resumeButton = page.getByRole('button', { name: '남은 설정 이어하기', exact: true });
   const resumeBox = await resumeButton.boundingBox();
@@ -536,28 +536,28 @@ try {
   await page.getByRole('status').filter({ hasText: '네트워크에 연결하지 못해' }).waitFor({ state: 'hidden', timeout: 45000 });
   intentionalOffline = false;
   await tab(page, 0);
-  await page.getByRole('button', { name: '지금 확인하기', exact: true }).waitFor();
-  await until(() => page.getByRole('button', { name: '지금 확인하기', exact: true }).isEnabled(), 'recovered owner reads');
+  await page.getByRole('button', { name: '기한 연장하기', exact: true }).waitFor();
+  await until(() => page.getByRole('button', { name: '기한 연장하기', exact: true }).isEnabled(), 'recovered owner reads');
   pass('A real WebKit network outage reports stale data and reconnect recovers without changing either vault or submitting transactions');
   // Cancellation and browser process/navigation boundaries while approval waits.
   await page.locator('#inheritance-test-controls').evaluate(e => e.style.display = '');
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.setApproval('manual'));
   const beforePending = await snapshot();
-  await tap(page, '지금 확인하기');
+  await tap(page, '기한 연장하기');
   await page.waitForFunction(() => window.__INHERITANCE_TEST_HOST__.pending.some(x => x.command === 'send-transaction'));
-  assert.equal(await page.getByRole('button', { name: '지금 확인하기', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: '기한 연장하기', exact: true }).isDisabled(), true);
   // Use the visible test-host rejection control, including its dialog dismissal.
   // Direct controller.reject alone intentionally leaves the operator panel open.
   await page.locator('#inheritance-test-controls').getByRole('button', { name: 'Reject', exact: true }).tap();
-  await until(() => page.getByRole('button', { name: '지금 확인하기', exact: true }).isEnabled(), 'cancel re-enables check-in');
+  await until(() => page.getByRole('button', { name: '기한 연장하기', exact: true }).isEnabled(), 'cancel re-enables check-in');
   assert.deepEqual(await snapshot(), beforePending);
-  await tap(page, '지금 확인하기');
+  await tap(page, '기한 연장하기');
   await page.waitForFunction(() => window.__INHERITANCE_TEST_HOST__.pending.some(x => x.command === 'send-transaction'));
   await page.reload();
   await page.locator('.tab-item').nth(3).waitFor();
   await page.locator('#inheritance-test-controls').evaluate(e => e.style.display = 'none');
   await tab(page, 0);
-  await until(() => page.getByRole('button', { name: '지금 확인하기', exact: true }).isEnabled(), 'reload recovers owner');
+  await until(() => page.getByRole('button', { name: '기한 연장하기', exact: true }).isEnabled(), 'reload recovers owner');
   assert.equal(await commandCount(), 0, 'reload must not replay an unapproved command');
   assert.deepEqual(await snapshot(), beforePending);
   await page.goto('about:blank');
@@ -566,14 +566,14 @@ try {
   await page.locator('#inheritance-test-controls').evaluate(e => e.style.display = 'none');
   assert.equal(await page.locator('.app-shell').getAttribute('lang'), 'ko');
   await tab(page, 0);
-  await until(() => page.getByRole('button', { name: '지금 확인하기', exact: true }).isEnabled(), 'history return recovers owner');
+  await until(() => page.getByRole('button', { name: '기한 연장하기', exact: true }).isEnabled(), 'history return recovers owner');
   assert.equal(await commandCount(), 0);
   assert.deepEqual(await snapshot(), beforePending);
   // WebKit may restore the previous manual mode from its back-forward cache.
   // Explicitly approve this retry in the disposable host in either case.
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.setApproval('auto'));
-  await tap(page, '지금 확인하기');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('다음 확인 날짜가 갱신')), null, { timeout: 60000 });
+  await tap(page, '기한 연장하기');
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('기한을 연장했습니다')), null, { timeout: 60000 });
   assert.equal(await commandCount(), 1, 'only explicit retry submits');
   pass('Approval rejection, reload during pending approval and browser Back preserve both vaults; only an explicit retry submits once');
   const heir = await open(origin + `/?platform=ios&approval=auto&account=heir&vault=${wldVault}`);

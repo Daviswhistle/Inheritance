@@ -4462,8 +4462,13 @@ export default function App() {
             {!inheritanceEmpty && !ownedPlanLoading && !ownedPlanRead.incomplete && activeOwnedPlans.length === 0 && <p className="text-sm text-gray-600">{t("home.savingsWithoutPlan")}</p>}
             {!inheritanceEmpty && nextCheckIn !== null && <div className="home-checkin-date">
               <span>{chainNow > 0 && nextCheckIn <= chainNow ? t("home.checkin.overdue") : t("home.checkin.next")}</span>
-              {chainNow > 0 && <strong>{nextCheckIn <= chainNow ? t("home.checkin.direct") : t("home.checkin.remaining", { days: Math.ceil((nextCheckIn - chainNow) / 86400) })}</strong>}
-              <time dateTime={new Date(nextCheckIn * 1000).toISOString()}>{new Date(nextCheckIn * 1000).toLocaleString(locale === "ko" ? "ko-KR" : "en", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}</time>
+              {locale === "ko" ? <>
+                <strong>{new Date(nextCheckIn * 1000).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })}</strong>
+                <time dateTime={new Date(nextCheckIn * 1000).toISOString()}>{new Date(nextCheckIn * 1000).toLocaleString("ko-KR", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}</time>
+              </> : <>
+                {chainNow > 0 && <strong>{nextCheckIn <= chainNow ? t("home.checkin.direct") : t("home.checkin.remaining", { days: Math.ceil((nextCheckIn - chainNow) / 86400) })}</strong>}
+                <time dateTime={new Date(nextCheckIn * 1000).toISOString()}>{new Date(nextCheckIn * 1000).toLocaleString("en", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}</time>
+              </>}
               {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
             {!inheritanceEmpty && unsettledOwnedPlans.length > 0 && !checkinReview && <div className="home-checkin-action">

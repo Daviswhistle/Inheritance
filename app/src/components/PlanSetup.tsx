@@ -681,7 +681,7 @@ export function PlanSetup({
       {showReview
         ? <div className="plan-step-actions">
           <Button variant="primary" size="lg" className="plan-submit" disabled={busy || Boolean(pendingPlan) || createDisabled || !formValid || !consentValid || alignmentConflicts.length > 0} onClick={confirmPlan}>
-            {busy ? <><span className="spinner" />{t("plan.action.settingUp")}</> : t("plan.action.confirm")}
+            {busy ? <><span className="spinner" />{t("plan.action.settingUp")}</> : t("plan.action.deposit")}
           </Button>
           <Button disabled={busy || Boolean(pendingPlan)} onClick={editPlan}>{t("plan.action.edit")}</Button>
         </div>

@@ -84,7 +84,7 @@ try{
    await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
    await layout(page,`setup-${lang}-${width}`,width);await shot(page,`ui-setup-${lang}-${width}`);
   }
-  await click(page,lang==='en'?'Review plan':'플랜 검토');
+  await click(page,lang==='en'?'Review plan':'입력한 내용 확인하기');
   assert.ok(await page.waitFor('#plan-review-title'));assert.equal(await page.ev("return document.getElementById('yield-consent').checked"),false);assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"),true);
   assert.deepEqual(await page.ev("return [...document.querySelectorAll('.plan-review-amount')].map(x=>x.textContent.trim())"),['10 WLD','12.345678 USDC']);
   assert.equal(await page.ev("return document.querySelector('.plan-review-address').textContent"),config.heir);
@@ -100,7 +100,7 @@ try{
  }
  await page.ev("document.getElementById('yield-consent').click();");
  const beforeLocationBlock=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
- await setEligibilityCountry('US');await click(page,'거래 승인 화면 열기');
+ await setEligibilityCountry('US');await click(page,'이 금액 맡기기');
  await until(()=>page.ev("return document.body.innerText.includes('현재 접속 지역에서는 새 플랜을 만들거나 자산을 추가할 수 없습니다.')"),'fresh location check before create');
  assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeLocationBlock,'a stale supported result must not reach the wallet');
  await setEligibilityCountry('KR');await click(page,'다시 확인');
@@ -191,8 +191,8 @@ try{
  await until(()=>page.ev("return document.body.innerText.includes('출금을 완료했습니다')"),'localized withdrawal receipt');
  console.log('PASS invalid and zero addresses, precision, zero and excess amounts cannot submit; valid USDC withdrawal pays exactly one token');
  const checkinStartBlock=await provider.getBlockNumber();
- await tab(page,0);await click(page,'지금 확인하기');
- await until(()=>page.ev("return document.querySelector('.toast-success')?.textContent.includes('다음 확인 날짜가 갱신')"),'combined check-in');
+ await tab(page,0);await click(page,'기한 연장하기');
+ await until(()=>page.ev("return document.querySelector('.toast-success')?.textContent.includes('기한을 연장했습니다')"),'combined check-in');
  const factory=new Contract(config.wldFactory,['function vaultOf(address) view returns(address)'],provider);
  const vault=await factory.vaultOf(config.owner);
  const checkinVaults=[vault,await new Contract(config.usdcFactory,['function vaultOf(address) view returns(address)'],provider).vaultOf(config.owner)];

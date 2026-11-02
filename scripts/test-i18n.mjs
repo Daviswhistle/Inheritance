@@ -23,12 +23,18 @@ await test("English and Korean dictionaries cover every required key and interpo
       const korean = i18n.dictionaries.ko[key];
       assert.ok(english.trim(), `English translation is empty for ${key}`);
       assert.ok(korean.trim(), `Korean translation is empty for ${key}`);
-      const placeholders = value => [...value.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort();
+      // Natural translations may repeat a value. Require the same named values,
+      // not the same number of mentions in each language.
+      const placeholders = value => [...new Set([...value.matchAll(/\{(\w+)\}/g)].map(match => match[1]))].sort();
       assert.deepEqual(placeholders(korean), placeholders(english), `placeholder drift for ${key}`);
     }
     for (const prefix of ["entry.", "home.", "plan.", "income.", "history.", "nav.", "help."]) {
       assert.ok(englishKeys.some(key => key.startsWith(prefix)), `missing translated surface ${prefix}`);
     }
+    // Repeated values in the period explanation must all be interpolated.
+    const example = i18n.translate("ko", "plan.interval.example", { days: 90 });
+    assert.doesNotMatch(example, /\{\w+\}/);
+    assert.equal(example.match(/90일/g)?.length, 3);
 });
 
 await test("explicit language preference overrides browser fallback and writes safely", () => {
@@ -99,7 +105,7 @@ await test("completed transaction messages reproject when language changes witho
     const completed = "Income collected. Your principal remains in the inheritance vault.";
     assert.equal(i18n.localizeAppMessage("en", completed), completed);
     assert.match(i18n.localizeAppMessage("ko", completed), /수익을 받았습니다.*나머지 자산/);
-    assert.match(i18n.localizeAppMessage("ko", "Checked in to all 3 active vaults."), /다음 확인 날짜가 갱신/);
+    assert.match(i18n.localizeAppMessage("ko", "Checked in to all 3 active vaults."), /기한을 연장했습니다/);
     assert.match(i18n.localizeAppMessage("ko", "Pending… verifying USDC deposit"), /USDC 예치/);
     assert.equal(i18n.localizeAppMessage("ko", "Deposit error: RPC diagnostic 0x1234"), "예치 오류: RPC diagnostic 0x1234");
     assert.equal(i18n.localizeAppMessage("ko", "unrecognized provider diagnostic"), "unrecognized provider diagnostic");
