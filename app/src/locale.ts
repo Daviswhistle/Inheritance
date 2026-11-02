@@ -1111,7 +1111,7 @@ const ko: Record<LocaleKey, string> = {
   "entry.connect.busy": "로그인 중…",
   "entry.connect.continue": "동의하고 로그인",
   "entry.connect.open": "World App에서 열기",
-  "entry.connect.note": "로그인으로 자금은 이동하지 않습니다. 예치는 검토 후 별도로 승인합니다.",
+  "entry.connect.note": "로그인으로 자금은 이동하지 않습니다. 예치는 별도 승인합니다.",
   "entry.connect.consent": "로그인하면 지갑 주소·사용자 이름을 이용하고 이 기기에 1시간 세션을 저장하는 것과 이용약관·개인정보 처리방침에 동의합니다.",
   "plan.keyboard.done": "입력 완료",
   "entry.loading": "플랜 확인 중…",
