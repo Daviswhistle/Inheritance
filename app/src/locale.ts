@@ -936,7 +936,7 @@ const ko: Record<LocaleKey, string> = {
   "status.linkCopied": "링크를 복사했습니다.",
   "status.messageCopied": "메시지를 복사했습니다.",
   "status.monitorCompleted": "이 플랜의 상속은 이미 완료되었습니다.",
-  "status.monitorEnabled": "자동 지급·알림 서비스를 켰습니다. 알림을 받으려면 각자 World App에서 알림을 허용해야 합니다.",
+  "status.monitorEnabled": "이 플랜을 자동 지급·알림 서비스에 등록했습니다. 알림을 받으려면 각자 World App에서 알림을 허용해야 합니다.",
   "status.notificationEnableAdvice": "World App → 설정 → 알림에서 켜 주세요.",
   "status.notificationWalletAdvice": "World App에 등록되지 않은 지갑입니다. World App에서 앱을 열고 로그인해 주세요.",
   "status.notificationCheckAdvice": "World App의 알림 설정을 확인해 주세요.",
