@@ -24,8 +24,19 @@ the supported retry, keeping the unsupported blocking assertions intact.
 
 The isolated first-use walkthrough reaches review with each asset separately,
 retains exact amounts on Edit, and records zero transaction requests. It is not
-research with recruited users. Final runtime/deployment/native evidence follows
-when complete.
+research with recruited users. Final runtime is `85b3d2a6081467f9e3a4be879a3b693047a11407`, immutable
+https://89d74460.inheritance.pages.dev. Deployment 41401139077 and CI 41401139045
+passed. Production HTML and all six imported assets match; three legal pages
+return 200 and the Worker reports a fresh funded/ready cycle. Hero and setup
+preview images match the updated UI and Portal upload commits were confirmed.
+
+Native run 41399668170 passed recovery but failed before the recipient Done tap:
+twelve alignment drags left the interval label at Y=356–376 while Done's center
+was Y=314.3125. The first numeric-input Done gesture passed. This is a failed
+fixture arrangement, not a completed failed Done action. Test-only `17d8e89`
+changes the arrangement gesture to slow velocity with a final 0.5-second hold;
+the exact overlap gate and native event-target/no-extra-click assertions remain.
+Final native run 41401681538 is in progress; no submission is claimed yet.
 
 The first Chromium run failed the expanded-guide clearance gate and could not
 capture its failure screenshot. A controlled same-browser probe isolated the

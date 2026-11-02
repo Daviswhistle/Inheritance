@@ -34,7 +34,15 @@ The latest Portal readback is **unverified**, still exactly **KR**; do not use
 the prior awaiting-review receipt as current status. Existing remediation,
 deployment and Korea-only submission authority remains unchanged.
 See the newest [RELEASE.md](RELEASE.md) section for completed checks and the
-Chromium relative-profile-path diagnosis. Native run 41399668170 is in progress.
+Chromium relative-profile-path diagnosis. Runtime `85b3d2a` also fixes the actual Android issue where Add to my plan
+opened a form below the visible area. Production is https://89d74460.inheritance.pages.dev
+(public alias matches all six imported assets). Deployment 41401139077 and CI
+41401139045 passed; Chromium 68 layouts and WebKit 21 checks / 31 layouts passed.
+Actual Android confirms the revised instructions and new form-opening behavior,
+with the keyboard closed. The phone is back on Home and no values were entered.
+Native run 41399668170 passed recovery but failed its pre-Done overlap arrangement;
+test-only `17d8e89` uses a slow drag and a final hold, retaining the exact overlap
+and event-target gates. Final native run 41401681538 is in progress.
 No additional funds or notifications are used.
 
 ## November 2 15:08 KST — revised UI submitted, Korea only
@@ -150,12 +158,12 @@ submission receipts below are historical and no longer the active request.
 
 ## Current verified checkpoint
 
-- Runtime source: `fd162062d79b2f2af52bff98ff017af6dfbbb44a`, descendant of requested baseline `91944cc`.
+- Runtime source: `85b3d2a6081467f9e3a4be879a3b693047a11407`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,
   deployment, native-test and independent-review receipts.
-- Production: https://inheritance.pages.dev ; immutable: https://e52ac60c.inheritance.pages.dev.
-  Deployment [41395540398](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540398): passed for this runtime; Pages and notification Worker deployed successfully.
-  CI [41395540405](https://github.com/Daviswhistle/Inheritance/actions/runs/41395540405): passed, all three jobs successful.
+- Production: https://inheritance.pages.dev ; immutable: https://89d74460.inheritance.pages.dev.
+  Deployment [41401139077](https://github.com/Daviswhistle/Inheritance/actions/runs/41401139077): passed for this runtime; Pages and notification Worker deployed successfully.
+  CI [41401139045](https://github.com/Daviswhistle/Inheritance/actions/runs/41401139045): passed, all three jobs successful.
   Readback: November 2 KST readback passed: production HTML and all six imported JS/CSS files match the immutable deployment; three legal documents return 200; the Worker reports ready, funded and a fresh cycle with no halt or last error.
 - Financial UI separates dated lending/reward rates, live strategy fee, service
   fee and conditional WLD network costs. Review shows per-token deposit amounts

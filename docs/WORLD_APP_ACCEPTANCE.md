@@ -12,6 +12,23 @@ The October 27 real-money test used runtime
 `e4be10c5225cd05504c3cb3f02082f16b1b4a623`. Current deployed source and exact
 CI/native-test results are in [RELEASE.md](RELEASE.md).
 
+## Physical device — November 2, 2026: first-use instructions and opening setup
+
+Production `85b3d2a` / immutable https://89d74460.inheritance.pages.dev was
+checked in actual World App on Samsung SM-N986N / Android 13, Korean UI. The
+guest screen explains the deadline trigger instead of death confirmation,
+recipient request, seven-day wait and cancellation before transfer. It separates
+sign-in from deposit approval. Sign-in succeeded. The setup form explains optional
+asset selection and recipients outside saved contacts; missed-deadline conditions
+are visible without opening details.
+
+An actual navigation defect was found: Add to my plan inserted the new form
+below existing settings while leaving the old scroll position. After the fix,
+the same button revealed the setup steps near the top of the WebView, with
+`mInputShown=false`. No amount was entered, transaction approval opened or funds
+moved. The app was returned to Home. Private before/after screenshots and XML
+remain outside Git; existing balances and notifications were not changed.
+
 ## Physical device — November 2, 2026: revised review and fee presentation
 
 Runtime `fd162062d79b2f2af52bff98ff017af6dfbbb44a` was checked after restarting
