@@ -196,7 +196,7 @@ final class HostTests: XCTestCase {
         web.buttons["Plan"].firstMatch.tap()
         XCTAssertTrue(login.waitForExistence(timeout: 30))
         login.tap()
-        let saved = web.staticTexts["Finish your saved plan"].firstMatch
+        let saved = web.staticTexts["Continue unfinished setup"].firstMatch
         XCTAssertTrue(saved.waitForExistence(timeout: 60), "Unconfirmed setup must survive native process death")
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "pending"]), pendingNonce, "Restart must not submit another transaction")
         _ = try hostJSON("/__host/control", body: ["action": "mine"])
