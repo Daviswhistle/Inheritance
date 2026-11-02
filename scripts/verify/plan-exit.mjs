@@ -1,0 +1,93 @@
+// End-to-end exit using the actual SDK and atomic local-chain wallet. No production funds.
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {createServer} from 'node:net';
+import {createRequire} from 'node:module';
+import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {setTimeout as sleep} from 'node:timers/promises';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {Contract,JsonRpcProvider,parseEther,Interface}=createRequire(new URL('../../app/package.json',import.meta.url))('ethers');
+const out=process.env.EXIT_UX_OUT || '/tmp/inheritance-exit';mkdirSync(out,{recursive:true});
+const socket=createServer();await new Promise(r=>socket.listen(0,'127.0.0.1',r));const port=socket.address().port;await new Promise(r=>socket.close(r));
+const origin=`http://localhost:${port}`;
+const host=spawn(process.execPath,[new URL('../test-host/start.mjs',import.meta.url).pathname,`--port=${port}`],{stdio:['ignore','pipe','pipe']});let log='';host.stdout.on('data',d=>log+=d);host.stderr.on('data',d=>log+=d);
+let browser,provider,p;const checks=[];const pass=x=>{checks.push(x);console.log('PASS '+x)};
+async function until(fn,label){for(let i=0;i<400;i++){if(await fn())return;await sleep(100)}throw Error('Timeout: '+label)}
+const control=async body=>{const r=await fetch(origin+'/__host/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,200);return r.json()};
+try{
+ await until(async()=>{if(host.exitCode!==null)throw Error(log);try{return(await fetch(origin+'/__host/config')).ok}catch{return false}},'host');
+ const c=await(await fetch(origin+'/__host/config')).json();await until(()=>Promise.resolve(/Fixture: (.+)/.test(log)),'fixture');const fixture=JSON.parse(readFileSync(log.match(/Fixture: (.+)/)[1],'utf8'));
+ provider=new JsonRpcProvider(fixture.rpc,undefined,{cacheTimeout:-1,batchMaxCount:1});const signer=await provider.getSigner(0);
+ const fAbi=['function createVault(address,uint256) returns(address)','function vaultOf(address) view returns(address)','function depositWithMinShares(uint256,uint256)','function updateMyHeir(address)','function cancelMyInheritance()'];
+ const wf=new Contract(c.wldFactory,fAbi,signer),uf=new Contract(c.usdcFactory,fAbi,signer);
+ await(await wf.createVault(c.heir,30*86400)).wait();await(await uf.createVault(c.heir,30*86400)).wait();
+ const tAbi=['function approve(address,uint256) returns(bool)','function balanceOf(address) view returns(uint256)','function transfer(address,uint256) returns(bool)'];
+ const wld=new Contract(c.wld,tAbi,signer),usdc=new Contract(c.usdc,tAbi,signer);
+ const vAbi=['function heir() view returns(address)','function hasAssets() view returns(bool)','function claimFiledAt() view returns(uint256)'];
+ const wv=new Contract(await wf.vaultOf(c.owner),vAbi,signer),uv=new Contract(await uf.vaultOf(c.owner),vAbi,signer);
+ const sAbi=['function setRate(uint256)','function setLiquidity(uint256)','function setBrokenQuote(bool)','function balanceOf(address) view returns(uint256)'];
+ const ws=new Contract(c.wldStrategy,sAbi,signer),us=new Contract(c.usdcStrategy,sAbi,signer);
+ const fund=async()=>{for(const [t,f,amount] of [[wld,wf,parseEther('10')],[usdc,uf,10_000_000n]]){await(await t.approve(await f.getAddress(),amount)).wait();await(await f.depositWithMinShares(amount,1n)).wait()}};
+ await fund();await(await ws.setRate(parseEther('1.1'))).wait();await(await us.setRate(1_100_000n)).wait();await(await wld.transfer(await uv.getAddress(),parseEther('1'))).wait();
+ browser=await chromium.launch({executablePath:process.env.CHROME_BIN || undefined,headless:true});p=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await p.addInitScript(()=>localStorage.setItem('inheritance:locale','ko'));
+ await p.goto(origin+'/?approval=auto');await p.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
+ const requests=()=>p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length);
+ const shot=async name=>{await p.locator('#inheritance-test-controls').evaluate(e=>e.style.display='none');await p.screenshot({path:`${out}/${name}.png`})};
+ const openExit=async()=>{const action=p.getByRole('button',{name:'상속 종료하고 전액 돌려받기',exact:true});if(!await action.isVisible())await p.getByText('상속 종료',{exact:true}).click();await action.click()};
+ const review=async()=>{await p.locator('.tab-item').nth(2).click();await p.locator('.owner-plan-settings').waitFor();await openExit();await p.locator('.money-review').waitFor()};
+ const confirm=()=>p.locator('.money-review .btn-primary').click();
+ const unchanged=async()=>{assert.equal(await wv.heir(),c.heir);assert.equal(await uv.heir(),c.heir);assert.equal(await wv.hasAssets(),true);assert.equal(await uv.hasAssets(),true)};
+ await review();assert.match(await p.locator('.money-review').innerText(),/10.9 WLD/);assert.match(await p.locator('.money-review').innerText(),/10.9 USDC/);assert.match(await p.locator('.money-review').innerText(),/1.0 WLD/);assert.match(await p.locator('.money-review').innerText(),/내 World App 지갑/);
+ await shot('exit-review-ko');await p.setViewportSize({width:320,height:360});await p.locator('.money-review .btn-primary').scrollIntoViewIfNeeded();assert.ok(await p.locator('.money-review .btn-primary').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===e}));await p.keyboard.press('Escape');assert.equal(await requests(),0);await unchanged();await p.setViewportSize({width:390,height:844});
+ pass('Review shows net WLD/USDC, extra WLD, wallet destination and fees; small-screen dismissal submits nothing');
+ await openExit();await p.locator('.money-review').waitFor();await p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.rejectNext('send-transaction'));await confirm();await until(async()=>await requests()===1,'rejection');await until(async()=>await p.locator('.money-review').count()===1,'review restored');await unchanged();assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.endsWith(':exit'))),false);await p.keyboard.press('Escape');
+ pass('Wallet rejection leaves both recipients and balances unchanged and permits retry');
+ await(await us.setLiquidity(0n)).wait();await openExit();await p.getByText('현재 Morpho에서 전액을 WLD·USDC로 출금할 수 없어 종료를 요청하지 않았습니다.',{exact:false}).waitFor();assert.equal(await requests(),1);await unchanged();
+ await(await us.setLiquidity(1_000_000_000n)).wait();await(await us.setBrokenQuote(true)).wait();await openExit();await p.getByText('전체 자산을 조회하지 못해 종료를 요청하지 않았습니다.',{exact:false}).waitFor();assert.equal(await requests(),1);await(await us.setBrokenQuote(false)).wait();
+ pass('Insufficient liquidity or failed valuation prevents any exit or recipient-removal request');
+ await openExit();await p.locator('.money-review').waitFor();await(await us.setRate(900_000n)).wait();await confirm();await p.locator('.money-review [role=alert]').waitFor();assert.equal(await requests(),1);await p.keyboard.press('Escape');await(await us.setRate(1_100_000n)).wait();
+ pass('A drop below the reviewed minimum requires a new review without sending a wallet request');
+ // Fail AFTER the fresh preflight: both withdrawals and both recipient changes must roll back.
+ await openExit();await p.locator('.money-review').waitFor();await p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.setApproval('manual'));await confirm();await until(()=>p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.pending.some(x=>x.command==='send-transaction')),'manual request');
+ await(await us.setLiquidity(0n)).wait();await p.evaluate(()=>{const h=window.__INHERITANCE_TEST_HOST__;h.approve(h.pending.find(x=>x.command==='send-transaction').id)});
+ await until(async()=>!await p.evaluate(()=>Object.keys(localStorage).some(k=>k.endsWith(':exit'))),'failed request cleared');await unchanged();await(await us.setLiquidity(1_000_000_000n)).wait();await p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.setApproval('auto'));
+ pass('Actual second-asset redemption revert atomically rolls back first withdrawal, recipient removal and renewal');
+ // A filed claim is explicitly reviewed and cancelled by the same exit transaction.
+ await control({action:'time',days:31});const hs=await provider.getSigner(1);await(await new Contract(c.wldFactory,['function fileClaimFor(address)'],hs).fileClaimFor(await wv.getAddress())).wait();
+ await p.reload();await review();assert.match(await p.locator('.money-review').innerText(),/진행 중인 수령 신청도 함께 취소/);
+ await control({action:'mining',enabled:false});await confirm();await until(()=>p.evaluate(()=>Object.entries(localStorage).some(([k,v])=>k.endsWith(':exit')&&JSON.parse(v).txHash)),'durable submitted request');
+ const cashBefore=[await wld.balanceOf(c.owner),await usdc.balanceOf(c.owner)];
+ // Recreate the tab with sessionStorage empty, sharing durable origin storage.
+ const old=p;p=await browser.newPage({viewport:{width:390,height:844},storageState:await old.context().storageState()});await old.close();await p.goto(origin+'/?approval=auto');
+ await p.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
+ await p.getByRole('button',{name:'거래 결과 확인',exact:true}).waitFor();await control({action:'mine'});await control({action:'mining',enabled:true});await p.getByRole('button',{name:'거래 결과 확인',exact:true}).click();
+ await p.getByText('상속을 종료하고 자산을 돌려받았습니다.',{exact:true}).first().waitFor();
+ assert.equal(await wv.heir(),c.owner);assert.equal(await uv.heir(),c.owner);assert.equal(await wv.hasAssets(),false);assert.equal(await uv.hasAssets(),false);assert.equal(await wv.claimFiledAt(),0n);
+ assert.equal(await wld.balanceOf(c.owner)-cashBefore[0],parseEther('11.9'));assert.equal(await usdc.balanceOf(c.owner)-cashBefore[1],10_900_000n);assert.equal(await requests(),0);await shot('exit-complete-ko');
+ pass('After tab destruction, durable recovery confirms the original transaction: 11.9 WLD and 10.9 USDC received, no vault assets, claim cancelled, no resubmission');
+ await p.reload();await p.locator('.savings-empty').waitFor();assert.equal(await p.locator('.home-checkin-action').count(),0);assert.equal(await p.locator('.retained-assets').count(),0);
+ pass('Reloaded Home is empty without an unnecessary renewal prompt');
+ // Assets retained through the old remove-only path get a direct recovery action.
+ for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();await fund();for(const f of [wf,uf])await(await f.cancelMyInheritance()).wait();await p.reload();await p.locator('.retained-assets').waitFor();assert.equal(await p.locator('.home-checkin-action').count(),0);await shot('retained-assets-ko');
+ await p.locator('.retained-assets .btn-primary').click();await p.locator('.money-review').waitFor();await control({action:'mining',enabled:false});await confirm();
+ await until(()=>p.evaluate(()=>Object.entries(localStorage).some(([k,v])=>k.endsWith(':exit')&&JSON.parse(v).txHash)),'second saved request');
+ await p.evaluate(()=>{for(const [k,v] of Object.entries(localStorage)){if(k.endsWith(':exit')){const r=JSON.parse(v);delete r.txHash;delete r.hashType;localStorage.setItem(k,JSON.stringify(r))}}});
+ await p.reload();await control({action:'mine'});await control({action:'mining',enabled:true});await p.getByRole('button',{name:'거래 결과 확인',exact:true}).click();
+ await p.getByText('상속을 종료하고 자산을 돌려받았습니다.',{exact:true}).first().waitFor();assert.equal(await wv.hasAssets(),false);assert.equal(await uv.hasAssets(),false);
+ pass('Lost operation identifier recovers from matching Ping and transfer receipt even when recipients were already removed');
+ pass('Previously removed recipients expose retained assets on Home and complete recovery without reassigning a recipient');
+ for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();
+ await p.reload();await review();assert.match(await p.locator('.money-review').innerText(),/돌려받을 자산이 없습니다/);await confirm();await p.getByText('상속을 종료했습니다. 회수할 자산은 없었습니다.',{exact:true}).first().waitFor();
+ pass('Empty plans can end without falsely claiming a payment');
+ const countBeforeEmpty=await requests();await openExit();await p.getByText('종료할 상속 플랜이 없습니다.',{exact:true}).waitFor();assert.equal(await requests(),countBeforeEmpty);
+ pass('Already empty, recipient-free plans do not request a redundant paid transaction');
+ const events=new Interface(['event Transfer(address indexed from,address indexed to,uint256 value)']);
+ const target={factory:c.wldFactory,vault:await wv.getAddress(),nextHeir:c.owner,symbol:'WLD',exit:{minNet:'10',minRewards:'0'}};
+ const logFor=(token,from,to,value)=>({address:token,...events.encodeEventLog(events.getEvent('Transfer'),[from,to,value])});
+ const verify=logs=>p.evaluate(async ({logs,target})=>(await import('/src/plan-exit.ts')).verifyExitTransfers({logs},[target]),{logs,target});
+ assert.equal(await verify([logFor(c.wld,target.vault,c.owner,10n)]),true);
+ for(const log of [logFor(c.usdc,target.vault,c.owner,10n),logFor(c.wld,c.heir,c.owner,10n),logFor(c.wld,target.vault,c.heir,10n),logFor(c.wld,target.vault,c.owner,9n)])assert.equal(await verify([log]),false);
+ assert.equal(await verify([]),false);
+ pass('Receipt verification rejects wrong token, source, recipient, missing transfer and insufficient received amount');
+ writeFileSync(out+'/evidence.json',JSON.stringify({checks,realFundsUsed:false},null,2));
+}catch(error){if(p)await p.screenshot({path:out+'/failure.png'}).catch(()=>{});writeFileSync(out+'/host.log',log);throw error}finally{await browser?.close();provider?.destroy();host.kill('SIGTERM');}

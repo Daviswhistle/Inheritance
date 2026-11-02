@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import type { ExitAmounts } from "./plan-exit";
 import { FACTORY_ABI, VAULT_ABI } from "./abis";
 import { TRUSTED_FACTORIES, yieldRouteFor, type AssetSymbol } from "./assets";
 import { FACTORY_DEPLOY_BLOCK, LEGACY_FACTORY_ADDRESS, LEGACY_FACTORY_DEPLOY_BLOCK, WLD_ADDRESS } from "./config";
@@ -21,7 +22,7 @@ export type HeirReadiness = {
 };
 export type SettingsTarget = {
   factory: string; vault: string; symbol: AssetSymbol; heir: string; period: string; lastPing: string;
-  nextHeir: string; nextPeriod: string; checkIn: boolean;
+  nextHeir: string; nextPeriod: string; checkIn: boolean; exit?: ExitAmounts;
 };
 export type SettingsRequest = {
   version: 1; account: string; beforeBlock: number; targets: SettingsTarget[];
@@ -43,7 +44,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const trusted = (factory: string) => TRUSTED_FACTORIES.some(address => same(address, factory));
 
 export function readSettingsRequest(account: string): SettingsRequest | null {
-  const raw = sessionStorage.getItem(settingsKey(account));
+  const raw = localStorage.getItem(`${settingsKey(account)}:exit`) ?? sessionStorage.getItem(settingsKey(account));
   if (!raw) return null;
   const r = JSON.parse(raw) as SettingsRequest;
   if (r.version !== 1 || !same(r.account, account) || !Number.isSafeInteger(r.beforeBlock) || r.beforeBlock < 0
@@ -58,14 +59,28 @@ export function readSettingsRequest(account: string): SettingsRequest | null {
       && BigInt(t.nextPeriod) >= 86400n && BigInt(t.nextPeriod) <= 365n * 86400n && typeof t.checkIn === "boolean")) {
     throw new Error("The saved settings request cannot be verified. No new request was sent.");
   }
+  if (r.targets.some(t => t.exit) && !r.targets.every(t => t.exit && same(t.nextHeir, account) && t.checkIn
+    && typeof t.exit.hasAssets === "boolean" && [t.exit.gross, t.exit.net, t.exit.fee, t.exit.minNet, t.exit.shares,
+      t.exit.rewards, t.exit.rewardFee, t.exit.minRewards, t.exit.claimFiledAt].every(v => typeof v === "string" && /^\d+$/.test(v))
+    && BigInt(t.exit.minNet) <= BigInt(t.exit.net) && BigInt(t.exit.minRewards) <= BigInt(t.exit.rewards))) {
+    throw new Error("The saved settings request cannot be verified. No new request was sent.");
+  }
   return r;
 }
 export function saveSettingsRequest(r: SettingsRequest) {
   const text = JSON.stringify(r);
+  if (r.targets.some(t => t.exit)) {
+    const key = `${settingsKey(r.account)}:exit`;
+    localStorage.setItem(key, text);
+    if (localStorage.getItem(key) !== text) throw new Error("Your browser could not save settings recovery. No new request was sent.");
+    return;
+  }
   sessionStorage.setItem(settingsKey(r.account), text);
   if (sessionStorage.getItem(settingsKey(r.account)) !== text) throw new Error("Your browser could not save settings recovery. No new request was sent.");
 }
 export function clearSettingsRequest(account: string) {
+  localStorage.removeItem(`${settingsKey(account)}:exit`);
+  if (localStorage.getItem(`${settingsKey(account)}:exit`) !== null) throw new Error("Settings recovery could not be cleared. Reopen the app before continuing.");
   sessionStorage.removeItem(settingsKey(account));
   if (sessionStorage.getItem(settingsKey(account)) !== null) throw new Error("Settings recovery could not be cleared. Reopen the app before continuing.");
 }

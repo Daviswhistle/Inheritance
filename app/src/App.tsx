@@ -14,6 +14,7 @@ import { PlanSetup } from "@/components/PlanSetup";
 import { NewPlanAccessNotice } from "@/components/NewPlanAccessNotice";
 import type { PlanAccessLocation } from "@/components/NewPlanAccessNotice";
 import { ReleasePlanDialog } from "@/components/ReleasePlanDialog";
+import { readExitTargets, exitQuoteStillValid, verifyExitTransfers, verifyExitEmpty, PlanExitError } from "@/plan-exit";
 import { HeirPlans, OwnerPlanSettings, InviteHeir } from "@/components/PlanExperience";
 import { readInheritancePosition, ownerInheritancePositions, inheritanceStage, rememberedInheritances, rememberInheritances, readSettingsRequest, saveSettingsRequest, clearSettingsRequest, settingsFingerprint, verifySettingsReceipt, SETTING_EVENTS } from "@/inheritance";
 import type { InheritancePosition, HeirReadiness, SettingsTarget, SettingsRequest } from "@/inheritance";
@@ -832,12 +833,14 @@ export default function App() {
   };
   const [showPlanSetup, setShowPlanSetup] = useState(false);
   const [justCreatedPlan, setJustCreatedPlan] = useState(false);
-  const [settingsReview, setSettingsReview] = useState<{ kind: "period" | "heir" | "cancel"; value: string; targets: SettingsTarget[] } | null>(null);
+  const [settingsReview, setSettingsReview] = useState<{ kind: "period" | "heir" | "cancel" | "exit"; value: string; targets: SettingsTarget[] } | null>(null);
+  const [exitError, setExitError] = useState("");
+  const [exitComplete, setExitComplete] = useState<"funds" | "empty" | "remaining" | null>(null);
   const [singleCheckinReview, setSingleCheckinReview] = useState<string>("");
   const [settingsPending, setSettingsPending] = useState(false);
   const [settingsRecoveryError, setSettingsRecoveryError] = useState("");
   useEffect(() => {
-    setSettingsReview(null);
+    setSettingsReview(null); setExitError(""); setExitComplete(null);
     setShowPlanSetup(false);
     setJustCreatedPlan(false);
     try { setSettingsPending(Boolean(account && readSettingsRequest(account))); setSettingsRecoveryError(""); }
@@ -3672,8 +3675,9 @@ export default function App() {
     } catch (error) { setStatus(errorText(error)); pushToast("error", errorText(error)); }
   };
 
-  const readSettingsTargets = async (kind: "period" | "heir" | "cancel", value: string): Promise<SettingsTarget[]> => {
+  const readSettingsTargets = async (kind: "period" | "heir" | "cancel" | "exit", value: string): Promise<SettingsTarget[]> => {
     if (!provider || !account) throw new Error(t("journey.loading"));
+    if (kind === "exit") return readExitTargets(provider, account);
     const rows = (await ownerInheritancePositions(provider, account)).filter(p => p.claimedAt === 0n);
     if (!rows.length) throw new Error(t("journey.owner.noActive"));
     if (rows.some(p => p.claimFiledAt > 0n || p.now >= p.deadline)) throw new Error(t("journey.owner.checkInFirst"));
@@ -3683,12 +3687,12 @@ export default function App() {
       nextPeriod: kind === "period" ? (BigInt(value) * 86400n).toString() : p.period.toString(),
       checkIn: kind === "period" && p.period !== BigInt(value) * 86400n }));
   };
-  const reviewPlanSettings = async (kind: "period" | "heir" | "cancel", value: string) => {
+  const reviewPlanSettings = async (kind: "period" | "heir" | "cancel" | "exit", value: string) => {
     try {
       if (pendingPlan || await readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
       if (planAccountRef.current !== account.toLowerCase()) return;
       const targets = await readSettingsTargets(kind, value);
-      if (targets.every(t => t.heir.toLowerCase() === t.nextHeir.toLowerCase() && t.period === t.nextPeriod)) {
+      if (kind !== "exit" && targets.every(t => t.heir.toLowerCase() === t.nextHeir.toLowerCase() && t.period === t.nextPeriod)) {
         setStatus(t("journey.owner.unchanged")); return;
       }
       setSettingsReview({ kind, value, targets });
@@ -3701,6 +3705,17 @@ export default function App() {
     }
   };
   const cancelInheritance = async () => { await reviewPlanSettings("cancel", account); };
+  const reviewExit = async () => {
+    setExitError(""); setExitComplete(null);
+    if (pendingPlan || await readStoredPlan(account)) { setExitError(t("journey.owner.finishSetup")); return; }
+    try {
+      const targets = await readExitTargets(getRwProvider() as ethers.JsonRpcProvider, account);
+      if (planAccountRef.current !== account.toLowerCase()) return;
+      setSettingsReview({ kind: "exit", value: account, targets });
+    } catch (error) {
+      setExitError(t(error instanceof PlanExitError ? `exit.${error.code}` : "exit.unavailable"));
+    }
+  };
   const updateHeir = async () => {
     const resolved = await resolveHeirInput(newHeir);
     if (!resolved?.address || resolved.address === ethers.ZeroAddress || resolved.address.toLowerCase() === account.toLowerCase()) {
@@ -3709,25 +3724,29 @@ export default function App() {
     await reviewPlanSettings("heir", resolved.address);
   };
   const confirmPlanSettingsReceipt = async (request: SettingsRequest) => {
+    const isExit = request.targets.every(t => t.exit);
+    let exitIsEmpty = false;
     if (!provider) throw new Error(t("journey.loading"));
     if (!request.txHash) {
       const receipt = await findUniquePlanReceipt(request.beforeBlock, async () => Number(BigInt(await provider.send("eth_blockNumber", []))),
         (fromBlock, toBlock) => provider.getLogs({ address: request.targets.map(t => t.vault),
-          topics: [["HeirUpdated", "HeartbeatUpdated"].map(name => SETTING_EVENTS.getEvent(name)!.topicHash)], fromBlock, toBlock }),
-        hash => provider.getTransactionReceipt(hash), () => true, receipt => receipt.status === 1 && verifySettingsReceipt(receipt, request.targets));
+          topics: [["HeirUpdated", "HeartbeatUpdated", "Ping"].map(name => SETTING_EVENTS.getEvent(name)!.topicHash)], fromBlock, toBlock }),
+        hash => provider.getTransactionReceipt(hash), () => true, receipt => receipt.status === 1 && verifySettingsReceipt(receipt, request.targets) && (!isExit || verifyExitTransfers(receipt, request.targets)));
       if (!receipt) throw new Error(t("journey.owner.pending"));
       request = { ...request, txHash: receipt.hash, hashType: "transaction" };
       saveSettingsRequest(request);
     }
     await waitForTxOrEvent(provider, { txHash: request.txHash, hashType: request.hashType,
       verifyReceipt: async receipt => {
-        if (receipt.blockNumber < request.beforeBlock || !verifySettingsReceipt(receipt, request.targets)) return false;
+        if (receipt.blockNumber < request.beforeBlock || !verifySettingsReceipt(receipt, request.targets)
+          || isExit && !verifyExitTransfers(receipt, request.targets)) return false;
         const block = await provider.getBlock(receipt.blockNumber);
         if (!block?.hash || block.hash !== receipt.blockHash) return false;
         for (const target of request.targets) {
           const route = trustedPlanRoute(target.factory);
           if (!route || !await readPlanVaultIdentity(route, request.account, target.vault, request.beforeBlock)) return false;
         }
+        if (isExit) exitIsEmpty = await verifyExitEmpty(provider, request.targets, receipt.blockNumber);
         return true;
       }, check: async () => true });
     clearSettingsRequest(request.account);
@@ -3742,7 +3761,8 @@ export default function App() {
         void registerWatcher(target.vault, request.account, target.nextHeir, true).catch(() => {});
       }
     }
-    setStatus(t("journey.owner.updated"));
+    setExitComplete(isExit ? !exitIsEmpty ? "remaining" : request.targets.some(t => t.exit?.hasAssets) ? "funds" : "empty" : null);
+    setStatus(isExit ? "" : t(request.targets.every(t => t.nextHeir.toLowerCase() === request.account.toLowerCase()) ? "exit.detached" : "journey.owner.updated"));
   };
   const resumePlanSettings = async () => {
     let request: SettingsRequest | null = null;
@@ -3756,24 +3776,32 @@ export default function App() {
   };
   const confirmPlanSettings = async () => {
     if (!provider || !settingsReview) return;
+    setExitError("");
     let saved = false;
     try {
       if (pendingPlan || await readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
       if (planAccountRef.current !== account.toLowerCase()) return;
       const targets = await readSettingsTargets(settingsReview.kind, settingsReview.value);
-      if (settingsFingerprint(targets) !== settingsFingerprint(settingsReview.targets)) {
+      if (settingsFingerprint(targets) !== settingsFingerprint(settingsReview.targets)
+        || settingsReview.kind === "exit" && !exitQuoteStillValid(settingsReview.targets, targets)) {
         setSettingsReview({ ...settingsReview, targets }); throw new Error(t("journey.owner.changed"));
       }
-      const calls = targets.flatMap(target => {
+      // Preserve the minimum accepted in the review, not a fresh lower quote.
+      const approvedTargets = settingsReview.kind === "exit" ? settingsReview.targets : targets;
+      const calls = approvedTargets.flatMap(target => {
         const abi = yieldRouteFor(target.factory)?.factoryAbi ?? FACTORY_ABI;
         const calls: Array<{ address: string; abi: ethers.InterfaceAbi; functionName: string; args: string[] }> = [];
+        if (target.exit && target.checkIn) calls.push({ address: target.factory, abi, functionName: "pingMyVault", args: [] });
         if (target.heir.toLowerCase() !== target.nextHeir.toLowerCase()) calls.push({ address: target.factory, abi, functionName: "updateMyHeir", args: [target.nextHeir] });
         if (target.period !== target.nextPeriod) calls.push({ address: target.factory, abi, functionName: "changeMyPeriod", args: [target.nextPeriod] });
-        if (target.checkIn) calls.push({ address: target.factory, abi, functionName: "pingMyVault", args: [] });
+        if (!target.exit && target.checkIn) calls.push({ address: target.factory, abi, functionName: "pingMyVault", args: [] });
+        if (target.exit?.hasAssets) calls.push({ address: target.factory, abi,
+          functionName: yieldRouteFor(target.factory) ? "withdrawAllFromMyVault" : "withdrawFromMyVault",
+          args: [account, yieldRouteFor(target.factory) ? target.exit.minNet : target.exit.net] });
         return calls;
       });
       const request: SettingsRequest = { version: 1, account,
-        beforeBlock: Number(BigInt(await provider.send("eth_blockNumber", []))), targets };
+        beforeBlock: Number(BigInt(await provider.send("eth_blockNumber", []))), targets: approvedTargets };
       saveSettingsRequest(request); saved = true; setSettingsPending(true);
       const sent = await sendWorldChainTx(calls);
       if (!sent.ok) {
@@ -3787,7 +3815,9 @@ export default function App() {
       if (error instanceof ConfirmedTransactionFailure && saved) {
         clearSettingsRequest(account); setSettingsPending(false); setSettingsReview(null);
       }
-      setStatus(errorText(error)); pushToast("error", errorText(error));
+      const message = error instanceof PlanExitError ? t(`exit.${error.code}`) : errorText(error);
+      if (settingsReview.kind === "exit") setExitError(message);
+      setStatus(message); pushToast("error", message);
     }
   };
 
@@ -4370,6 +4400,23 @@ export default function App() {
           </Card>
         </div>
       )}
+      {settingsReview?.kind === "exit" && !settingsPending && <MoneyReview title={t("exit.title")} busy={pendingAction}
+        onClose={() => setSettingsReview(null)} onConfirm={() => void runWalletAction(confirmPlanSettings, true)}>
+        {exitError && <p role="alert">{exitError}</p>}
+        <p>{t("exit.description")}</p>
+        {settingsReview.targets.some(r => BigInt(r.exit?.claimFiledAt ?? "0") > 0n) && <p>{t("exit.cancelClaim")}</p>}
+        <dl className="yield-values">
+          {settingsReview.targets.filter(r => r.exit?.hasAssets).map(r => <div key={r.vault}><dt>{t("assets.reviewNet")} · {r.symbol}</dt><dd>{formatYieldAmount(BigInt(r.exit!.net), r.symbol === "USDC" ? 6 : 18)} {r.symbol}</dd></div>)}
+          {settingsReview.targets.filter(r => BigInt(r.exit?.rewards ?? "0") > 0n).map(r => <div key={`${r.vault}-rewards`}><dt>{t("exit.rewards")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.rewards))} WLD</dd></div>)}
+          <div><dt>{t("assets.reviewDestination")}</dt><dd>{t("assets.reviewMyWallet")}</dd></div>
+        </dl>
+        {!settingsReview.targets.some(r => r.exit?.hasAssets) ? <p>{t("exit.noFunds")}</p> : <>
+          <details><summary>{t("exit.calculation")}</summary><dl className="yield-values">
+            {settingsReview.targets.filter(r => r.exit?.hasAssets).map(r => <div key={r.vault}><dt>{r.symbol} · {t("income.fee")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.fee), r.symbol === "USDC" ? 6 : 18)} {r.symbol}</dd></div>)}
+            {settingsReview.targets.filter(r => BigInt(r.exit?.rewardFee ?? "0") > 0n).map(r => <div key={`${r.vault}-fee`}><dt>WLD · {t("income.fee")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.rewardFee))} WLD</dd></div>)}
+          </dl></details><p>{t("assets.reviewVariable")}</p></>}
+        <p>{t("exit.together")}</p>
+      </MoneyReview>}
       {moneyReview && moneyReview.scope === balanceScope && <MoneyReview
         title={t(moneyReview.kind === "deposit" ? "assets.action.deposit" : moneyReview.kind === "income" ? "income.title" : "assets.action.withdrawPrincipal")}
         busy={pendingAction} onClose={() => setMoneyReview(null)} onConfirm={() => {
@@ -4422,6 +4469,12 @@ export default function App() {
           )}
         </div>}
       </header>
+      {settingsPending && tab !== "inherit" && <section className="container-narrow exit-feedback" role="status"><p>{t("exit.pending")}</p>
+        <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("exit.checkResult")}</Button></section>}
+      {exitComplete && <section className="container-narrow exit-feedback" role="status"><strong>{t(exitComplete === "remaining" ? "exit.remaining" : exitComplete === "funds" ? "exit.complete" : "exit.emptyComplete")}</strong>{exitComplete === "funds" && <p>{t("exit.completeBody")}</p>}{exitComplete === "remaining" && <Button disabled={pendingAction} onClick={() => void runWalletAction(reviewExit, true)}>{t("exit.action")}</Button>}<Button size="sm" variant="ghost" onClick={() => setExitComplete(null)}>{t("common.close")}</Button></section>}
+      {exitError && settingsReview?.kind !== "exit" && <section className="container-narrow exit-feedback" role="alert"><p>{exitError}</p>
+        <Button disabled={pendingAction} onClick={() => void runWalletAction(reviewExit, true)}>{t("journey.action.refresh")}</Button>
+        <Button disabled={pendingAction} onClick={() => { setExitError(""); setSettingsReview(null); setTab("money"); }}>{t("exit.openAssets")}</Button></section>}
       {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
           콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
       <main id="main-content" className={`container-narrow app-content tab-pb grid gap-4 ${!account && tab !== "support" ? "app-content-entry" : ""}`}>
@@ -4459,7 +4512,7 @@ export default function App() {
               })}
             </div>
             </>}
-            {!inheritanceEmpty && !ownedPlanLoading && !ownedPlanRead.incomplete && activeOwnedPlans.length === 0 && <p className="text-sm text-gray-600">{t("home.savingsWithoutPlan")}</p>}
+            {!inheritanceEmpty && !ownedPlanLoading && !ownedPlanRead.incomplete && activeOwnedPlans.length === 0 && !unsettledOwnedPlans.some(p => p.heir.toLowerCase() === account.toLowerCase() && p.hasAssets) && <p className="text-sm text-gray-600">{t("home.savingsWithoutPlan")}</p>}
             {!inheritanceEmpty && nextCheckIn !== null && <div className="home-checkin-date">
               <span>{chainNow > 0 && nextCheckIn <= chainNow ? t("home.checkin.overdue") : t("home.checkin.next")}</span>
               {locale === "ko" ? <>
@@ -4471,7 +4524,7 @@ export default function App() {
               </>}
               {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
-            {!inheritanceEmpty && unsettledOwnedPlans.length > 0 && !checkinReview && <div className="home-checkin-action">
+            {!inheritanceEmpty && activeOwnedPlans.length > 0 && !checkinReview && <div className="home-checkin-action">
               <Button variant="primary" aria-describedby="home-checkin-help" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
                 onClick={() => void runWalletAction(() => checkInAllPlans(), true)}>{t("home.checkin.direct")}</Button>
               <p id="home-checkin-help">{t(!miniInstalled ? "home.checkin.openApp" : ownedPlanRead.loading ? "home.checkin.loading"
@@ -4479,6 +4532,10 @@ export default function App() {
               {miniInstalled && ownedPlanRead.incomplete && !ownedPlanRead.loading && <Button disabled={pendingAction}
                 onClick={() => void loadVault()}>{t("entry.unavailable.action")}</Button>}
             </div>}
+            {unsettledOwnedPlans.some(p => p.heir.toLowerCase() === account.toLowerCase() && p.hasAssets) && <section className="retained-assets">
+              <h2>{t("exit.retainedTitle")}</h2><p>{t("exit.retainedBody")}</p>
+              <Button variant="primary" disabled={pendingAction || settingsPending || ownedPlanRead.incomplete} onClick={() => void runWalletAction(reviewExit, true)}>{t("exit.action")}</Button>
+            </section>}
             {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
               <h3 id="checkin-review-title">{t("home.checkin.title")}</h3>
               <p>{t("home.checkin.claimBody", { count: checkinReview.claimCount })}</p>
@@ -4974,12 +5031,12 @@ export default function App() {
           period={ownerSettingsPeriod} onPeriod={onPeriodChange} heir={newHeir} onHeir={onNewHeirInput}
           resolvedHeir={newHeirResolved?.address ?? ""} resolving={resolvingNewHeir}
           busy={pendingAction} disabled={ownedPlanRead.loading || ownedPlanRead.incomplete || unsettledOwnedPlans.some(p => BigInt(chainNow || Math.floor(Date.now() / 1000)) >= p.lastPing + p.periodSeconds)}
-          onPeriodReview={() => void runWalletAction(changePeriod)} onHeirReview={() => void runWalletAction(updateHeir)}
-          onCancel={() => void runWalletAction(cancelInheritance)} review={settingsReview?.targets ?? null}
+          onPeriodReview={() => void runWalletAction(changePeriod, true)} onHeirReview={() => void runWalletAction(updateHeir, true)}
+          onExit={() => void runWalletAction(reviewExit, true)} exitDisabled={ownedPlanRead.loading || ownedPlanRead.incomplete} onCancel={() => void runWalletAction(cancelInheritance, true)} review={settingsReview?.kind === "exit" ? null : settingsReview?.targets ?? null} cancelReview={settingsReview?.kind === "cancel"}
           onConfirm={() => void runWalletAction(confirmPlanSettings, true)} onDismiss={() => setSettingsReview(null)}
           pending={settingsPending} onResume={() => void runWalletAction(resumePlanSettings)}
           onCheckIn={() => { navigationChosenFor.current = account.toLowerCase(); setTab("vault"); void runWalletAction(() => checkInAllPlans(), true); }} inconsistent={!commonManagedSettings} />}
-        {tab === "inherit" && !showPlanSetup && !pendingPlan && isMyVault && !vaultIdentity?.released && inviteCard}
+        {tab === "inherit" && !showPlanSetup && !pendingPlan && isMyVault && !vaultIdentity?.released && activeOwnedPlans.length > 0 && inviteCard}
         {tab === "inherit" && settingsPending && !showOwnerPlanSettings && <Card><CardHeader><CardTitle>{t("journey.owner.settings")}</CardTitle></CardHeader>
           <CardContent className="grid gap-2"><p role="status">{t("journey.owner.pending")}</p>
             <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("journey.action.resume")}</Button>

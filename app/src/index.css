@@ -1615,3 +1615,29 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
   .plan-progress-list > div { display: grid; gap: 2px; }
   .plan-progress-list dd { text-align: left; }
 }
+
+.retained-assets {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #eff6ff;
+}
+.retained-assets h2 { font-size: 18px; line-height: 1.4; font-weight: 700; }
+.retained-assets p { color: #475569; line-height: 1.6; }
+.retained-assets .btn { white-space: normal; height: auto; min-height: 48px; }
+
+.exit-feedback {
+  display: grid;
+  gap: 12px;
+  width: calc(100% - 40px);
+  margin: 20px auto 0;
+  padding: 20px;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  background: #fff;
+  line-height: 1.6;
+}
+.exit-feedback strong { font-size: 18px; line-height: 1.4; }
+.exit-feedback p { color: #475569; }

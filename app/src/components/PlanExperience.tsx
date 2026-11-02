@@ -94,10 +94,10 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
   </section>;
 }
 
-export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, resolvedHeir, resolving, busy, disabled, onPeriodReview, onHeirReview, onCancel, review, onConfirm, onDismiss, pending, onResume, onCheckIn, inconsistent }: {
+export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, resolvedHeir, resolving, busy, disabled, onPeriodReview, onHeirReview, onCancel, onExit, exitDisabled, cancelReview, review, onConfirm, onDismiss, pending, onResume, onCheckIn, inconsistent }: {
   heirLabel: string; period: string; onPeriod: (value: string) => void; heir: string; onHeir: (value: string) => void;
   resolvedHeir: string; resolving: boolean; busy: boolean; disabled: boolean;
-  onPeriodReview: () => void; onHeirReview: () => void; onCancel: () => void;
+  onPeriodReview: () => void; onHeirReview: () => void; onCancel: () => void; onExit: () => void; exitDisabled: boolean; cancelReview: boolean;
   review: SettingsTarget[] | null; onConfirm: () => void; onDismiss: () => void;
   pending: boolean; onResume: () => void; onCheckIn: () => void; inconsistent: boolean;
 }) {
@@ -108,9 +108,10 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
       {!inconsistent && <p className="settings-interval">{t("journey.owner.currentInterval", { days: period })}</p>}
       {inconsistent && <p role="status">{t("journey.owner.inconsistent")}</p>}
       {pending ? <section role="status"><p>{t("journey.owner.pending")}</p><Button disabled={busy} onClick={onResume}>{t("journey.action.resume")}</Button></section> : review ? <section className="plan-review" aria-labelledby="settings-review-title">
-        <h3 id="settings-review-title" tabIndex={-1}>{t("journey.owner.review")}</h3>
+        <h3 id="settings-review-title" tabIndex={-1}>{t(cancelReview ? "exit.detachTitle" : "journey.owner.review")}</h3>
         <p>{t("journey.owner.reviewApplies", { assets: [...new Set(review.map(r => r.symbol))].join(" + ") })}</p>
-        <dl className="plan-review-list">{review.map(r => <div key={r.vault}><dt>{r.symbol}</dt><dd><span className="plan-review-address">{r.nextHeir}</span><span>{t("plan.review.every", { days: Number(r.nextPeriod) / 86400 })}</span></dd></div>)}</dl>
+        {cancelReview && <p>{t("exit.detachBody")}</p>}
+        {!cancelReview && <dl className="plan-review-list">{review.map(r => <div key={r.vault}><dt>{r.symbol}</dt><dd><span className="plan-review-address">{r.nextHeir}</span><span>{t("plan.review.every", { days: Number(r.nextPeriod) / 86400 })}</span></dd></div>)}</dl>}
         {review.some(r => r.checkIn) && <p>{t("journey.owner.newDeadline")}</p>}
         {review.some(r => r.nextHeir.toLowerCase() === r.heir.toLowerCase() && r.nextPeriod === r.period) && <p className="text-xs">{t("journey.owner.allIncluded")}</p>}
         <div className="plan-step-actions"><Button variant="primary" disabled={busy} onClick={onConfirm}>{t("journey.action.confirmSettings")}</Button><Button disabled={busy} onClick={onDismiss}>{t("journey.action.edit")}</Button></div>
@@ -127,7 +128,9 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
         {disabled && <p>{t("journey.owner.checkInFirst")}</p>}
         <Button variant="outline" disabled={busy} onClick={onCheckIn}>{t("home.checkin.direct")}</Button>
         <details><summary>{t("journey.owner.stop")}</summary><p>{t("journey.owner.stopExplanation")}</p>
-          <Button variant="danger" disabled={busy || disabled} onClick={onCancel}>{t("journey.action.cancelInheritance")}</Button></details>
+          <div className="grid gap-3"><Button variant="primary" disabled={busy || exitDisabled} onClick={onExit}>{t("exit.action")}</Button>
+          <details><summary>{t("exit.keepTitle")}</summary><p>{t("exit.detachBody")}</p>
+            <Button variant="outline" disabled={busy || disabled} onClick={onCancel}>{t("journey.action.cancelInheritance")}</Button></details></div></details>
       </>}
     </CardContent></Card>;
 }

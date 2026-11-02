@@ -23,6 +23,17 @@ See ANDROID_COLD_START.md for timed captures, action checks and the corrected
 verification procedure; no product runtime fix was claimed for this finding. No new real
 transaction, notification, external message or submission was performed.
 
+## November 3 — exit flow correction
+
+The operator rejected recipient removal without asset recovery. The new default
+exit batches recipient removal and full recovery to the owner, with a separate
+keep-invested/remove-only option. Already detached assets have a Home recovery
+action. See [PLAN_EXIT.md](PLAN_EXIT.md) for behavior and recovery boundaries.
+Twelve dedicated local-chain scenario groups pass, including atomic failure,
+process-loss recovery, missing operation hash and rounding-sensitive full exit.
+No real funds or submission are authorized by these tests. Deployment/device
+receipt will be recorded in RELEASE.md after verification.
+
 ## Latest presentation revision — November 3 integration
 
 Runtime `9e6857a` integrates the operator/Gemini changes and is deployed at
