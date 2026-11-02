@@ -76,30 +76,35 @@ final class HostTests: XCTestCase {
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         waitForStableControl(recipient, in: web)
-        recipient.typeText("@sam")
+        recipient.typeText("@test_heir")
+        // Use the host's actual fixture identity. An unresolved name inserts
+        // an error row that, with longer help text, puts the target label below
+        // the minimum scroll position allowed by input-clearance protection.
+        XCTAssertTrue(web.staticTexts["@test_heir"].firstMatch.waitForExistence(timeout: 30),
+                      "Wait for the configured recipient to resolve before arranging overlap")
         XCTAssertFalse(web.buttons["Review plan"].exists, "Fixed review action must not cover keyboard input")
         // Accessibility can inflate a 48 CSS-pixel input to 49.05 native points.
         // Round the baseline to pixels before applying the one-pixel tolerance.
         let fullInputHeight = max(44, recipient.frame.height.rounded(.down))
         assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
-                           text: "@sam", screenshot: "native-keyboard")
+                           text: "@test_heir", screenshot: "native-keyboard")
         XCUIDevice.shared.orientation = .landscapeLeft
         let landscape = NSPredicate { _, _ in app.frame.width > app.frame.height }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
-        XCTAssertEqual(recipient.value as? String, "@sam")
+        XCTAssertEqual(recipient.value as? String, "@test_heir")
         assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
-                           text: "@sam", screenshot: "landscape-input-preserved")
+                           text: "@test_heir", screenshot: "landscape-input-preserved")
         XCUIDevice.shared.orientation = .portrait
         let portrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: portrait, object: nil)], timeout: 10), .completed)
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(recipient.waitForExistence(timeout: 15))
-        XCTAssertEqual(recipient.value as? String, "@sam")
+        XCTAssertEqual(recipient.value as? String, "@test_heir")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in amount.value as? String == "12.345678" }, object: nil)], timeout: 10), .completed)
         assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
-                           text: "@sam", screenshot: "foreground-input-preserved")
+                           text: "@test_heir", screenshot: "foreground-input-preserved")
         alignIntervalLabelBehindDone(in: web, app: app)
         dismissKeyboard(in: web, app: app)
         XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10), "Dismissal restores review action")
@@ -116,18 +121,18 @@ final class HostTests: XCTestCase {
             XCUIDevice.shared.orientation = .landscapeLeft
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
             assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
-                               text: "@sam", screenshot: "repeat-landscape-\(cycle)")
+                               text: "@test_heir", screenshot: "repeat-landscape-\(cycle)")
             XCUIDevice.shared.orientation = .portrait
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: portrait, object: nil)], timeout: 10), .completed)
             XCUIDevice.shared.press(.home)
             app.activate()
             assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
-                               text: "@sam", screenshot: "repeat-foreground-\(cycle)")
+                               text: "@test_heir", screenshot: "repeat-foreground-\(cycle)")
             alignIntervalLabelBehindDone(in: web, app: app)
             dismissKeyboard(in: web, app: app)
             XCTAssertTrue(web.buttons["Review plan"].waitForExistence(timeout: 10),
                           "Repeated foreground dismissal must restore actions (cycle \(cycle))")
-            XCTAssertEqual(recipient.value as? String, "@sam")
+            XCTAssertEqual(recipient.value as? String, "@test_heir")
         }
     }
 

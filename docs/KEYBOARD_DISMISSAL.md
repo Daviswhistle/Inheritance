@@ -144,3 +144,23 @@ touchend, no extra click, no remaining focused input and restored actions.
 The earlier fixture alignment remains timing-sensitive; the acceptance evidence
 is the completed gestures and recovery in this final run, not an assertion that
 the fixture never flakes. The production click-retargeting fix is unchanged.
+
+
+## First-use revision fixture geometry
+
+Run 41399668170 passed process-termination recovery and the numeric-input Done
+but failed while arranging the recipient-field overlap, before tapping Done.
+The trace has input top 118, interval-label top 356 (238px apart) and Done center
+315. The application's input-clearance floor is 80px in this viewport, so the
+label cannot settle above 318px while that unresolved-recipient error row is
+present. Merely retrying the same drag cannot establish the requested overlap.
+
+The host config supplies `test_heir`, but the lifecycle test typed nonexistent
+`@sam`. The revised fixture uses `@test_heir` and explicitly waits for its resolved
+label before rotation/overlap checks. This removes the unrelated lookup error
+from the lifecycle scenario. A slow drag with a final hold also avoids a fling
+while arranging the target. The exact overlap gate, native keyboard, rotation,
+background return, button-targeted gesture, prevented touchend, no extra click,
+restored controls and process-recovery assertions remain unchanged. No production
+keyboard or scroll-protection behavior was weakened. Final evidence follows in
+[RELEASE.md](RELEASE.md).
