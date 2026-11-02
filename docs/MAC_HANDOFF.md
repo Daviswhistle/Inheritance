@@ -25,11 +25,32 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
+## November 2 15:08 KST — revised UI submitted, Korea only
+
+The operator-authorized revised release was submitted after runtime CI, native
+lifecycle/recovery, browser, production-readback and actual Android UI checks.
+Independent Portal readback at **2026-11-02T06:08:56.622Z / 15:08:56 KST**
+confirms **awaiting_review**, exactly **KR**, developer allowlisting true. Only
+`verification_status` changed from the immediate pre-submit snapshot. App and
+metadata IDs are unchanged. Pre-submit main: `7e13bba`; deployed runtime:
+`fd16206`; final native test source: `a89aec9` (run 41396499474).
+
+The submission describes the clearer amount/recipient summary, separate wallet
+costs, two fee roles and calculation tables, compact live-rate details, preserved
+draft and interrupted-request recovery. The refreshed store preview is committed.
+It links the reviewer walkthrough, source/fee evidence and verified test results.
+Actual Android and the simulated iOS host are distinguished. Existing immutable
+contracts and the realized-profit service fee are requested for code review.
+This is **review pending**, not TFH approval or public launch. No new financial
+transaction, notification, email or Telegram message was sent during this revision.
+Exact changelog, private device evidence and the independent submission receipt
+are retained outside Git.
+
 ## November 2 — deployed UX revision after operator withdrawal
 
 The operator withdrew the 02:45 KST request and requested clearer mobile UI/UX.
-Portal readback confirms **unverified**, with **KR only** unchanged. Resubmission
-is authorized after the revised release passes validation.
+Pre-submit Portal readback confirmed **unverified**, with **KR only** unchanged.
+The revised release was verified and resubmitted as recorded above.
 
 The review now leads with exact amounts, recipient and interval. A separate
 wallet-debit receipt distinguishes the deposit from an additional WLD network
