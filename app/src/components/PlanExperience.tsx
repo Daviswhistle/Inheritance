@@ -94,10 +94,10 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
   </section>;
 }
 
-export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, resolvedHeir, resolving, busy, disabled, onPeriodReview, onHeirReview, onCancel, onExit, exitDisabled, cancelReview, review, onConfirm, onDismiss, pending, onResume, onCheckIn, inconsistent }: {
+export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, resolvedHeir, resolving, busy, disabled, onPeriodReview, onHeirReview, onCancel, onExit, hasExitAssets, exitDisabled, cancelReview, review, onConfirm, onDismiss, pending, onResume, onCheckIn, inconsistent }: {
   heirLabel: string; period: string; onPeriod: (value: string) => void; heir: string; onHeir: (value: string) => void;
   resolvedHeir: string; resolving: boolean; busy: boolean; disabled: boolean;
-  onPeriodReview: () => void; onHeirReview: () => void; onCancel: () => void; onExit: () => void; exitDisabled: boolean; cancelReview: boolean;
+  onPeriodReview: () => void; onHeirReview: () => void; onCancel: () => void; onExit: () => void; hasExitAssets: boolean; exitDisabled: boolean; cancelReview: boolean;
   review: SettingsTarget[] | null; onConfirm: () => void; onDismiss: () => void;
   pending: boolean; onResume: () => void; onCheckIn: () => void; inconsistent: boolean;
 }) {
@@ -128,7 +128,7 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
         {disabled && <p>{t("journey.owner.checkInFirst")}</p>}
         <Button variant="outline" disabled={busy} onClick={onCheckIn}>{t("home.checkin.direct")}</Button>
         <details><summary>{t("journey.owner.stop")}</summary><p>{t("journey.owner.stopExplanation")}</p>
-          <div className="grid gap-3"><Button variant="primary" disabled={busy || exitDisabled} onClick={onExit}>{t("exit.action")}</Button>
+          <div className="grid gap-3"><Button variant="primary" disabled={busy || exitDisabled} onClick={onExit}>{t(hasExitAssets ? "exit.action" : "journey.owner.stop")}</Button>
           <details><summary>{t("exit.keepTitle")}</summary><p>{t("exit.detachBody")}</p>
             <Button variant="outline" disabled={busy || disabled} onClick={onCancel}>{t("journey.action.cancelInheritance")}</Button></details></div></details>
       </>}

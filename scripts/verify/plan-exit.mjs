@@ -5,7 +5,7 @@ import {createServer} from 'node:net';
 import {createRequire} from 'node:module';
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {setTimeout as sleep} from 'node:timers/promises';
-const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {chromium,webkit}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {Contract,JsonRpcProvider,parseEther,Interface}=createRequire(new URL('../../app/package.json',import.meta.url))('ethers');
 const out=process.env.EXIT_UX_OUT || '/tmp/inheritance-exit';mkdirSync(out,{recursive:true});
 const socket=createServer();await new Promise(r=>socket.listen(0,'127.0.0.1',r));const port=socket.address().port;await new Promise(r=>socket.close(r));
@@ -29,11 +29,11 @@ try{
  const ws=new Contract(c.wldStrategy,sAbi,signer),us=new Contract(c.usdcStrategy,sAbi,signer);
  const fund=async()=>{for(const [t,f,amount] of [[wld,wf,parseEther('10')],[usdc,uf,10_000_000n]]){await(await t.approve(await f.getAddress(),amount)).wait();await(await f.depositWithMinShares(amount,1n)).wait()}};
  await fund();await(await ws.setRate(parseEther('1.1'))).wait();await(await us.setRate(1_100_000n)).wait();await(await wld.transfer(await uv.getAddress(),parseEther('1'))).wait();
- browser=await chromium.launch({executablePath:process.env.CHROME_BIN || undefined,headless:true});p=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await p.addInitScript(()=>localStorage.setItem('inheritance:locale','ko'));
- await p.goto(origin+'/?approval=auto');await p.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
+ browser=await (process.env.EXIT_BROWSER==='webkit' ? webkit : chromium).launch({...(process.env.EXIT_BROWSER==='webkit' ? {} : {executablePath:process.env.CHROME_BIN || undefined}),headless:true});p=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await p.addInitScript(()=>localStorage.setItem('inheritance:locale','ko'));
+ await p.goto(origin+(process.env.EXIT_BROWSER==='webkit' ? '/?platform=ios&approval=auto' : '/?approval=auto'));await p.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
  const requests=()=>p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length);
  const shot=async name=>{await p.locator('#inheritance-test-controls').evaluate(e=>e.style.display='none');await p.screenshot({path:`${out}/${name}.png`})};
- const openExit=async()=>{const action=p.getByRole('button',{name:'상속 종료하고 전액 돌려받기',exact:true});if(!await action.isVisible())await p.getByText('상속 종료',{exact:true}).click();await action.click()};
+ const openExit=async()=>{const action=p.getByRole('button',{name:/^상속 종료(?:하고 전액 돌려받기)?$/});if(!await action.isVisible())await p.locator('summary').filter({hasText:/^상속 종료$/}).click();await action.click()};
  const review=async()=>{await p.locator('.tab-item').nth(2).click();await p.locator('.owner-plan-settings').waitFor();await openExit();await p.locator('.money-review').waitFor()};
  const confirm=()=>p.locator('.money-review .btn-primary').click();
  const unchanged=async()=>{assert.equal(await wv.heir(),c.heir);assert.equal(await uv.heir(),c.heir);assert.equal(await wv.hasAssets(),true);assert.equal(await uv.hasAssets(),true)};
@@ -59,7 +59,7 @@ try{
  await control({action:'mining',enabled:false});await confirm();await until(()=>p.evaluate(()=>Object.entries(localStorage).some(([k,v])=>k.endsWith(':exit')&&JSON.parse(v).txHash)),'durable submitted request');
  const cashBefore=[await wld.balanceOf(c.owner),await usdc.balanceOf(c.owner)];
  // Recreate the tab with sessionStorage empty, sharing durable origin storage.
- const old=p;p=await browser.newPage({viewport:{width:390,height:844},storageState:await old.context().storageState()});await old.close();await p.goto(origin+'/?approval=auto');
+ const old=p;p=await browser.newPage({viewport:{width:390,height:844},storageState:await old.context().storageState()});await old.close();await p.goto(origin+(process.env.EXIT_BROWSER==='webkit' ? '/?platform=ios&approval=auto' : '/?approval=auto'));
  await p.getByRole('button',{name:'동의하고 로그인',exact:true}).click();
  await p.getByRole('button',{name:'거래 결과 확인',exact:true}).waitFor();await control({action:'mine'});await control({action:'mining',enabled:true});await p.getByRole('button',{name:'거래 결과 확인',exact:true}).click();
  await p.getByText('상속을 종료하고 자산을 돌려받았습니다.',{exact:true}).first().waitFor();
@@ -83,7 +83,7 @@ try{
  pass('Lost operation identifier recovers from matching Ping and transfer receipt even when recipients were already removed');
  pass('Previously removed recipients expose retained assets on Home and complete recovery without reassigning a recipient');
  for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();
- await p.reload();await review();assert.match(await p.locator('.money-review').innerText(),/돌려받을 자산이 없습니다/);await confirm();await p.getByText('상속을 종료했습니다. 회수할 자산은 없었습니다.',{exact:true}).first().waitFor();
+ await p.reload();await review();assert.match(await p.locator('.money-review').innerText(),/돌려받을 자산이 없습니다/);assert.equal(await p.locator('.money-review h2').innerText(),'상속 종료');assert.doesNotMatch(await p.locator('.money-review').innerText(),/입금 지갑|출금과 수령인/);await confirm();await p.getByText('상속을 종료했습니다. 회수할 자산은 없었습니다.',{exact:true}).first().waitFor();
  pass('Empty plans can end without falsely claiming a payment');
  const countBeforeEmpty=await requests();await openExit();await p.getByText('종료할 상속 플랜이 없습니다.',{exact:true}).waitFor();assert.equal(await requests(),countBeforeEmpty);
  pass('Already empty, recipient-free plans do not request a redundant paid transaction');

@@ -4400,22 +4400,22 @@ export default function App() {
           </Card>
         </div>
       )}
-      {settingsReview?.kind === "exit" && !settingsPending && <MoneyReview title={t("exit.title")} busy={pendingAction}
+      {settingsReview?.kind === "exit" && !settingsPending && <MoneyReview title={t(settingsReview.targets.some(r => r.exit?.hasAssets) ? "exit.title" : "journey.owner.stop")} busy={pendingAction}
         onClose={() => setSettingsReview(null)} onConfirm={() => void runWalletAction(confirmPlanSettings, true)}>
         {exitError && <p role="alert">{exitError}</p>}
-        <p>{t("exit.description")}</p>
+        <p>{t(settingsReview.targets.some(r => r.exit?.hasAssets) ? "exit.description" : "exit.noFunds")}</p>
         {settingsReview.targets.some(r => BigInt(r.exit?.claimFiledAt ?? "0") > 0n) && <p>{t("exit.cancelClaim")}</p>}
-        <dl className="yield-values">
+        {settingsReview.targets.some(r => r.exit?.hasAssets) && <dl className="yield-values">
           {settingsReview.targets.filter(r => r.exit?.hasAssets).map(r => <div key={r.vault}><dt>{t("assets.reviewNet")} · {r.symbol}</dt><dd>{formatYieldAmount(BigInt(r.exit!.net), r.symbol === "USDC" ? 6 : 18)} {r.symbol}</dd></div>)}
           {settingsReview.targets.filter(r => BigInt(r.exit?.rewards ?? "0") > 0n).map(r => <div key={`${r.vault}-rewards`}><dt>{t("exit.rewards")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.rewards))} WLD</dd></div>)}
           <div><dt>{t("assets.reviewDestination")}</dt><dd>{t("assets.reviewMyWallet")}</dd></div>
-        </dl>
-        {!settingsReview.targets.some(r => r.exit?.hasAssets) ? <p>{t("exit.noFunds")}</p> : <>
+        </dl>}
+        {settingsReview.targets.some(r => r.exit?.hasAssets) && <>
           <details><summary>{t("exit.calculation")}</summary><dl className="yield-values">
             {settingsReview.targets.filter(r => r.exit?.hasAssets).map(r => <div key={r.vault}><dt>{r.symbol} · {t("income.fee")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.fee), r.symbol === "USDC" ? 6 : 18)} {r.symbol}</dd></div>)}
             {settingsReview.targets.filter(r => BigInt(r.exit?.rewardFee ?? "0") > 0n).map(r => <div key={`${r.vault}-fee`}><dt>WLD · {t("income.fee")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.rewardFee))} WLD</dd></div>)}
           </dl></details><p>{t("assets.reviewVariable")}</p></>}
-        <p>{t("exit.together")}</p>
+        {settingsReview.targets.some(r => r.exit?.hasAssets) && <p>{t("exit.together")}</p>}
       </MoneyReview>}
       {moneyReview && moneyReview.scope === balanceScope && <MoneyReview
         title={t(moneyReview.kind === "deposit" ? "assets.action.deposit" : moneyReview.kind === "income" ? "income.title" : "assets.action.withdrawPrincipal")}
@@ -5032,7 +5032,7 @@ export default function App() {
           resolvedHeir={newHeirResolved?.address ?? ""} resolving={resolvingNewHeir}
           busy={pendingAction} disabled={ownedPlanRead.loading || ownedPlanRead.incomplete || unsettledOwnedPlans.some(p => BigInt(chainNow || Math.floor(Date.now() / 1000)) >= p.lastPing + p.periodSeconds)}
           onPeriodReview={() => void runWalletAction(changePeriod, true)} onHeirReview={() => void runWalletAction(updateHeir, true)}
-          onExit={() => void runWalletAction(reviewExit, true)} exitDisabled={ownedPlanRead.loading || ownedPlanRead.incomplete} onCancel={() => void runWalletAction(cancelInheritance, true)} review={settingsReview?.kind === "exit" ? null : settingsReview?.targets ?? null} cancelReview={settingsReview?.kind === "cancel"}
+          onExit={() => void runWalletAction(reviewExit, true)} hasExitAssets={unsettledOwnedPlans.some(p => p.hasAssets)} exitDisabled={ownedPlanRead.loading || ownedPlanRead.incomplete} onCancel={() => void runWalletAction(cancelInheritance, true)} review={settingsReview?.kind === "exit" ? null : settingsReview?.targets ?? null} cancelReview={settingsReview?.kind === "cancel"}
           onConfirm={() => void runWalletAction(confirmPlanSettings, true)} onDismiss={() => setSettingsReview(null)}
           pending={settingsPending} onResume={() => void runWalletAction(resumePlanSettings)}
           onCheckIn={() => { navigationChosenFor.current = account.toLowerCase(); setTab("vault"); void runWalletAction(() => checkInAllPlans(), true); }} inconsistent={!commonManagedSettings} />}
