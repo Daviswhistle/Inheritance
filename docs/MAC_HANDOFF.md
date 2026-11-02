@@ -1,4 +1,4 @@
-# Mac continuation — 2026-11-02
+# Mac continuation — 2026-11-03
 
 ## Current authority — submission stopped
 
@@ -23,7 +23,34 @@ See ANDROID_COLD_START.md for timed captures, action checks and the corrected
 verification procedure; no product runtime fix was claimed for this finding. No new real
 transaction, notification, external message or submission was performed.
 
-## Latest presentation revision
+## Latest presentation revision — November 3 integration
+
+Runtime `9e6857a` integrates the operator/Gemini changes and is deployed at
+https://84332757.inheritance.pages.dev. Public production HTML, four imported
+assets and six static documents/assets match this deployment. The incoming
+15-file working diff was preserved privately before editing; the blue/white
+layout, typography, anchored actions, legal styling and revised terminology
+are retained.
+
+Final corrections remove the death disclaimer from the general transfer guide
+while keeping the living-owner transfer condition in pre-deposit review and
+legal terms. Seven days means eligibility to receive, not guaranteed payment.
+Unconditional safe/instant withdrawal wording was removed. Mixed received and
+unreceived assets now show a receipt-status heading. Repeated success messages
+cannot evict an error; duplicates refresh instead of accumulating.
+
+Local validation: typecheck/lint/build; 10 locale checks; 13 mobile regression
+checks; 66 error cases; 68 Chromium layouts including 37 axe accessibility
+states with zero violations; 31 WebKit layouts; 10 disposable-chain user
+journeys; 12 bilingual legal checks. Native iOS run `41472483141` passed both tests with zero failures/skips on
+iPhone 16 Pro / iOS 18.5 Simulator. Downloaded result summary and keyboard /
+process-recovery screenshots were inspected. This is a native test host, not
+the actual iOS World App. Actual Android verified cold link entry, all guest
+tabs, the expanded guide and Terms -> Privacy -> close after deployment.
+CI `41472483108` and deployment `41472483240` passed.
+Submission remains stopped. No real funds or external messages were used.
+
+### Previous presentation revision — November 2
 
 `b5842ae` is deployed at https://e2f8e217.inheritance.pages.dev after the operator
 rejected the earlier wording review. Main change `ca7d390` replaces unexplained

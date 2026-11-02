@@ -1,5 +1,55 @@
 # Release evidence
 
+## November 3, 2026 — integrated interface completion (submission stopped)
+
+Runtime: `9e6857ad9f46c7e476ed8f569cfec811de6d1e9d`.
+Immutable deployment: https://84332757.inheritance.pages.dev.
+Production: https://inheritance.pages.dev.
+
+The operator's incoming design/copy changes were retained and completed with
+accurate transfer/withdrawal language, neutral mixed-receipt headings and an
+error-preserving toast queue. No contract, fee calculation, access-country rule
+or transaction authorization behavior was changed. The general transfer guide
+now explains the process without the death disclaimer; pre-deposit review and
+legal terms retain the material living-owner transfer condition.
+
+Validation for this source:
+- CI `41472483108`: success. Pages/backend deployment `41472483240`: success.
+- Public HTML and four imported bundle files match the immutable deployment;
+  six static files (terms, privacy, yield terms, language script, legal CSS and
+  icon) match deployment and local source.
+- Typecheck, lint, build, locale placeholders (10), mobile regressions (13),
+  error translations (66), registered CJK and CSS checks passed.
+- Chromium: 68 layouts; 37 axe-core 4.10.3 accessibility states, zero violations.
+  WebKit: 31 layouts including actual SDK iOS transport with a simulated host.
+- Ten disposable-chain journeys include all-withdrawal review/cancel, fee-net
+  balances, separate USDC investment, liquidity changes, cancelled-but-retained
+  funds and a receipt paid as investment tokens. The mixed receipt heading is
+  asserted against the actual rendered page.
+- Twelve bilingual legal-page checks cover 320px, both engines, language switches
+  and storage blocked.
+- Actual Android World App: force-stop followed by canonical link entry renders
+  the new Home. Home, Assets, Plan, Help, expanded transfer guide, fee answer,
+  Terms -> Privacy and dialog close were visually inspected. The general guide
+  has no death disclaimer and all actions remain reachable. Returned to Home.
+  These were guest checks; no new wallet authentication or production transaction
+  was attempted.
+- Native iOS run `41472483141`: success, 2 passed / 0 failed / 0 skipped.
+  Downloaded `ios-summary.json`, full logs and attachment manifest identify
+  iPhone 16 Pro / iOS 18.5 arm64 Simulator. Both
+  `testRealSDKLoginAndNativeLifecycle` and
+  `testZPendingDepositSurvivesProcessTermination` passed. Keyboard Done,
+  orientation/foreground and process-death deposit recovery screenshots were
+  exported; the Done placement and recovered amount were visually inspected.
+
+Private evidence: `../evidence/final-ui-nov03/` relative to the repository.
+It includes the preserved incoming diff, logs, browser screenshots, production
+file comparison and Android pixels. Device captures and local test data were
+not committed. Real iPhone World App validation is not claimed by simulator
+results. No new funds, notification, outbound message, Portal change or
+submission was performed.
+
+
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 

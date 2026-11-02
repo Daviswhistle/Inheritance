@@ -1,5 +1,30 @@
 # Whole-app copy review — November 2, 2026
 
+## November 3 — integrate the revised design and verify the whole flow
+
+The operator supplied additional Gemini edits after rejecting the earlier copy.
+The blue/white visual system, larger review amounts, section hierarchy, fixed
+primary actions, legal-page style and fee/help headings are retained.
+
+Changes made while reviewing the actual rendered flows:
+- General transfer guide: explain renewal, recipient claim and the seven-day
+  wait. Remove the defensive death disclaimer from this guide. Keep the
+  consequence of a missed deadline while alive on the deposit review and in
+  the legal terms.
+- Avoid promising automatic payment exactly seven days later, unconditional
+  withdrawal, real-time data or safe custody. Keep the practical action and
+  the actual condition where each decision is made.
+- Receipt and pending states: mixed asset states use a neutral inheritance
+  heading and asset-specific receipt status. A completed deposit is described
+  as retained, without a safety guarantee.
+- Transient feedback: preserve errors through success bursts, deduplicate and
+  retain the two-message bound. A regression test covers the competing events.
+
+The final source is `9e6857a`. Browser/mobile-host test receipts are recorded in
+RELEASE.md. They verify layout and behavior, not first-time human comprehension.
+No submission is authorized by this review.
+
+
 Submission remains stopped at the operator's request. This is a product copy and
 presentation review, not a recruited usability study or a claim of perfection.
 
