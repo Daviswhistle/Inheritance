@@ -7,6 +7,20 @@ back as `unverified`, with KR as the sole supported country. Do not submit this
 revision or reuse earlier readiness claims. Code, checks and deployment remain
 in scope. No production funds, notifications or external messages are used.
 
+## November 3 correction: completion means the money is returned
+
+The earlier cancelled-balance check proved only that assets stayed visible.
+It missed the user's actual expectation: ending inheritance should return the
+assets. The default exit now reviews and batches full recovery with recipient
+removal. Keeping assets invested is a separate remove-only choice. Already
+removed recipients get a Home recovery action; empty plans omit investment
+choices and do not claim a payout. See [PLAN_EXIT.md](PLAN_EXIT.md).
+
+Acceptance covers receipt-confirmed payment to the owner, complete rollback
+when either asset fails, cancellation without a transaction, quote/liquidity
+failure, and restoring an interrupted request without sending it again. A
+successful settings event alone is not evidence of a completed withdrawal.
+
 ## What the interface must answer
 
 1. Where is my money: World App cash, inheritance savings, or a separate investment?

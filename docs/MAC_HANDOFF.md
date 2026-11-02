@@ -14,7 +14,7 @@ changes and validation boundaries. Empty contracts, separate wallet investments,
 fee-adjusted balances, transaction review and recipient payout states now have
 explicit, different presentations. Do not call browser checks a user study.
 
-Runtime `55ede20` is deployed and matched against the production alias; native
+Earlier runtime `55ede20` was deployed and matched against the production alias; native
 host test source `1d4670c` passed both tests in run 41412039522. Android verified
 the final empty state, asset separation, settings and visible setup return.
 The subsequent cold-start investigation corrected the persistent-blank diagnosis:
@@ -29,10 +29,16 @@ The operator rejected recipient removal without asset recovery. The new default
 exit batches recipient removal and full recovery to the owner, with a separate
 keep-invested/remove-only option. Already detached assets have a Home recovery
 action. See [PLAN_EXIT.md](PLAN_EXIT.md) for behavior and recovery boundaries.
-Fourteen dedicated local-chain and accessibility checks pass, including atomic failure,
+Fifteen dedicated local-chain and accessibility checks pass, including atomic failure,
 process-loss recovery, missing operation hash and rounding-sensitive full exit.
-No real funds or submission are authorized by these tests. Deployment/device
-receipt will be recorded in RELEASE.md after verification.
+Runtime `2938a05` is deployed at https://46b15c0e.inheritance.pages.dev.
+Public HTML, four imported assets and six static documents match the immutable
+release. CI `41483406456` and deployment `41483406606` passed. Both Chromium
+and WebKit pass all 15 exit checks. Actual Android verified the final empty exit options and review/cancel.
+Three preceding native iOS runs passed 2 tests each; final presentation run
+`41483406437` is queued for a Mac runner at this checkpoint. Do not call it
+passed or substitute simulator results for actual iOS World App. See RELEASE.md.
+No real funds, outbound messages or submission were used.
 
 ## Latest presentation revision — November 3 integration
 
@@ -282,7 +288,7 @@ The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
 submission receipts below are historical and no longer the active request.
 
-## Current verified checkpoint
+## Historical verified checkpoint
 
 - Runtime source: `85b3d2a6081467f9e3a4be879a3b693047a11407`, descendant of requested baseline `91944cc`.
   Main is the continuation branch. See [RELEASE.md](RELEASE.md) for current CI,

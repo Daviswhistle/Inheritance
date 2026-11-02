@@ -1,5 +1,15 @@
 # Whole-app copy review — November 2, 2026
 
+## November 3 — distinguish ending inheritance from removing a recipient
+
+The new default **상속 종료하고 전액 돌려받기** combines the promised outcome
+in one reviewed transaction. **수령인만 해제** explicitly retains invested
+assets and is a secondary choice. Home exposes retained funds and recovery.
+Empty plans say **상속 종료**, omit payout/destination claims and have no
+keep-invested choice. Confirmation distinguishes actual recovery, empty closure
+and remaining funds. These are flow changes as well as wording changes; see
+PLAN_EXIT.md and the latest RELEASE.md receipt.
+
 ## November 3 — integrate the revised design and verify the whole flow
 
 The operator supplied additional Gemini edits after rejecting the earlier copy.

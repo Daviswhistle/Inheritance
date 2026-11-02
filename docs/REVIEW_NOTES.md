@@ -42,11 +42,20 @@ and checks its receipt before allowing another deposit. The repaired **All** wit
 position at execution; actual Android WLD and USDC round trips finished with
 zero remaining shares, assets and cost basis.
 
+**End inheritance and withdraw all** reviews the net assets, destination and
+fees, then combines full recovery and recipient removal in one transaction.
+**Remove recipient only** is a secondary choice that explicitly keeps assets
+invested. A previously removed recipient does not hide retained funds: Home
+provides a recovery action. Empty plans have a short closure review without a
+payout claim. Failure in either asset rolls back the whole exit; interrupted
+requests recover from the original receipt. The dedicated local-chain tests
+cover this combined exit separately from the earlier real Android round trips.
+
 ## First-use clarity
 
-The welcome screen explains that the trigger is a missed check-in deadline,
-not confirmation of death. It states who must request the assets, the seven-day
-wait and the owner's ability to cancel before transfer. Sign-in is distinguished
+The welcome screen explains renewing the deadline, who requests the assets
+after a missed deadline, the seven-day wait and the owner's ability to cancel
+before transfer. Sign-in is distinguished
 from a separately approved deposit.
 
 The amount fields explain that one asset is sufficient and unused fields can
@@ -76,6 +85,10 @@ This is an engineering walkthrough, not a study with recruited first-time users.
    recovery before attempting another deposit.
 6. Compare Home's check-in action, Assets' withdrawal controls and Plan's
    recipient/interval settings. Help keeps fees, risks and support accessible.
+7. In Plan, open End inheritance. For funded plans, verify net amounts and the
+   wallet destination before opening approval. Cancelling the review sends no
+   transaction. For an empty plan, the review explicitly says there is nothing
+   to return. The remove-only choice is available only when funds remain.
 
 ## Rates, costs and fund controls
 

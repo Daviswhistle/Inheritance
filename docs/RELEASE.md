@@ -1,5 +1,51 @@
 # Release evidence
 
+## November 3, 2026 — end inheritance with asset recovery (submission stopped)
+
+Runtime: `2938a05014cad181db8b8bc93e8cab8e4e5016dd`.
+Immutable deployment: https://46b15c0e.inheritance.pages.dev.
+Production: https://inheritance.pages.dev.
+CI `41483406456` and deployment `41483406606` passed.
+Public HTML, four imported bundles and six static documents/assets match the
+immutable deployment (November 3 01:41 KST readback).
+
+The default action now combines full asset recovery to the owner's wallet with
+recipient removal. Keeping funds invested is a separate remove-only choice.
+Previously removed recipients expose retained funds and a recovery action on
+Home. Empty plans omit payout claims and irrelevant investment choices. A
+failed asset exit rolls back the entire batch. Durable recovery resumes the
+original request, including after loss of its operation identifier. No contract
+or fee policy was changed. See PLAN_EXIT.md.
+
+Validation:
+- Dedicated real-SDK/disposable-chain suite: 15 checks passed in Chromium and
+  15 in WebKit/iOS transport, including accessibility of the new review.
+  Review/cancellation, reject/retry, quote/liquidity failure, actual atomic revert,
+  process loss, lost hash, old remove-only balances, empty closure, already-closed
+  no-op prevention, basic WLD and reward-only USDC are covered. Negative receipt
+  proofs reject wrong token/source/recipient, missing transfer and low output.
+- The funded scenario returns exactly 11.9 WLD and 10.9 USDC with both vaults
+  empty. The basic-plus-reward-only scenario returns exactly 3 WLD. These use
+  local test tokens, not production funds.
+- Typecheck/lint/build, 10 locale checks, 13 mobile regressions, 66 error cases,
+  CJK and CSS checks passed. Existing Chromium 68-layout / 37-state axe suite,
+  WebKit 31-layout suite and 10 human journeys passed during the exit revision.
+- Actual Android World App: cold link entry, sign-in, owner settings, exit review
+  and cancellation checked against production. The account has no deposited
+  assets, so the screen correctly shows recipient removal with nothing to
+  return. Final empty settings also omit the keep-invested choice. No wallet
+  transaction request was sent; no new production full-exit payment is claimed.
+- Native iOS host runs `41480214536` (f143119), `41480898273` (4dc2280) and
+  `41482006681` (06a17f3) each passed 2 tests, zero failures/skips. Downloaded
+  Xcode summaries identify iPhone 16 Pro / iOS 18.5 Simulator. The final
+  `2938a05` only adjusts the empty settings presentation; its automatic run
+  `41483406437` is queued for a GitHub Mac runner at this checkpoint, not passed.
+  Simulator-host results do not constitute actual iOS World App validation.
+
+Private logs, screenshots, result bundles and production comparisons are under
+`../evidence/exit-flow-nov03/`. No real funds, outbound messages, notification,
+Portal change or submission were performed. The phone is returned to Home.
+
 ## November 3, 2026 — integrated interface completion (submission stopped)
 
 Runtime: `9e6857ad9f46c7e476ed8f569cfec811de6d1e9d`.
