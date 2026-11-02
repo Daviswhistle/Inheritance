@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FACTORY_ABI, VAULT_ABI, INCOME_FACTORY_ABI, INCOME_VAULT_ABI } from "./abis";
 import { errorText } from "./errors";
+import { enqueueToast, type Toast, type ToastType } from "./toast-queue";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -864,8 +865,6 @@ export default function App() {
   const [heirScanAttempted, setHeirScanAttempted] = useState<boolean>(false);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [miniInstalled, setMiniInstalled] = useState<boolean>(false);
-  type ToastType = 'info' | 'success' | 'error';
-  type Toast = { id: number; type: ToastType; msg: string };
   type NotifyPermissionState = "unknown" | "granted" | "denied";
   type WatchState = "unknown" | "registered" | "not_registered";
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -927,8 +926,9 @@ export default function App() {
   const pushToast = (type: ToastType, msg: string) => {
     // Date.now() 는 같은 밀리초에 여러 토스트가 올라오면 id 가 겹칠 수 있다.
     const id = ++toastSeqRef.current;
-    setToasts((t) => [...t, { id, type, msg }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
+    // Keep at most two visible, and never let a newer success hide an error.
+    setToasts((t) => enqueueToast(t, { id, type, msg }));
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), type === "error" ? 7000 : 4000);
   };
 
   // 입력 디바운스용 단조 증가 카운터.
@@ -5104,7 +5104,7 @@ export default function App() {
               <details className="help-topic"><summary>{t("help.feeTitle")}</summary><div>
                 <p>{t("help.feeDisclosure")}</p><a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
               </div></details>
-              <details className="help-topic"><summary>{t("fees.network.title")}</summary><div><p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p></div></details>
+              <details className="help-topic"><summary>{t("help.networkTitle")}</summary><div><p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p></div></details>
               <details className="help-topic"><summary>{t("help.custodyQuestion")}</summary><div><p>{t("help.journey.custody")}</p></div></details>
               {(["income", "heir", "receiving", "shares"] as const).map(subject => <details className="help-topic" key={subject}>
                 <summary>{t(`help.journey.${subject}Title`)}</summary><div><p>{t(`help.journey.${subject}`)}</p></div>
@@ -5141,7 +5141,7 @@ export default function App() {
             key={navTab.key}
             className={`tab-item ${tab === navTab.key ? "tab-item-active" : ""}`}
             disabled={ctaLoading}
-            onClick={() => { navigationChosenFor.current = account.toLowerCase(); setTab(navTab.key); }}
+            onClick={() => { navigationChosenFor.current = account.toLowerCase(); setToasts((t) => t.filter((x) => x.type === "error")); setTab(navTab.key); }}
             aria-current={tab === navTab.key ? "page" : undefined}
           >
             <Icon name={navTab.key === "money" ? "assets" : navTab.key === "vault" ? "home" : navTab.key === "support" ? "help" : navTab.key} size={21} />

@@ -22,6 +22,21 @@ async function importTypeScript(relativePath) {
 }
 
 const { ContactPickerCoordinator } = await importTypeScript("../app/src/contact-picker.ts");
+const { enqueueToast } = await importTypeScript("../app/src/toast-queue.ts");
+
+test("success bursts retain errors, duplicate errors refresh and the queue stays bounded", () => {
+  const error = { id: 1, type: "error", msg: "Transfer failed" };
+  let queue = [error];
+  for (let id = 2; id <= 5; id++) queue = enqueueToast(queue, { id, type: "success", msg: `Copied ${id}` });
+  assert.deepEqual(queue.map(item => item.id), [1, 5]);
+  queue = enqueueToast(queue, { ...error, id: 6 });
+  assert.deepEqual(queue.map(item => item.id), [5, 6]);
+  queue = enqueueToast(queue, { id: 7, type: "error", msg: "Connection lost" });
+  queue = enqueueToast(queue, { id: 8, type: "info", msg: "Copied link" });
+  assert.deepEqual(queue.map(item => item.id), [6, 7]);
+  queue = enqueueToast(queue, { id: 9, type: "error", msg: "Retry failed" });
+  assert.deepEqual(queue.map(item => item.id), [7, 9]);
+});
 const {
   requestAndReadNotificationPermission,
   notificationHealth,

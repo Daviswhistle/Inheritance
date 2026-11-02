@@ -8,6 +8,5 @@ export function TransferGuide() {
       <li><strong>{t("guide.claim.title")}</strong><p>{t("guide.claim.body")}</p></li>
       <li><strong>{t("guide.review.title")}</strong><p>{t("guide.review.body")}</p></li>
     </ol>
-    <p className="transfer-guide-note">{t("guide.note")}</p>
   </div>;
 }

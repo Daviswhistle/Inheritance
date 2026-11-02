@@ -24,7 +24,7 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
   const groups = groupInheritances(positions);
   const selectedGroup = groups.findIndex(group => group[0].owner.toLowerCase() === selectedOwner.toLowerCase());
   if (selectedGroup > 0) groups.unshift(...groups.splice(selectedGroup, 1));
-  return <section className="heir-plans" aria-label={t("journey.heir.title")}>
+  return <section className="heir-plans" aria-label={t("journey.heir.heading")}>
     {loading && !groups.length && <p role="status">{t("journey.loading")}</p>}
     {groups.map(group => {
       const owner = group[0].owner, name = group[0].ownerName ? `@${group[0].ownerName}` : short(owner);
@@ -39,9 +39,9 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
         inheritanceStage(p) === inheritanceStage(group[0]) && p.deadline === group[0].deadline
         && p.challengeEndsAt === group[0].challengeEndsAt && p.hasAssets === group[0].hasAssets);
       return <Card key={owner} className="heir-plan-card" data-owner={owner}>
-        <CardHeader><span className="eyebrow">{t(completed ? "journey.receipt.title" : "journey.heir.title")}</span>
+        <CardHeader><span className="eyebrow">{t(completed ? "journey.receipt.title" : allUnclaimed ? "journey.heir.title" : "journey.heir.partialTitle")}</span>
           <CardTitle>{t("journey.heir.from", { name })}</CardTitle>
-          <p className="plan-card-intro">{t(completed ? "journey.heir.completed" : "journey.heir.description")}</p>
+          <p className="plan-card-intro">{t(completed ? "journey.heir.completed" : allUnclaimed ? "journey.heir.description" : "journey.heir.partialBody")}</p>
         </CardHeader>
         <CardContent className="grid gap-3">
           {selected && (filed.length > 0 || ready.length > 0) && <section className="heir-next-action" aria-label={t("journey.nextStep")}>
@@ -68,7 +68,7 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
                   </> : <p role="status">{t("journey.receipt.unavailable")}</p>
                   : <>
                     <p className="inheritance-amount">{p.amount === null ? t("home.value.unavailable") : `${formatYieldAmount(p.amount, p.decimals)} ${p.symbol}`}</p>
-                    {!allUnclaimed && <small>{t("journey.heir.estimate")}</small>}
+                    {!allUnclaimed && p.hasAssets && <small>{t("journey.heir.estimate")}</small>}
                     {p.additionalWld !== null && p.additionalWld > 0n && <small>{t("journey.heir.additionalWld", { amount: formatYieldAmount(p.additionalWld) })}</small>}
                     {!sharedNext && <p className="inheritance-next">{nextStep(p)}</p>}
                   </>}

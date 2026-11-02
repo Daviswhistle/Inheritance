@@ -302,7 +302,7 @@ try {
   assert.equal(await page.locator('#heir-input').inputValue(), config.heir);
   await page.waitForFunction(() => window.__INHERITANCE_TEST_HOST__.history
     .filter(command => command.command === 'share-contacts').at(-1)?.state === 'success');
-  await page.waitForFunction(() => document.querySelector('[role="status"].plan-field-help')?.textContent.includes('직접 입력한 사람을 받을 사람으로 사용합니다.'));
+  await page.waitForFunction(() => document.querySelector('[role="status"].plan-field-help')?.textContent.includes('직접 입력한 주소를 수령인으로 지정합니다.'));
   assert.equal(await page.locator('#heir-input').inputValue(), config.heir);
   assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(command => command.command === 'share-contacts').length), 1);
   pass('Cancelling a pending contacts request preserves manual recipient entry and ignores its late result');
@@ -326,7 +326,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await layout(page, 'setup-portrait-return-ko', 390);
   pass('Portrait/landscape viewport changes preserve the focused form and exact decimal input');
-  await tap(page, '입력한 내용 확인하기');
+  await tap(page, '설정 내용 확인하기');
   await page.locator('#plan-review-title').waitFor();
   assert.equal(await page.locator('#yield-consent').isChecked(), false);
   assert.equal(await page.locator('.plan-submit').isDisabled(), true);
@@ -424,7 +424,7 @@ try {
   pass('Terms/privacy close, document return link and Escape preserve the review, exact amounts and consent; focus returns to the opener');
   await layout(page, 'review-ko', 390);
   await page.screenshot({ path: out + '/review-ko.png' });
-  await tap(page, '이 금액 맡기기');
+  await tap(page, '동의하고 예치하기');
   await page.locator('.invite-disclosure').waitFor({ timeout: 60000 });
   const wf = new Contract(config.wldFactory, ['function vaultOf(address) view returns(address)'], provider);
   const uf = new Contract(config.usdcFactory, ['function vaultOf(address) view returns(address)'], provider);
@@ -488,10 +488,10 @@ try {
   await page.setViewportSize({ width: 320, height: 640 });
   await tab(page, 2); await tap(page, '내 플랜에 자산 추가');
   await page.locator('#plan-usdc').fill('1.000001');
-  await tap(page, '입력한 내용 확인하기');
+  await tap(page, '설정 내용 확인하기');
   await page.locator('#yield-consent').check();
   await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.rejectNext('send-transaction'));
-  await tap(page, '이 금액 맡기기');
+  await tap(page, '동의하고 예치하기');
   await page.waitForFunction(() => document.activeElement?.id === 'plan-resume-title');
   const resumeButton = page.getByRole('button', { name: '남은 설정 이어하기', exact: true });
   const resumeBox = await resumeButton.boundingBox();
