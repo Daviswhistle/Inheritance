@@ -25,6 +25,18 @@ that approval is for this completed test, not unrelated future spending. The pre
 Exactly one approved self-notification has already been used. Do not send another
 notification, contact message, invitation or external inquiry without authority.
 
+## Current work — first-use clarity review
+
+The operator requested a first-time-user walkthrough and further UI fixes.
+Runtime `8cf931c` clarifies the deadline trigger, request/seven-day wait,
+login versus deposits, optional assets and recipients outside saved contacts.
+The latest Portal readback is **unverified**, still exactly **KR**; do not use
+the prior awaiting-review receipt as current status. Existing remediation,
+deployment and Korea-only submission authority remains unchanged.
+See the newest [RELEASE.md](RELEASE.md) section for completed checks and the
+Chromium relative-profile-path diagnosis. Native run 41399668170 is in progress.
+No additional funds or notifications are used.
+
 ## November 2 15:08 KST — revised UI submitted, Korea only
 
 The operator-authorized revised release was submitted after runtime CI, native

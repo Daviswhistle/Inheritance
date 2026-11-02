@@ -42,6 +42,21 @@ and checks its receipt before allowing another deposit. The repaired **All** wit
 position at execution; actual Android WLD and USDC round trips finished with
 zero remaining shares, assets and cost basis.
 
+## First-use clarity
+
+The welcome screen explains that the trigger is a missed check-in deadline,
+not confirmation of death. It states who must request the assets, the seven-day
+wait and the owner's ability to cancel before transfer. Sign-in is distinguished
+from a separately approved deposit.
+
+The amount fields explain that one asset is sufficient and unused fields can
+stay blank. Recipient help explicitly permits usernames or wallet addresses
+without a saved contact. Missed-deadline instructions are visible beside the
+interval field without opening details. These changes apply in English and
+Korean. A first-use walkthrough reached review with WLD alone and USDC alone,
+verified exact amounts and preserved drafts, and requested zero transactions.
+This is an engineering walkthrough, not a study with recruited first-time users.
+
 ## Suggested review walkthrough
 
 1. Browse Home, Assets, Plan and Help before signing in. Open Terms and Privacy;

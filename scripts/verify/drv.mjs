@@ -7,7 +7,9 @@ import path from "node:path";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // 스크린샷과 브라우저 프로필을 저장소 안에 흩뿌리지 않게 /tmp 아래 전용 디렉터리를 쓴다.
-const RUNDIR = process.env.VERIFY_TMP || "/tmp/wld-verify";
+// Chromium renderer helpers need an absolute profile path on macOS. With a
+// relative --user-data-dir, JS can run while animation frames/screenshots stall.
+const RUNDIR = path.resolve(process.env.VERIFY_TMP || "/tmp/wld-verify");
 
 export const ACCOUNTS = {
   a0: { a: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", pk: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" },

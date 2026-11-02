@@ -3,6 +3,32 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## Current work — first-use clarity review
+
+After submission, the operator requested another walkthrough from a first-time
+user's perspective and authorized further fixes. The latest Portal readback is
+**unverified**, exactly **KR**; this supersedes the earlier awaiting-review
+snapshot below. No inference is made about who changed that status.
+
+Runtime source `8cf931c` clarifies the check-in trigger rather than death
+verification, the recipient's request and seven-day wait, login versus deposit,
+optional asset selection and manual recipient entry. The interval explanation
+is visible without expanding details. No transaction or inheritance rules changed.
+The isolated first-use walkthrough reaches review with each asset separately,
+retains exact amounts on Edit, and records zero transaction requests. It is not
+research with recruited users. Final runtime/deployment/native evidence follows
+when complete.
+
+The first Chromium run failed the expanded-guide clearance gate and could not
+capture its failure screenshot. A controlled same-browser probe isolated the
+fixture: a relative profile path produced zero animation frames in one second
+and no screenshot; an absolute path produced 60 frames and a screenshot, with
+the same GPU flag. A separate GPU-flag comparison using absolute paths passed
+both cases. The driver now resolves its run/profile directory to an absolute
+path. This fixes the test renderer setup, not production app layout. The final
+run uses the original browser flags and a relative VERIFY_TMP input to exercise
+the path correction. Raw probes remain private outside Git.
+
 ## November 2 15:08 KST — revised UI submitted, Korea only
 
 The operator-authorized revised release was submitted after runtime CI, native
