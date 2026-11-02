@@ -15,6 +15,7 @@ const icon = readFileSync(path.join(root, 'app/public/icon.svg'), 'utf8');
 const esc = value => value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const usdcStore = process.env.USDC_STORE_IMAGES === '1';
 const unifiedStore = process.env.UNIFIED_STORE_IMAGES === '1';
+const only = process.env.STORE_ONLY?.split(',').filter(Boolean);
 const shots = unifiedStore ? { countdown: image('unified-store-overview'), create: image('unified-store-create'),
   welcome: image('unified-store-welcome'), income: image('unified-store-income') } : usdcStore ? { yield: image('usdc-store-position') } : {
   countdown: image(process.env.YIELD_STORE_IMAGES === '1' ? 'yield-store-countdown' : 'store-2-countdown'),
@@ -32,7 +33,9 @@ const layouts = usdcStore ? [] : [
 if (unifiedStore) layouts.push({ name:'showcase_3', width:1080, height:1080, title:'Your income.\nYour choice.', text:'Collect available income.', shot:'income', detail:'Service fee: 10% of net realized gains. Strategy fees also apply. Invested assets can lose value. Cash depends on liquidity.', screenHeight:866, screenRight:42, top:295, titleSize:75 });
 else if (usdcStore) layouts.push({ name:'showcase_3', width:1080, height:1080, title:'Choose WLD.\nOr USDC.', text:'Separate vaults. One simple plan.', shot:'yield', detail:'USDC earns with Morpho. 10% gain fee. Principal can lose value. Cash depends on liquidity.', screenHeight:866, screenRight:42, top:275, titleSize:75 });
 else if (process.env.YIELD_STORE_IMAGES === '1') layouts.push({ name:'showcase_3', width:1080, height:1080, title:'An option\nfor yield.', text:'Choose Morpho lending for your WLD.', shot:'yield', detail:'10% of positive net gains on exit. Principal can lose value. Cash depends on liquidity.', screenHeight:866, screenRight:42, top:295, titleSize:75 });
-for (const layout of layouts) {
+if (only?.some(name => name !== 'logo' && !layouts.some(layout => layout.name === name))) throw new Error('Unknown STORE_ONLY image');
+const selectedLayouts = layouts.filter(layout => !only || only.includes(layout.name));
+for (const layout of selectedLayouts) {
   const page = await launch({url:'about:blank'});
   try {
     const {name,width,height,title,text,shot,detail,screenHeight,screenRight,top,titleSize} = layout;
@@ -80,8 +83,10 @@ for (const layout of layouts) {
     console.log(name+'.png',width+'x'+height,bytes.length,'bytes');
   } finally { await page.close(); }
 }
-const logo=spawnSync('node',[path.join(root,'scripts/rasterize-icon.mjs')],{stdio:'inherit'});
-if(logo.status!==0)process.exit(logo.status||1);
-for(const name of ['logo',...layouts.map(layout=>layout.name)]){
+if (!only || only.includes('logo')) {
+  const logo=spawnSync('node',[path.join(root,'scripts/rasterize-icon.mjs')],{stdio:'inherit'});
+  if(logo.status!==0)process.exit(logo.status||1);
+}
+for(const name of [...(!only || only.includes('logo') ? ['logo'] : []),...selectedLayouts.map(layout=>layout.name)]){
   if(statSync(path.join(destination,name+'.png')).size>500*1024)throw new Error(name+' exceeds 500KB');
 }

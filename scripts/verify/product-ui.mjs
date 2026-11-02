@@ -185,10 +185,21 @@ try{
  await until(async()=>await token.balanceOf(config.owner)===before+1_000000n,'verified USDC principal withdrawal');
  await until(()=>page.ev("return document.body.innerText.includes('출금을 완료했습니다')"),'localized withdrawal receipt');
  console.log('PASS invalid and zero addresses, precision, zero and excess amounts cannot submit; valid USDC withdrawal pays exactly one token');
+ const checkinStartBlock=await provider.getBlockNumber();
  await tab(page,0);await click(page,'지금 확인하기');
  await until(()=>page.ev("return document.body.innerText.includes('2개') && document.body.innerText.includes('확인')"),'combined check-in');
  const factory=new Contract(config.wldFactory,['function vaultOf(address) view returns(address)'],provider);
  const vault=await factory.vaultOf(config.owner);
+ const checkinVaults=[vault,await new Contract(config.usdcFactory,['function vaultOf(address) view returns(address)'],provider).vaultOf(config.owner)];
+ const checkinReceipts=[];
+ for(const address of checkinVaults){
+  const checked=new Contract(address,['event Ping(uint256 timestamp)','function lastPing() view returns(uint256)'],provider);
+  const events=await checked.queryFilter(checked.filters.Ping(),checkinStartBlock+1);
+  assert.equal(events.length,1,'one canonical check-in event for each asset');
+  assert.equal(await checked.lastPing(),events[0].args.timestamp,'displayed success matches the stored deadline');
+  checkinReceipts.push({address,transactionHash:events[0].transactionHash,timestamp:String(events[0].args.timestamp)});
+ }
+ writeFileSync(`${OUT}/checkin-receipt.json`,JSON.stringify(checkinReceipts,null,2));
  const heir=await launch({url:origin+`/?account=heir&approval=auto&vault=${vault}`,preload:"localStorage.setItem('inheritance:locale','en');"});pages.push(heir);await heir.ev(HELPERS);
  assert.ok(await heir.waitFor('#inheritance-test-controls'));await heir.ev("document.getElementById('inheritance-test-controls').style.display='none';");
  if(axeSource)await heir.send('Runtime.evaluate',{expression:axeSource});
@@ -275,6 +286,15 @@ try{
  assert.deepEqual(page.logs.filter(x=>x.startsWith('[EXC]')),[]);
  mkdirSync(OUT,{recursive:true});writeFileSync(`${OUT}/product-ui-evidence.json`,JSON.stringify(evidence,null,2));
  console.log(`PASS ${evidence.layouts.length} layouts; screenshots and evidence in ${OUT}`);
+}catch(error){
+ for(const [index,page] of pages.entries()){
+  try{
+   const state=await page.ev("return {text:document.body.innerText,history:window.__INHERITANCE_TEST_HOST__?.history,buttons:__q.btns(),errors:window.__E2E_ERRS__};");
+   writeFileSync(`${OUT}/failure-${index}.json`,JSON.stringify({error:String(error),...state},null,2));
+   await shot(page,`failure-${index}`,false);
+  }catch{}
+ }
+ throw error;
 }finally{
  provider?.destroy();
  for(const page of pages)await page.close();server.kill('SIGTERM');await new Promise(resolve=>{if(server.exitCode!==null)return resolve();const timeout=setTimeout(()=>{server.kill('SIGKILL');resolve();},5000);server.once('exit',()=>{clearTimeout(timeout);resolve();});});

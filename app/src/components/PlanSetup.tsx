@@ -603,7 +603,7 @@ export function PlanSetup({
         <section className="plan-review-terms">
           <h4>{t("plan.review.feeRisk")}</h4>
           {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <>
-            <p className="plan-fee-intro">{t("plan.review.feeIntro")}</p>
+            <p>{t("plan.review.feeIntro")}</p>
             <dl className="plan-fee-list">
               <div><dt>{t("plan.review.strategyFee")}</dt><dd>{feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(asset => <p key={asset.symbol}>{strategyFeeText(asset)}</p>)}</dd></div>
               <div><dt>{t("plan.review.serviceFee")}</dt><dd>{t("plan.review.yieldFee")}</dd></div>

@@ -70,8 +70,10 @@ await test("wallet debit review and network fee copy keep deposits and fees sepa
     assert.equal(i18n.translate("ko", "plan.review.totalWalletDebit"), "지갑 총차감액");
     assert.equal(i18n.translate("en", "plan.review.walletNetworkFee"), "+ WLD network fee (if charged)");
     assert.equal(i18n.translate("ko", "plan.review.walletNetworkFee"), "+ WLD 네트워크 수수료(발생하는 경우)");
-    assert.match(i18n.translate("en", "plan.review.walletDebitQuote"), /deposit and fee quote together on World App’s approval screen.*cannot know the exact total in advance.*final debit is settled after the transaction/i);
-    assert.match(i18n.translate("ko", "plan.review.walletDebitQuote"), /World App 승인 화면.*예치액과 수수료 견적.*정확한 합계를 미리 알 수 없으며.*최종 차감액은 거래 후 정산/);
+    assert.match(i18n.translate("en", "plan.review.walletDebitQuote"), /full deposit.*network fee is additional.*quote in World App.*final debit settles after the transaction/i);
+    assert.match(i18n.translate("ko", "plan.review.walletDebitQuote"), /금액 전부가 예치.*비용은 별도로 더해.*World App.*견적.*최종 차감액은 거래 후 정산/);
+    assert.match(i18n.translate("en", "plan.review.networkPending"), /Confirmed in World App.*WLD/);
+    assert.match(i18n.translate("ko", "plan.review.networkPending"), /World App에서 확인.*WLD/);
     assert.match(i18n.translate("en", "fees.network.body"), /on top of deposits.*full entered amount goes to the vault/);
     assert.match(i18n.translate("ko", "fees.network.body"), /예치액에 더해.*입력한 금액 전부가 금고에 들어갑니다/);
     assert.match(i18n.translate("en", "fees.network.body"), /Vault creation.*additional deposits.*withdrawals.*can each incur a fee.*existing vaults are not guaranteed free/);
@@ -107,8 +109,9 @@ await test("completed transaction messages reproject when language changes witho
     assert.match(i18n.translate("ko", "automation.ready"), /직접 수령/);
     const strategyFeeEn = i18n.translate("en", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 });
     const strategyFeeKo = i18n.translate("ko", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 });
-    assert.match(strategyFeeEn, /USDC.*Re7.*Morpho.*performance fee.*12%.*Inheritance/);
-    assert.match(strategyFeeKo, /USDC.*Morpho.*Re7.*12%.*Inheritance/);
+    assert.match(strategyFeeEn, /USDC.*12%.*lending profits.*Re7.*Morpho.*rate can change/);
+    assert.match(strategyFeeKo, /USDC.*대출 수익의 12%.*Morpho.*운용하는 Re7.*요율은 바뀔/);
+    assert.match(i18n.translate("ko", "plan.review.serviceFee"), /Inheritance/);
     assert.doesNotMatch(strategyFeeEn, /external investment vault/i);
     assert.match(i18n.translate("en", "plan.review.feeExampleLine", {
       symbol: "WLD", gross: "10 WLD", strategyFee: "1 WLD", strategyPercent: 10,
