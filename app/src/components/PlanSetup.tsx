@@ -388,6 +388,7 @@ export function PlanSetup({
   };
   const amountSection = <fieldset className="plan-assets" disabled={Boolean(pendingPlan) || busy} aria-labelledby="plan-assets-title">
     <legend id="plan-assets-title">{t("plan.amounts.title")}</legend>
+    {rows.length > 1 && <p id="plan-amounts-help" className="plan-field-help">{t("plan.amounts.help")}</p>}
     {rows.map(row => {
       const rowError = parseAssetAmount(row.amount.trim() || "0", row.decimals) === null;
       const rowOverBalance = row.walletBalance !== null && (parseAssetAmount(row.amount, row.decimals) ?? 0n) > row.walletBalance;
@@ -402,7 +403,7 @@ export function PlanSetup({
         <div className="plan-amount-control">
           <Input id={inputId} inputMode="decimal" placeholder="0" value={row.amount}
             aria-invalid={rowError || rowOverBalance}
-            aria-describedby={`${balanceId}${rowError || rowOverBalance ? ` ${errorId}` : ""}`}
+            aria-describedby={`${rows.length > 1 ? "plan-amounts-help " : ""}${balanceId}${rowError || rowOverBalance ? ` ${errorId}` : ""}`}
             onChange={event => { setReviewSnapshot(null); onAmountChange(row.symbol, event.target.value); }} />
           <strong>{row.symbol}</strong>
         </div>
@@ -559,9 +560,10 @@ export function PlanSetup({
           {!intervalValid && <p className="plan-inline-error" role="alert">{t("plan.interval.invalid")}</p>}
           <p id="plan-interval-help" className="plan-field-help">{intervalValid
             ? t("plan.interval.example", { days: periodDays }) : t("plan.interval.help")}</p>
-          <details className="plan-timing-help"><summary>{t("plan.review.missedTitle")}</summary>
+          <div className="plan-timing-help">
+            <strong>{t("plan.review.missedTitle")}</strong>
             <p>{t("plan.review.missedBody")}</p>
-          </details>
+          </div>
         </div>
       </>}
 

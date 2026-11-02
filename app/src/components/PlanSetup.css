@@ -115,11 +115,8 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
 .plan-steps li > span { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; background: #f1f4ed; }
 .plan-steps li[aria-current="step"] { color: var(--accent); font-weight: 650; }
 .plan-steps li[aria-current="step"] > span { color: #fff; background: var(--accent); }
-.plan-timing-help { font-size: 12px; line-height: 1.6; }
-.plan-timing-help summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; cursor: pointer; color: var(--accent); list-style: none; }
-.plan-timing-help summary::-webkit-details-marker { display: none; }
-.plan-timing-help summary::after { content: '+'; font-size: 18px; }
-.plan-timing-help[open] summary::after { content: '−'; }
+.plan-timing-help { padding: 12px; border-radius: 12px; background: #f4f7f0; font-size: 12px; line-height: 1.6; }
+.plan-timing-help strong { display: block; margin-bottom: 4px; color: var(--accent); }
 .plan-timing-help p { margin: 0; color: var(--muted); }
 
 /* Review uses a readable receipt, with fees and risks at full line width. */
