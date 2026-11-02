@@ -29,7 +29,7 @@ The operator rejected recipient removal without asset recovery. The new default
 exit batches recipient removal and full recovery to the owner, with a separate
 keep-invested/remove-only option. Already detached assets have a Home recovery
 action. See [PLAN_EXIT.md](PLAN_EXIT.md) for behavior and recovery boundaries.
-Twelve dedicated local-chain scenario groups pass, including atomic failure,
+Fourteen dedicated local-chain and accessibility checks pass, including atomic failure,
 process-loss recovery, missing operation hash and rounding-sensitive full exit.
 No real funds or submission are authorized by these tests. Deployment/device
 receipt will be recorded in RELEASE.md after verification.

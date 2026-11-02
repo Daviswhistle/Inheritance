@@ -3738,7 +3738,7 @@ export default function App() {
     }
     await waitForTxOrEvent(provider, { txHash: request.txHash, hashType: request.hashType,
       verifyReceipt: async receipt => {
-        if (receipt.blockNumber < request.beforeBlock || !verifySettingsReceipt(receipt, request.targets)
+        if (receipt.blockNumber < request.beforeBlock + (isExit ? 1 : 0) || !verifySettingsReceipt(receipt, request.targets)
           || isExit && !verifyExitTransfers(receipt, request.targets)) return false;
         const block = await provider.getBlock(receipt.blockNumber);
         if (!block?.hash || block.hash !== receipt.blockHash) return false;

@@ -38,6 +38,7 @@ try{
  const confirm=()=>p.locator('.money-review .btn-primary').click();
  const unchanged=async()=>{assert.equal(await wv.heir(),c.heir);assert.equal(await uv.heir(),c.heir);assert.equal(await wv.hasAssets(),true);assert.equal(await uv.hasAssets(),true)};
  await review();assert.match(await p.locator('.money-review').innerText(),/10.9 WLD/);assert.match(await p.locator('.money-review').innerText(),/10.9 USDC/);assert.match(await p.locator('.money-review').innerText(),/1.0 WLD/);assert.match(await p.locator('.money-review').innerText(),/내 World App 지갑/);
+ if(process.env.AXE_CORE_PATH){await p.addScriptTag({path:process.env.AXE_CORE_PATH});const axe=await p.evaluate(()=>axe.run(document.querySelector('.money-review')));assert.deepEqual(axe.violations,[]);pass('Exit review has no axe accessibility violations')}
  await shot('exit-review-ko');await p.setViewportSize({width:320,height:360});await p.locator('.money-review .btn-primary').scrollIntoViewIfNeeded();assert.ok(await p.locator('.money-review .btn-primary').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===e}));await p.keyboard.press('Escape');assert.equal(await requests(),0);await unchanged();await p.setViewportSize({width:390,height:844});
  pass('Review shows net WLD/USDC, extra WLD, wallet destination and fees; small-screen dismissal submits nothing');
  await openExit();await p.locator('.money-review').waitFor();await p.evaluate(()=>window.__INHERITANCE_TEST_HOST__.rejectNext('send-transaction'));await confirm();await until(async()=>await requests()===1,'rejection');await until(async()=>await p.locator('.money-review').count()===1,'review restored');await unchanged();assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.endsWith(':exit'))),false);await p.keyboard.press('Escape');
@@ -68,7 +69,12 @@ try{
  await p.reload();await p.locator('.savings-empty').waitFor();assert.equal(await p.locator('.home-checkin-action').count(),0);assert.equal(await p.locator('.retained-assets').count(),0);
  pass('Reloaded Home is empty without an unnecessary renewal prompt');
  // Assets retained through the old remove-only path get a direct recovery action.
- for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();await fund();for(const f of [wf,uf])await(await f.cancelMyInheritance()).wait();await p.reload();await p.locator('.retained-assets').waitFor();assert.equal(await p.locator('.home-checkin-action').count(),0);await shot('retained-assets-ko');
+ for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();await fund();await p.reload();
+ await p.locator('.tab-item').nth(2).click();await p.getByText('상속 종료',{exact:true}).click();await p.getByText('자산은 계속 운용하고 싶어요',{exact:true}).click();await p.getByRole('button',{name:'수령인만 해제',exact:true}).click();
+ await p.getByText('자산을 유지하고 수령인만 해제',{exact:true}).waitFor();assert.match(await p.locator('.owner-plan-settings').innerText(),/지갑으로 돌아오지 않고/);
+ await p.getByRole('button',{name:'변경 내용 승인하기',exact:true}).click();await until(async()=>await wv.heir()===c.owner&&await uv.heir()===c.owner,'detach only');await until(async()=>!await p.getByText('진행 중인 거래 확인',{exact:true}).count(),'detach confirmed');
+ assert.equal(await wv.hasAssets(),true);assert.equal(await uv.hasAssets(),true);pass('Explicit remove-only review keeps both assets invested and does not describe a withdrawal');
+ await p.reload();await p.locator('.retained-assets').waitFor();assert.equal(await p.locator('.home-checkin-action').count(),0);await shot('retained-assets-ko');
  await p.locator('.retained-assets .btn-primary').click();await p.locator('.money-review').waitFor();await control({action:'mining',enabled:false});await confirm();
  await until(()=>p.evaluate(()=>Object.entries(localStorage).some(([k,v])=>k.endsWith(':exit')&&JSON.parse(v).txHash)),'second saved request');
  await p.evaluate(()=>{for(const [k,v] of Object.entries(localStorage)){if(k.endsWith(':exit')){const r=JSON.parse(v);delete r.txHash;delete r.hashType;localStorage.setItem(k,JSON.stringify(r))}}});

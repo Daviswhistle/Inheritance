@@ -49,7 +49,7 @@ Run `node scripts/verify/plan-exit.mjs` with `CHROME_BIN` and
 `EXIT_UX_OUT` selects the private evidence directory. The test host creates its
 own disposable local chain and uses the installed MiniKit SDK and atomic wallet.
 
-Twelve scenario groups cover net amount/fees/destination and small-screen review,
+Fourteen checks cover net amount/fees/destination and small-screen review,
 review dismissal, wallet rejection, insufficient liquidity, quote failure,
 changed quote, a second-asset revert rolling back all earlier calls, process
 loss after approval, missing operation identifier, cancelled-recipient recovery,
