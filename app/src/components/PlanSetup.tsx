@@ -409,13 +409,20 @@ export function PlanSetup({
         <p id={balanceId} className="plan-asset-balance">
           {row.balanceUnavailable ? t("plan.balance.unavailable") : row.walletBalance === null ? t("plan.balance.loading") : t("plan.balance.available", { amount: formatExactTokenAmount(row.walletBalance, row.decimals), symbol: row.symbol })}
         </p>
-        {row.mode === "morpho" && rateSummary(row.symbol)}
+        {row.mode === "morpho" && <details className="plan-more-details plan-asset-rates">
+          <summary>{t("plan.amounts.rates", { symbol: row.symbol })}</summary>
+          {rateSummary(row.symbol)}
+        </details>}
         {rowError && <p id={errorId} className="plan-inline-error" role="alert">{t("plan.amount.errorPrecision", { decimals: row.decimals })}</p>}
         {!rowError && rowOverBalance && <p id={errorId} className="plan-inline-error" role="alert">{t("plan.amount.errorBalance")}</p>}
       </div>;
     })}
   </fieldset>;
 
+  const networkDetails = <details className="plan-more-details plan-network-details">
+    <summary>{t("fees.network.details")}</summary>
+    <p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p>
+  </details>;
   const strategyFeeText = (asset: { symbol: string; underlyingFeePercent?: number }) => {
     const fee = asset.underlyingFeePercent;
     return isValidStrategyFeePercent(fee)
@@ -493,12 +500,12 @@ export function PlanSetup({
         </div>
         <dl className="plan-progress-list">
           {pendingPlan.assets.map(asset => <div key={asset.symbol}>
-            <dt>{asset.symbol} · {formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}</dt>
-            <dd>{amountStatus(asset.depositState)}</dd>
+            <dt>{formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}</dt>
+            <dd data-deposit-state={asset.depositState}>{amountStatus(asset.depositState)}</dd>
           </div>)}
         </dl>
-        <h4>{t("fees.network.title")}</h4><p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p>
         <p className="plan-pending-settings">{t("plan.pending.recipient", { address: `${pendingPlan.heir.slice(0, 6)}…${pendingPlan.heir.slice(-4)}`, days: pendingPlan.periodDays })}</p>
+        <p className="plan-network-brief">{t("fees.network.brief")}</p>
         <Button variant="primary" disabled={busy || resumeDisabled} onClick={onResume}>
           {busy ? <><span className="spinner" />{t("plan.pending.resumeBusy")}</> : t("plan.pending.resume")}
         </Button>
@@ -506,6 +513,7 @@ export function PlanSetup({
           <Button disabled={busy} onClick={onEditRemaining}>{t("plan.pending.edit")}</Button>
           <p className="plan-pending-settings">{t("plan.pending.editNote")}</p>
         </>}
+        {networkDetails}
         {newPlanAccessAllowed && disclosedYieldRows.map(row => <div key={row.symbol}>{rateSummary(row.symbol)}</div>)}
       </section>}
 
@@ -566,16 +574,6 @@ export function PlanSetup({
               {formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}
             </span>)}</dd>
           </div>
-          <div data-total-wallet-debit="">
-            <dt>{t("plan.review.totalWalletDebit")}</dt>
-            <dd>
-              {reviewSnapshot.assets.map(asset => <span key={asset.symbol}>
-                {formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}
-              </span>)}
-              <span>{t("plan.review.walletNetworkFee")}</span>
-              <span>{t("plan.review.walletDebitQuote")}</span>
-            </dd>
-          </div>
           <div>
             <dt>{t("plan.review.recipient")}</dt>
             <dd>
@@ -585,13 +583,31 @@ export function PlanSetup({
           </div>
           <div><dt>{t("plan.review.interval")}</dt><dd>{t("plan.review.every", { days: reviewSnapshot.periodDays })}</dd></div>
         </dl>
+        <section className="plan-cost-receipt" aria-labelledby="plan-cost-title">
+          <h4 id="plan-cost-title">{t("plan.review.costTitle")}</h4>
+          <dl className="plan-cost-list">
+            <div><dt>{t("plan.review.depositTotal")}</dt><dd>{reviewSnapshot.assets.map(asset => <span key={asset.symbol}>
+              {formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}
+            </span>)}</dd></div>
+            <div><dt>{t("fees.network.title")}</dt><dd>{t("plan.review.networkPending")}</dd></div>
+            <div data-total-wallet-debit=""><dt>{t("plan.review.totalWalletDebit")}</dt><dd>
+              {reviewSnapshot.assets.map(asset => <span key={asset.symbol}>
+                {formatExactTokenAmount(BigInt(asset.amount), asset.decimals)} {asset.symbol}
+              </span>)}
+              <span>{t("plan.review.walletNetworkFee")}</span>
+            </dd></div>
+          </dl>
+          <p>{t("plan.review.walletDebitQuote")}</p>
+          {networkDetails}
+        </section>
         <section className="plan-review-terms">
-          <h4>{t("fees.network.title")}</h4><p>{t("fees.network.body")}</p><p>{t("fees.network.review")}</p>
           <h4>{t("plan.review.feeRisk")}</h4>
           {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <>
-            <h4>{t("plan.review.strategyFee")}</h4>
-            {feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(asset => <p key={asset.symbol}>{strategyFeeText(asset)}</p>)}
-            <p>{t("plan.review.yieldFee")}</p>
+            <p className="plan-fee-intro">{t("plan.review.feeIntro")}</p>
+            <dl className="plan-fee-list">
+              <div><dt>{t("plan.review.strategyFee")}</dt><dd>{feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(asset => <p key={asset.symbol}>{strategyFeeText(asset)}</p>)}</dd></div>
+              <div><dt>{t("plan.review.serviceFee")}</dt><dd>{t("plan.review.yieldFee")}</dd></div>
+            </dl>
             {feeGroups(reviewSnapshot.assets.filter(asset => asset.mode === "morpho")).map(group => {
               const percent = group.underlyingFeePercent;
               if (!isValidStrategyFeePercent(percent)) return null;
@@ -602,15 +618,16 @@ export function PlanSetup({
               return <details className="plan-more-details" data-fee-example="" key={group.symbol}>
                 <summary>{t("plan.review.feeExampleSummary", { symbol: group.symbol, percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(percent) })}</summary>
                 <div>
-                  {groupedAssets.map(asset => <p key={asset.symbol}>{t("plan.review.feeExampleLine", {
-                    symbol: asset.symbol,
-                    gross: formatAmount(example.grossLendingProfit, asset.symbol),
-                    strategyFee: formatAmount(example.strategyFee, asset.symbol),
-                    strategyPercent: new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(percent),
-                    remaining: formatAmount(example.remaining, asset.symbol),
-                    serviceFee: formatAmount(example.inheritanceServiceFee, asset.symbol),
-                    net: formatAmount(example.net, asset.symbol),
-                  })}</p>)}
+                  {groupedAssets.map(asset => <table className="plan-fee-example" key={asset.symbol}>
+                    <caption>{t("plan.review.exampleAsset", { symbol: asset.symbol })}</caption>
+                    <tbody>
+                      <tr><th scope="row">{t("plan.review.exampleGross")}</th><td>{formatAmount(example.grossLendingProfit, asset.symbol)}</td></tr>
+                      <tr><th scope="row">{t("plan.review.exampleStrategy", { percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(percent) })}</th><td>−{formatAmount(example.strategyFee, asset.symbol)}</td></tr>
+                      <tr><th scope="row">{t("plan.review.exampleRemaining")}</th><td>{formatAmount(example.remaining, asset.symbol)}</td></tr>
+                      <tr><th scope="row">{t("plan.review.exampleService")}</th><td>−{formatAmount(example.inheritanceServiceFee, asset.symbol)}</td></tr>
+                      <tr className="plan-fee-net"><th scope="row">{t("plan.review.exampleNet")}</th><td>{formatAmount(example.net, asset.symbol)}</td></tr>
+                    </tbody>
+                  </table>)}
                   <p>{t("plan.review.feeExampleDisclosure")}</p>
                 </div>
               </details>;
@@ -618,8 +635,9 @@ export function PlanSetup({
           </>}
           {!reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <p>{t("plan.review.basicFee")}</p>}
           {reviewSnapshot.assets.some(asset => asset.mode === "morpho") && <>
-            <h4>{t("plan.review.currentRates")}</h4>
+            <details className="plan-more-details plan-review-rates"><summary>{t("plan.review.currentRates")}</summary>
             {reviewSnapshot.assets.filter(asset => asset.mode === "morpho").map(asset => <div key={asset.symbol}>{rateSummary(asset.symbol)}</div>)}
+            </details>
           </>}
           <h4>{t("plan.review.missedTitle")}</h4><p>{t("plan.review.missedBody")}</p>
         </section>
@@ -647,7 +665,7 @@ export function PlanSetup({
         && <p className="plan-validation-message" role="status">{validationReason}</p>}
 
       {!pendingPlan && newPlanAccessAllowed && <div className="plan-primary-actions" ref={actionRef}>
-      <p className="plan-action-hint" role="status">{validationReason || t(showReview ? "plan.action.confirmHint" : "plan.action.reviewHint")}</p>
+      {(validationReason || showReview) && <p className="plan-action-hint" role="status">{validationReason || t("plan.action.confirmHint")}</p>}
       {showReview
         ? <div className="plan-step-actions">
           <Button variant="primary" size="lg" className="plan-submit" disabled={busy || Boolean(pendingPlan) || createDisabled || !formValid || !consentValid || alignmentConflicts.length > 0} onClick={confirmPlan}>

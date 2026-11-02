@@ -310,6 +310,14 @@ try {
   await page.locator('#plan-wld').fill('10');
   await page.locator('#plan-usdc').fill('12.345678');
   await layout(page, 'setup-ko', 390);
+  const rateDetails = page.locator('.plan-asset-rates');
+  assert.equal(await rateDetails.count(), 2);
+  assert.equal(await rateDetails.first().getAttribute('open'), null);
+  await rateDetails.first().locator('summary').first().tap();
+  assert.equal(await rateDetails.first().locator('.yield-rate-summary').isVisible(), true);
+  await rateDetails.first().locator('summary').first().tap();
+  assert.equal(await page.locator('#plan-wld').inputValue(), '10');
+  assert.equal(await page.locator('#plan-usdc').inputValue(), '12.345678');
   await page.locator('#plan-usdc').focus();
   await page.setViewportSize({ width: 844, height: 390 });
   await layout(page, 'setup-landscape-ko', 844);
@@ -327,22 +335,39 @@ try {
   assert.equal(await walletDebit.locator('dt').textContent(), '지갑 총차감액');
   assert.deepEqual(await walletDebit.locator('dd > span').allTextContents(), [
     '10 WLD', '12.345678 USDC', '+ WLD 네트워크 수수료(발생하는 경우)',
-    'World App 승인 화면에서 예치액과 수수료 견적을 함께 확인하세요. 이 앱은 정확한 합계를 미리 알 수 없으며, 최종 차감액은 거래 후 정산됩니다.',
   ]);
+  assert.match(await page.locator('.plan-cost-receipt > p').textContent(), /입력한 금액 전부가 예치[\s\S]*별도로 더해[\s\S]*최종 차감액은 거래 후 정산/);
+  assert.match(await page.locator('.plan-cost-list').innerText(), /World App에서 확인 · WLD/);
+  assert.equal(await page.locator('.plan-fee-list').isVisible(), true, 'both fees remain visible before consent');
   assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);
   const feeExample = page.locator('[data-fee-example]');
   assert.equal(await feeExample.count(), 1);
   await feeExample.locator('summary').tap();
+  await page.waitForFunction(() => document.querySelectorAll('.toast').length === 0);
   const exampleText = await feeExample.innerText();
-  assert.match(exampleText, /대출 수익 10 WLD[\s\S]*Inheritance 서비스 수수료[\s\S]*대출 수익 10 USDC/);
+  assert.deepEqual(await feeExample.locator('table caption').allTextContents(), ['WLD · 계산 예시', 'USDC · 계산 예시']);
+  for (const [index, symbol] of ['WLD', 'USDC'].entries()) {
+    assert.deepEqual(await feeExample.locator('table').nth(index).locator('td').allTextContents(),
+      [`10 ${symbol}`, `−1 ${symbol}`, `9 ${symbol}`, `−0.9 ${symbol}`, `8.1 ${symbol}`]);
+    assert.equal(await feeExample.locator('table').nth(index).locator('th[scope="row"]').count(), 5);
+  }
   assert.match(exampleText, /원금, 다른 손익, 보상, 네트워크 비용은 제외/);
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await layout(page, `fee-example-ko-${width}`, width);
   }
-  await feeExample.screenshot({ path: out + '/fee-example-ko.png' });
+  for (const [index, symbol] of ['WLD', 'USDC'].entries()) {
+    const table = feeExample.locator('table').nth(index);
+    await table.evaluate(element => element.scrollIntoView({ block: 'start' }));
+    await table.screenshot({ path: out + `/fee-example-${symbol.toLowerCase()}-ko.png` });
+  }
   await feeExample.locator('summary').tap();
   pass('The fee example separates WLD and USDC, names both fees and excludes principal and other costs');
+  // Capture each decision area, not only the legal links after a long scroll.
+  for (const [name, selector] of [['overview', '#plan-review-title'], ['cost', '.plan-cost-receipt'], ['fees', '.plan-fee-list']]) {
+    await page.locator(selector).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: out + `/review-${name}-ko.png` });
+  }
   await page.locator('#yield-consent').check();
   // Reading the required documents must not replace the app and lose the draft.
   for (const legalDocument of ['terms', 'privacy']) {

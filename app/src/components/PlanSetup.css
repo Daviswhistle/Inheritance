@@ -125,19 +125,19 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
 /* Review uses a readable receipt, with fees and risks at full line width. */
 .plan-setup-card { background: #fff; }
 .plan-setup-card .card-header { background: #fff; padding: 20px 20px 12px; }
-.plan-setup-card .card-content.plan-setup-content { padding-inline: 20px; gap: 24px; }
+.plan-setup-card .card-content.plan-setup-content { padding-inline: 20px; gap: 18px; }
 .plan-setup-card .card-title { font-size: 18px; margin-top: 0; }
 .plan-setup-card .plan-card-intro { font-size: 13px; }
 .plan-setup-card .field-row-label, .plan-assets legend { font-size: 14px; }
 .plan-field-help, .plan-timing-help, .plan-validation-message { font-size: 13px; line-height: 1.65; }
 .plan-setup-card .plan-final-review { padding: 0; border: 0; background: transparent; }
 .plan-final-review > h3 { font-size: 21px; font-weight: 650; margin-bottom: 20px; letter-spacing: -.5px; }
-.plan-review-list { gap: 16px; margin: 0; padding: 20px; border-radius: 16px; background: #f3f6ef; }
+.plan-review-list { gap: 14px; margin: 0; padding: 16px; border-radius: 16px; background: #f3f6ef; }
 .plan-review-list > div { grid-template-columns: 1fr; gap: 6px; padding: 0; border: 0; }
 .plan-review-list dt { font-size: 12px; font-weight: 500; }
 .plan-review-list dd { font-size: 16px; font-weight: 600; line-height: 1.5; }
 .plan-review-amount { font-size: 21px; letter-spacing: -.4px; }
-.plan-review-address { font-size: 13px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 400; }
+.plan-review-address { font-size: 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 400; }
 .plan-review-terms { margin-top: 24px; font-size: 13px; line-height: 1.65; }
 .plan-review-terms h4 { font-size: 14px; margin: 20px 0 6px; color: var(--ink); }
 .plan-review-terms p { margin: 0; }
@@ -169,3 +169,48 @@ html[data-plan-keyboard] .plan-setup-with-actions .card-content.plan-setup-conte
 .plan-setup-card .plan-recipient-controls > .btn { background: #f3f6ef; }
 
 .plan-asset-row .yield-rate-summary { grid-column: 1 / -1; min-width: 0; }
+.plan-asset-rates { grid-column: 1 / -1; margin-top: 8px; }
+.app-content:has(.plan-setup-card) { padding-top: 16px; gap: 16px; }
+.app-content:has(.plan-setup-card) .page-intro h1 { font-size: 26px; }
+
+/* Keep amounts and decisions prominent; detailed explanations follow them. */
+.plan-setup-card .plan-asset-balance { font-size: 12px; }
+.plan-asset-row .yield-rate-summary { margin: 10px 0 0; padding: 10px 0 0; border: 0; border-top: 1px solid #dfe6d8; border-radius: 0; background: transparent; }
+.plan-asset-row .yield-rate-summary > strong { margin-bottom: 6px; }
+.plan-asset-row .yield-rate-summary p { margin-block: 6px; }
+.plan-asset-row .yield-values { margin: 0; }
+.plan-cost-receipt { margin-top: 20px; }
+.plan-cost-receipt > h4 { margin: 0 0 8px; font-size: 15px; }
+.plan-cost-list { margin: 0; }
+.plan-cost-list > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.5; }
+.plan-cost-list dt { color: var(--muted); }
+.plan-cost-list dd { display: grid; gap: 3px; margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.plan-cost-list [data-total-wallet-debit] { border: 0; font-weight: 650; }
+.plan-cost-list [data-total-wallet-debit] dt { color: var(--ink); }
+.plan-cost-receipt > p, .plan-network-details p, .plan-network-brief { margin: 8px 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.plan-fee-list { margin: 12px 0; }
+.plan-fee-list > div { padding: 12px 0; border-top: 1px solid var(--line); }
+.plan-fee-list dt { margin-bottom: 5px; font-size: 13px; font-weight: 650; color: var(--ink); }
+.plan-fee-list dd { margin: 0; font-size: 13px; color: var(--muted); }
+.plan-fee-list dd p + p { margin-top: 6px; }
+.plan-fee-example { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+.plan-fee-example caption { text-align: left; font-weight: 650; padding: 10px 0 6px; color: var(--ink); }
+.plan-fee-example th, .plan-fee-example td { padding: 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.plan-fee-example th { text-align: left; font-weight: 400; width: 62%; padding-right: 8px; color: var(--muted); }
+.plan-fee-example td { text-align: right; font-variant-numeric: tabular-nums; }
+.plan-fee-example .plan-fee-net > * { color: var(--accent); font-weight: 700; border: 0; }
+.plan-more-details summary { font-size: 13px; }
+.plan-review-rates { margin-top: 12px; }
+.plan-setup-card .plan-resume { gap: 12px; }
+.plan-resume > div > p { margin: 6px 0 0; font-size: 13px; }
+.plan-progress-list > div { align-items: center; padding: 10px 0; border-bottom: 1px solid #d5e0d0; }
+.plan-progress-list dd { font-size: 12px; }
+.plan-progress-list [data-deposit-state="complete"] { color: var(--accent); font-weight: 650; }
+.plan-primary-actions .plan-action-hint { font-size: 12px; line-height: 1.4; margin-bottom: 6px; }
+@media (max-width: 360px) {
+  .plan-setup-card .card-content.plan-setup-content { padding-inline: 14px; }
+  .plan-review-list { padding: 14px; }
+  .plan-review-amount { font-size: 19px; }
+  .plan-cost-list > div { gap: 8px; }
+  .plan-fee-example th { width: 58%; }
+}
