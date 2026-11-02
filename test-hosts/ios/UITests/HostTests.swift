@@ -231,16 +231,16 @@ final class HostTests: XCTestCase {
         // formatYieldAmount preserves all six USDC decimal places for this value.
         let displayedBalance = web.staticTexts["1.000001"].firstMatch
         let checkIn = web.buttons["Check in"].firstMatch
-        let noActivePlan = web.staticTexts["No active inheritance plan. You can manage existing balances in Assets."].firstMatch
+        let emptyHome = web.staticTexts["No assets saved for inheritance"].firstMatch
         let settledHome = NSPredicate { _, _ in
-            web.staticTexts["Assets in your plan"].firstMatch.exists
+            web.staticTexts["Your inheritance savings"].firstMatch.exists
                 && web.staticTexts["USDC"].firstMatch.exists
                 && displayedBalance.exists
                 && web.staticTexts["Next check-in"].firstMatch.exists
                 && checkIn.exists && checkIn.isEnabled
                 && !web.staticTexts["Updating…"].firstMatch.exists
                 && !web.staticTexts["Checking status…"].firstMatch.exists
-                && !noActivePlan.exists
+                && !emptyHome.exists
         }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settledHome, object: nil)], timeout: 60), .completed,
                        "Recovery must render the funded USDC position and an active check-in, not a loading or empty Home")

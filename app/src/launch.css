@@ -336,5 +336,5 @@ select:focus-visible { outline: 3px solid #639b7c; outline-offset: 3px; }
 .review-receive-amount > span { font-size: 13px; color: var(--muted); }
 .review-receive-amount > strong { font-size: 30px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .inheritance-asset > .inheritance-investment { display: grid; gap: 8px; }
-.inheritance-investment p { margin: 0; line-height: 1.6; }
+.inheritance-investment p { margin: 0; line-height: 1.6; word-break: keep-all; }
 .inheritance-investment summary { display: flex; align-items: center; min-height: 44px; font-size: 13px; cursor: pointer; }

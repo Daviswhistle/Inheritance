@@ -23,7 +23,25 @@ Typecheck, lint, production build, CSS registration, Korean translation checks,
 translation tests and mobile regression tests passed. Initial test failures
 were stale copy/direct-approval expectations and local fixture RPC/residence
 setup; the updated tests retain transaction, validation and cancellation gates.
-Final production and device readback will be recorded after deployment.
+Runtime `9b7e62c` deployed at https://c90c3f60.inheritance.pages.dev, with
+production HTML and imported assets matching. CI 41409617402 passed all three
+jobs. Actual Android World App confirmed the empty inheritance state, selected
+WLD/USDC scope, separately quoted wallet investment, settings and setup separation,
+and Help. No production transaction approval was opened.
+
+Native host run 41409617479 passed the keyboard lifecycle and failed recovery
+because it still expected `Assets in your plan`. The exported accessibility tree
+contains `Your inheritance savings`, the exact restored `1.000001` USDC and the
+active check-in. The expectation is updated to the new heading and the actual
+empty-state title; amount, deadline, loading and action checks remain intact.
+A subsequent native run will determine final acceptance.
+
+A device-specific entry issue remains recorded: force-stopping World App then
+opening a direct Mini App link showed a blank native container; opening the same
+link again while World App was running rendered the same production build.
+Phone Chrome also rendered it. Both old and canonical links were tested; this
+is a cold-start observation, not evidence that the app script caused it. Do not
+claim that first observation was fixed or that the release is ready to submit.
 
 ## November 2 16:03 KST — first-use revision submitted, Korea only
 
