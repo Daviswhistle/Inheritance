@@ -23,23 +23,35 @@ Typecheck, lint, production build, CSS registration, Korean translation checks,
 translation tests and mobile regression tests passed. Initial test failures
 were stale copy/direct-approval expectations and local fixture RPC/residence
 setup; the updated tests retain transaction, validation and cancellation gates.
-Runtime `9b7e62c` deployed at https://c90c3f60.inheritance.pages.dev, with
-production HTML and imported assets matching. CI 41409617402 passed all three
-jobs. Actual Android World App confirmed the empty inheritance state, selected
+Runtime `55ede20` deployed at https://254030a6.inheritance.pages.dev (deployment
+41411497039), with production HTML and all four directly imported assets matching.
+Three legal documents return 200 and the backend health endpoint returns `ok`.
+CI 41411497162 and test-source CI 41412039434 passed all three jobs. Actual
+Android World App confirmed the empty inheritance state, selected
 WLD/USDC scope, separately quoted wallet investment, settings and setup separation,
-and Help. No production transaction approval was opened.
+and Help. On the final build the setup return action is visible immediately after
+entry. The phone was returned to Home without entering amounts. No production
+transaction approval was opened. Final Portal readback remains `unverified`, KR only.
 
 Native host run 41409617479 passed the keyboard lifecycle and failed recovery
 because it still expected `Assets in your plan`. The exported accessibility tree
 contains `Your inheritance savings`, the exact restored `1.000001` USDC and the
 active check-in. The expectation is updated to the new heading and the actual
 empty-state title; amount, deadline, loading and action checks remain intact.
-A subsequent native run will determine final acceptance.
+Run 41411497155 then failed to compile because one assertion still referenced
+the renamed variable. Test-only `1d4670c` fixes that reference. Final native
+[run 41412039522](https://github.com/Daviswhistle/Inheritance/actions/runs/41412039522)
+passed both tests with zero failures or skips. Five recorded Done gestures
+consumed touchend and generated no follow-on click. Pending-deposit recovery
+restored the exact balance and enabled check-in without resubmission. These are
+native WKWebView host tests with simulated approvals, not actual iOS World App.
 
 A device-specific entry issue remains recorded: force-stopping World App then
 opening a direct Mini App link showed a blank native container; opening the same
 link again while World App was running rendered the same production build.
-Phone Chrome also rendered it. Both old and canonical links were tested; this
+Phone Chrome also rendered it. Launching World App normally restored the app,
+and a subsequent direct link rendered the guest screen and successful sign-in.
+Both old and canonical links were tested; this
 is a cold-start observation, not evidence that the app script caused it. Do not
 claim that first observation was fixed or that the release is ready to submit.
 

@@ -14,7 +14,16 @@ changes and validation boundaries. Empty contracts, separate wallet investments,
 fee-adjusted balances, transaction review and recipient payout states now have
 explicit, different presentations. Do not call browser checks a user study.
 
-## Objective and authority
+Runtime `55ede20` is deployed and matched against the production alias; native
+host test source `1d4670c` passed both tests in run 41412039522. Android verified
+the final empty state, asset separation, settings and visible setup return.
+The force-stopped World App direct-link blank screen remains unresolved; normal
+entry/sign-in works. See RELEASE.md for evidence and limitations. No new real
+transaction, notification, external message or submission was performed.
+
+## Historical objective and standing authority
+
+The submission stop above overrides the earlier resubmission objective below.
 
 Complete World App guideline remediation, actual-device validation, necessary
 fixes/deployment and resubmission when ready. The user withdrew the earlier
