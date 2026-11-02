@@ -3,6 +3,40 @@
 The first dated section is the latest verified state. Older dated sections
 record historical snapshots and do not override it.
 
+## November 2 20:21 KST — native iOS results confirmed, no submission
+
+Both previously pending native runs passed on the iPhone 16 Pro / iOS 18.5
+arm64 simulator:
+
+- [41431460190](https://github.com/Daviswhistle/Inheritance/actions/runs/41431460190),
+  deployed runtime `481b34f`: two tests passed, zero failures or skips.
+- [41430777472](https://github.com/Daviswhistle/Inheritance/actions/runs/41430777472),
+  whole-app copy revision `b643e0f`: two tests passed, zero failures or skips.
+
+This was verified against complete job logs and both downloaded
+`ios-summary.json` / Xcode result artifacts, not just workflow badges.
+The tests cover SDK sign-in cancellation/retry, native process restart,
+decimal/text keyboards, rotation and foreground recovery, Done touch handling
+without activating the field underneath, and restoration of a pending local
+deposit after process termination without a second transaction. The latest
+keyboard-dismissed and recovered-balance screenshots were also visually checked.
+The separate pending/reverted local-transaction step passed in both runs.
+
+The earlier [41424288591](https://github.com/Daviswhistle/Inheritance/actions/runs/41424288591)
+was marked failure because its job never acquired a hosted runner. GitHub's
+check annotation explicitly says "The job was not acquired by Runner of type
+hosted even after multiple attempts", alongside macOS arm64 capacity notices.
+The job has no executed steps, no assigned runner and no artifacts. This is an
+infrastructure allocation failure before testing, not an application assertion
+failure or a 25-minute test timeout. Subsequent runs acquired runners and passed;
+no app or workflow change is justified by this incident.
+
+Private logs, summaries, attachments and failure annotations are retained outside
+Git under `work/evidence/ios-result-nov02/`. These tests use a native WKWebView
+test host with simulated wallet approvals and disposable-chain funds; they do
+not establish actual iOS World App permission or approval behavior. The deployed
+runtime is unchanged. No submission or real transaction was performed.
+
 ## November 2 19:50 KST — whole-app copy, Korean legal reading, no submission
 
 Runtime `481b34ffa283ca185f748cc92cac208363e46315` is deployed at

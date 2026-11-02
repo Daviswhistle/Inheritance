@@ -32,8 +32,12 @@ alerts, history, errors and Korean legal reading. See COPY_REVIEW.md for the
 criteria and examples. Typecheck/lint/build, CI, Chromium/WebKit, local financial
 journeys and bilingual legal checks pass. Production files match the immutable
 deployment and Android pixels confirm the revised Help and Korean legal dialog.
-Native runs 41430777472 and 41431460190 are separate and were still in progress
-at this update.
+Native runs 41430777472 and 41431460190 have now both passed: two tests each,
+zero failures or skips, confirmed from their downloaded Xcode result summaries
+on November 2 at 20:21 KST. The earlier failed run 41424288591 never acquired a
+GitHub-hosted runner; its check annotations identify runner capacity, not an app
+test failure. See the latest RELEASE.md receipt. These are simulator test-host
+results, not actual iOS World App approval/permission validation.
 Submission remains stopped. Earlier runtime references above are historical.
 
 ## Historical objective and standing authority
