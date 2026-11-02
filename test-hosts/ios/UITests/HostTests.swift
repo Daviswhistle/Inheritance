@@ -249,7 +249,7 @@ final class HostTests: XCTestCase {
             web.swipeUp()
         }
         XCTAssertTrue(displayedBalance.isHittable, "The verified balance must be visible in the recovery screenshot")
-        XCTAssertFalse(noActivePlan.exists)
+        XCTAssertFalse(emptyHome.exists)
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "latest"]), minedNonce)
         XCTAssertEqual(try rpcString("eth_getTransactionCount", [account, "pending"]), minedNonce, "Recovery must not replay an already submitted deposit")
         capture("pending-deposit-recovered-without-resubmission", app)
