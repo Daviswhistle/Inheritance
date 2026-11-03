@@ -1,8 +1,8 @@
 import { sanitizeNativeDiagnostics } from '../operator-deploy/diagnostics';
-import { keccak256 } from 'ethers';
+import { Interface, keccak256 } from 'ethers';
 import { MiniKit } from '@worldcoin/minikit-js';
 
-import { validateWorldAppFundingManifest } from '../lib/worldapp-funding-manifest.mjs';
+import { validateWorldAppRouterFundingManifest, ROUTER, ROUTER_CODE_HASH } from '../lib/worldapp-router-funding-manifest.mjs';
 import { isDefinitelyNotSubmittedResponse } from '../../app/src/transaction-safety';
 import { SIGN_IN_STATEMENT } from '../../app/functions/_lib/siwe';
 import { signInWithWorldApp, readSessionAddress, clearSession } from '../../app/src/auth';
@@ -13,8 +13,9 @@ declare const __OPERATOR_BUILD__: string;
 declare const __RPC_URL__: string;
 const manifest = __MANIFEST__;
 const wallet = '0xe819320ed3d03f9912b06a48cc5e7f06060cc67a';
+const routerRead=new Interface(['function WETH9() view returns(address)','function balanceOf(address) view returns(uint256)']);
 const same = (a: string,b: string) => a.toLowerCase()===b.toLowerCase();
-function validate() { validateWorldAppFundingManifest(manifest,__EXPECTED_MANIFEST_HASH__); }
+function validate() { validateWorldAppRouterFundingManifest(manifest,__EXPECTED_MANIFEST_HASH__); }
 
 type Attempt={id:string;kind:string;state:'pending'|'submitted'|'unknown'|'funds_found';userOpHash?:string;errorCode?:string;diagnostic?:Record<string,unknown>};
 const key='inheritance:operator-fund:v1';
@@ -31,12 +32,12 @@ function render(){document.querySelectorAll<HTMLButtonElement>('[data-deploy]').
 async function rpc(method:string,params:any[]){const r=await fetch(__RPC_URL__,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:AbortSignal.timeout(15000)});const j=await r.json();if(!r.ok||j.error)throw Error('체인 조회 실패. 배포를 다시 요청하지 마세요.');return j.result;}
 async function recipientState(){
   if(await rpc('eth_chainId',[])!=='0x1e0')throw Error('World Chain이 아닙니다.');
-  const [walletCode,wethCode]=await Promise.all([rpc('eth_getCode',[wallet,'latest']),rpc('eth_getCode',[manifest.weth,'latest'])]);
-  if(keccak256(walletCode)!==manifest.codeHashes.wallet||keccak256(wethCode)!==manifest.codeHashes.weth)throw Error('지갑 또는 WETH가 검토한 코드와 다릅니다. 전송하지 않았습니다.');
+  const [walletCode,wethCode,routerCode]=await Promise.all([rpc('eth_getCode',[wallet,'latest']),rpc('eth_getCode',[manifest.weth,'latest']),rpc('eth_getCode',[ROUTER,'latest'])]);
+  if(keccak256(walletCode)!==manifest.codeHashes.wallet||keccak256(wethCode)!==manifest.codeHashes.weth||keccak256(routerCode)!==ROUTER_CODE_HASH)throw Error('지갑 또는 WETH·변환 계약이 검토한 코드와 다릅니다. 전송하지 않았습니다.');
   const [nonce,code,balance]=await Promise.all([rpc('eth_getTransactionCount',[manifest.deploymentEOA,'latest']),rpc('eth_getCode',[manifest.deploymentEOA,'latest']),rpc('eth_getBalance',[manifest.deploymentEOA,'latest'])]);
   return {nonce:BigInt(nonce),code,balance:BigInt(balance)};
 }
-async function preflight(){const state=await recipientState();if(state.nonce!==0n||state.code!=='0x'||state.balance!==0n){if(!attempts.length){attempts=[{id:`${manifest.manifestHash}:fund`,kind:'fund',state:'funds_found'}];save();}throw Error('임시 지갑에 잔액 또는 사용 기록이 있습니다. 재전송하지 마세요. 영수증 확인이 필요합니다.');}}
+async function preflight(){const state=await recipientState();const [wethResult,routerBalance]=await Promise.all([rpc('eth_call',[{to:ROUTER,data:routerRead.encodeFunctionData('WETH9')},'latest']),rpc('eth_call',[{to:manifest.weth,data:routerRead.encodeFunctionData('balanceOf',[ROUTER])},'latest'])]);if(!same(routerRead.decodeFunctionResult('WETH9',wethResult)[0],manifest.weth)||BigInt(routerBalance)!==0n)throw Error('변환 계약의 WETH 설정 또는 잔액이 검토 결과와 다릅니다. 전송하지 않았습니다.');if(state.nonce!==0n||state.code!=='0x'||state.balance!==0n){if(!attempts.length){attempts=[{id:`${manifest.manifestHash}:fund`,kind:'fund',state:'funds_found'}];save();}throw Error('임시 지갑에 잔액 또는 사용 기록이 있습니다. 재전송하지 마세요. 영수증 확인이 필요합니다.');}}
 async function refresh(){if(busy)return;busy=true;render();try{attempts=readAttempts();const state=await recipientState();if(state.balance>0n||state.nonce!==0n||state.code!=='0x'){if(!attempts.length)attempts=[{id:`${manifest.manifestHash}:fund`,kind:'fund',state:'funds_found'}];else attempts[0].state='funds_found';save();say('임시 지갑에서 ETH 잔액을 확인했습니다. 재전송하지 않습니다. 전송 영수증과 계약 배포 결과는 별도 확인이 필요합니다.');document.querySelector<HTMLButtonElement>('[data-deploy]')!.disabled=true;}else say('임시 지갑의 현재 ETH 잔액은 0입니다. 이전 요청이 있으면 재전송하지 않습니다.');}catch(e){say((e as Error).message);}finally{busy=false;render();}}
 function nativeCode(e:any){const c=e?.error_code??e?.code;return typeof c==='string'&&/^[a-z0-9_]{1,80}$/.test(c)?c:'unknown_native_error';}
 async function deploy(kind:string){
