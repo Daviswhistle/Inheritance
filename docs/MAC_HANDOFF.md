@@ -91,13 +91,24 @@ Commit 8f9b186 verifies each layout separately: normal viewports require DOM Don
 short viewports require an absent DOM toolbar and one hittable native Done wholly
 within the accessory band. Existing full visibility, 44-point height, nine hit
 samples, three stable samples and post-capture recheck remain enforced.
-Run 41691298772 on 5eebfe0 ended without executing any step or producing any
-artifact. GitHub's annotations identify hosted-runner acquisition failure and
-ARM64 capacity constraints; there was no runner assigned. This is not a test
-verdict. The workflow now uses the official standard macos-15-intel pool with
-unchanged simulator tests and assertions. The repository is public, and this
-standard runner does not introduce a paid resource. Its rerun needs completion
-and screenshot review. General CI 41691298593 passed.
+Run 41691298772 attempt 1 on 5eebfe0 ended before any step or artifact:
+GitHub identified hosted-runner acquisition failure and ARM64 capacity constraints.
+Intel fallback run 41693995249 on 46ca812 executed both tests: recovery passed,
+but the first login test could not find Reject. Its PNG shows a valid wallet-auth
+pending card with Approve/Reject and an open native Account Owner/Heir selector.
+The captured trace does not establish whether focus or a pointer opened that
+selector. The title "Test host controls" is shared with normal approvals and is
+not evidence of a wrong dialog. A browser-tested host-only correction explicitly
+focuses its non-interactive title when it opens, avoiding the default first
+Account select. Approval decisions, native checks and their deadlines remain unchanged.
+ARM retry 41691298772 attempt 2 passed both native tests (zero failures) in
+318.960 seconds. Screenshot review is pending; distinguish it from attempt 1. Standard Apple Silicon remains the normal runner;
+the Intel fallback is recorded as failed, not presented as native validation.
+The explicit heading-focus correction f99a33c passed targeted initial/retry
+focus, Reject and Approve checks, plus six bridge unit tests. The broader browser
+smoke stopped earlier at a both-asset plan-confirmation timeout; its baseline
+comparison is pending. The heading-focus correction still needs its own native run.
+General CI 41691298593 and 41693995134 passed.
 The older queued run 41676338433 was cancelled. Product runtime remains 1e4715d.
 Private evidence: `ios-failure-41673388897/`, `ios-fixed-41678818435/diagnosis.txt`,
 `ios-final-41683367120/diagnosis.txt`, and `ios-verified-41688191187/diagnosis.txt`.

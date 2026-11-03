@@ -39,12 +39,22 @@ Screenshots and AX confirm the full input and native accessory Done, which the
 product intentionally uses below 240 CSS pixels. `8f9b186` checks the two toolbar
 layouts explicitly, requiring a unique hittable native Done within its accessory
 band when the DOM toolbar is hidden. All visibility and stability checks remain.
-Replacement run `41691298772` on `5eebfe0` failed before any step ran:
+Replacement run `41691298772` attempt 1 on `5eebfe0` failed before any step:
 GitHub reported hosted-runner acquisition failure and ARM64 capacity constraints.
-No test result or artifact exists. The workflow uses standard `macos-15-intel`
-for the next run, with the same simulator tests/assertions; its result still
-needs review. This public repository uses the free standard runner pool.
-General CI `41691298593` passed all three jobs.
+Intel fallback `41693995249` on `46ca812` completed with one pass (recovery) and
+one failure (initial Reject lookup). The screenshot shows valid wallet-auth
+Approve/Reject controls and an open native Account selector; the captured trace
+does not distinguish automatic focus from a pointer opening it. The shared
+"Test host controls" title is not evidence of a wrong dialog. The host now
+explicitly focuses its title when opening, with a browser regression check;
+its native verification is pending. No approval/visibility assertion was weakened.
+ARM retry `41691298772` attempt 2 passed both tests, zero failures, in 318.960s;
+its screenshot review is pending. Distinguish it from the earlier capacity failure. Standard Apple Silicon remains the normal runner.
+Heading-focus fix `f99a33c` passed targeted initial/retry focus, Reject/Approve
+and six bridge unit checks. A broader browser smoke timed out in both-asset plan
+confirmation before the new assertion; baseline comparison is pending. The focus
+fix still needs its own native verification. General CI `41691298593` and
+`41693995134` passed all three jobs.
 Production runtime remains `1e4715d`; these changes affect only testing.
 
 The finalized WLD factory is `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
