@@ -13,6 +13,12 @@ on:
       - "package-lock.json"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
+    inputs:
+      operator_mode:
+        description: Publish or remove the isolated World App deployment page; normal app stays at the reviewed production baseline
+        type: choice
+        options: [none, publish, remove]
+        default: none
 
 permissions:
   contents: read
@@ -23,6 +29,7 @@ concurrency:
 
 jobs:
   auth:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.operator_mode == 'none' }}
     name: Validate auth and prepare shared D1
     runs-on: ubuntu-latest
     steps:
@@ -60,6 +67,7 @@ jobs:
           printf '%s' "$SIWE_SECRET" | npx wrangler pages secret put SIWE_SECRET --project-name inheritance --config app/wrangler.toml
 
   deploy:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.operator_mode == 'none' }}
     name: Build & deploy to Pages
     needs: auth
     runs-on: ubuntu-latest
@@ -185,6 +193,7 @@ jobs:
   # 알림 백엔드. 별도 job 인 이유는 프론트엔드와 실패 조건이 다르기 때문이다 —
   # 프론트 배포가 성공해도 백엔드가 죽어 있으면 "알림이 안 온다" 는 형태로만 드러난다.
   notify:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.operator_mode == 'none' }}
     name: Deploy notification backend
     needs: auth
     runs-on: ubuntu-latest
@@ -344,3 +353,88 @@ jobs:
             echo "시도 $i 실패, 재시도…"; sleep 10
           done
           echo "::error::배포된 Worker 가 응답하지 않습니다."; exit 1
+
+  operator_page:
+    name: Publish isolated operator page without changing product runtime
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.operator_mode != 'none' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install build dependencies
+        run: |
+          pnpm --dir app install --frozen-lockfile
+          npm ci --no-audit --no-fund
+      - name: Prepare unchanged production source
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/inheritance-production-base" a8056264c8551fdea191574d919a409871722cb9
+          ln -s "$GITHUB_WORKSPACE/app/node_modules" "$RUNNER_TEMP/inheritance-production-base/app/node_modules"
+      - name: Build unchanged production app
+        working-directory: ${{ runner.temp }}/inheritance-production-base/app
+        env:
+          VITE_FACTORY_ADDRESS: ${{ vars.VITE_FACTORY_ADDRESS }}
+          VITE_WLD_ADDRESS: ${{ vars.VITE_WLD_ADDRESS }}
+          VITE_RPC: ${{ vars.VITE_RPC }}
+          VITE_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_FACTORY_DEPLOY_BLOCK }}
+          VITE_LEGACY_FACTORY_ADDRESS: ${{ vars.VITE_LEGACY_FACTORY_ADDRESS }}
+          VITE_LEGACY_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_LEGACY_FACTORY_DEPLOY_BLOCK }}
+          VITE_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_YIELD_FACTORY_ADDRESS }}
+          VITE_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_YIELD_FACTORY_DEPLOY_BLOCK }}
+          VITE_LEGACY_YIELD_FACTORY_ADDRESSES: ${{ vars.VITE_LEGACY_YIELD_FACTORY_ADDRESSES }}
+          VITE_LEGACY_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_LEGACY_YIELD_FACTORY_DEPLOY_BLOCK }}
+          VITE_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_MORPHO_VAULT_ADDRESS }}
+          VITE_USDC_ADDRESS: ${{ vars.VITE_USDC_ADDRESS }}
+          VITE_USDC_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_USDC_YIELD_FACTORY_ADDRESS }}
+          VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_USDC_YIELD_FACTORY_DEPLOY_BLOCK }}
+          VITE_LEGACY_USDC_YIELD_FACTORY_ADDRESSES: ${{ vars.VITE_LEGACY_USDC_YIELD_FACTORY_ADDRESSES }}
+          VITE_LEGACY_USDC_YIELD_FACTORY_DEPLOY_BLOCK: ${{ vars.VITE_LEGACY_USDC_YIELD_FACTORY_DEPLOY_BLOCK }}
+          VITE_USDC_MORPHO_VAULT_ADDRESS: ${{ vars.VITE_USDC_MORPHO_VAULT_ADDRESS }}
+          VITE_FACTORY_RELEASE_SUPPORTED: ${{ vars.VITE_FACTORY_RELEASE_SUPPORTED }}
+          VITE_REQUIRE_VERIFY: ${{ vars.VITE_REQUIRE_VERIFY }}
+          VITE_WORLD_ACTION_ID: ${{ vars.VITE_WORLD_ACTION_ID }}
+          VITE_WORLD_APP_ID: ${{ vars.VITE_WORLD_APP_ID }}
+          VITE_NOTIFY_BACKEND_URL: ${{ vars.VITE_NOTIFY_BACKEND_URL }}
+          VITE_APP_ORIGIN: ${{ vars.VITE_APP_ORIGIN }}
+        run: pnpm build
+      - name: Require exact current product HTML
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const hash=x=>createHash('sha256').update(x).digest('hex');
+          const expected='3029614b2b89b21fe4a4ea00cdb6cbee385cbb21cbf3a224576d32427b0ddb35';
+          const current=await fetch('https://inheritance.pages.dev/');
+          if(!current.ok || hash(await current.text())!==expected) throw Error('Production changed; inspect before publishing an operator page');
+          if(hash(readFileSync(process.env.RUNNER_TEMP+'/inheritance-production-base/app/dist/index.html'))!==expected) throw Error('Baseline build does not match production HTML');
+          JS
+      - uses: foundry-rs/foundry-toolchain@v1
+        if: ${{ inputs.operator_mode == 'publish' }}
+        with:
+          version: v1.3.2
+      - name: Build reviewed contracts and fixed operator page
+        if: ${{ inputs.operator_mode == 'publish' }}
+        run: |
+          forge build --ast --skip test --skip script
+          node scripts/prepare-worldapp-deployment.mjs --ast-artifacts out --out "$RUNNER_TEMP/operator-manifest.json"
+          node scripts/build-worldapp-operator.mjs --manifest "$RUNNER_TEMP/operator-manifest.json" --out-dir "$RUNNER_TEMP/inheritance-production-base/app/dist"
+      - name: Deploy only Pages, preserving production API code and bindings
+        working-directory: ${{ runner.temp }}/inheritance-production-base/app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.156.2 pages deploy dist --project-name inheritance --branch main --commit-dirty=true
+      - name: Save public deployment manifest
+        if: ${{ always() && inputs.operator_mode == 'publish' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-deployment-manifest
+          path: ${{ runner.temp }}/operator-manifest.json
+          retention-days: 7

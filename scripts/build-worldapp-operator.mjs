@@ -1,0 +1,17 @@
+import { createRequire } from 'node:module';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateWorldAppDeploymentManifest } from './lib/worldapp-deployment-manifest.mjs';
+const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const args=process.argv.slice(2);const option=name=>{const i=args.indexOf(name);if(i<0||!args[i+1])throw Error(`Required ${name}`);return args[i+1];};
+const manifestPath=resolve(option('--manifest')),output=resolve(option('--out-dir'));
+if(output===repo||output.startsWith(resolve(repo,'app/src')))throw Error('Explicit isolated output directory required');
+const manifest=JSON.parse(readFileSync(manifestPath,'utf8'));validateWorldAppDeploymentManifest(manifest,manifest.manifestHash);
+const appRequire=createRequire(resolve(repo,'app/package.json'));
+const viteRequire=createRequire(appRequire.resolve('vite'));
+const {build}=viteRequire('esbuild');
+mkdirSync(output,{recursive:true});
+await build({entryPoints:[resolve(repo,'scripts/operator-deploy/main.ts')],outfile:resolve(output,'operator-deploy.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',minify:true,define:{__MANIFEST__:JSON.stringify(manifest),__EXPECTED_MANIFEST_HASH__:JSON.stringify(manifest.manifestHash),__APP_ID__:JSON.stringify('app_28c40a2a42b7f6c95789c2d5231b1314'),__RPC_URL__:JSON.stringify('https://worldchain-mainnet.g.alchemy.com/public')},plugins:[{name:'app-dependencies',setup(b){b.onResolve({filter:/^(@worldcoin\/minikit-js|ethers)$/},a=>({path:appRequire.resolve(a.path)}));}}]});
+writeFileSync(resolve(output,'operator-deploy.html'),readFileSync(resolve(repo,'scripts/operator-deploy/index.html')));
+console.log(JSON.stringify({output,manifestHash:manifest.manifestHash,files:['operator-deploy.html','operator-deploy.js']}));
