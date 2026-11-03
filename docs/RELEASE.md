@@ -14,8 +14,15 @@ real nonzero viewport. Earlier functional run `41615178147` passed both tests.
 The helper now reads both rectangles from one fresh app snapshot, retaining
 hittability, 44-point height, full visibility and three stable samples over 0.8s.
 It also checks stable viewport geometry and enables gesture diagnostics in the
-pending-deposit test. A native rerun is required; this is a test fix, not a claim
-that the failed run passed.
+pending-deposit test. Rerun `41618049272` on `498d773` succeeded: two tests
+passed, zero failures/skips, iPhone 16 Pro / iOS 18.5. The result summary and
+recovered-deposit screenshot were downloaded and inspected. No product code
+changed after runtime `f6dc58a`; CI `41618049258` also passed.
+
+A supplementary local iOS 27.0 probe did not reach the transaction stage:
+the headless Mac toolchain did not display a software keyboard, including after
+matching the CI keyboard preference. It is not counted as a product pass/fail;
+its owned host/simulator were stopped and the original preference restored.
 Submission remains stopped. No new production transaction or outbound message.
 
 - Official MiniKit wallet authentication now has a 60-second overall timeout,

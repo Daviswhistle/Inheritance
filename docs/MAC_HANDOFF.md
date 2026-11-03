@@ -35,8 +35,12 @@ remain for the next sign-in. It does not end a plan or move funds.
 Ended empty plans no longer offer renewal/exit transactions or identify their
 owner as the recipient. Restart opens setup directly and explicitly reviews
 reactivation of the selected existing vault, including renewal of an expired
-deadline. Unselected ended assets stay ended. See RELEASE.md for validation
-and deployment status; submission is still stopped.
+deadline. Unselected ended assets stay ended. Android verified sign-out and
+re-login; Chromium/WebKit login and exit regressions passed. Native run
+41615531022 exposed a stale test viewport query. The test-only repair in
+498d773 passed both native tests in rerun 41618049272, zero failures/skips.
+See RELEASE.md for the failure evidence and local simulator limitation.
+Submission is still stopped.
 
 The separate November 3 security branch was reviewed and its conditional exit
 failures reproduced. This UI/auth change does not remediate immutable deployed
