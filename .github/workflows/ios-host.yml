@@ -23,7 +23,9 @@ permissions:
   contents: read
 jobs:
   simulator:
-    runs-on: macos-15
+    # ARM64 capacity exhausted run 41691298772 before any step started.
+    # Use the standard Intel pool; simulator tests and assertions stay identical.
+    runs-on: macos-15-intel
     # XCTest can spend 60s per system animation/quiescence wait after rotation
     # and foregrounding. Keep the full lifecycle/recovery assertions unchanged;
     # give the job enough time to finish them and export diagnostic evidence.

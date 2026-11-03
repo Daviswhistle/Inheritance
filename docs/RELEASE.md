@@ -39,9 +39,11 @@ Screenshots and AX confirm the full input and native accessory Done, which the
 product intentionally uses below 240 CSS pixels. `8f9b186` checks the two toolbar
 layouts explicitly, requiring a unique hittable native Done within its accessory
 band when the DOM toolbar is hidden. All visibility and stability checks remain.
-Replacement run `41691298772` on `5eebfe0` is pending completion and visual review.
-At 18:25 UTC November 3 it is still queued, without a macos-15 runner assigned;
-there are no annotations or pending deployment approvals. Queue cause is unknown.
+Replacement run `41691298772` on `5eebfe0` failed before any step ran:
+GitHub reported hosted-runner acquisition failure and ARM64 capacity constraints.
+No test result or artifact exists. The workflow uses standard `macos-15-intel`
+for the next run, with the same simulator tests/assertions; its result still
+needs review. This public repository uses the free standard runner pool.
 General CI `41691298593` passed all three jobs.
 Production runtime remains `1e4715d`; these changes affect only testing.
 

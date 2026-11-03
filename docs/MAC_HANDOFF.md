@@ -91,11 +91,13 @@ Commit 8f9b186 verifies each layout separately: normal viewports require DOM Don
 short viewports require an absent DOM toolbar and one hittable native Done wholly
 within the accessory band. Existing full visibility, 44-point height, nine hit
 samples, three stable samples and post-capture recheck remain enforced.
-Run 41691298772 on 5eebfe0 is pending completion and screenshot review.
-At 18:25 UTC on November 3 (November 4 KST), it remains queued without an
-assigned macos-15 runner; annotations and pending-deployment gates are empty.
-The queue cause is not established. Resume by inspecting this run, not by
-claiming a pass or rerunning unchanged tests. General CI 41691298593 passed.
+Run 41691298772 on 5eebfe0 ended without executing any step or producing any
+artifact. GitHub's annotations identify hosted-runner acquisition failure and
+ARM64 capacity constraints; there was no runner assigned. This is not a test
+verdict. The workflow now uses the official standard macos-15-intel pool with
+unchanged simulator tests and assertions. The repository is public, and this
+standard runner does not introduce a paid resource. Its rerun needs completion
+and screenshot review. General CI 41691298593 passed.
 The older queued run 41676338433 was cancelled. Product runtime remains 1e4715d.
 Private evidence: `ios-failure-41673388897/`, `ios-fixed-41678818435/diagnosis.txt`,
 `ios-final-41683367120/diagnosis.txt`, and `ios-verified-41688191187/diagnosis.txt`.
