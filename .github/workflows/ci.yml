@@ -182,6 +182,12 @@ jobs:
           node scripts/test-deferred-rewards-chain.mjs
           node scripts/test-remediation-gas.mjs
 
+      - name: Verify immutable deployment configuration and child code
+        working-directory: .
+        run: |
+          forge build --ast --skip test --skip script --out "$RUNNER_TEMP/yield-generation-ast" --cache-path "$RUNNER_TEMP/yield-generation-cache"
+          AST_ARTIFACTS="$RUNNER_TEMP/yield-generation-ast" node scripts/test-yield-generation.mjs
+
       - name: Verify opt-in yield ABI and minimum-output contract
         working-directory: .
         run: |

@@ -109,6 +109,36 @@ it is not a way to deploy this new revision.
   Three new mobile-browser flows cover deferred principal withdrawal and both
   USDC/WLD gift-only payout with receipt and actual balance verification. These are test-host
   results, not new production-wallet or actual iOS World App acceptance.
+- Read-only generation verification checks the complete factory/deployer runtime,
+  every public and private immutable, and both STOP-prefixed child-code chunks.
+  It reconstructs the exact reviewed vault creation code. Isolated Anvil checks
+  pass for both generations and reject changed code, private chunk pointers,
+  creation lengths and fee configuration. AST-enabled verification artifacts must
+  match the reviewed build's creation/runtime bytecode exactly.
+
+### Native-host validation and failure history
+
+[CI 41634163415](https://github.com/Daviswhistle/Inheritance/actions/runs/41634163415)
+passed at `48d5b75`. The product code at `9b0bd79` also passed
+[native run 41631777839](https://github.com/Daviswhistle/Inheritance/actions/runs/41631777839):
+two tests, zero failures/skips on iPhone 16 Pro / iOS 18.5 Simulator. Downloaded
+Xcode results and screenshots confirm login/lifecycle/keyboard checks and recovery
+of a locally submitted 1.000001 USDC deposit without resubmission. This is the
+native test host, not actual iOS World App or a production transaction.
+
+Two preceding failures are retained rather than hidden by the passing run:
+
+- Run 41630789594 timed out before host readiness because cold IR compilation
+  consumed the 90-second startup budget. Compilation now completes before that
+  server-readiness timer starts; transaction waits were not weakened.
+- Run 41631578898 failed awaiting approval after a process restart. Its DOM trace
+  contained a correctly targeted pointer-down/touch-start but no end/click, so
+  no completed sign-in gesture or authentication request was demonstrated.
+  The exact OS cancellation/delivery cause remains unproved. The later passing
+  run alone does not prove a fix. Test-only commit `48d5b75` adds cancellation
+  telemetry and requires a stable, hittable button, one native press and one
+  completed trusted click before waiting for approval. It does not retry a
+  failed gesture or alter product authentication.
 
 Reproducible commands (Foundry 1.3.2 on PATH):
 
@@ -121,6 +151,10 @@ node scripts/gen-abi-errors.mjs --check
 node scripts/test-yield-abi.mjs
 node scripts/test-deferred-rewards-ui.mjs
 node scripts/test-deferred-rewards-chain.mjs
+node scripts/test-remediation-gas.mjs
+forge build --ast --skip test --skip script \
+  --out /tmp/yield-generation-ast-out --cache-path /tmp/yield-generation-ast-cache
+AST_ARTIFACTS=/tmp/yield-generation-ast-out node scripts/test-yield-generation.mjs
 WORLDCHAIN_FORK_RPC=https://worldchain-mainnet.g.alchemy.com/public \
 WORLDCHAIN_FORK_BLOCK=35837437 node scripts/verify/worldchain-forks.mjs
 node scripts/verify/remediation-cost.mjs
@@ -171,3 +205,9 @@ runtime **and reconstructed child creation-code chunks**, then update new primar
 routes while retaining all old routes, allowlists and notifications as specified
 in [LEGACY_YIELD_ROUTES.md](LEGACY_YIELD_ROUTES.md). Source repair and factory
 rotation alone do not migrate any asset. Submission remains stopped.
+
+Use the read-only [generation verifier](../scripts/verify/yield-generation.mjs)
+with the new factory address and independently reviewed asset/strategy/fee values
+before enabling a route. Its CLI arguments are documented at the top of the file.
+Old deployment scripts' normalized runtime check alone is insufficient because it
+masks private code pointers and does not reconstruct the child creation code.
