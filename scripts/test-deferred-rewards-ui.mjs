@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { Interface } from "ethers";
 import { createServer } from "../app/node_modules/vite/dist/node/index.js";
-const vite = await createServer({ root: process.cwd() + "/app", configFile: false, logLevel: "error", optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true } });
+const vite = await createServer({ root: fileURLToPath(new URL("../app", import.meta.url)), configFile: false, logLevel: "error", optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true } });
 try {
   const { readRewardsDeferred, verifiesDeferredSettlement, readExitPosition } = await vite.ssrLoadModule("/src/yield.ts");
   assert.equal(await readRewardsDeferred({ rewardsDeferred: async () => true }), true);
