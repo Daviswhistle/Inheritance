@@ -4,8 +4,9 @@
 
 The operator withdrew the previous request and has not authorized resubmission.
 A fresh Portal readback on November 3 confirms **unverified**, **KR only**,
-with English and Korean support (`en`, `ko`). Only `supported_languages` changed
-in the Portal during this correction. Earlier `awaiting_review` receipts are
+with English and Korean support (`en`, `ko`). Supported languages and the
+draft descriptions were updated to reflect the exit flow, recovery storage and
+contract-review package. Independent readback confirmed only those fields changed. Earlier `awaiting_review` receipts are
 historical; see [RELEASE.md](RELEASE.md). They are not the current status.
 
 This is an implementation and evidence review, not World App approval, legal
