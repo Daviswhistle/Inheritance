@@ -432,8 +432,8 @@ jobs:
           node --input-type=module <<'JS'
           import {readFileSync} from 'node:fs';
           import {keccak256,ContractFactory} from 'ethers';
-          import {validateWorldAppFundingManifest} from './scripts/lib/worldapp-funding-manifest.mjs';
-          const m=validateWorldAppFundingManifest(JSON.parse(readFileSync('deployment/worldapp-funding-2026-11-03.json')));
+          import {validateWorldAppRouterFundingManifest} from './scripts/lib/worldapp-router-funding-manifest.mjs';
+          const m=validateWorldAppRouterFundingManifest(JSON.parse(readFileSync('deployment/worldapp-router-funding-2026-11-03.json')));
           const artifacts={};
           for(const [name,digest] of Object.entries(m.artifactDigests)) {
             const a=JSON.parse(readFileSync(`out/${name}.sol/${name}.json`));artifacts[name]=a;
@@ -448,7 +448,7 @@ jobs:
             if(keccak256(tx.data)!==m.normalCreateTargets[index].initCodeHash) throw Error('Deployment constructor mismatch');
           }
           JS
-          node scripts/build-worldapp-funding.mjs --manifest deployment/worldapp-funding-2026-11-03.json --out-dir "$RUNNER_TEMP/inheritance-production-base/app/dist"
+          node scripts/build-worldapp-funding.mjs --manifest deployment/worldapp-router-funding-2026-11-03.json --out-dir "$RUNNER_TEMP/inheritance-production-base/app/dist"
       - name: Retire cached operator scripts
         if: ${{ inputs.operator_mode == 'remove' }}
         run: |
