@@ -487,7 +487,9 @@ final class HostTests: XCTestCase {
                      ("keyboard-management", XCUIApplication(bundleIdentifier: "com.apple.UIKit.KeyboardManagement"))]
         let screen = app.frame
         for (hostName, host) in hosts {
-            guard host.state != .notRunning else { continue }
+            let state = host.state
+            guard state == .runningForeground || state == .runningBackground
+                || state == .runningBackgroundSuspended else { continue }
             let message = host.staticTexts.matching(NSPredicate(format: "label == %@", tip)).firstMatch
             guard message.exists else { continue }
             let containers = host.otherElements.containing(.staticText, identifier: tip)
@@ -569,7 +571,7 @@ final class HostTests: XCTestCase {
             let inputSnapshot = nodes.first(where: { $0.elementType == .textField && $0.label == inputLabel })
             let webSnapshot = nodes.first(where: { $0.elementType == .webView && !$0.frame.isEmpty })
             let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty })
-            guard let inputSnapshot, let webSnapshot, let doneSnapshot else {
+            guard let inputSnapshot, let webSnapshot else {
                 let fieldLabels = nodes.filter { $0.elementType == .textField }.prefix(4).map { String($0.label.prefix(80)) }
                 diagnostic("missing_nodes input=\(inputSnapshot != nil) web=\(webSnapshot != nil) done=\(doneSnapshot != nil) nodeCount=\(nodes.count) fields=\(fieldLabels)")
                 reset("missing_nodes"); return false
@@ -583,7 +585,6 @@ final class HostTests: XCTestCase {
             }
             let field = inputSnapshot.frame
             let webFrame = webSnapshot.frame
-            let doneFrame = doneSnapshot.frame
             guard let data = raw.data(using: .utf8),
                   let metrics = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                   let rect = metrics["input"] as? [String: Any],
@@ -597,6 +598,47 @@ final class HostTests: XCTestCase {
                 if raw != lastInvalidGeometry { print("INPUT METRICS NOT READY \(name): \(raw)"); lastInvalidGeometry = raw }
                 reset("invalid_metrics"); return false
             }
+            let doneFrame: CGRect
+            let doneSource: String
+            if visibleHeight < 240 {
+                // PlanSetup intentionally hides its DOM toolbar below 240 CSS
+                // pixels. Verify the real native accessory instead; its absence
+                // is a failure, never permission to skip the occlusion boundary.
+                guard doneSnapshot == nil,
+                      let doneRect = metrics["doneRect"] as? [Double], doneRect.count == 4,
+                      doneRect.allSatisfy({ $0.isFinite && $0 == 0 }) else {
+                    reset("short_viewport_toolbar_mismatch"); return false
+                }
+                diagnostic("native_done_query_start")
+                let doneStart = Date()
+                let candidates = app.buttons.matching(NSPredicate(format: "label == %@", "Done"))
+                    .allElementsBoundByIndex.filter {
+                        let frame = $0.frame
+                        return frame.height >= 44 && frame.width >= 44
+                            && frame.minY >= webFrame.maxY && frame.maxY <= keyboardFrame.minY
+                            && frame.minX >= webFrame.minX && frame.maxX <= webFrame.maxX
+                    }
+                diagnostic("native_done_query_end seconds=\(Date().timeIntervalSince(doneStart)) candidates=\(candidates.count)")
+                guard candidates.count == 1, let nativeDone = candidates.first,
+                      nativeDone.isHittable else {
+                    reset("native_accessory_done_missing_ambiguous_or_not_hittable"); return false
+                }
+                doneFrame = nativeDone.frame
+                // Recheck the sampled frame after hittability's AX query.
+                guard doneFrame.height >= 44 && doneFrame.width >= 44,
+                      doneFrame.minY >= webFrame.maxY && doneFrame.maxY <= keyboardFrame.minY,
+                      doneFrame.minX >= webFrame.minX && doneFrame.maxX <= webFrame.maxX else {
+                    reset("native_accessory_done_moved"); return false
+                }
+                doneSource = "native-accessory"
+            } else {
+                guard let doneSnapshot else {
+                    reset("dom_done_missing"); return false
+                }
+                doneFrame = doneSnapshot.frame
+                doneSource = "web-toolbar"
+            }
+            diagnostic("completion_source=\(doneSource) done=\(doneFrame) web=\(webFrame) keyboard=\(keyboardFrame)")
             let occlusion = min(min(keyboardFrame.minY, doneFrame.minY), webFrame.maxY)
             // Both full CSS geometry and native geometry must fit. A clipped
             // accessibility rectangle with only the top border is not a pass.
@@ -612,7 +654,7 @@ final class HostTests: XCTestCase {
                 && field.maxY <= occlusion && fullTop >= webFrame.minY
                 && fullBottom <= occlusion && cssTop >= offset
                 && cssBottom <= offset + visibleHeight
-            let geometry = "\(field)|\(webFrame)|\(keyboardFrame)|\(doneFrame)|\(raw)"
+            let geometry = "\(field)|\(webFrame)|\(keyboardFrame)|\(doneSource)|\(doneFrame)|\(raw)"
             guard valid else {
                 if geometry != lastInvalidGeometry { print("INPUT GEOMETRY INVALID \(name): \(geometry)"); lastInvalidGeometry = geometry }
                 reset("invalid_geometry"); return false
