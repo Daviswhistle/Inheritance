@@ -8,54 +8,25 @@ https://3a35cdc0.inheritance.pages.dev. Deployment `41676338353` and CI
 an explicit production-mode local build; root SHA256 is
 `9b4c2ff874c5fc3e029e46d014e8db084caf6d2266f3d2355d402aaf11ff3391`.
 Worker `b07b7a46-8a56-4a0c-be02-c39f193a152f` supports the new and all retained
-automatic generations before Pages activation. Native iOS run `41673388897` passed interrupted-deposit recovery but failed
-`testRealSDKLoginAndNativeLifecycle`: the test retained an obsolete keyboard AX
-object after a keyboard-layout change and spent its stability deadline resolving
-it. Its screenshot shows the full focused input above the keyboard; native/CSS
-geometry and all nine hit-test samples confirm visibility. Test-only fix
-`ca55eac` reads portrait input/WebView/Done/keyboard frames from one fresh snapshot
-and reacquires the landscape keyboard query per poll, preserving all bounds,
-height, visibility, timing and three-sample stability requirements. Swift parse
-passes. The older queued runtime run `41676338433` was cancelled after this fix;
-replacement native run `41678818435` reached all repeated geometry checkpoints
-but was cancelled at the 25-minute job limit. Eleven 60-second XCTest system
-animation idle waits accumulated; the first test had not completed and recovery
-had not started. No pass is claimed, and its incomplete xcresult has no exported
-screenshots. `c9e30be` extends only the whole-job limit to 45 minutes, leaving
-all individual checks unchanged. Run `41683367120` passed pending-deposit
-recovery but failed the first input-stability assertion. Its screenshot shows
-full input visibility and an OS QuickPath introduction over the keyboard. The
-old log cannot identify which snapshot/valid-sample branch prevented completion,
-so that remaining uncertainty is retained rather than calling it an app pass.
-`7bd106e` scopes fresh snapshots to the WebView, reacquires native keyboard
-geometry, handles only the exactly identified OS lesson and records each query,
-valid sample and reset reason. `8c36672` prepares the selected simulator's
-keyboard tutorial preference with readback, consistent with
-[Appium's device preparation](https://appium.github.io/appium-xcuitest-driver/10.43/getting-started/device-setup/).
-All previous application visibility, touch and stability checks remain. Native
-run `41688191187` passed the initial keyboard assertion and pending-deposit
-recovery, but the scoped helper incorrectly required DOM Done in short landscape.
-Screenshots and AX confirm the full input and native accessory Done, which the
-product intentionally uses below 240 CSS pixels. `8f9b186` checks the two toolbar
-layouts explicitly, requiring a unique hittable native Done within its accessory
-band when the DOM toolbar is hidden. All visibility and stability checks remain.
-Replacement run `41691298772` attempt 1 on `5eebfe0` failed before any step:
-GitHub reported hosted-runner acquisition failure and ARM64 capacity constraints.
-Intel fallback `41693995249` on `46ca812` completed with one pass (recovery) and
-one failure (initial Reject lookup). The screenshot shows valid wallet-auth
-Approve/Reject controls and an open native Account selector; the captured trace
-does not distinguish automatic focus from a pointer opening it. The shared
-"Test host controls" title is not evidence of a wrong dialog. The host now
-explicitly focuses its title when opening, with a browser regression check;
-its native verification is pending. No approval/visibility assertion was weakened.
-ARM retry `41691298772` attempt 2 passed both tests, zero failures, in 318.960s;
-its screenshot review is pending. Distinguish it from the earlier capacity failure. Standard Apple Silicon remains the normal runner.
-Heading-focus fix `f99a33c` passed targeted initial/retry focus, Reject/Approve
-and six bridge unit checks. A broader browser smoke timed out in both-asset plan
-confirmation before the new assertion; baseline comparison is pending. The focus
-fix still needs its own native verification. General CI `41691298593` and
-`41693995134` passed all three jobs.
-Production runtime remains `1e4715d`; these changes affect only testing.
+automatic generations before Pages activation.
+
+Native-host run **41700415152** on **0799828** passed **2 tests, 0 failures,
+0 skips** on iPhone 16 Pro / iOS 18.5 / arm64. Downloaded screenshots confirm
+login approval with heading focus and a closed Account picker, native QWERTY,
+three rotation/foreground cycles, Done, restored review/navigation and recovered
+USDC 1.000001. Full-input visibility, native Done, nine touch samples, three
+stable samples and post-capture checks remain enforced. This is a native test
+host, not actual iOS World App approval/permission validation.
+
+The harness now reacquires geometry, recognizes the native Done accessory in
+short landscape and prepares the OS keyboard tutorial. The test host explicitly
+focuses its approval heading. The browser smoke also uses the actual ready-card
+state instead of obsolete success copy; baseline comparison confirmed that old
+failure despite successful plan creation. Current browser integration checks
+passed **10/10**, bridge unit checks **6/6**, and general CI **41700415409** passed.
+The failed ARM allocation attempt and failed Intel diagnostic run are preserved
+in [the deployment record](WORLDAPP_DEPLOYMENT_2026-11-03.md); neither is counted
+as a pass. Product runtime remains `1e4715d` throughout these test-only changes.
 
 The finalized WLD factory is `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
 (block 37192969); the finalized USDC factory is

@@ -53,6 +53,17 @@ Evidence outside the public repository: `production-cutover-artifacts-nov04.json
 
 ### iOS test-harness follow-up
 
+Final native-host validation passed: run **41700415152** on **0799828**, iPhone
+16 Pro / iOS 18.5 / arm64, **2 passed, 0 failed, 0 skipped**. Downloaded approval,
+QWERTY, third rotation/foreground, Done, keyboard-dismissal and recovery PNGs were
+reviewed. The approval heading receives focus, the Account picker stays closed,
+and Approve/Reject remain available. Full input geometry, native accessory Done,
+three stable samples and post-capture checks all remain enforced. Recovery shows
+USDC 1.000001. This is a native test host, not actual iOS World App validation.
+The separate current browser integration smoke passed **10/10**; bridge unit
+checks passed **6/6**. General CI **41700415409** also passed.
+Private evidence: `ios-final-41700415152/{review.txt,ios-summary.json,run.log}`.
+
 Run 41673388897 failed only the login/native-lifecycle visibility helper;
 interrupted-deposit recovery passed. Screenshot and AX/CSS evidence show the
 focused input fully visible. The retained keyboard query had pinned a stale
@@ -102,12 +113,19 @@ not evidence of a wrong dialog. A browser-tested host-only correction explicitly
 focuses its non-interactive title when it opens, avoiding the default first
 Account select. Approval decisions, native checks and their deadlines remain unchanged.
 ARM retry 41691298772 attempt 2 passed both native tests (zero failures) in
-318.960 seconds. Screenshot review is pending; distinguish it from attempt 1. Standard Apple Silicon remains the normal runner;
+318.960 seconds. Downloaded screenshots confirm real QWERTY/full input, the
+third landscape and foreground cycle, native Done, restored review/navigation,
+and recovered USDC 1.000001. Third-landscape geometry passed three stable
+samples over 1.93s plus the post-capture fourth sample at 3.40s. Distinguish this
+pass from attempt 1. Standard Apple Silicon remains the normal runner;
 the Intel fallback is recorded as failed, not presented as native validation.
 The explicit heading-focus correction f99a33c passed targeted initial/retry
-focus, Reject and Approve checks, plus six bridge unit tests. The broader browser
-smoke stopped earlier at a both-asset plan-confirmation timeout; its baseline
-comparison is pending. The heading-focus correction still needs its own native run.
+focus, Reject and Approve checks, plus six bridge unit tests. The broader browser smoke initially timed out waiting for obsolete success
+copy. Isolated pre-fix baseline 46ca812 reproduced the same failure while both
+plans were successfully created. Commit 4ac62b4 checks the existing ready-card
+state instead; all original asset/recipient chain assertions remain. The full
+current browser smoke passed all ten integration checks. Native run 41700415152 on 0799828 passed both tests with the heading-focus
+correction; its reviewed screenshots confirm the intended initial focus.
 General CI 41691298593 and 41693995134 passed.
 The older queued run 41676338433 was cancelled. Product runtime remains 1e4715d.
 Private evidence: `ios-failure-41673388897/`, `ios-fixed-41678818435/diagnosis.txt`,
