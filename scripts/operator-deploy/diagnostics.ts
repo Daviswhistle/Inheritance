@@ -6,9 +6,8 @@ const branches = new Set(['details','error','cause','simulation','simulation_err
 export function sanitizeDebugUrl(value: unknown): string | null {
   if(typeof value!=='string'||value.length>2048)return null;
   try {
-    const url=new URL(value),host=url.hostname.toLowerCase();
-    if(url.protocol!=='https:'||url.username||url.password||url.port&&url.port!=='443'
-      ||!(host==='tenderly.co'||host.endsWith('.tenderly.co')||host==='developer.world.org'))return null;
+    const url=new URL(value);
+    if(url.protocol!=='https:'||url.username||url.password||url.port&&url.port!=='443')return null;
     return url.origin+url.pathname;
   }catch{return null;}
 }
@@ -27,7 +26,7 @@ export function sanitizeNativeDiagnostics(input: unknown): Record<string, unknow
     if(!value||typeof value!=='object'||depth>3||remaining<=0)return {};
     const result:Record<string,unknown>={};
     for(const [key,item] of Object.entries(value).slice(0,24)){
-      if(key==='debugUrl'||key==='debug_url'){const url=sanitizeDebugUrl(item);result[key]=url??'[omitted]';remaining-=url?.length??12;}else if(textKeys.has(key)&&typeof item==='string'){
+      if(key==='debugUrl'||key==='debug_url'){const url=sanitizeDebugUrl(item);result[key]=url??(typeof item==='string'?'[unsupported URL]':`[unavailable: ${item===null?'null':typeof item}]`);remaining-=url?.length??12;}else if(textKeys.has(key)&&typeof item==='string'){
         const text=clean(item).slice(0,remaining);remaining-=text.length;result[key]=text;
       }else if(gasKeys.has(key)&&(typeof item==='number'&&Number.isFinite(item)||typeof item==='string'&&/^\d{1,20}$/.test(item))){
         result[key]=item;remaining-=24;

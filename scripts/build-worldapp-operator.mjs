@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -11,7 +12,8 @@ const manifest=JSON.parse(readFileSync(manifestPath,'utf8'));validateWorldAppDep
 const appRequire=createRequire(resolve(repo,'app/package.json'));
 const viteRequire=createRequire(appRequire.resolve('vite'));
 const {build}=viteRequire('esbuild');
+const buildVersion=createHash('sha256');for(const path of ['scripts/operator-deploy/main.ts','scripts/operator-deploy/diagnostics.ts','scripts/operator-deploy/index.html','scripts/lib/worldapp-deployment-manifest.mjs'])buildVersion.update(readFileSync(resolve(repo,path)));const buildId=buildVersion.digest('hex').slice(0,12);
 mkdirSync(output,{recursive:true});
-await build({entryPoints:[resolve(repo,'scripts/operator-deploy/main.ts')],outfile:resolve(output,'operator-deploy.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',minify:true,define:{__MANIFEST__:JSON.stringify(manifest),__EXPECTED_MANIFEST_HASH__:JSON.stringify(manifest.manifestHash),__APP_ID__:JSON.stringify('app_28c40a2a42b7f6c95789c2d5231b1314'),__RPC_URL__:JSON.stringify('https://worldchain-mainnet.g.alchemy.com/public')},plugins:[{name:'app-dependencies',setup(b){b.onResolve({filter:/^(@worldcoin\/minikit-js|ethers)$/},a=>({path:appRequire.resolve(a.path)}));}}]});
-writeFileSync(resolve(output,'operator-deploy.html'),readFileSync(resolve(repo,'scripts/operator-deploy/index.html')));
-console.log(JSON.stringify({output,manifestHash:manifest.manifestHash,files:['operator-deploy.html','operator-deploy.js']}));
+await build({entryPoints:[resolve(repo,'scripts/operator-deploy/main.ts')],outfile:resolve(output,'operator-deploy.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',minify:true,define:{__OPERATOR_BUILD__:JSON.stringify(buildId),__MANIFEST__:JSON.stringify(manifest),__EXPECTED_MANIFEST_HASH__:JSON.stringify(manifest.manifestHash),__APP_ID__:JSON.stringify('app_28c40a2a42b7f6c95789c2d5231b1314'),__RPC_URL__:JSON.stringify('https://worldchain-mainnet.g.alchemy.com/public')},plugins:[{name:'app-dependencies',setup(b){b.onResolve({filter:/^(@worldcoin\/minikit-js|ethers)$/},a=>({path:appRequire.resolve(a.path)}));}}]});
+writeFileSync(resolve(output,'operator-deploy.html'),readFileSync(resolve(repo,'scripts/operator-deploy/index.html'),'utf8').replace('src="/operator-deploy.js"',`src="/operator-deploy.js?v=${buildId}&amp;manifest=${manifest.manifestHash}"`));
+console.log(JSON.stringify({output,buildId,manifestHash:manifest.manifestHash,files:['operator-deploy.html','operator-deploy.js']}));
