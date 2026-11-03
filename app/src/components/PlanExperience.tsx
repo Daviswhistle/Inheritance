@@ -56,7 +56,8 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
             {[...group].sort((a, b) => Number(b.hasAssets || b.claimedAt > 0n) - Number(a.hasAssets || a.claimedAt > 0n)).map(p => {
               const stage = inheritanceStage(p), r = p.receipt;
               return <div className="inheritance-asset" key={p.address} data-vault={p.address}>
-                <div><strong>{p.symbol}</strong><span className={`inheritance-state state-${stage}`}>{t(p.claimedAt === 0n && !p.hasAssets && p.amount !== null ? "home.empty.label" : `journey.stage.${stage}`)}</span></div>
+                <div><strong>{p.symbol}</strong><span className={`inheritance-state state-${stage}`}>{t(p.claimedAt > 0n && p.rewardsDeferred !== false ? p.rewardsDeferred ? "journey.stage.partial" : "journey.stage.checking" : p.claimedAt === 0n && !p.hasAssets && p.amount !== null ? "home.empty.label" : `journey.stage.${stage}`)}</span></div>
+                {p.claimedAt > 0n && p.rewardsDeferred !== false && <p role="status">{t(p.rewardsDeferred ? "yield.rewards.deferred" : "yield.rewards.deferredUnknown")}</p>}
                 {p.claimedAt > 0n
                   ? r ? <>
                     {(r.cash > 0n || r.shares === 0n) && <p className="inheritance-amount">{formatYieldAmount(r.cash, p.decimals)} {p.symbol} <small>{t("journey.receipt.cash")}</small></p>}

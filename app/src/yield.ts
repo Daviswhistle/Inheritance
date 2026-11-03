@@ -1,6 +1,6 @@
 import { FACTORY_ABI, INCOME_FACTORY_ABI, INCOME_VAULT_ABI, VAULT_ABI } from "./abis";
 import { YIELD_FACTORY_ERROR_ABI, YIELD_VAULT_ERROR_ABI } from "./abi-errors";
-import { formatUnits } from "ethers";
+import { formatUnits, isError, Interface } from "ethers";
 
 export const YIELD_FACTORY_ABI = [
   ...FACTORY_ABI.filter(fragment => typeof fragment !== "string" || !/^function (deposit|isHeirOf)\(/.test(fragment)),
@@ -26,6 +26,8 @@ export const YIELD_VAULT_ABI = [
   "function performanceFeeBps() view returns (uint256)",
   "function costBasis() view returns (uint256)",
   "function accountedShares() view returns (uint256)",
+  "function rewardsDeferred() view returns (bool)",
+  "function principalPosition() view returns (uint256 shares,uint256 gross,uint256 net,uint256 fee,bool valued)",
   "function inheritanceRecipient() view returns (address)",
   "function MERKL_DISTRIBUTOR() view returns (address)",
   "function realizedLoss() view returns (uint256)",
@@ -97,4 +99,29 @@ export function minimumOutput(quote: bigint): bigint {
   if (quote <= 0n) throw new Error("No output is currently available. Refresh and try again.");
   const minimum = quote * 9950n / 10000n;
   return minimum > 0n ? minimum : 1n;
+}
+
+/** Old deployed vaults lack the selector. Network errors remain unknown. */
+export async function readRewardsDeferred(vault: { rewardsDeferred: () => Promise<boolean> }): Promise<boolean> {
+  try { return Boolean(await vault.rewardsDeferred()); }
+  catch (error) { if (isError(error, "CALL_EXCEPTION") && (!error.data || error.data === "0x")) return false; throw error; }
+}
+
+const deferredEvents = new Interface(["event DeferredRewardsSettled(address indexed recipient,uint256 grossAssets)"]);
+export function verifiesDeferredSettlement(logs: readonly { address: string; topics: readonly string[]; data: string }[], vault: string, recipient: string) {
+  return logs.some(log => {
+    if (log.address.toLowerCase() !== vault.toLowerCase()) return false;
+    try { const event = deferredEvents.parseLog({ topics: [...log.topics], data: log.data });
+      return event?.name === "DeferredRewardsSettled" && String(event.args.recipient).toLowerCase() === recipient.toLowerCase();
+    } catch { return false; }
+  });
+}
+
+/** Preserve principal protection when the normal WLD quote depends on unavailable rewards. */
+export async function readExitPosition<T>(vault: { position: () => Promise<T>; principalPosition: () => Promise<T> }): Promise<{ quote: T; rewardsUnknown: boolean }> {
+  try { return { quote: await vault.position(), rewardsUnknown: false }; }
+  catch (error) {
+    if (!isError(error, "CALL_EXCEPTION")) throw error;
+    return { quote: await vault.principalPosition(), rewardsUnknown: true };
+  }
 }

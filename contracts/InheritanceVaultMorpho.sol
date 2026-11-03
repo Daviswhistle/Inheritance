@@ -35,6 +35,8 @@ contract InheritanceVaultMorpho {
     error EthNotAccepted();
     error EthTransferFailed();
 
+    event RewardsDeferred(uint256 held);
+    event DeferredRewardsSettled(address indexed recipient, uint256 grossAssets);
     event Ping(uint256 timestamp);
     event HeirUpdated(address indexed oldHeir, address indexed newHeir);
     event HeartbeatUpdated(uint256 oldInterval, uint256 newInterval);
@@ -71,6 +73,9 @@ contract InheritanceVaultMorpho {
     uint256 public claimFiledAt;
     uint256 public claimedAt;
     address public inheritanceRecipient;
+    /// @notice While true, all WLD held until reconciliation belongs to the fixed heir,
+    /// including intervening gifts; an unavailable reward counter cannot date them.
+    bool public rewardsDeferred;
     /// @notice Remaining deposited capital allocated to the fee-bearing shares.
     /// Losses leave this threshold in place until those shares are exited.
     uint256 public costBasis;
@@ -247,6 +252,26 @@ contract InheritanceVaultMorpho {
         net = gross - fee;
     }
 
+    /// @notice Merkl-independent exit quote. WLD excludes unknown idle cash;
+    /// USDC includes idle USDC but excludes the separately held WLD rewards.
+    function principalPosition()
+        external
+        view
+        returns (uint256 shares, uint256 gross, uint256 net, uint256 fee, bool valued)
+    {
+        shares = strategy.balanceOf(address(this));
+        gross = 0;
+        valued = shares == 0;
+        if (shares != 0) {
+            try strategy.convertToAssets(shares) returns (uint256 value) {
+                gross += value;
+                fee = _exitFee(shares, shares, value);
+                valued = true;
+            } catch { /* An unknown strategy value is not a cash exit quote. */ }
+        }
+        net = gross - fee;
+    }
+
     /// @notice Positive income attributable to tracked shares and canonical WLD rewards.
     /// Direct WLD and receipt-share gifts are excluded from both value and liquidity.
     function incomePosition()
@@ -325,6 +350,17 @@ contract InheritanceVaultMorpho {
     /// @notice Return cumulative canonical rewards not yet processed by the vault's reward accounting.
     function unprocessedRewards() public view returns (uint256) {
         return totalRewardsClaimed() - accountedRewards;
+    }
+
+    function _exitRewards() private view returns (uint256 pending, bool available) {
+        // The self-call bounds both the distributor and ABI decoding, including
+        // malformed return data or an external getter that exhausts its gas.
+        try this.unprocessedRewards{gas: 50_000}() returns (uint256 amount) {
+            if (amount > IERC20(WLD).balanceOf(address(this))) revert InvalidRewards();
+            return (amount, true);
+        } catch {
+            return (0, false);
+        }
     }
 
     /// @notice Allow the owner or trusted factory to renew the timer and cancel any pending claim.
@@ -413,7 +449,7 @@ contract InheritanceVaultMorpho {
 
     function _processRewards(uint256 minShares) private returns (uint256 assets) {
         assets = unprocessedRewards();
-        if (assets == 0) return 0;
+        if (assets == 0 && !rewardsDeferred) return 0;
         if (assets > IERC20(WLD).balanceOf(address(this))) revert InvalidRewards();
         if (claimedAt == 0) {
             accountedRewards += assets;
@@ -425,10 +461,16 @@ contract InheritanceVaultMorpho {
             uint256 shares = _invest(assets, minimum, false);
             emit RewardsClaimed(assets, shares, address(this));
         } else {
+            uint256 canonical = assets;
             uint256 fee = _takeCashRewards(assets);
+            if (rewardsDeferred) {
+                assets = IERC20(WLD).balanceOf(address(this));
+                rewardsDeferred = false;
+                emit DeferredRewardsSettled(inheritanceRecipient, assets);
+            }
             _payFee(fee, 0);
             SafeERC20Lib.safeTransfer(WLD, inheritanceRecipient, assets - fee);
-            emit RewardsClaimed(assets, 0, inheritanceRecipient);
+            emit RewardsClaimed(canonical, 0, inheritanceRecipient);
         }
     }
 
@@ -443,8 +485,12 @@ contract InheritanceVaultMorpho {
         _validRecipient(to);
         if (grossAssets == 0) revert InvalidAmount();
         uint256 idle = IERC20(WLD).balanceOf(address(this));
-        uint256 pending = unprocessedRewards();
-        if (pending > idle) revert InvalidRewards();
+        (uint256 pending, bool rewardsAvailable) = _exitRewards();
+        uint256 beforeAssets = idle;
+        if (!rewardsAvailable) {
+            emit RewardsDeferred(idle);
+            idle = 0; // Unknown cash stays held; withdraw only strategy assets.
+        }
         uint256 usedIdle = grossAssets < idle ? grossAssets : idle;
         uint256 rewardCash = idle == 0 ? 0 : YieldMath.mulDiv(pending, usedIdle, idle);
         uint256 fee;
@@ -454,7 +500,7 @@ contract InheritanceVaultMorpho {
             uint256 burned = strategy.withdraw(required, address(this), address(this));
             if (
                 beforeShares - strategy.balanceOf(address(this)) != burned || burned == 0
-                    || IERC20(WLD).balanceOf(address(this)) - idle != required
+                    || IERC20(WLD).balanceOf(address(this)) - beforeAssets != required
             ) revert InvalidStrategy();
             fee = _accountExit(burned, beforeShares, required, true);
         }
@@ -574,8 +620,9 @@ contract InheritanceVaultMorpho {
         nonReentrant
     {
         _validRecipient(to);
-        uint256 pending = unprocessedRewards();
-        if (pending > IERC20(WLD).balanceOf(address(this))) revert InvalidRewards();
+        (uint256 pending, bool rewardsAvailable) = _exitRewards();
+        uint256 retained = rewardsAvailable ? 0 : IERC20(WLD).balanceOf(address(this));
+        if (!rewardsAvailable) emit RewardsDeferred(retained);
         uint256 shares = strategy.balanceOf(address(this));
         uint256 fee;
         if (shares != 0) {
@@ -588,7 +635,7 @@ contract InheritanceVaultMorpho {
             fee = _accountExit(shares, shares, assets, true);
         }
         fee += _takeCashRewards(pending);
-        uint256 net = IERC20(WLD).balanceOf(address(this)) - fee;
+        uint256 net = IERC20(WLD).balanceOf(address(this)) - retained - fee;
         if (net == 0) revert NothingToTransfer();
         if (net < minNetAssets) revert SlippageExceeded();
         _payFee(fee, 0);
@@ -616,12 +663,15 @@ contract InheritanceVaultMorpho {
         address recipient = heir;
         uint256 shares = strategy.balanceOf(address(this));
         uint256 idle = IERC20(WLD).balanceOf(address(this));
-        uint256 pending = unprocessedRewards();
-        if (pending > idle) revert InvalidRewards();
+        (uint256 pending, bool rewardsAvailable) = _exitRewards();
         if (shares == 0 && idle == 0) revert NothingToTransfer();
         claimedAt = block.timestamp;
         inheritanceRecipient = recipient;
         heir = address(0);
+        if (!rewardsAvailable && idle != 0) {
+            rewardsDeferred = true;
+            emit RewardsDeferred(idle);
+        }
         uint256 fee;
         if (shares != 0) {
             try strategy.redeem{gas: AUTOMATIC_REDEEM_GAS}(shares, address(this), address(this)) returns (
@@ -638,12 +688,13 @@ contract InheritanceVaultMorpho {
         }
         fee += _takeCashRewards(pending);
         _payFee(fee, 0);
-        uint256 payout = IERC20(WLD).balanceOf(address(this));
+        uint256 payout = IERC20(WLD).balanceOf(address(this)) - (rewardsAvailable ? 0 : idle);
         if (payout != 0) SafeERC20Lib.safeTransfer(WLD, recipient, payout);
         emit InheritanceFinalized(recipient, payout, claimedAt);
     }
 
-    /// @notice Allow the owner or factory to sweep post-settlement residual assets; canonical rewards retain their fixed beneficiary.
+    /// @notice Sweep post-settlement gifts only after strict reward reconciliation.
+    /// During a deferred-reward epoch all held WLD belongs to the fixed heir.
     function ownerSweepAfterSettlement(address to) external onlyOwnerOrFactory nonReentrant {
         _validRecipient(to);
         if (claimedAt == 0) revert NotSettled();

@@ -1,5 +1,8 @@
 [profile.default]
-solc_version = "0.8.24"
+# New security-remediated generation only. Existing immutable deployments were
+# built with 0.8.24, legacy codegen; use their source revision when verifying them.
+solc_version = "0.8.38"
+via_ir = true
 src = "contracts"
 test = "test"
 script = "script"
@@ -16,3 +19,8 @@ evm_version = "cancun"
 # in CI. Foundry does not recognize fail_under or exclude_patterns here.
 [profile.default.fuzz]
 runs = 256
+
+# Reproduce historical deployment artifacts with the corresponding old source.
+[profile.legacy]
+solc_version = "0.8.24"
+via_ir = false

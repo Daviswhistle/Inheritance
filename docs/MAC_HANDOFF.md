@@ -23,6 +23,22 @@ See ANDROID_COLD_START.md for timed captures, action checks and the corrected
 verification procedure; no product runtime fix was claimed for this finding. No new real
 transaction, notification, external message or submission was performed.
 
+## November 3 — remaining contract security repairs (not deployed)
+
+Branch `fix/contract-security-remediation` repairs the two conditional yield-vault
+exit failures and the undeployed forced-ETH prototype defect. It includes matching
+app/notification handling for retained WLD and the new compiler/IR build. See
+[SECURITY_REMEDIATION_2026-11-03.md](SECURITY_REMEDIATION_2026-11-03.md) for actual
+regressions, mainnet-fork evidence, costs and migration boundaries.
+
+**Do not treat this source repair as a live-contract upgrade.** Production remains
+runtime `f6dc58a`; no new contract, app or Worker deployment, funding, migration or
+submission was performed. Applying the repair requires two new yield factories
+and separately reviewed movement of any funded old vaults. The operator asked
+for reasons/costs before these actions; old transaction approvals are not reusable.
+Do not merge this branch to main merely to save work: app/backend changes would
+trigger production deployment before new-generation rollout is reviewed.
+
 ## November 3 — login, logout and restarting an ended plan
 
 Runtime `f6dc58a` is deployed at https://5a3a5e6a.inheritance.pages.dev.

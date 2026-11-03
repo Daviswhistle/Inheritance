@@ -26,6 +26,7 @@ contract InheritanceVaultTokens {
     error TokenIsAllowlisted();
     error TooManyAllowedTokens();
     error EthNotAccepted();
+    error EthTransferFailed();
     error Reentrancy();
 
     // ===== Events =====
@@ -37,6 +38,7 @@ contract InheritanceVaultTokens {
     event ClaimedToken(address indexed token, address indexed to, uint256 amount);
     event OwnerWithdrawnToken(address indexed token, address indexed to, uint256 amount);
     event UnknownERC20Rescued(address indexed token, address indexed to, uint256 amount);
+    event EthSwept(address indexed to, uint256 amount);
     event InheritanceCanceled(address indexed owner);
     event InheritanceClaimed(address indexed recipient, uint256 totalAmount);
 
@@ -243,6 +245,17 @@ contract InheritanceVaultTokens {
         if (isAllowedToken[token]) revert TokenIsAllowlisted();
         SafeERC20Lib.safeTransfer(token, to, amount);
         emit UnknownERC20Rescued(token, to, amount);
+    }
+
+    /// @notice Recover forced ETH to the owner's chosen recipient.
+    /// @dev ETH is not an inheritance asset, so recovery remains available after expiry.
+    function sweepEth(address payable to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert InvalidAddress();
+        uint256 bal = address(this).balance;
+        if (bal == 0) revert NothingToTransfer();
+        (bool ok,) = to.call{value: bal}("");
+        if (!ok) revert EthTransferFailed();
+        emit EthSwept(to, bal);
     }
 
     // ===== Reject ETH outright =====

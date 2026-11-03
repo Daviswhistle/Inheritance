@@ -2,11 +2,11 @@ import { ethers } from "ethers";
 import { yieldRouteFor } from "./assets";
 import { WLD_ADDRESS } from "./config";
 import { ownerInheritancePositions, type SettingsTarget } from "./inheritance";
-import { minimumOutput } from "./yield";
+import { minimumOutput, readExitPosition } from "./yield";
 
 export type ExitAmounts = {
   gross: string; net: string; fee: string; minNet: string; shares: string;
-  rewards: string; rewardFee: string; minRewards: string; hasAssets: boolean; claimFiledAt: string;
+  rewards: string; rewardFee: string; minRewards: string; hasAssets: boolean; claimFiledAt: string; rewardsUnknown?: boolean;
 };
 export class PlanExitError extends Error {
   code: "unavailable" | "liquidity" | "empty";
@@ -19,12 +19,15 @@ export async function readExitTargets(provider: ethers.JsonRpcProvider, account:
   const rows = (await ownerInheritancePositions(provider, account)).filter(p => p.claimedAt === 0n);
   if (!rows.length || rows.every(p => !p.hasAssets && p.heir.toLowerCase() === account.toLowerCase())) throw new PlanExitError("empty");
   return Promise.all(rows.map(async p => {
-    if (p.owner.toLowerCase() !== account.toLowerCase() || p.amount === null) throw new PlanExitError("unavailable");
+    if (p.owner.toLowerCase() !== account.toLowerCase() || !yieldRouteFor(p.factory) && p.amount === null) throw new PlanExitError("unavailable");
     const route = yieldRouteFor(p.factory);
-    let gross = p.amount, net = p.amount, fee = 0n, shares = 0n, rewards = 0n, rewardFee = 0n;
+    let gross = p.amount ?? 0n, net = p.amount ?? 0n, fee = 0n, shares = 0n, rewards = 0n, rewardFee = 0n, rewardsUnknown = false;
     if (route) {
       const child = new ethers.Contract(p.address, route.vaultAbi, provider);
-      const quote = await child.position();
+      const result = await readExitPosition<{ valued: boolean; gross: bigint; net: bigint; fee: bigint; shares: bigint }>({
+        position: () => child.position(), principalPosition: () => child.principalPosition(),
+      });
+      const quote = result.quote; rewardsUnknown = result.rewardsUnknown;
       if (!quote.valued) throw new PlanExitError("unavailable");
       gross = BigInt(quote.gross); net = BigInt(quote.net); fee = BigInt(quote.fee); shares = BigInt(quote.shares);
       if (shares > 0n) {
@@ -35,7 +38,8 @@ export async function readExitTargets(provider: ethers.JsonRpcProvider, account:
         catch (error) { throw new PlanExitError(ethers.isError(error, "CALL_EXCEPTION") ? "liquidity" : "unavailable"); }
       }
       if (route.symbol === "USDC") {
-        const reward = await child.rewardPosition(); rewards = BigInt(reward.net); rewardFee = BigInt(reward.fee);
+        try { const reward = await child.rewardPosition(); rewards = BigInt(reward.net); rewardFee = BigInt(reward.fee); }
+        catch (error) { if (!ethers.isError(error, "CALL_EXCEPTION")) throw error; await child.principalPosition(); rewardsUnknown = true; }
       }
       // WLD's deployed full-exit method cannot dispose of a total-loss position.
       if (route.symbol === "WLD" && p.hasAssets && net <= 0n) throw new PlanExitError("liquidity");
@@ -44,7 +48,7 @@ export async function readExitTargets(provider: ethers.JsonRpcProvider, account:
       lastPing: p.lastPing.toString(), nextHeir: account, nextPeriod: p.period.toString(), checkIn: true,
       exit: { gross: gross.toString(), net: net.toString(), fee: fee.toString(), shares: shares.toString(),
         minNet: net > 0n ? minimumOutput(net).toString() : "0", rewards: rewards.toString(), rewardFee: rewardFee.toString(),
-        minRewards: rewards > 0n ? minimumOutput(rewards).toString() : "0", hasAssets: p.hasAssets, claimFiledAt: p.claimFiledAt.toString() } };
+        rewardsUnknown, minRewards: rewards > 0n ? minimumOutput(rewards).toString() : "0", hasAssets: p.hasAssets, claimFiledAt: p.claimFiledAt.toString() } };
   }));
 }
 
@@ -53,7 +57,7 @@ export function exitQuoteStillValid(reviewed: readonly SettingsTarget[], fresh: 
   return reviewed.length === fresh.length && reviewed.every(before => {
     const after = fresh.find(t => t.vault.toLowerCase() === before.vault.toLowerCase());
     return before.exit && after?.exit && before.exit.shares === after.exit.shares
-      && before.exit.hasAssets === after.exit.hasAssets && before.exit.claimFiledAt === after.exit.claimFiledAt
+      && Boolean(before.exit.rewardsUnknown) === Boolean(after.exit.rewardsUnknown) && before.exit.hasAssets === after.exit.hasAssets && before.exit.claimFiledAt === after.exit.claimFiledAt
       && BigInt(after.exit.net) >= BigInt(before.exit.minNet) && BigInt(after.exit.rewards) >= BigInt(before.exit.minRewards);
   });
 }

@@ -67,22 +67,24 @@ export function YieldChoice({ kind, terms, rates, ratesLoading, consent, busy, o
   </div>;
 }
 
-export function YieldRewardsCard({ data, error, loading, settled, recipient, received, busy, canClaim, onClaim, onProcess, onRefresh, usdc = false, canWithdraw = false, onWithdraw, held }: {
+export function YieldRewardsCard({ data, error, loading, settled, recipient, received, busy, canClaim, onClaim, onProcess, onRefresh, usdc = false, canWithdraw = false, onWithdraw, held, deferred = false }: {
   data: WldRewards | null; error: string; loading: boolean; settled: boolean; recipient: string;
   received: bigint | null; busy: boolean; canClaim: boolean; onClaim: () => void; onProcess: () => void; onRefresh: () => void;
-  usdc?: boolean; canWithdraw?: boolean; onWithdraw?: () => void; held?: bigint | null;
+  deferred?: boolean | null; usdc?: boolean; canWithdraw?: boolean; onWithdraw?: () => void; held?: bigint | null;
 }) {
   const { t } = useLocale();
+  const displayedHeld = usdc ? held ?? null : received;
   return <Card><CardHeader><CardTitle>{t("yield.rewards.title")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+    {settled && deferred !== false && <p role="status">{t(deferred ? "yield.rewards.deferred" : "yield.rewards.deferredUnknown")}</p>}
     {loading && <p role="status">{t("yield.rewards.loading")}</p>}
     {error && <div><p role="status" className="text-xs text-yellow-800">{t("yield.rewards.error")}</p><details><summary>{t("crash.details")}</summary><p className="break-all">{error}</p></details></div>}
     {data && <dl className="yield-values"><div><dt>{t("yield.rewards.ready")}</dt><dd>{formatYieldAmount(data.claimable)} WLD</dd></div><div><dt>{t("yield.rewards.pending")}</dt><dd>{formatYieldAmount(data.pending)} WLD</dd></div></dl>}
-    {received !== null && <dl className="yield-values"><div><dt>{t(usdc ? "yield.rewards.held" : "yield.rewards.received")}</dt><dd>{formatYieldAmount(received)} WLD</dd></div></dl>}
+    <dl className="yield-values"><div data-testid="received-wld-balance"><dt>{t(usdc ? "yield.rewards.held" : "yield.rewards.received")}</dt><dd>{displayedHeld === null ? t("home.value.unavailable") : `${formatYieldAmount(displayedHeld)} WLD`}</dd></div></dl>
     <p className="text-xs text-gray-600">{t(settled ? usdc ? "yield.rewards.lateUsdc" : "yield.rewards.lateWld" : usdc ? "yield.rewards.activeUsdc" : "yield.rewards.activeWld")}</p>
     {settled && recipient && <a className="text-blue-600 underline text-xs" href={`${EXPLORER}/address/${recipient}`} target="_blank" rel="noreferrer">{t("yield.rewards.recipient")}</a>}
     <p className="text-xs text-gray-600">{t("yield.rewards.eligibility")}</p>
     {data && data.claimable > 0n && <Button disabled={busy || loading || Boolean(error) || !canClaim} onClick={onClaim}>{t(settled ? "yield.rewards.claimLate" : usdc ? "yield.rewards.claimUsdc" : "yield.rewards.claimWld")}</Button>}
-    {received !== null && received > 0n && (!usdc || settled) && <Button disabled={busy || !canClaim} onClick={onProcess}>{t(settled ? "yield.rewards.receiveLate" : "yield.rewards.reinvest")}</Button>}
+    {((received !== null && received > 0n) || deferred === true) && (!usdc || settled) && <Button disabled={busy || !canClaim} onClick={onProcess}>{t(settled ? "yield.rewards.receiveLate" : "yield.rewards.reinvest")}</Button>}
     {usdc && canWithdraw && held !== null && held !== undefined && held > 0n && <Button disabled={busy || !canClaim} onClick={onWithdraw}>{t("yield.rewards.withdraw")}</Button>}
     <Button disabled={busy || loading} onClick={onRefresh}>{t("yield.rewards.refresh")}</Button>
   </CardContent></Card>;

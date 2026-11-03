@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Test all five fork suites without skips
+      - name: Test all seven fork suites without skips
         env:
           WORLDCHAIN_FORK_RPC: https://worldchain-mainnet.g.alchemy.com/public
           WORLDCHAIN_FORK_BLOCK: ${{ inputs.block }}

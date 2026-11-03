@@ -765,24 +765,26 @@ contract InheritanceVaultUSDCTest is InheritanceVaultUSDCBase {
         assertEq(usdc.balanceOf(owner), 900e6);
     }
 
-    function testDishonestRedemptionCannotFinalizeOrChargeFee() public {
+    function testDishonestRedemptionRollsBackAndSettlesOnlyRealShares() public {
         _deposit(100e6);
         vm.mockCall(address(re7), abi.encodeWithSelector(re7.redeem.selector), abi.encode(uint256(100e6)));
         vm.prank(owner);
         vm.expectRevert(InheritanceVaultUSDC.InvalidStrategy.selector);
         factory.withdrawAllFromMyVault(owner, 0);
         _eligible();
-        vm.expectRevert(InheritanceVaultUSDC.InvalidStrategy.selector);
         factory.executeInheritance(address(vault));
-        assertEq(vault.claimedAt(), 0);
-        assertEq(vault.inheritanceRecipient(), address(0));
-        assertEq(vault.costBasis(), 100e6);
+        assertGt(vault.claimedAt(), 0);
+        assertEq(vault.inheritanceRecipient(), heir);
+        assertEq(vault.costBasis(), 0);
+        assertEq(vault.accountedShares(), 0);
         assertEq(usdc.balanceOf(operator), 0);
         assertEq(usdc.balanceOf(heir), 0);
-        assertEq(re7.balanceOf(address(vault)), 100 ether);
+        assertEq(usdc.balanceOf(address(re7)), 100e6);
+        assertEq(re7.balanceOf(address(vault)), 0);
+        assertEq(re7.balanceOf(heir), 100 ether);
         vm.clearMockedCalls();
+        vm.expectRevert(InheritanceVaultUSDC.AlreadyClaimed.selector);
         factory.executeInheritance(address(vault));
-        assertEq(usdc.balanceOf(heir), 100e6);
     }
 
     function testEmptyExitAndTooManySharesRevertWithoutMovingCapital() public {

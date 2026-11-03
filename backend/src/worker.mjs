@@ -9,7 +9,7 @@ const SEND_NOTIFICATION_URL = "https://developer.world.org/api/v2/minikit/send-n
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const WATCHER_PAGE_SIZE = 4;
+const WATCHER_PAGE_SIZE = 3;
 
 // 두 단계 상속 컨트랙트(InheritanceVaultWLD)의 함수 셀렉터.
 //
@@ -39,6 +39,7 @@ const SELECTORS = {
   CANCELLED: "0x12cd6595",          // inheritanceCancelled()
   CLAIMED_AT: "0xd2217fac",          // claimedAt()          최종 수령 완료 시각
   INHERITANCE_RECIPIENT: "0xb4a9208c", // inheritanceRecipient(), yield vaults only
+  REWARDS_DEFERRED: "0x41e0843d",     // optional getter on remediated yield vaults
   STRATEGY: "0xa8c62e76",            // strategy()
   TOTAL_ASSETS: "0x01e1d114",        // totalAssets()
   HAS_ASSETS: "0x5be9b2d3",          // hasAssets()
@@ -248,7 +249,9 @@ const rpc = async (env, method, params = []) => {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data?.error) {
-    throw new Error(data?.error?.message || `RPC ${method} failed`);
+    const error = new Error(data?.error?.message || `RPC ${method} failed`);
+    error.rpcCode = data?.error?.code;
+    throw error;
   }
   return data.result;
 };
@@ -301,6 +304,21 @@ const readUint = async (env, to, selector, fallback = null) => {
  * 두 단계 상속이라 "지금 돈을 뺄 수 있나" 를 뜻하는 단일 불리언으로는 부족하다.
  * 누구에게 무엇을 알릴지가 이 값들에 달려 있으므로 전부 읽는다.
  */
+// Older immutable vaults reject this unknown selector. Transport/provider failures
+// remain unknown and cannot authorize completion or permanent watcher retirement.
+const readRewardsDeferred = async (env, vault, blockTag) => {
+  try {
+    const result = await ethCall(env, vault, SELECTORS.REWARDS_DEFERRED, blockTag);
+    if (!/^0x[0-9a-f]{64}$/i.test(result) || BigInt(result) > 1n) return null;
+    return BigInt(result) === 1n;
+  } catch (error) {
+    if (error.rpcCode === 3 || /^(execution reverted\b|function selector was not recognized\b)/i.test(error.message || "")) return false;
+    return null;
+  }
+};
+const completionPendingRewards = snapshot => snapshot.yieldVault === true && snapshot.claimedAt > 0n
+  && snapshot.rewardsDeferred !== false;
+
 const getVaultIdentity = async (env, vaultAddress) => {
   const vault = normalizeAddress(vaultAddress);
   if (!vault) throw new Error("Invalid vault address");
@@ -398,17 +416,20 @@ const getVaultIdentity = async (env, vaultAddress) => {
     throw new HttpError(400, "A vault without an heir must have a completed claim");
   }
   let inheritanceRecipient = null;
+  let rewardsDeferred = false;
   if (yieldVault && claimedAt > 0n) {
     try {
       const finalizedRecipient = decodeAddress(await ethCall(env, vault, SELECTORS.INHERITANCE_RECIPIENT, "finalized"));
       if (finalizedRecipient !== ZERO_ADDRESS) inheritanceRecipient = finalizedRecipient;
+      rewardsDeferred = await readRewardsDeferred(env, vault, "finalized");
     } catch {
       throw new HttpError(503, "Could not verify the yield vault's inheritance recipient");
     }
   }
   return { vaultAddress: vault, ownerAddress, heirAddress, factoryAddress, tokenAddress, claimedAt,
-    yieldVault, inheritanceRecipient,
-    settled: yieldVault && claimedAt > 0n && inheritanceRecipient !== null };
+    yieldVault, inheritanceRecipient, rewardsDeferred,
+    partialSettlement: yieldVault && claimedAt > 0n && rewardsDeferred === true,
+    settled: yieldVault && claimedAt > 0n && inheritanceRecipient !== null && rewardsDeferred === false };
 };
 
 const requireVaultAccess = async (env, vaultAddress, walletAddress, ownerOnly = false) => {
@@ -421,7 +442,7 @@ const requireVaultAccess = async (env, vaultAddress, walletAddress, ownerOnly = 
   if (!isOwner && (ownerOnly || (!currentHeir && !completedBeneficiary))) {
     throw new HttpError(403, ownerOnly ? "Only the vault owner can disable reminders" : "Wallet is not the vault owner or heir");
   }
-  return { ...identity, settled };
+  return { ...identity, settled: settled && !completionPendingRewards(identity) };
 };
 
 const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
@@ -474,6 +495,8 @@ const getVaultSnapshot = async (env, vaultAddress, identity = null) => {
     claimedAt,
     inheritanceRecipient: checked.inheritanceRecipient || null,
     yieldVault: checked.yieldVault === true,
+    rewardsDeferred: checked.rewardsDeferred,
+    partialSettlement: checked.partialSettlement === true,
     settled: checked.settled === true,
     challengeEndsAt,
     timeRemaining,
@@ -519,6 +542,8 @@ const watcherForIdentity = (watcher, identity) => {
       ? identity.inheritanceRecipient : identity.heirAddress,
     inheritanceRecipient: identity.inheritanceRecipient || null,
     settled: identity.settled === true,
+    rewardsDeferred: identity.rewardsDeferred,
+    partialSettlement: identity.partialSettlement === true,
     alerts,
   };
 };
@@ -682,7 +707,7 @@ const upsertWatcherFromSnapshot = async (env, snapshot) => withWatcherLease(env,
     ownerAddress: snapshot.ownerAddress,
     heirAddress: settled && settlementRecipient ? settlementRecipient
       : observedSettled ? prev?.heirAddress || snapshot.heirAddress : snapshot.heirAddress,
-    active: !settled || snapshot.yieldVault && completion?.delivered !== true,
+    active: !settled || completionPendingRewards(snapshot) || snapshot.yieldVault && completion?.delivered !== true,
     createdAt: prev?.createdAt || stamp,
     updatedAt: stamp,
     lastCheckedAt: prev?.lastCheckedAt || null,
@@ -985,6 +1010,15 @@ export const checkWatcher = async (env, watcher, caller = null) => {
             });
             return { notified: false, reason: "completion_recipient_unavailable" };
           }
+          if (completionPendingRewards(snapshot)) {
+            // Principal may have arrived, but held rewards still belong to this
+            // fixed beneficiary. Observe only: reconciliation requires a user action.
+            prevAlerts.inheritanceRecipient = recipient;
+            await saveWatcher(env, { ...next, ownerAddress: snapshot.ownerAddress, heirAddress: recipient,
+              active: true, lastClaimable: false, lastVaultBalance: snapshot.vaultBalance.toString(),
+              alerts: prevAlerts, lastError: snapshot.rewardsDeferred === null ? "Could not verify deferred reward settlement" : null });
+            return { notified: false, reason: snapshot.rewardsDeferred === true ? "rewards_settlement_pending" : "rewards_settlement_unknown" };
+          }
           const previousCompletion = prevAlerts[ALERT.HEIR_COMPLETED];
           if (previousCompletion?.recipient && !addrEq(previousCompletion.recipient, recipient)) {
             delete prevAlerts[ALERT.HEIR_COMPLETED];
@@ -1177,7 +1211,7 @@ const handleRequest = async (request, env) => {
     const cursorParam = url.searchParams.get("cursor");
     if (cursorParam !== null && !ADDRESS_RE.test(cursorParam)) throw new HttpError(400, "Invalid vault-address cursor");
     const cursor = cursorParam?.toLowerCase() || null;
-    // One SQL lookahead determines continuation; only four candidates incur RPCs.
+    // Three candidates leave room for settled yield deferred-reward probes under the Free RPC limit.
     const candidates = await listWatchers(env, false, caller, { after: cursor, limit: WATCHER_PAGE_SIZE + 1 });
     const page = candidates.slice(0, WATCHER_PAGE_SIZE);
     const nextCursor = candidates.length > WATCHER_PAGE_SIZE ? page.at(-1).vaultAddress : null;

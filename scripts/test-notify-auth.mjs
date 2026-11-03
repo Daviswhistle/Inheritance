@@ -110,6 +110,12 @@ function fixture() {
         if (selector === "0xb4a9208c" && value.recipientReadFails) {
           return Response.json({ jsonrpc: "2.0", id: body.id, error: { message: "recipient read unavailable" } });
         }
+        if (selector === "0x41e0843d" && value.deferredReadFails) {
+          return Response.json({ jsonrpc: "2.0", id: body.id, error: { message: "deferred network unavailable" } });
+        }
+        if (selector === "0x41e0843d" && value.legacyDeferredGetter) {
+          return Response.json({ jsonrpc: "2.0", id: body.id, error: { code: 3, message: "execution reverted" } });
+        }
         const selectors = {
           "0x8da5cb5b": addressWord(value.owner), "0x91f2ebb8": addressWord(value.heir),
           "0xc45a0155": addressWord(value.factory), "0xde061d66": addressWord(value.wld || ZERO),
@@ -118,6 +124,7 @@ function fixture() {
           "0x5be9b2d3": word(value.hasAssets ?? BigInt(value.balance ?? 0) > 0n),
           "0x2f13b60c": word(value.expired), "0x03a9f06e": word(value.pending),
           "0xc4671608": word(value.finalizable), "0x12cd6595": word(value.cancelled),
+          "0x41e0843d": word(value.rewardsDeferred || false),
           "0xd2217fac": word(value.claimedAt), "0xb4a9208c": addressWord(value.inheritanceRecipient || ZERO),
           "0x765be13f": word(value.challengeEndsAt),
           "0xe3cfef60": word(value.remaining), "0x561a4fac": word(value.interval),
@@ -647,7 +654,7 @@ try {
     assert.deepEqual(data.watchers, []);
     assert.equal((await call(context, `/status?vaultAddress=${VAULT}`, HEIR)).status, 403);
   });
-  await test("eleven related vaults are returned across stable four-candidate pages below the Free external limit", async (context) => {
+  await test("eleven related vaults are returned across stable three-candidate pages below the Free external limit", async (context) => {
     const addresses = await addRelatedWatchers(context);
     let externalCalls = 0;
     globalThis.fetch = async (input, init) => {
@@ -663,22 +670,22 @@ try {
       const response = await call(context, cursor ? `?cursor=${cursor}` : "", HEIR);
       assert.equal(response.status, 200, await response.clone().text());
       const data = await response.json();
-      assert.ok(data.watchers.length <= 4);
+      assert.ok(data.watchers.length <= 3);
       found.push(...data.watchers.map((entry) => entry.vaultAddress));
-      assert.ok(externalCalls <= 24, `${externalCalls} external calls exceeds the four-candidate bound`);
+      assert.ok(externalCalls <= 18, `${externalCalls} external calls exceeds the three-candidate bound`);
       counts.push(externalCalls);
       assert.ok(data.nextCursor === null || !cursor || data.nextCursor > cursor);
       cursor = data.nextCursor;
     } while (cursor);
     assert.deepEqual(found, addresses);
-    assert.deepEqual(counts, [24, 24, 18]);
+    assert.deepEqual(counts, [18, 18, 18, 12]);
     externalCalls = 0;
     assert.equal((await call(context, `?cursor=${addresses[3]}`, HEIR, undefined, null)).status, 401);
     assert.equal(externalCalls, 0, "Unauthenticated pagination must not make chain requests");
   });
   await test("watcher cursor is validated and filtered empty pages still advance to authorized vaults", async (context) => {
     const addresses = await addRelatedWatchers(context, 9);
-    for (const address of addresses.slice(0, 4)) context.vaults.get(address).heir = STRANGER;
+    for (const address of addresses.slice(0, 3)) context.vaults.get(address).heir = STRANGER;
     for (const cursor of ["", "bad", "0x1", `${VAULT}extra`]) {
       assert.equal((await call(context, `?cursor=${encodeURIComponent(cursor)}`, HEIR)).status, 400);
     }
@@ -686,12 +693,12 @@ try {
     assert.equal(response.status, 200);
     let data = await response.json();
     assert.deepEqual(data.watchers, []);
-    assert.equal(data.nextCursor, addresses[3]);
+    assert.equal(data.nextCursor, addresses[2]);
     response = await call(context, `?cursor=${data.nextCursor.toUpperCase().replace("0X", "0x")}`, HEIR);
     assert.equal(response.status, 200);
     data = await response.json();
-    assert.deepEqual(data.watchers.map((entry) => entry.vaultAddress), addresses.slice(4, 8));
-    assert.equal(data.nextCursor, addresses[7]);
+    assert.deepEqual(data.watchers.map((entry) => entry.vaultAddress), addresses.slice(3, 6));
+    assert.equal(data.nextCursor, addresses[5]);
     response = await call(context, `?cursor=${addresses.at(-1)}`, HEIR);
     assert.deepEqual(await response.json(), { status: "success", watchers: [], nextCursor: null });
   });
@@ -716,14 +723,14 @@ try {
       cursor = data.nextCursor;
     } while (cursor);
     assert.deepEqual(found, addresses);
-    assert.deepEqual(counts, [44, 44, 33]);
+    assert.deepEqual(counts, [33, 33, 33, 22]);
     externalCalls = 0;
     const cycle = await __test.runCheckCycle(context.env);
     assert.equal(cycle.checked, 2);
     assert.equal(cycle.notified, 2);
     assert.equal(context.deliveries.length, 2);
     assert.equal(externalCalls, 42);
-    console.log("  USDC pages: 44/44/33 requests; notification cycle: 42 requests");
+    console.log("  USDC pages: 33/33/33/22 requests; notification cycle: 42 requests");
   });
   await test("settled USDC discovery stays below 50 requests with finalized recipient proof", async (context) => {
     const addresses = await addRelatedWatchers(context, 4);
@@ -751,14 +758,14 @@ try {
       const response = await call(context, cursor ? `?cursor=${cursor}` : "", HEIR);
       assert.equal(response.status, 200, await response.clone().text());
       const data = await response.json();
-      assert.ok(data.watchers.length <= 4);
+      assert.ok(data.watchers.length <= 3);
       found.push(...data.watchers.map(entry => entry.vaultAddress));
       counts.push(externalCalls);
       cursor = data.nextCursor;
     } while (cursor);
     assert.deepEqual(found, addresses);
-    assert.deepEqual(counts, [48]);
-    console.log("  Settled USDC page: 48 requests (finalized recipient getter proves settlement)");
+    assert.deepEqual(counts, [39, 13]);
+    console.log("  Settled USDC pages: 39/13 requests including deferred-reward checks");
   });
   await test("two settled yield completion deliveries stay below the 50-request cycle limit", async (context) => {
     const addresses = await addRelatedWatchers(context, 2);
@@ -780,7 +787,7 @@ try {
     const cycle = await __test.runCheckCycle(context.env);
     assert.deepEqual(cycle, { checked: 2, notified: 2 });
     assert.equal(context.deliveries.length, 2);
-    assert.equal(externalCalls, 44);
+    assert.equal(externalCalls, 46);
     console.log(`  Settled yield completion cycle: ${externalCalls} requests`);
   });
   await test("RPC failures during watcher verification fail the page instead of reporting partial success", async (context) => {
@@ -929,6 +936,50 @@ try {
     assert.equal((await call(context, "", HEIR)).status, 503);
     assert.equal(context.deliveries.length, 0);
   });
+  await test("deferred rewards completion waits for finalized reconciliation", async (context) => {
+    const state = configureUSDC(context, { heir: ZERO, claimedAt: Math.floor(Date.now() / 1000),
+      inheritanceRecipient: HEIR, hasAssets: false, balance: 0n, rewardsDeferred: false });
+    context.finalizedVaults.set(USDC_VAULT, { ...state, rewardsDeferred: true });
+    await __test.saveWatcher(context.env, watcher(USDC_VAULT, OWNER, HEIR));
+    await __test.runCheckCycle(context.env);
+    assert.equal((await __test.getWatcherByVault(context.env, USDC_VAULT)).active, true);
+    assert.equal(context.deliveries.length, 0);
+    context.finalizedVaults.set(USDC_VAULT, { ...state });
+    await __test.runCheckCycle(context.env);
+    assert.equal((await __test.getWatcherByVault(context.env, USDC_VAULT)).active, false);
+    assert.equal(context.deliveries.length, 1);
+  });
+  for (const mode of ["deferred", "unknown", "legacy"]) {
+    await test(`yield completion handles ${mode} rewards without retiring early`, async (context) => {
+      const state = configureUSDC(context, { heir: ZERO, claimedAt: Math.floor(Date.now() / 1000),
+        inheritanceRecipient: HEIR, hasAssets: true, balance: 10n ** 18n,
+        rewardsDeferred: mode === "deferred", deferredReadFails: mode === "unknown",
+        legacyDeferredGetter: mode === "legacy" });
+      await __test.saveWatcher(context.env, watcher(USDC_VAULT, OWNER, HEIR));
+      const snapshot = await __test.getVaultSnapshot(context.env, USDC_VAULT);
+      assert.equal(snapshot.rewardsDeferred, mode === "unknown" ? null : mode === "deferred");
+      assert.equal(snapshot.partialSettlement, mode === "deferred");
+      await __test.runCheckCycle(context.env);
+      let stored = await __test.getWatcherByVault(context.env, USDC_VAULT);
+      if (mode !== "legacy") {
+        assert.equal(stored.active, true);
+        assert.equal(stored.alerts.heir_completed, undefined);
+        assert.equal(context.deliveries.length, 0);
+        assert.equal((await call(context, `/status?vaultAddress=${USDC_VAULT}`, HEIR)).status, 200,
+          "fixed beneficiary retains access during partial/unknown settlement");
+        await register(context, USDC_VAULT);
+        assert.equal((await __test.getWatcherByVault(context.env, USDC_VAULT)).active, true);
+        Object.assign(state, { rewardsDeferred: false, deferredReadFails: false, hasAssets: false, balance: 0n });
+        await __test.runCheckCycle(context.env);
+        stored = await __test.getWatcherByVault(context.env, USDC_VAULT);
+      }
+      assert.equal(stored.active, false);
+      assert.equal(stored.alerts.heir_completed.delivered, true);
+      assert.equal(context.deliveries.length, 1);
+      await __test.runCheckCycle(context.env);
+      assert.equal(context.deliveries.length, 1);
+    });
+  }
   await test("yield completion waits for canonical finality, delivers to the immutable recipient once", async (context) => {
     const state = configureUSDC(context, {
       expired: true, pending: true, finalizable: true, challengeEndsAt: 1,
@@ -1281,9 +1332,9 @@ try {
     const data = await frontend.fetchRegisteredVaults("https://notify.test/");
     assert.deepEqual(data.watchers.map((entry) => entry.vaultAddress), addresses);
     assert.equal(data.truncated, false);
-    assert.deepEqual(externalCounts, [24, 24, 18]);
+    assert.deepEqual(externalCounts, [18, 18, 18, 12]);
     const capped = await frontend.fetchRegisteredVaults("https://notify.test", 1);
-    assert.equal(capped.watchers.length, 4);
+    assert.equal(capped.watchers.length, 3);
     assert.equal(capped.truncated, true);
   });
   await test("frontend follows empty pages and accepts older responses without a continuation cursor", async () => {

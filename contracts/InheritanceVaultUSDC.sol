@@ -33,6 +33,8 @@ contract InheritanceVaultUSDC {
     error EthNotAccepted();
     error EthTransferFailed();
 
+    event RewardsDeferred(uint256 held);
+    event DeferredRewardsSettled(address indexed recipient, uint256 grossAssets);
     event Ping(uint256 timestamp);
     event HeirUpdated(address indexed oldHeir, address indexed newHeir);
     event HeartbeatUpdated(uint256 oldInterval, uint256 newInterval);
@@ -74,6 +76,9 @@ contract InheritanceVaultUSDC {
     uint256 public claimFiledAt;
     uint256 public claimedAt;
     address public inheritanceRecipient;
+    /// @notice While true, all WLD held until reconciliation belongs to the fixed heir,
+    /// including intervening gifts; an unavailable reward counter cannot date them.
+    bool public rewardsDeferred;
     /// @notice Remaining deposited USDC allocated to fee-bearing receipt shares.
     uint256 public costBasis;
     uint256 public accountedShares;
@@ -240,6 +245,26 @@ contract InheritanceVaultUSDC {
         net = gross - fee;
     }
 
+    /// @notice Merkl-independent exit quote. WLD excludes unknown idle cash;
+    /// USDC includes idle USDC but excludes the separately held WLD rewards.
+    function principalPosition()
+        external
+        view
+        returns (uint256 shares, uint256 gross, uint256 net, uint256 fee, bool valued)
+    {
+        shares = strategy.balanceOf(address(this));
+        gross = IERC20(asset).balanceOf(address(this));
+        valued = shares == 0;
+        if (shares != 0) {
+            try strategy.convertToAssets(shares) returns (uint256 value) {
+                gross += value;
+                fee = _exitFee(shares, shares, value);
+                valued = true;
+            } catch { /* An unknown strategy value is not a cash exit quote. */ }
+        }
+        net = gross - fee;
+    }
+
     /// @notice Positive USDC income attributable only to tracked receipt shares.
     /// Idle USDC, WLD rewards and receipt-share gifts are excluded.
     function incomePosition()
@@ -304,6 +329,17 @@ contract InheritanceVaultUSDC {
     /// @notice Return cumulative canonical rewards not yet processed by the vault's reward accounting.
     function unprocessedRewards() public view returns (uint256) {
         return totalRewardsClaimed() - accountedRewards;
+    }
+
+    function _exitRewards() private view returns (uint256 pending, bool available) {
+        // The self-call bounds both the distributor and ABI decoding, including
+        // malformed return data or an external getter that exhausts its gas.
+        try this.unprocessedRewards{gas: 50_000}() returns (uint256 amount) {
+            if (amount > IERC20(rewardToken).balanceOf(address(this))) revert InvalidRewards();
+            return (amount, true);
+        } catch {
+            return (0, false);
+        }
     }
 
     /// @notice Allow the owner or trusted factory to renew the timer and cancel any pending claim.
@@ -392,11 +428,17 @@ contract InheritanceVaultUSDC {
     function _processRewards(uint256 minShares) private returns (uint256 rewards) {
         if (minShares != 0) revert InvalidRewards();
         rewards = _pendingRewards();
-        if (claimedAt == 0 || rewards == 0) return 0;
+        if (claimedAt == 0 || (rewards == 0 && !rewardsDeferred)) return 0;
+        uint256 canonical = rewards;
         uint256 fee = _takeRewardFee(rewards);
+        if (rewardsDeferred) {
+            rewards = IERC20(rewardToken).balanceOf(address(this));
+            rewardsDeferred = false;
+            emit DeferredRewardsSettled(inheritanceRecipient, rewards);
+        }
         _payRewardFee(fee);
         SafeERC20Lib.safeTransfer(rewardToken, inheritanceRecipient, rewards - fee);
-        emit RewardsClaimed(rewards, 0, inheritanceRecipient);
+        emit RewardsClaimed(canonical, 0, inheritanceRecipient);
     }
 
     /// @notice Requested gross USDC less the fee on realized USDC yield.
@@ -519,7 +561,6 @@ contract InheritanceVaultUSDC {
         ) {
             revert NothingToTransfer();
         }
-        _pendingRewards();
         uint256 fee;
         if (shares != 0) {
             uint256 beforeAssets = IERC20(asset).balanceOf(address(this));
@@ -536,7 +577,7 @@ contract InheritanceVaultUSDC {
         if (net < minNetAssets) revert SlippageExceeded();
         _payFee(fee, 0);
         if (net != 0) SafeERC20Lib.safeTransfer(asset, to, net);
-        _sendAllRewards(to);
+        _sendAllRewards(to, true);
         emit OwnerWithdrawnAsset(to, net);
     }
 
@@ -544,7 +585,7 @@ contract InheritanceVaultUSDC {
     function ownerWithdrawRewards(address to) external onlyOwnerOrFactory withdrawableOwner nonReentrant {
         _validRecipient(to);
         if (IERC20(rewardToken).balanceOf(address(this)) == 0) revert NothingToTransfer();
-        _sendAllRewards(to);
+        _sendAllRewards(to, false);
     }
 
     /// @notice File the named heir's claim after heartbeat expiry and start the fixed review period.
@@ -567,33 +608,37 @@ contract InheritanceVaultUSDC {
         address recipient = heir;
         uint256 shares = strategy.balanceOf(address(this));
         uint256 idle = IERC20(asset).balanceOf(address(this));
-        _pendingRewards();
         if (shares == 0 && idle == 0 && IERC20(rewardToken).balanceOf(address(this)) == 0) revert NothingToTransfer();
         claimedAt = block.timestamp;
         inheritanceRecipient = recipient;
         heir = address(0);
-        uint256 fee;
         if (shares != 0) {
-            try strategy.redeem{gas: AUTOMATIC_REDEEM_GAS}(shares, address(this), address(this)) returns (
-                uint256 assets
-            ) {
-                if (strategy.balanceOf(address(this)) != 0 || IERC20(asset).balanceOf(address(this)) - idle != assets) {
-                    revert InvalidStrategy();
-                }
-                fee = _accountExit(shares, shares, assets, true);
-            } catch {
+            // Roll back redemption AND its fee together before a share fallback.
+            try this.redeemInheritance{gas: AUTOMATIC_REDEEM_GAS + 150_000}(shares, idle) {}
+            catch {
                 emit InheritanceSharesFinalized(recipient, _sendShares(shares, recipient), claimedAt);
             }
         }
-        _payFee(fee, 0);
         uint256 payout = IERC20(asset).balanceOf(address(this));
         if (payout != 0) SafeERC20Lib.safeTransfer(asset, recipient, payout);
-        _sendAllRewards(recipient);
+        _sendAllRewards(recipient, true);
         emit InheritanceFinalized(recipient, payout, claimedAt);
     }
 
+    /// @notice Atomic cash attempt used only inside guarded inheritance settlement.
+    /// A rejected USDC fee rolls back this entire subcall so receipt shares remain available.
+    function redeemInheritance(uint256 shares, uint256 idle) external {
+        if (msg.sender != address(this)) revert NotOwner();
+        uint256 assets = strategy.redeem{gas: AUTOMATIC_REDEEM_GAS}(shares, address(this), address(this));
+        if (strategy.balanceOf(address(this)) != 0 || IERC20(asset).balanceOf(address(this)) - idle != assets) {
+            revert InvalidStrategy();
+        }
+        _payFee(_accountExit(shares, shares, assets, true), 0);
+    }
+
     /// @notice Late canonical WLD belongs to the fixed heir. Only subsequent
-    /// gifts of USDC, WLD or receipt shares may be recovered by the original owner.
+    /// gifts may be recovered by the original owner, except all WLD held during
+    /// a deferred-reward epoch belongs to the heir until reconciliation succeeds.
     function ownerSweepAfterSettlement(address to) external onlyOwnerOrFactory nonReentrant {
         _validRecipient(to);
         if (claimedAt == 0) revert NotSettled();
@@ -690,8 +735,21 @@ contract InheritanceVaultUSDC {
         emit RewardFeePaid(feeRecipient, fee);
     }
 
-    function _sendAllRewards(address to) private {
-        uint256 fee = _takeRewardFee(_pendingRewards());
+    function _sendAllRewards(address to, bool allowDeferral) private {
+        uint256 pending;
+        if (allowDeferral) {
+            bool available;
+            (pending, available) = _exitRewards();
+            if (!available) {
+                uint256 held = IERC20(rewardToken).balanceOf(address(this));
+                if (claimedAt != 0 && held != 0) rewardsDeferred = true;
+                emit RewardsDeferred(held);
+                return;
+            }
+        } else {
+            pending = _pendingRewards();
+        }
+        uint256 fee = _takeRewardFee(pending);
         uint256 net = IERC20(rewardToken).balanceOf(address(this)) - fee;
         _payRewardFee(fee);
         if (net != 0) SafeERC20Lib.safeTransfer(rewardToken, to, net);

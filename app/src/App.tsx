@@ -23,7 +23,7 @@ import { WalletInvestment } from "@/components/WalletInvestment";
 import { AssetNavigation } from "@/components/AssetNavigation";
 import { IncomeHistoryCard, type IncomeHistoryView } from "@/components/IncomeHistory";
 import { IncomePositionCard, YieldPositionCard, YieldRewardsCard } from "@/components/YieldVault";
-import { MORPHO_ABI, MERKL_DISTRIBUTOR, minimumOutput, formatYieldAmount } from "@/yield";
+import { MORPHO_ABI, MERKL_DISTRIBUTOR, minimumOutput, formatYieldAmount, readRewardsDeferred, verifiesDeferredSettlement } from "@/yield";
 import type { YieldPosition, YieldTerms } from "@/yield";
 import { fetchWldRewards, remainingWldRewards } from "@/rewards";
 import type { WldRewards } from "@/rewards";
@@ -402,7 +402,7 @@ export default function App() {
   incomeHistoryReadRef.current = incomeHistoryRead;
   const [incomeTo, setIncomeTo] = useState("");
   const [yieldHoldings, setYieldHoldings] = useState<{ scope: string; idle: bigint; shares: bigint } | null>(null);
-  const [receivedRewards, setReceivedRewards] = useState<{ scope: string; amount: bigint } | null>(null);
+  const [receivedRewards, setReceivedRewards] = useState<{ scope: string; amount: bigint | null; deferred: boolean | null } | null>(null);
   const [heldRewardCash, setHeldRewardCash] = useState<{ scope: string; amount: bigint } | null>(null);
   const [yieldReadError, setYieldReadError] = useState<{ scope: string; failed: boolean } | null>(null);
   const [rewardState, setRewardState] = useState<{ scope: string; data: WldRewards | null; loading: boolean; error: string } | null>(null);
@@ -679,11 +679,12 @@ export default function App() {
   const vaultWldForWithdrawal = isYieldVault && selectedYieldHoldings && selectedYieldHoldings.idle > vaultWld
     ? selectedYieldHoldings.idle : vaultWld;
   const selectedRewards = rewardState?.scope === balanceScope ? rewardState : null;
+  const selectedDeferredRewards = receivedRewards?.scope === balanceScope ? receivedRewards.deferred : null;
   const selectedReceivedRewards = receivedRewards?.scope === balanceScope ? receivedRewards.amount : null;
   const selectedIncome = incomeRead?.scope === balanceScope ? incomeRead : null;
   const selectedIncomeHistory = incomeHistoryRead?.scope === balanceScope ? incomeHistoryRead : null;
   const hasRewardAction = Boolean((selectedRewards?.data?.claimable ?? 0n) > 0n
-    || (selectedReceivedRewards ?? 0n) > 0n
+    || selectedDeferredRewards === true || (selectedReceivedRewards ?? 0n) > 0n
     || isUsdcVault && heldRewardCash?.scope === balanceScope && heldRewardCash.amount > 0n);
   const incomeRecipientValid = Boolean(incomeTo && ethers.isAddress(incomeTo)
     && ethers.getAddress(incomeTo) !== ethers.ZeroAddress);
@@ -1846,7 +1847,7 @@ export default function App() {
         if (String(owner).toLowerCase() !== key || String(sourceFactory).toLowerCase() !== item.factory.toLowerCase()
           || String(tokenAddress).toLowerCase() !== asset.toLowerCase()) throw new Error("Owner or asset identity mismatch");
         let balance: bigint | null;
-        let additionalWld = 0n;
+        let additionalWld: bigint | null = 0n;
         let hasAssets = false;
         if (route) {
           const [strategy, distributor, known] = await Promise.all([
@@ -1855,10 +1856,13 @@ export default function App() {
           if (String(strategy).toLowerCase() !== route.strategy.toLowerCase()
             || String(distributor).toLowerCase() !== MERKL_DISTRIBUTOR.toLowerCase() || !known) throw new Error("Yield identity mismatch");
           if (route.symbol === "USDC" && String(await child.rewardToken()).toLowerCase() !== WLD_ADDRESS.toLowerCase()) throw new Error("Reward token mismatch");
-          const position = await child.position();
-          balance = position.valued ? BigInt(position.net) : null;
-          hasAssets = position.shares > 0n || position.idle > 0n;
-          if (route.symbol === "USDC") additionalWld = BigInt((await child.rewardPosition()).net);
+          hasAssets = Boolean(await child.hasAssets());
+          try { const position = await child.position(); balance = position.valued ? BigInt(position.net) : null; }
+          catch { balance = null; }
+          if (route.symbol === "USDC") {
+            try { additionalWld = BigInt((await child.rewardPosition()).net); }
+            catch { additionalWld = null; }
+          }
         } else {
           const token = new ethers.Contract(asset, ERC20_ABI, provider);
           const decimals = Number(await token.decimals());
@@ -1868,7 +1872,7 @@ export default function App() {
         }
         const heir = String(heirAddress);
         const activePlan = BigInt(claimedAt) === 0n && heir !== ethers.ZeroAddress && heir.toLowerCase() !== key;
-        return { address: item.address, factory: item.factory, symbol, balance, hasAssets: hasAssets || additionalWld > 0n, additionalWld, heir,
+        return { address: item.address, factory: item.factory, symbol, balance, hasAssets: hasAssets || (additionalWld ?? 0n) > 0n, additionalWld, heir,
           period: Number(heartbeat) / 86400, periodSeconds: BigInt(heartbeat), lastPing: BigInt(lastPing), settled: BigInt(claimedAt) > 0n, active: activePlan };
       }));
       if (!active || request !== ownedPlanRequest.current || key !== account.toLowerCase()) return;
@@ -1886,6 +1890,10 @@ export default function App() {
       if (ownedVaultRead.account === key) ownedVaultRead.unavailableFactories.forEach(markUnavailable);
       results.forEach((result, index) => {
         if (result.status === "rejected") markUnavailable(sources[index].factory);
+        else {
+          if (result.value.balance === null) unavailableSymbols.add(result.value.symbol);
+          if (result.value.additionalWld === null) unavailableSymbols.add("WLD");
+        }
       });
       setOwnedPlanRead({ account: key, loading: false,
         incomplete: ownedVaultRead.incomplete || results.some(result => result.status === "rejected"),
@@ -2123,8 +2131,10 @@ export default function App() {
           (async () => {
             if (!selectedYieldRoute) return;
             const ctr = new ethers.Contract(vault, selectedYieldRoute.vaultAbi, provider);
-            const amount: bigint = await ctr.unprocessedRewards();
-            if (sharesReadCurrent()) setReceivedRewards({ scope, amount });
+            let deferred: boolean | null = null, amount: bigint | null = null;
+            try { deferred = await readRewardsDeferred(ctr as unknown as { rewardsDeferred: () => Promise<boolean> }); } catch { /* Unknown remains visible. */ }
+            try { amount = await ctr.unprocessedRewards(); } catch { /* Principal reads are independent. */ }
+            if (sharesReadCurrent()) setReceivedRewards({ scope, amount, deferred });
           })(),
           (async () => {
             if (!selectedYieldRoute) return;
@@ -3834,7 +3844,10 @@ export default function App() {
       rememberInheritances(account, fresh.map(p => p.address));
       for (const p of fresh) if (kind === "file" && NOTIFY_BACKEND_ENABLED) void registerWatcher(p.address, p.owner, p.heir, true).catch(() => {});
       await Promise.all([refreshInheritedPositions(), refreshVaultDetails(), refreshBalances(), refreshTimer()]);
-      setStatus(t(kind === "file" ? "journey.heir.filed" : "journey.heir.received"));
+      if (kind === "finish") {
+        const settled = await Promise.all(fresh.map(p => readInheritancePosition(provider, p.address)));
+        setStatus(settled.some(p => p.rewardsDeferred !== false) ? t("yield.rewards.deferred") : t("journey.heir.received"));
+      } else setStatus(t("journey.heir.filed"));
     } catch (error) { setStatus(errorText(error)); pushToast("error", errorText(error)); await refreshInheritedPositions(); }
   };
 
@@ -3968,8 +3981,10 @@ export default function App() {
           let freshPosition;
           try {
             freshPosition = await new ethers.Contract(submission.vault, submission.vaultAbi, provider).position();
-          } catch {
-            throw new Error("The yield position value is unavailable. Refresh the balance before withdrawing all.");
+          } catch (error) {
+            if (!ethers.isError(error, "CALL_EXCEPTION")) throw error;
+            const principal = await new ethers.Contract(submission.vault, submission.vaultAbi, provider).principalPosition();
+            freshPosition = { ...principal, shares: principal.shares, idle, net: principal.net, valued: principal.valued };
           }
           if (!scopeIsCurrent()) return;
           if (!freshPosition.valued || freshPosition.shares !== shares || freshPosition.idle !== idle) {
@@ -4005,7 +4020,10 @@ export default function App() {
           return held < before || submission.isYieldVault && await token.balanceOf(submission.vault) < beforeIdle;
         },
       });
-      setStatus("Withdraw complete");
+      const remaining = submission.isYieldVault && (await token.balanceOf(submission.vault) > 0n
+        || await asset.balanceOf(submission.vault) > 0n
+        || submission.isUsdcVault && await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(submission.vault) > 0n);
+      setStatus(remaining ? t("exit.remaining") : "Withdraw complete");
       // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
       // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
       void refreshVaultDetails();
@@ -4157,8 +4175,10 @@ export default function App() {
     const selectedVault = vault, selectedFactory = vaultFactory;
     try {
       const contract = new ethers.Contract(selectedVault, selectedVaultAbi, provider);
-      const [amount, settledAt] = await Promise.all([contract.unprocessedRewards(), contract.claimedAt()]);
-      if (amount === 0n) throw new Error("No received WLD rewards remain to process. Refresh the balances.");
+      const [amount, settledAt, deferred] = await Promise.all([contract.unprocessedRewards(), contract.claimedAt(),
+        readRewardsDeferred(contract as unknown as { rewardsDeferred: () => Promise<boolean> })]);
+      if (amount === 0n && !deferred) throw new Error("No received WLD rewards remain to process. Refresh the balances.");
+      const fixedRecipient = deferred ? String(await contract.inheritanceRecipient()) : "";
       const receipt = new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider);
       const minShares = settledAt === 0n && !isUsdcVault ? minimumOutput(await receipt.previewDeposit(amount)) : 0n;
       if (scope !== balanceScopeRef.current) return;
@@ -4166,7 +4186,10 @@ export default function App() {
         functionName: "processRewardsFor", args: [selectedVault, minShares.toString()] }]);
       if (!sent.ok) { setStatus(sent.error); return; }
       await waitForTxOrEvent(getRwProvider(), { txHash: sent.tx.hash, hashType: sent.tx.hashType,
-        check: async () => await contract.unprocessedRewards() < amount });
+        verifyReceipt: deferred ? async receipt => verifiesDeferredSettlement(receipt.logs, selectedVault, fixedRecipient)
+          && !await contract.rewardsDeferred({ blockTag: receipt.blockNumber })
+          && await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(selectedVault, { blockTag: receipt.blockNumber }) === 0n : undefined,
+        check: async () => deferred ? !await readRewardsDeferred(contract as unknown as { rewardsDeferred: () => Promise<boolean> }) : await contract.unprocessedRewards() < amount });
       if (scope !== balanceScopeRef.current) return;
       setStatus(settledAt === 0n ? "Received WLD rewards reinvested. Your principal and timer are unchanged."
         : "Received rewards paid to the fixed inheritance recipient after the net-gain fee.");
@@ -4382,10 +4405,10 @@ export default function App() {
           </Card>
         </div>
       )}
-      {settingsReview?.kind === "exit" && !settingsPending && <MoneyReview title={t(settingsReview.targets.some(r => r.exit?.hasAssets) ? "exit.title" : "journey.owner.stop")} busy={pendingAction}
+      {settingsReview?.kind === "exit" && !settingsPending && <MoneyReview title={t(settingsReview.targets.some(r => r.exit?.rewardsUnknown) ? "exit.partialTitle" : settingsReview.targets.some(r => r.exit?.hasAssets) ? "exit.title" : "journey.owner.stop")} busy={pendingAction}
         onClose={() => setSettingsReview(null)} onConfirm={() => void runWalletAction(confirmPlanSettings, true)}>
         {exitError && <p role="alert">{exitError}</p>}
-        <p>{t(settingsReview.targets.some(r => r.exit?.hasAssets) ? "exit.description" : "exit.noFunds")}</p>
+        <p>{t(settingsReview.targets.some(r => r.exit?.rewardsUnknown) ? "exit.partialDescription" : settingsReview.targets.some(r => r.exit?.hasAssets) ? "exit.description" : "exit.noFunds")}</p>
         {settingsReview.targets.some(r => BigInt(r.exit?.claimFiledAt ?? "0") > 0n) && <p>{t("exit.cancelClaim")}</p>}
         {settingsReview.targets.some(r => r.exit?.hasAssets) && <dl className="yield-values">
           {settingsReview.targets.filter(r => r.exit?.hasAssets).map(r => <div key={r.vault}><dt>{t("assets.reviewNet")} · {r.symbol}</dt><dd>{formatYieldAmount(BigInt(r.exit!.net), r.symbol === "USDC" ? 6 : 18)} {r.symbol}</dd></div>)}
@@ -4393,6 +4416,7 @@ export default function App() {
           <div><dt>{t("assets.reviewDestination")}</dt><dd>{t("assets.reviewMyWallet")}</dd></div>
         </dl>}
         {settingsReview.targets.some(r => r.exit?.hasAssets) && <>
+          {settingsReview.targets.some(r => r.exit?.rewardsUnknown) && <p role="status">{t("exit.deferred")}</p>}
           <details><summary>{t("exit.calculation")}</summary><dl className="yield-values">
             {settingsReview.targets.filter(r => r.exit?.hasAssets).map(r => <div key={r.vault}><dt>{r.symbol} · {t("income.fee")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.fee), r.symbol === "USDC" ? 6 : 18)} {r.symbol}</dd></div>)}
             {settingsReview.targets.filter(r => BigInt(r.exit?.rewardFee ?? "0") > 0n).map(r => <div key={`${r.vault}-fee`}><dt>WLD · {t("income.fee")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.rewardFee))} WLD</dd></div>)}
@@ -4596,7 +4620,7 @@ export default function App() {
           usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
-          received={selectedReceivedRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
+          received={selectedReceivedRewards} deferred={selectedDeferredRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
           settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
           busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
           onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}
@@ -4981,7 +5005,7 @@ export default function App() {
           usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
-          received={selectedReceivedRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
+          received={selectedReceivedRewards} deferred={selectedDeferredRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
           settled={isSettledClaim} recipient={yieldRecipient?.vault.toLowerCase() === vault.toLowerCase() ? yieldRecipient.address : ""}
           busy={pendingAction} canClaim={miniInstalled && Boolean(account) && identityMatchesVault}
           onClaim={() => void runVaultAction(claimYieldRewards)} onRefresh={() => { void refreshRewards(); void refreshBalances(); }} />}

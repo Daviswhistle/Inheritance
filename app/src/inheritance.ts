@@ -3,7 +3,7 @@ import type { ExitAmounts } from "./plan-exit";
 import { FACTORY_ABI, VAULT_ABI } from "./abis";
 import { TRUSTED_FACTORIES, yieldRouteFor, type AssetSymbol } from "./assets";
 import { FACTORY_DEPLOY_BLOCK, LEGACY_FACTORY_ADDRESS, LEGACY_FACTORY_DEPLOY_BLOCK, WLD_ADDRESS } from "./config";
-import { MERKL_DISTRIBUTOR } from "./yield";
+import { MERKL_DISTRIBUTOR, readRewardsDeferred } from "./yield";
 
 export type InheritanceReceipt = {
   transactionHash: string; blockHash: string; blockNumber: number; timestamp: number;
@@ -14,7 +14,7 @@ export type InheritancePosition = {
   recipient: string; symbol: AssetSymbol; decimals: number; period: bigint; lastPing: bigint;
   deadline: bigint; claimFiledAt: bigint; challengeEndsAt: bigint; claimedAt: bigint;
   amount: bigint | null; additionalWld: bigint | null; hasAssets: boolean; now: bigint;
-  receipt: InheritanceReceipt | null; receiptError: boolean;
+  receipt: InheritanceReceipt | null; receiptError: boolean; rewardsDeferred: boolean | null;
 };
 export type HeirReadiness = {
   address: string; openedAt: string; notificationPermission: "granted" | "denied" | "unknown";
@@ -62,6 +62,7 @@ export function readSettingsRequest(account: string): SettingsRequest | null {
   if (r.targets.some(t => t.exit) && !r.targets.every(t => t.exit && same(t.nextHeir, account) && t.checkIn
     && typeof t.exit.hasAssets === "boolean" && [t.exit.gross, t.exit.net, t.exit.fee, t.exit.minNet, t.exit.shares,
       t.exit.rewards, t.exit.rewardFee, t.exit.minRewards, t.exit.claimFiledAt].every(v => typeof v === "string" && /^\d+$/.test(v))
+    && (t.exit.rewardsUnknown === undefined || typeof t.exit.rewardsUnknown === "boolean")
     && BigInt(t.exit.minNet) <= BigInt(t.exit.net) && BigInt(t.exit.minRewards) <= BigInt(t.exit.rewards))) {
     throw new Error("The saved settings request cannot be verified. No new request was sent.");
   }
@@ -186,6 +187,11 @@ export async function readInheritancePosition(provider: ethers.JsonRpcProvider, 
     if (!known || !same(String(strategy), route.strategy) || !same(String(distributor), MERKL_DISTRIBUTOR)
       || route.symbol === "USDC" && !same(String(await child.rewardToken()), WLD_ADDRESS)) throw new Error("Yield identity unavailable");
   } else if (!same(String(await source.vaultOf(owner)), address)) throw new Error("This basic inheritance has been released");
+  let rewardsDeferred: boolean | null = false;
+  if (route && claimedAt > 0n) {
+    try { rewardsDeferred = await readRewardsDeferred(child as unknown as { rewardsDeferred: () => Promise<boolean> }); }
+    catch { rewardsDeferred = null; }
+  }
   let recipient = heir, receipt: InheritanceReceipt | null = null, receiptError = false;
   if (claimedAt > 0n) {
     try {
@@ -215,7 +221,7 @@ export async function readInheritancePosition(provider: ethers.JsonRpcProvider, 
   }
   return { address, factory, owner, heir, recipient, symbol: route?.symbol ?? "WLD", decimals: route?.decimals ?? 18,
     period: BigInt(period), lastPing: BigInt(lastPing), deadline: BigInt(deadline), claimFiledAt: BigInt(filedAt),
-    challengeEndsAt: BigInt(endsAt), claimedAt: BigInt(claimedAt), now: BigInt(latest.timestamp), amount, additionalWld, hasAssets, receipt, receiptError };
+    challengeEndsAt: BigInt(endsAt), claimedAt: BigInt(claimedAt), now: BigInt(latest.timestamp), amount, additionalWld, hasAssets, receipt, receiptError, rewardsDeferred };
 }
 async function findBasicRecipient(provider: ethers.JsonRpcProvider, address: string, factory: string, claimedAt: bigint) {
   const latest = await provider.getBlock("latest");

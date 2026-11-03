@@ -39,3 +39,9 @@ grant access only to their owner after provenance validation. Their watchers are
 deactivated and preserve delivery history. Released basic slots deny API access;
 yield factories retain permanent provenance for archived links and late fixed-heir
 rewards. RPC failures grant no new access and do not establish settlement or release.
+
+The November 3 internal review found two conditional payout-availability defects
+in the immutable deployed yield generation and a forced-ETH recovery defect in
+the undeployed multi-token prototype. New-generation source repairs, tests and
+rollout limits are recorded in [the remediation report](docs/SECURITY_REMEDIATION_2026-11-03.md).
+These fixes are not applied to existing contracts by changing this repository.
