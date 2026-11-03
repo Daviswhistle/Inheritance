@@ -50,7 +50,10 @@ final class HostTests: XCTestCase {
         // A pending host approval must not silently authenticate after process death.
         XCTAssertTrue(login.waitForExistence(timeout: 120))
         XCTAssertFalse(web.textFields["USDC"].firstMatch.exists)
-        login.tap()
+        // Re-resolve after process death, settle cold WebKit geometry, and prove
+        // one completed native gesture before diagnosing host authentication.
+        let relaunchedLogin = app.webViews.firstMatch.buttons["Agree and sign in"].firstMatch
+        pressStableLogin(relaunchedLogin, app: app)
         let approve = web.buttons["Approve"].firstMatch
         XCTAssertTrue(approve.waitForExistence(timeout: 20))
         approve.tap()
@@ -345,6 +348,65 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: overlapping, object: nil)], timeout: 10), .completed,
                        "Reproduce the original overlap geometry before tapping Done")
         capture("done-over-interval-label", app)
+    }
+
+    private func pressStableLogin(_ login: XCUIElement, app: XCUIApplication) {
+        let label = "Agree and sign in"
+        var previous = CGRect.zero
+        var previousWeb = CGRect.zero
+        var stableSince: Date?
+        var observations = 0
+        let stable = NSPredicate { _, _ in
+            guard !app.keyboards.firstMatch.exists,
+                  let snapshot = try? app.snapshot(),
+                  let webSnapshot = self.flattenedSnapshots(snapshot).first(where: {
+                      $0.elementType == .webView && !$0.frame.isEmpty
+                  }),
+                  let button = self.flattenedSnapshots(webSnapshot).first(where: {
+                      $0.elementType == .button && $0.label == label
+                  }), login.exists && login.isEnabled && login.isHittable else {
+                stableSince = nil; observations = 0; return false
+            }
+            let frame = button.frame
+            let webFrame = webSnapshot.frame
+            guard frame.height >= 44, frame.minY >= webFrame.minY,
+                  frame.minX >= webFrame.minX, frame.maxX <= webFrame.maxX,
+                  frame.maxY <= webFrame.maxY else {
+                stableSince = nil; observations = 0; return false
+            }
+            print("LOGIN STABILITY: frame=\(frame) web=\(webFrame) observations=\(observations)")
+            if frame != previous || webFrame != previousWeb || stableSince == nil {
+                previous = frame; previousWeb = webFrame
+                stableSince = Date(); observations = 1; return false
+            }
+            observations += 1
+            return observations >= 3 && Date().timeIntervalSince(stableSince ?? Date()) >= 0.8
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: stable, object: nil)], timeout: 30), .completed,
+                       "Post-relaunch login must be enabled, hittable and geometrically stable without a keyboard")
+        func trace() -> [[String: Any]] {
+            guard let raw = app.staticTexts["test-host-status"].value as? String,
+                  let data = raw.data(using: .utf8),
+                  let metrics = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let events = metrics["interactionTrace"] as? [[String: Any]] else { return [] }
+            return events
+        }
+        let baseline = trace().compactMap { $0["at"] as? Double }.max() ?? -1
+        // One bounded stationary press, never an automatic retry. Earlier failure
+        // showed down/start without end/click; cancellation or OS cause was unproved.
+        login.press(forDuration: 0.15)
+        var observed: [[String: Any]] = []
+        let completed = NSPredicate { _, _ in
+            observed = trace().filter { ($0["at"] as? Double ?? -1) > baseline }
+            let targeted = observed.filter { $0["buttonText"] as? String == label && $0["trusted"] as? Bool == true }
+            let types = targeted.compactMap { $0["type"] as? String }
+            return types.contains("pointerdown") && types.contains("touchend")
+                && types.filter { $0 == "click" }.count == 1
+                && !types.contains("pointercancel") && !types.contains("touchcancel")
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: completed, object: nil)], timeout: 10), .completed,
+                       "One native login press must complete on the intended button before awaiting approval: \(observed)")
+        print("COMPLETED LOGIN GESTURE: \(observed)")
     }
 
     private func waitForStableControl(_ control: XCUIElement, app: XCUIApplication, timeout: TimeInterval = 20) {

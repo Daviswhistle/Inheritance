@@ -51,14 +51,16 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
               if (new URLSearchParams(location.search).get('trace') !== '1') return;
               let previous = '';
               const interactionTrace = [];
-              for (const type of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click', 'focusin', 'focusout']) {
+              for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup', 'click', 'focusin', 'focusout']) {
                 document.addEventListener(type, event => {
                   const target = event.target;
+                  const button = target?.closest?.('button');
                   const point = event.changedTouches?.[0] || event;
                   const hit = Number.isFinite(point.clientX) ? document.elementFromPoint(point.clientX, point.clientY) : null;
                   const done = document.querySelector('.plan-keyboard-done');
                   const doneRect = done?.getBoundingClientRect();
-                  const record = {type, target: target?.id || target?.className || target?.tagName,
+                  const record = {type, buttonText: button?.textContent?.trim(), trusted: event.isTrusted,
+                    target: target?.id || target?.className || target?.tagName,
                     hit: hit?.id || hit?.className || hit?.tagName,
                     active: document.activeElement?.id, x: point.clientX, y: point.clientY,
                     done: doneRect ? [doneRect.x, doneRect.y, doneRect.width, doneRect.height] : null,
