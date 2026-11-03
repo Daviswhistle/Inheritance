@@ -5025,7 +5025,7 @@ export default function App() {
         </details>}
         {tab === "inherit" && linkedVault && identityMatchesVault && !iAmInvolved && !receivedYieldInheritance && !inheritedPositions.some(p => p.address.toLowerCase() === linkedVault.toLowerCase())
           && <p role="status">{t("journey.heir.notRecipient")}</p>}
-        {tab === "inherit" && account && !pendingPlan && (ownVault || inheritedPositions.length > 0 || linkedVault) && !showPlanSetup && <Button variant="ghost" disabled={pendingAction}
+        {tab === "inherit" && account && !pendingPlan && (ownVault || inheritedPositions.length > 0 || linkedVault) && !showPlanSetup && !(showOwnerPlanSettings && inheritanceEmpty && activeOwnedPlans.length === 0) && <Button variant="ghost" disabled={pendingAction}
           onClick={() => {
             setShowPlanSetup(true);
             void refreshNewPlanEligibility();

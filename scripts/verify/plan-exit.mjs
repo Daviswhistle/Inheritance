@@ -89,6 +89,7 @@ try{
  const countBeforeEmpty=await requests();await p.locator('.owner-plan-settings:has([data-state=ended])').waitFor();
  assert.equal(await p.getByRole('button',{name:'기한 연장하기',exact:true}).count(),0);
  assert.equal(await p.getByRole('button',{name:'상속 종료',exact:true}).count(),0);
+ assert.equal(await p.getByRole('button',{name:'내 플랜에 자산 추가',exact:true}).count(),0);
  assert.equal(await p.locator('.page-intro h1').innerText(),'플랜 관리');await shot('ended-plan-ko');
  await p.locator('.owner-plan-settings:has([data-state=ended])').getByRole('button',{name:'상속 다시 설정하기',exact:true}).click();await p.locator('.plan-setup-card').waitFor();assert.equal(await requests(),countBeforeEmpty);
  await provider.send('evm_increaseTime',[31*86400]);await provider.send('evm_mine',[]);
