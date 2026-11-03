@@ -33,7 +33,7 @@ export function sanitizeNativeDiagnostics(input: unknown): Record<string, unknow
     if(!value||typeof value!=='object'||depth>3||remaining<=0)return {};
     const result:Record<string,unknown>={};
     for(const [key,item] of Object.entries(value).slice(0,24)){
-      if(key==='debugUrl'||key==='debug_url'){const url=sanitizeDebugUrl(item);result[key]=url??(typeof item==='string'?'[unsupported URL]':`[unavailable: ${item===null?'null':typeof item}]`);remaining-=url?.length??12;}else if(textKeys.has(key)&&typeof item==='string'){
+      if(key==='contract'||key==='miniappId'){const valid=typeof item==='string'&&(key==='contract'?/^0x[0-9a-fA-F]{40}$/.test(item):/^app_[0-9a-fA-F]{32}$/.test(item));result[key]=valid?item:`[unavailable: ${item===null?'null':typeof item}]`;remaining-=valid?(item as string).length:24;}else if(key==='debugUrl'||key==='debug_url'){const url=sanitizeDebugUrl(item);result[key]=url??(typeof item==='string'?'[unsupported URL]':`[unavailable: ${item===null?'null':typeof item}]`);remaining-=url?.length??12;}else if(textKeys.has(key)&&typeof item==='string'){
         const text=clean(item).slice(0,remaining);remaining-=text.length;result[key]=text;
       }else if(gasKeys.has(key)&&(typeof item==='number'&&Number.isFinite(item)||typeof item==='string'&&/^\d{1,20}$/.test(item))){
         result[key]=item;remaining-=24;

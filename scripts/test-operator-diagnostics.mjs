@@ -26,3 +26,13 @@ const mixed=sanitizeNativeDiagnostics({details:['Native validation failed',{reas
 assert.equal(mixed.details.length,6);assert.equal(mixed.details[1].reason,'Empty calldata');assert.doesNotMatch(JSON.stringify(mixed),/PRIVATE_|example.test|0x12345678/);
 assert.ok(JSON.stringify(sanitizeNativeDiagnostics({details:Array(20).fill('x'.repeat(2000))})).length<2300);
 console.log('PASS primitive/string/array native details: distinct types, bounded descriptions, nested allowlist and sensitive payload redaction');
+
+const publicContract='0x091AD9e2e6e5eD44c1c66dB50e49A601F9f36cF6',publicApp='app_28c40a2a42b7f6c95789c2d5231b1314';
+assert.deepEqual(sanitizeNativeDiagnostics({details:{contract:publicContract,miniappId:publicApp}}).details,{contract:publicContract,miniappId:publicApp});
+for(const key of ['contract','miniappId']){
+ for(const value of ['PRIVATE_RAW_VALUE','https://example.test/PRIVATE_TOKEN','0x1234','app_invalid',publicContract+'extra',publicApp+'extra'])assert.equal(sanitizeNativeDiagnostics({details:{[key]:value}}).details[key],'[unavailable: string]');
+ for(const [value,type]of [[null,'null'],[undefined,'undefined'],[123,'number'],[{},'object'],[[],'object']])assert.equal(sanitizeNativeDiagnostics({details:{[key]:value}}).details[key],`[unavailable: ${type}]`);
+}
+assert.equal(sanitizeNativeDiagnostics({details:{contract:publicApp}}).details.contract,'[unavailable: string]');
+assert.equal(sanitizeNativeDiagnostics({details:{miniappId:publicContract}}).details.miniappId,'[unavailable: string]');
+console.log('PASS strict public contract/app identifiers preserved; malformed strings and primitive/object payloads not exposed');
