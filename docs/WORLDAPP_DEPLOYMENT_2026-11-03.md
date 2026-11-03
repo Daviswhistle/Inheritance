@@ -1,6 +1,47 @@
 # World App deployment work — 2026-11-03
 
-## First factory mined and verified — 2026-11-04
+## Both factory CREATEs mined and verified — 2026-11-04
+
+The WLD CREATE is finalized. The USDC CREATE succeeded in block **37193547**:
+- USDC factory: `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e`
+- Transaction: `0xb957ab3a322470dce768d0ae7121d30c574fb94c718eab39060be5519a7b4f4c`
+- USDC helper: `0x9713961Fb3485e97AD07860906f676E66A47c04e`
+- USDC all-in fee: **11396046838323 wei**.
+- Both CREATE fees total: **23096220264673 wei**.
+- Temporary EOA ETH remaining: **16903779735327 wei**.
+
+Exact USDC factory/helper runtime, all immutable values, both creation-code
+chunks, reconstructed child code and ABI settings passed at the receipt block.
+Both factories use `0xe819320ed3d03f9912b06a48cc5e7f06060cc67a` as fee recipient,
+1000 bps. The old immutable generations retain their original fee recipients.
+Private proof: `usdc-deployment-verified-nov04.json`.
+Both USDC source payloads now have stored Sourcify creation/runtime exact matches
+(factory match 58236766, helper 58236764). Blockscout currently fully verifies all
+four factory/helper contracts, and their stored source files and constructor
+arguments match the reviewed repository. Its old USDC-helper mirror job failed,
+but the current stored helper verification is via eth-bytecode-db; preserve both
+observations without claiming the original failure cause was proven.
+
+A local build with the exact planned production variables passed: two new primary
+routes, four retained yield routes, and both basic generations (eight frontend
+trusted factories; seven support automatic execution). Actual CREATE blocks and
+earliest legacy discovery blocks were checked. Build proof:
+`cutover-config-proof-nov04.json`; planned ten variable values:
+`rollout-variable-plan-nov04.json` (not applied yet). CI 41673388925 passed at f8c60d0.
+The initial local pnpm wrapper tried to refresh dependencies and aborted without
+a TTY; using the already installed Vite build command succeeded without changing
+dependencies. Normal deployments retain inert operator JS tombstones too.
+
+Wait for finalized block >=37193547 before the guarded runner's nonce-2 WETH
+wrapping step; nonce 3 returns the fixed remainder to the World App Safe. Do not
+regenerate the key, replace transactions, re-fund, or change the fixed manifest.
+No app/Worker/Portal primary cutover has occurred yet. Backend config changes
+are prepared locally/on the feature branch only; the two newest old factories
+are explicitly retained alongside the two oldest. Asset migration and Mini App
+submission remain prohibited by the current scope.
+
+
+## Earlier first-factory verification — 2026-11-04
 
 Funding block 37192271 is finalized. The guarded runner submitted only nonce 0,
 and the WLD factory CREATE succeeded in block **37192969**:
@@ -21,6 +62,21 @@ remainder wrapping nor return has run. New factory routes are not activated in
 the app/Worker/Portal. Funding must never be repeated. Existing budget approval
 remains valid; no additional user action is required for the fixed guarded steps.
 Latest full CI 41667520290 passed, including the new receipt and rollout checks.
+
+Actual-deployment fork validation passed: the deployed WLD factory created a
+22,946-byte child matching all reviewed immutable values; owner/heir/slot guards
+and principalPosition under an injected Merkl getter failure behaved correctly.
+This used only localhost Anvil and a test account, not a public-chain vault.
+Sourcify v2 returned stored exact creation/runtime matches for the WLD factory
+(job b426eaff-4142-41c6-89e2-638d3d9210c0) and helper
+(job 8b95a406-dc54-42a6-a082-25ba08d43073). External explorer propagation is separate.
+
+Funding-only permissions were restored to the original ten contracts, with the
+four Permit2 tokens unchanged. Fresh browser readback before cleanup confirmed
+exactly original ten + WETH + SwapRouter02, with no stale EOA permission.
+Cleanup hosting run 41670407632 succeeded: both operator HTML paths serve normal
+SPA fallback and both operator JS paths are inert 62-byte tombstones. Normal root
+HTML hash is unchanged. Do not reopen the retired funding page or re-send funds.
 
 
 ## Earlier funding approval and receipt — 2026-11-04
