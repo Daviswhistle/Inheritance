@@ -96,7 +96,7 @@ try {
   assert.equal(await owner.ev('return document.querySelector(".plan-submit").disabled'), true);
   await owner.ev('document.getElementById("yield-consent").click(); return true;');
   await click(owner, 'Open approval screen');
-  await until(() => owner.ev('return document.body.innerText.includes("Your inheritance plan is ready")'), 'both-asset plan confirmation', 60000);
+  await until(() => owner.ev('return !!document.querySelector(".plan-ready-card")'), 'both-asset plan confirmation', 60000);
   const wldVault = new Contract(await factory.vaultOf(config.owner), artifact('InheritanceVaultMorpho').abi, provider);
   const usdcVault = new Contract(await usdcFactory.vaultOf(config.owner), artifact('InheritanceVaultUSDC').abi, provider);
   assert.equal(await wldVault.costBasis(), parseEther('10'));
