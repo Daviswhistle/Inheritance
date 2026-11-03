@@ -1,6 +1,6 @@
 # Existing-contract review package
 
-Prepared November 3, 2026. This package is ready to accompany a future review;
+Prepared November 4, 2026. This package is ready to accompany a future review;
 it has not been submitted. It does not claim TFH acceptance. The current Portal
 draft is unverified and limited to South Korea.
 
@@ -12,21 +12,40 @@ costs and loss recovery. Please confirm whether review through the Mini App
 submission covers these contracts and fees, or specify any separate intake,
 remediation or audit required for the existing deployments.
 
-The operator has no record of repository sharing before deployment. Public
+The operator has no record of repository sharing before the earlier deployments. Public
 source is available, but does not establish that historical procedural step.
 The relevant requirements are [repository access and fee review](https://docs.world.org/mini-apps/guidelines/smart-contract-development-guidelines).
 
 ## Deployed scope and source
 
-World Chain mainnet, chain ID 480. Current configured factories:
+World Chain mainnet, chain ID 480. The remediated yield factories below have
+been mined and checked against the reviewed runtime, immutable configuration
+and both child-creation-code chunks. Production app/Worker activation is still
+pending; deployment alone does not establish that cutover.
 
 | Purpose | Address | Source |
 | --- | --- | --- |
-| WLD yield | `0x1a856aE8c3abd8a3746F542688a1846Bc6208435` | [Factory](../contracts/InheritanceVaultMorphoFactory.sol), [vault](../contracts/InheritanceVaultMorpho.sol), [deployer](../contracts/InheritanceVaultMorphoDeployer.sol) |
-| USDC yield | `0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2` | [Factory](../contracts/InheritanceVaultUSDCFactory.sol), [vault](../contracts/InheritanceVaultUSDC.sol), [deployer](../contracts/InheritanceVaultUSDCDeployer.sol) |
+| Remediated WLD yield (block 37192969) | `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff` | [Factory](../contracts/InheritanceVaultMorphoFactory.sol), [vault](../contracts/InheritanceVaultMorpho.sol), [deployer](../contracts/InheritanceVaultMorphoDeployer.sol) |
+| Remediated USDC yield (block 37193547) | `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e` | [Factory](../contracts/InheritanceVaultUSDCFactory.sol), [vault](../contracts/InheritanceVaultUSDC.sol), [deployer](../contracts/InheritanceVaultUSDCDeployer.sol) |
 | Basic WLD | `0xb74342FC15C504108cFD91366493590A9d570D26` | [Factory](../contracts/InheritanceVaultWLDFactoryOnePerOwner.sol), [vault](../contracts/InheritanceVaultWLD.sol) |
 
-Existing-position compatibility also includes basic WLD
+Both remediated factories fix the service fee at 1000 bps and its recipient at
+`0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`. Their helpers are WLD
+`0xc3CEda14416469144aaCb08637aAD1E61c0AC175` and USDC
+`0x9713961Fb3485e97AD07860906f676E66A47c04e`. Existing factory settings and
+customer balances are unchanged.
+
+Public Sourcify records report exact creation/runtime matches for both
+[WLD factory](https://repo.sourcify.dev/480/0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff)
+and [helper](https://repo.sourcify.dev/480/0xc3CEda14416469144aaCb08637aAD1E61c0AC175),
+and the [USDC factory](https://repo.sourcify.dev/480/0xB3d5ead33a91287C2D39b345041D5a44dC381c5e)
+and [helper](https://repo.sourcify.dev/480/0x9713961Fb3485e97AD07860906f676E66A47c04e).
+The remediated build uses solc 0.8.38, viaIR, optimizer 200 and Cancun.
+Source verification is not an independent security audit or app activation.
+
+Legacy compatibility retains WLD yield
+`0x1a856aE8c3abd8a3746F542688a1846Bc6208435` and USDC yield
+`0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2`, as well as basic WLD
 `0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88`, earlier WLD yield
 `0xfC3F6f0B2234923b3F3aDBAaC797e920C8FdA248`, and earlier USDC yield
 `0x67c8DE756FCD04dc5976960533931984d0348758`.
@@ -51,8 +70,12 @@ receipts are retained in [RELEASE.md](RELEASE.md).
   together with both yield vaults and their income/full-withdrawal methods.
 - Re7/Morpho strategy governance, liquidity, losses and fee changes are external
   risks disclosed before deposit. No independent audit has been completed.
-- The new [end-inheritance flow](PLAN_EXIT.md) uses existing entrypoints in one
-  atomic transaction. No contract, fee or operator privilege changed.
+- The [end-inheritance flow](PLAN_EXIT.md) uses existing entrypoints in one
+  atomic transaction. The remediated generation separately isolates failed
+  reward-counter reads from principal exits and makes a rejected USDC cash fee
+  roll back before receipt-share inheritance. Deferred WLD, including gifts
+  received before reconciliation, remains owed to the fixed heir; gifts remain
+  exempt from reward fees. No upgrade or customer-fund seizure power is added.
 - [Operator gas funding](../contracts/OperatorGasFunding.sol) spends the operator
   treasury's tokens only, with fixed recipient constraints; it cannot spend
   customer-vault balances.

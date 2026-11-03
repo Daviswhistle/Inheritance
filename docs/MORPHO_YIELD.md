@@ -14,6 +14,23 @@
 | 서비스 수수료 | 사용자 선택 10%, 생성 시 고정, 계약 상한 10%; 원금·관리 수수료 0% |
 | 운영 권한 | 관리자·업그레이드·전략 변경·수수료 변경·사용자 승인 없는 원금 출금 없음 |
 
+보안 보완 세대 WLD 팩토리 `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`는
+블록 **37192969**에 배포됐으며 helper는
+`0xc3CEda14416469144aaCb08637aAD1E61c0AC175`다. 검토한 runtime·고정 설정과
+자식 생성 코드 조각 두 개의 일치를 확인했다. 서비스 수수료는 1000 bps, 수령인은
+`0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`로 고정된다. 앱·Worker의
+새 기본 경로 활성화는 아직 별도 확인이 필요하다.
+
+[팩토리](https://repo.sourcify.dev/480/0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff)와
+[helper](https://repo.sourcify.dev/480/0xc3CEda14416469144aaCb08637aAD1E61c0AC175)의
+Sourcify 저장 결과는 creation·runtime 모두 exact match다. 이 세대는
+solc 0.8.38·viaIR·optimizer 200·Cancun으로 빌드했다. 소스 일치는 외부 보안
+감사나 앱 활성화를 뜻하지 않는다.
+
+이전 WLD 팩토리 `0x1a856aE8c3abd8a3746F542688a1846Bc6208435`와
+`0xfC3F6f0B2234923b3F3aDBAaC797e920C8FdA248`는 기존 자산 관리 경로로
+남으며 기존 계약의 수수료 수령인과 자산은 바뀌지 않는다.
+
 전략 주소는 [공식 Morpho 캠페인](https://campaigns.morpho.org/opportunities/13294148486514685761)의
 Merkl API 식별자와 실제 World Chain RPC로 교차 확인했다. 블록 **35787339**의
 `asset()`은 WLD, `MORPHO()`는 `0xE741BC7c34758b4caE05062794E8Ae24978AF432`,
@@ -170,10 +187,10 @@ World Chain 블록 35787339 포크에서는 실제 예치·현금 상속·지분
 
 1. 성과 수수료율과 운영자 수취 주소, 새 계약 배포의 범위를 확정한다. 계약은 이를 나중에 바꾸지 못한다.
 2. 최신 전체 검증과 정확한 커밋 SHA의 독립 코드 리뷰를 완료한다.
-3. `node scripts/deploy-yield-factory.mjs`로 먼저 dry-run한다. 기존 운영자 지갑을 배포자·수수료 수취인으로 사용하고, 가스 한도 950만 및 실행·L1 합계 0.000020 ETH 상한을 검증한다. `--broadcast`를 명시한 경우에만 전송하며, 응답 중단 후 재실행은 `.env.yield-deployment.json`의 동일 서명 거래를 복구한다. 팩토리 생성자는 동일한 고정 설정의 immutable 배포 helper를 함께 생성한다. helper는 팩토리만 금고를 생성하도록 허용하며 관리자 권한이 없다. 두 runtime·설정 getter·Sourcify 소스 일치를 확인한다. Foundry 대안은 `script/DeployMorphoFactory.s.sol`이다.
+3. 이번 보안 보완 세대는 World App에서 승인한 고정 금액으로 준비한 배포 계정의 `scripts/run-worldapp-fallback.mjs` 경로를 사용한다. 기본 실행은 읽기 전용이며 실제 서명에는 고정 manifest와 지출 한도의 명시적 승인이 필요하다. 같은 서명 바이트로만 중단된 전송을 복구하며, `scripts/verify/yield-generation.mjs`로 팩토리·helper의 runtime, 고정 설정과 두 생성 코드 조각을 검증한다. 이전 `scripts/deploy-yield-factory.mjs` 및 `script/DeployMorphoFactory.s.sol` 절차는 구세대 기록이며 이번 배포에 사용하지 않는다.
 4. 기존 World App 허용 목록을 보존하면서 새 팩토리와 Re7 WLD 지분 토큰을 추가한다. 기존 기본 팩토리와 WLD 주소를 덮어쓰지 않는다.
 5. 저장소의 `VITE_YIELD_FACTORY_ADDRESS`, `VITE_YIELD_FACTORY_DEPLOY_BLOCK`, `VITE_MORPHO_VAULT_ADDRESS`를 함께 설정한다. 배포 workflow가 프론트와 Worker의 대응 변수를 함께 주입하며, yield가 설정되면 Worker의 최대 거래 가스를 850000으로 지정한다. 직접 배포하는 경우 Worker에도 `YIELD_FACTORY_ADDRESS`, `MORPHO_VAULT_ADDRESS`와 가스 설정을 명시한다.
-6. 수익형 실행에 `FINALIZER_MAX_GAS=850000`을 사용한다. 기존 하루 ETH 한도와 OP 예비금은 유지한다. 새 가스 충전이나 하루 한도 증액은 별도 비용 결정이다.
+6. WLD·USDC를 함께 지원하는 현재 설정은 `FINALIZER_MAX_GAS=900000`을 사용한다. 검증된 운영자 가스 충전 계약, 실행 수수료 상한과 OP 예비금을 유지하며 실제 적용값은 공개 automation health로 확인한다. 새 가스 충전 권한이나 지출 범위 확대는 별도 비용 결정이다.
 7. Pages·Worker 배포 후 새 팩토리 지원 상태, 전진하는 cron 기록, 실제 앱 설정과 지갑 승인·예치·출금 경로를 확인한다. 요금 안내·약관·이미지·스토어 설명을 일치시키고 변경 심사를 신청한다.
 
 주소가 비어 있으면 기본 서비스에는 수익 기능이 나타나지 않는다. D1의 기존 스키마와
