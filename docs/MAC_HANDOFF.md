@@ -39,6 +39,14 @@ for reasons/costs before these actions; old transaction approvals are not reusab
 Do not merge this branch to main merely to save work: app/backend changes would
 trigger production deployment before new-generation rollout is reviewed.
 
+Validation: 501 optimized contract tests passed with zero skips, including 25
+World Chain fork tests. Functional commit `ef8012e` passed CI 41636284563, including
+exact factory/deployer/child-code verification and corruption rejection. Native
+host run 41634163323 at `48d5b75` passed both tests with completed-login gesture
+telemetry and interrupted-deposit recovery. It is not actual iOS World App
+validation; the earlier incomplete native touch's OS cause remains unproved.
+The remediation report preserves both failures and subsequent evidence.
+
 ## November 3 — login, logout and restarting an ended plan
 
 Runtime `f6dc58a` is deployed at https://5a3a5e6a.inheritance.pages.dev.

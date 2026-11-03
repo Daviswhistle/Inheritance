@@ -118,8 +118,9 @@ it is not a way to deploy this new revision.
 
 ### Native-host validation and failure history
 
-[CI 41634163415](https://github.com/Daviswhistle/Inheritance/actions/runs/41634163415)
-passed at `48d5b75`. The product code at `9b0bd79` also passed
+[CI 41636284563](https://github.com/Daviswhistle/Inheritance/actions/runs/41636284563)
+passed all three jobs at `ef8012e`, including the generation verifier's normal
+and corruption checks. The product code at `9b0bd79` also passed
 [native run 41631777839](https://github.com/Daviswhistle/Inheritance/actions/runs/41631777839):
 two tests, zero failures/skips on iPhone 16 Pro / iOS 18.5 Simulator. Downloaded
 Xcode results and screenshots confirm login/lifecycle/keyboard checks and recovery
@@ -139,6 +140,17 @@ Two preceding failures are retained rather than hidden by the passing run:
   telemetry and requires a stable, hittable button, one native press and one
   completed trusted click before waiting for approval. It does not retry a
   failed gesture or alter product authentication.
+
+The strengthened test subsequently passed in
+[run 41634163323](https://github.com/Daviswhistle/Inheritance/actions/runs/41634163323)
+at `48d5b75`: two passed, zero failed/skipped. The downloaded trace records three
+stable button observations and one trusted pointer-down, touch-end and click on
+"Agree and sign in", followed by the approval screen. Screenshots again show
+restored input values and the 1.000001 USDC interrupted-deposit recovery. This
+confirms the completed input and successful flow; it does not retroactively
+establish the OS cause of the earlier incomplete gesture. Later `ef8012e` changes
+only the read-only deployment verifier, its test, CI wiring and this report;
+product and native-host code are unchanged from that native run.
 
 Reproducible commands (Foundry 1.3.2 on PATH):
 
