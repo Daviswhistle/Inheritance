@@ -24,7 +24,10 @@ permissions:
 jobs:
   simulator:
     runs-on: macos-15
-    timeout-minutes: 25
+    # XCTest can spend 60s per system animation/quiescence wait after rotation
+    # and foregrounding. Keep the full lifecycle/recovery assertions unchanged;
+    # give the job enough time to finish them and export diagnostic evidence.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
