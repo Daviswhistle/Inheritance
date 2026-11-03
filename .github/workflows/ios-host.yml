@@ -63,6 +63,13 @@ jobs:
           xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
           DEVICE=$(python3 -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/devices.json")); print(next(x["udid"] for k,v in d["devices"].items() if "iOS" in k for x in v if "iPhone" in x["name"]))')
           defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+          # A fresh OS can cover the real keys with its QuickPath introduction.
+          # Match Appium's documented keyboard tutorial preparation, only on
+          # this selected disposable simulator. App visibility checks stay intact.
+          # https://appium.github.io/appium-xcuitest-driver/10.43/getting-started/device-setup/
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl spawn "$DEVICE" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true
+          test "$(xcrun simctl spawn "$DEVICE" defaults read com.apple.keyboard.preferences DidShowContinuousPathIntroduction)" = "1"
           xcodebuild test -project test-hosts/ios/InheritanceTestHost.xcodeproj \
             -scheme InheritanceTestHost -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE" \
