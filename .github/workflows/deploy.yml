@@ -449,6 +449,17 @@ jobs:
           }
           JS
           node scripts/build-worldapp-funding.mjs --manifest deployment/worldapp-funding-2026-11-03.json --out-dir "$RUNNER_TEMP/inheritance-production-base/app/dist"
+      - name: Retire cached operator scripts
+        if: ${{ inputs.operator_mode == 'remove' }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          import {join} from 'node:path';
+          const dir=join(process.env.RUNNER_TEMP,'inheritance-production-base/app/dist');
+          for(const name of ['operator-deploy.js','operator-fund.js']){
+            writeFileSync(join(dir,name),'/* Inheritance operator route retired; no wallet commands. */\n');
+          }
+          NODE
       - name: Deploy only Pages, preserving production API code and bindings
         working-directory: ${{ runner.temp }}/inheritance-production-base/app
         env:
