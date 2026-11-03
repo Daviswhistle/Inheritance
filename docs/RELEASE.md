@@ -17,8 +17,14 @@ geometry and all nine hit-test samples confirm visibility. Test-only fix
 and reacquires the landscape keyboard query per poll, preserving all bounds,
 height, visibility, timing and three-sample stability requirements. Swift parse
 passes. The older queued runtime run `41676338433` was cancelled after this fix;
-replacement native run `41678818435` is in progress. No new pass is claimed yet.
-Production runtime remains `1e4715d`; the repair changes only the test harness.
+replacement native run `41678818435` reached all repeated geometry checkpoints
+but was cancelled at the 25-minute job limit. Eleven 60-second XCTest system
+animation idle waits accumulated; the first test had not completed and recovery
+had not started. No pass is claimed, and its incomplete xcresult has no exported
+screenshots. `c9e30be` extends only the whole-job limit to 45 minutes, leaving
+all individual checks unchanged. New native run `41683367120` is in progress.
+Production runtime remains `1e4715d`; changes are limited to the test harness
+and its workflow budget.
 
 The finalized WLD factory is `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
 (block 37192969); the finalized USDC factory is
@@ -48,8 +54,12 @@ configuration. No existing customer assets were migrated.
   proportional share fees when valuation succeeds. These are local-chain tests.
 
 Deployment was funded with the approved 0.00004 WETH. Both CREATEs cost
-23096220264673 wei; remainder wrapping cost 71479824343 wei. Return of
-16534664601754 wei WETH is pending its preceding transaction's finality.
+23096220264673 wei; remainder wrapping cost 71479824343 wei and return cost
+49358573070 wei. The Safe received exactly 16534664601754 wei WETH in block
+37194854. Total fees 23217058662086 wei plus returned WETH and retained native
+dust 248276736160 wei reconcile to the full approved amount. All four receipts
+are finalized and the guarded runner reports complete; the temporary keystore
+is retained for its native dust.
 See [deployment evidence and final reconciliation](WORLDAPP_DEPLOYMENT_2026-11-03.md).
 Submission remains stopped.
 

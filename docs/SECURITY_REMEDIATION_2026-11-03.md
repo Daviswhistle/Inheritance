@@ -8,8 +8,9 @@ and USDC factory `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e`
 are finalized and active as the production primary routes. Both generations
 passed exact code/configuration verification. Runtime `1e4715d` and deployment
 41676338353 passed production file and seven-factory Worker readbacks.
-The operator funded 0.00004 WETH; remainder return is in progress within that
-budget. See [deployment progress](WORLDAPP_DEPLOYMENT_2026-11-03.md).
+The operator funded 0.00004 WETH; the Safe has received the exact remaining
+0.000016534664601754 WETH. All four deployment/return receipts are finalized;
+total fees and retained native dust reconcile to the approved budget. See [deployment progress](WORLDAPP_DEPLOYMENT_2026-11-03.md).
 Old immutable contracts and their assets have not been upgraded or migrated.
 Mini App submission remains stopped; no external message was sent.
 The operator requested repairs and validation, with reasons and costs before any

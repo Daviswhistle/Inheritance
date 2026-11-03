@@ -31,14 +31,25 @@ remain removed and both operator JS routes remain inert.
 
 Nonce 2 wrapped **16534664601754 wei** as WETH in block **37194135**;
 transaction `0x4f5233f56f42362df424b4f86b19d11db790d0e9bcf107294b0cc54ee4f6e1b8`,
-all-in wrap fee **71479824343 wei**. Wait for its finality before nonce 3 returns
-that exact WETH amount to the approved World App Safe. Return has not yet run.
+all-in wrap fee **71479824343 wei**. It is finalized. Nonce 3 returned exactly
+**16534664601754 wei WETH** to the approved World App Safe in block **37194854**:
+`0xebda291047c44de35e37826de3f970587526ca43155275dceb7f6560179ae70a`.
+The recipient's WETH balance increased by that exact amount and the temporary
+EOA's WETH balance is zero. Return fee **49358573070 wei**; all four fees total
+**23217058662086 wei**; retained native dust **248276736160 wei**.
+The equation spent + returned WETH + native dust = **40000000000000 wei** passed.
+The return receipt is finalized (observed finalized block 37194966), and the
+guarded runner returned **complete** after verifying all four canonical receipts,
+zero temporary WETH balance, nonce 4 and the exact funding reconciliation.
+No further transaction is needed. Retain the temporary keystore for its native
+dust; do not delete, expose or regenerate it.
 No additional funding, customer asset migration, external message or Mini App
 submission is authorized by this checkpoint.
 
 Evidence outside the public repository: `production-cutover-artifacts-nov04.json`,
 `production-automation-health-nov04.json`, `portal-cutover-nov04.json`,
-`rollout-variable-plan-nov04.json`, and `remainder-wrap-nov04.json`.
+`rollout-variable-plan-nov04.json`, `remainder-wrap-nov04.json`, and
+`return-receipt-nov04.json`, and `runner-complete-nov04.json`.
 
 ### iOS test-harness follow-up
 
@@ -48,10 +59,17 @@ focused input fully visible. The retained keyboard query had pinned a stale
 identity during a keyboard layout change. Test-only ca55eac now uses one fresh
 portrait snapshot and reacquires landscape keyboard geometry on each poll;
 all original visibility/height/stability checks remain. Swift parse passed.
-Replacement native run 41678818435 is in progress; do not call it passed before
-reading its result. The older queued run 41676338433 was cancelled. Public app
-runtime remains 1e4715d. Failure artifacts are private under
-`ios-failure-41673388897/` in the deployment evidence directory.
+Replacement native run 41678818435 exceeded the job's 25-minute limit.
+All first-test geometry checkpoints through repeat-foreground-3 passed, but
+11 XCTest system-animation idle waits each consumed 60 seconds; the first test
+was still in its final Done tap and recovery testing had not started. This is
+not a full pass. Forced cancellation left only incomplete xcresult Staging,
+so its captured checkpoints are logs, not reviewed screenshot artifacts.
+Commit c9e30be raises only the workflow's whole-job limit to 45 minutes; every
+individual assertion and stability requirement remains unchanged. New native
+run 41683367120 is pending completion. The older queued run 41676338433 was
+cancelled. Public app runtime remains 1e4715d. Private failure evidence:
+`ios-failure-41673388897/` and `ios-fixed-41678818435/diagnosis.txt`.
 
 ## Both factory CREATEs mined and verified — 2026-11-04
 

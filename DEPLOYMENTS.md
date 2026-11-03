@@ -1,6 +1,39 @@
 # 배포 기록
 
-World Chain mainnet, chain ID 480. 아래 표는 WLD 보관형 계약의 현재·기존 배포 기록입니다. 수익형 WLD·USDC 경로는 각각 [Morpho 문서](docs/MORPHO_YIELD.md)와 [USDC 문서](docs/USDC_YIELD.md)를 따릅니다. 현재 이자 수령 팩토리와 가스 목적 제한 계약은 2026-10-05에 배포되었습니다. 주소·블록·비용은 [출시 영수증](docs/RELEASE.md#october-5-2026-final-launch-candidate-and-onchain-receipts)에 기록되어 있습니다. 2026-10-25 읽기 전용 확인에서도 세 주소의 런타임 코드가 존재했습니다. 아래의 날짜별 “배포 전” 기록은 당시 상태입니다.
+World Chain mainnet, chain ID 480. 2026-11-04 보안 보완 WLD·USDC 팩토리가 운영 앱의
+새 금고 경로로 활성화됐습니다. 기존 계약은 불변이며 주소·수수료 수령 설정·사용자
+잔액을 변경하거나 자동 이전하지 않았습니다. 날짜별 이전 기록은 당시 상태입니다.
+
+## 2026-11-04 KST — 보안 보완 수익형 계약
+
+| 항목 | WLD | USDC |
+| --- | --- | --- |
+| 새 팩토리 | `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff` | `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e` |
+| 배포 블록 | 37192969 | 37193547 |
+| 배포 tx | `0xfefc01fb9398c57bfeb99484f368d607478d68314443d4cb7ccf78167e9a5bea` | `0xb957ab3a322470dce768d0ae7121d30c574fb94c718eab39060be5519a7b4f4c` |
+| 금고 생성 helper | `0xc3CEda14416469144aaCb08637aAD1E61c0AC175` | `0x9713961Fb3485e97AD07860906f676E66A47c04e` |
+| 실제 배포 비용 | 0.000011700173426350 ETH | 0.000011396046838323 ETH |
+
+두 팩토리의 배포는 최종 확정됐으며, 코드·생성 코드 조각·불변 설정을 검증했습니다.
+두 새 팩토리의 서비스 수수료는 1000 bps이며 수령 주소는
+`0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`입니다. 이 주소는 World App 지갑이며,
+승인한 0.00004 WETH를 배포 준비금으로 제공했습니다. 실제 CREATE 서명은 해당
+준비금만 받은 고정 임시 EOA `0x9d5B282dE3a3Fad67EdcFA157D626F8Fc662606E`가 수행했습니다.
+팩토리에는 배포자에게 고객 자산의 관리 권한을 부여하는 기능이 없습니다.
+
+운영 runtime `1e4715d`, 배포 `41676338353`, 공개 파일 대조와 백엔드의 7개 팩토리
+지원 확인을 통과했습니다. 기존 WLD 수익형 `0x1a856aE8c3abd8a3746F542688a1846Bc6208435`,
+`0xfC3F6f0B2234923b3F3aDBAaC797e920C8FdA248`와 USDC 수익형
+`0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2`,
+`0x67c8DE756FCD04dc5976960533931984d0348758`도 계속 지원합니다.
+준비금 반환·최종 비용 대조는 [배포 진행 기록](docs/WORLDAPP_DEPLOYMENT_2026-11-03.md),
+소스 검증·테스트·실제 기기 확인 범위는 [출시 기록](docs/RELEASE.md)에 기록합니다.
+심사 제출은 하지 않았습니다.
+
+## 현재·기존 WLD 보관형 계약
+
+수익형 경로는 [WLD 설계](docs/MORPHO_YIELD.md)와 [USDC 설계](docs/USDC_YIELD.md)를
+따릅니다. 아래 표는 변경하지 않은 WLD 보관형 계약입니다.
 
 | 항목 | 현재 계약 | 기존 계약 |
 | --- | --- | --- |
@@ -22,7 +55,7 @@ WLD: `0x2cfc85d8e48f8eab294be644d9e25c3030863003`. World App 허용 목록에는
 
 `app/.env.example`에 공개 주소와 블록을 기록하고, 로컬 `app/.env`, GitHub `VITE_*` 변수, `backend/wrangler.toml`, `scripts/portal-allowlist.py`를 일치시킵니다. 기존 금고가 있는 팩토리를 단순 삭제하면 안 됩니다. 포털 설정은 쓰기 후 GraphQL로 다시 읽어 확인하고, `scripts/verify/run.sh mainnet`으로 읽기 경로를 검사합니다.
 
-배포는 `node scripts/deploy-factory.mjs`를 사용합니다. `DRY_RUN=1`이면 사전 검사와 서명까지만 수행합니다. 공개 RPC의 CREATE gas estimate가 실제보다 크게 작았던 이력이 있어 gasLimit 300만을 사용합니다. 배포 후에는 receipt뿐 아니라 실제 코드와 생성 동작도 검사합니다. 전송 응답이 실패하면 기록된 tx hash의 receipt를 확인한 뒤 재시도 여부를 결정합니다.
+위 보관형 계약의 과거 배포는 `node scripts/deploy-factory.mjs`를 사용했습니다. 수익형 보안 보완 세대에는 이 보관형 배포 명령을 적용하지 않고, 고정 manifest·예산·영수증을 검사하는 [별도 배포 절차](docs/WORLDAPP_DEPLOYMENT_2026-11-03.md)를 따릅니다. `DRY_RUN=1`이면 사전 검사와 서명까지만 수행합니다. 공개 RPC의 CREATE gas estimate가 실제보다 크게 작았던 이력이 있어 gasLimit 300만을 사용합니다. 배포 후에는 receipt뿐 아니라 실제 코드와 생성 동작도 검사합니다. 전송 응답이 실패하면 기록된 tx hash의 receipt를 확인한 뒤 재시도 여부를 결정합니다.
 
 `broadcast/DeployWLDFactory.s.sol/480/run-latest.json`은 폐기된 `0x39721e856f5efa361b6428f056D437124F70C55E`을 가리킬 수 있습니다. 이 파일을 운영의 최신 배포 증거로 사용하지 않습니다.
 
