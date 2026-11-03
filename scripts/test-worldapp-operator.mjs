@@ -5,7 +5,8 @@ import {readFileSync,mkdtempSync,writeFileSync,mkdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 import {createServer} from 'node:http';
-const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+import {loadPlaywright,browserLaunchOptions} from './lib/browser-test-runtime.mjs';
+const {chromium}=await loadPlaywright();
 const appRequire=createRequire(resolve('app/package.json'));const {build}=createRequire(appRequire.resolve('vite'))('esbuild');
 const ethersPath=appRequire.resolve('ethers');
 const manifest=JSON.parse(readFileSync(process.env.OPERATOR_MANIFEST||'../evidence/worldapp-deployment-nov03/manifest.json','utf8'));
@@ -19,7 +20,7 @@ const server=createServer(async(req,res)=>{let body='';for await(const c of req)
  if(req.url==='/rpc'){const q=JSON.parse(body);res.setHeader('content-type','application/json');return res.end(JSON.stringify({jsonrpc:'2.0',id:1,result:q.method==='eth_chainId'?'0x1e0':q.params[0].toLowerCase()===manifest.createCall.address.toLowerCase()?'0xdead':'0x'}));}
  const filename=req.url?.startsWith('/operator-deploy.js')?'operator-deploy.js':'operator-deploy.html';res.setHeader('content-type',filename.endsWith('.js')?'text/javascript':'text/html');res.end(readFileSync(out+'/'+filename));});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
-const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN});const origin='http://127.0.0.1:'+server.address().port;
+const browser=await chromium.launch(browserLaunchOptions());const origin='http://127.0.0.1:'+server.address().port;
 async function page(scenario){const context=await browser.newContext({viewport:{width:390,height:844}});const p=await context.newPage();await p.addInitScript(s=>{window.__scenario=s;window.__calls=[];window.__authPayloads=[];window.__readyAt=Date.now()+700;},scenario);await p.goto(origin+'/operator-deploy.html?wallet=0x1111111111111111111111111111111111111111');await p.waitForFunction(()=>document.querySelector('#build-version').textContent.includes('operator-test-build'));return p;}
 async function login(p){await p.locator('#auth').click();await p.waitForFunction(()=>!document.querySelector('#auth').disabled);assert.deepEqual(await p.evaluate(()=>window.__authPayloads[0]),{nonce:'a'.repeat(64),statement:'Sign in to Inheritance'});}
 const screenshots='/tmp/inheritance-operator-review';mkdirSync(screenshots,{recursive:true});

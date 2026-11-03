@@ -17,7 +17,7 @@ on:
       operator_mode:
         description: Publish or remove the isolated World App deployment page; normal app stays at the reviewed production baseline
         type: choice
-        options: [none, publish, remove]
+        options: [none, publish, fund, remove]
         default: none
 
 permissions:
@@ -416,7 +416,7 @@ jobs:
           if(hash(readFileSync(process.env.RUNNER_TEMP+'/inheritance-production-base/app/dist/index.html'))!==expected) throw Error('Baseline build does not match production HTML');
           JS
       - uses: foundry-rs/foundry-toolchain@v1
-        if: ${{ inputs.operator_mode == 'publish' }}
+        if: ${{ inputs.operator_mode == 'publish' || inputs.operator_mode == 'fund' }}
         with:
           version: v1.3.2
       - name: Build reviewed contracts and fixed operator page
@@ -425,6 +425,30 @@ jobs:
           forge build --ast --skip test --skip script
           node scripts/prepare-worldapp-deployment.mjs --ast-artifacts out --out "$RUNNER_TEMP/operator-manifest.json"
           node scripts/build-worldapp-operator.mjs --manifest "$RUNNER_TEMP/operator-manifest.json" --out-dir "$RUNNER_TEMP/inheritance-production-base/app/dist"
+      - name: Build fixed World App funding page
+        if: ${{ inputs.operator_mode == 'fund' }}
+        run: |
+          forge build --ast --skip test --skip script
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          import {keccak256,ContractFactory} from 'ethers';
+          import {validateWorldAppFundingManifest} from './scripts/lib/worldapp-funding-manifest.mjs';
+          const m=validateWorldAppFundingManifest(JSON.parse(readFileSync('deployment/worldapp-funding-2026-11-03.json')));
+          const artifacts={};
+          for(const [name,digest] of Object.entries(m.artifactDigests)) {
+            const a=JSON.parse(readFileSync(`out/${name}.sol/${name}.json`));artifacts[name]=a;
+            if(keccak256(a.bytecode.object)!==digest.creationCodeHash || keccak256(a.deployedBytecode.object)!==digest.runtimeTemplateHash) throw Error('Reviewed artifact mismatch: '+name);
+            const meta=typeof a.metadata==='string'?JSON.parse(a.metadata):a.metadata;
+            for(const [source,expected] of Object.entries(meta.sources)) if(keccak256(readFileSync(source))!==expected.keccak256) throw Error('Artifact source mismatch: '+source);
+          }
+          const wld='0x2cFc85d8E48F8EAB294be644d9E25C3030863003';
+          const recipes=[['InheritanceVaultMorphoFactory',[wld,'0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f',m.feeRecipient,1000]],['InheritanceVaultUSDCFactory',['0x79a02482a880bce3f13e09da970dc34db4cd24d1','0xb1e80387ebe53ff75a89736097d34dc8d9e9045b',wld,m.feeRecipient,1000]]];
+          for(const [index,[name,args]] of recipes.entries()) {
+            const a=artifacts[name],tx=await new ContractFactory(a.abi,a.bytecode.object).getDeployTransaction(...args);
+            if(keccak256(tx.data)!==m.normalCreateTargets[index].initCodeHash) throw Error('Deployment constructor mismatch');
+          }
+          JS
+          node scripts/build-worldapp-funding.mjs --manifest deployment/worldapp-funding-2026-11-03.json --out-dir "$RUNNER_TEMP/inheritance-production-base/app/dist"
       - name: Deploy only Pages, preserving production API code and bindings
         working-directory: ${{ runner.temp }}/inheritance-production-base/app
         env:

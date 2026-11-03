@@ -1,0 +1,150 @@
+{
+  "schema": "inheritance.worldapp-funding.v1",
+  "chainId": 480,
+  "wallet": "0xe819320ed3d03f9912b06a48cc5e7f06060cc67a",
+  "feeRecipient": "0xe819320ed3d03f9912b06a48cc5e7f06060cc67a",
+  "deploymentEOA": "0x9d5B282dE3a3Fad67EdcFA157D626F8Fc662606E",
+  "amountWei": "40000000000000",
+  "weth": "0x4200000000000000000000000000000000000006",
+  "transactions": [
+    {
+      "to": "0x4200000000000000000000000000000000000006",
+      "data": "0x2e1a7d4d0000000000000000000000000000000000000000000000000000246139ca8000",
+      "value": "0x0"
+    },
+    {
+      "to": "0x9d5B282dE3a3Fad67EdcFA157D626F8Fc662606E",
+      "data": "0x",
+      "value": "0x246139ca8000"
+    }
+  ],
+  "recipientExpected": {
+    "nonce": 0,
+    "code": "0x",
+    "balanceWei": "0"
+  },
+  "observation": {
+    "number": 37189134,
+    "hash": "0x366502ec6b0497c94348c06a54dec7a22235f174e57b07f9daa073f9bb62d5a6",
+    "timestamp": 1793713907
+  },
+  "codeHashes": {
+    "wallet": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+    "weth": "0x557c8e14d33f7cd67cad0141e1a49ebf3488a447fc3df7aa66b127778a0383d1"
+  },
+  "artifactDigests": {
+    "InheritanceVaultMorphoFactory": {
+      "sha256": "0xbcde025ede2a7dc9c2935fe37619148a73c0b862b5a7175007d1a22d3e7e7853",
+      "creationCodeHash": "0xbd9f46e7cf7897e18b59f529f92f078de03d74723ce9ad72a0f12a43ebf930f8",
+      "runtimeTemplateHash": "0x65dd5db6f2f063922a913573bf0107a25e8bb9047554195566662776b468d0ca"
+    },
+    "InheritanceVaultMorpho": {
+      "sha256": "0xc0635b4616b59c2c93364a58049e414185fe19a6a7b8e73ab74860b82a4a6ade",
+      "creationCodeHash": "0xc8c2ebffb7b1acb23b85ffcb2d005cc6bce1e259bc6566c5a48df0bfe6d3807e",
+      "runtimeTemplateHash": "0xaead248df1424cf8b2d41a9dbbd2248374d27f081b1bb6f9a6047a77e015f8fa"
+    },
+    "InheritanceVaultMorphoDeployer": {
+      "sha256": "0x3dafbc1697b0d131b108efc5b47cc69f971c1d783902323f83730e19108b41ad",
+      "creationCodeHash": "0xd66a47f827c8549a4c90d66152c09514e36f9f02ebf9c6540628a383fbeb47b8",
+      "runtimeTemplateHash": "0x4e905319675319e67430052358f9718baed6157fb45569d8816522c4ae8ead66"
+    },
+    "InheritanceVaultUSDCFactory": {
+      "sha256": "0xc711b29a5570c8ff0ea49993ab12ea006f5ea09d1071945d5fa6be0c1e33088c",
+      "creationCodeHash": "0x89d01bc717ce511844736ee137f3b542a08b8ae6d5a87ded5e6c95ced8ae306e",
+      "runtimeTemplateHash": "0xaf71df70c144af7b62757b84c0ae26d9bd157671fde6e1454cf3671f404492f0"
+    },
+    "InheritanceVaultUSDC": {
+      "sha256": "0x732c6fcbc61801dd5e51b7e969d6b65163a327d5deed45631de5e01d0d69c38b",
+      "creationCodeHash": "0x5068d3e475a5e336945c107b142d9f06495ef2ee4ea2b42ea9c1fde01d825097",
+      "runtimeTemplateHash": "0x5b2a6469cdffd16fe57fa2637fe347fe791dd0e86fd3de99c0116a18347be5f6"
+    },
+    "InheritanceVaultUSDCDeployer": {
+      "sha256": "0xdfb95258f37cb5e6f552147bc940283df9e7fb9b28e88588804fbe037615df8b",
+      "creationCodeHash": "0x91cd4b1e1d4b77f996e8652cb954885f7cf99da838be31a5d8c1d72f261b720c",
+      "runtimeTemplateHash": "0xb2c0405c91bb2bf39981bc2be13302d9c9e680301119f5a06f80822c92515caf"
+    }
+  },
+  "sourceDigests": {
+    "contracts/InheritanceVaultMorpho.sol": {
+      "sha256": "0x0b4aa07c54411774e009d4c9060caeb8a7f36bd6524ccc121382d13a1f68b2b2",
+      "keccak256": "0x810b1f30eabd88e4ad29f2bd6ccf915dc192e8092605603cb2ee0e4b9ad523b1"
+    },
+    "contracts/InheritanceVaultMorphoDeployer.sol": {
+      "sha256": "0x81836e96edd629860564159844169cb49d42c8d6f52fef76a6afbed2803b83e3",
+      "keccak256": "0xf2fa624e517f6f95cd827a59f2be1ada7a32354c40d35a3ae15a9db47715cdf4"
+    },
+    "contracts/InheritanceVaultMorphoFactory.sol": {
+      "sha256": "0x8af077408c25f3777b0b98a61025fefa2514389834d8175c53850dd09de7cd2a",
+      "keccak256": "0xc6b035bb87ddefe4d05d0fe62942d7be432870528e0a8c39f1dd20101400b874"
+    },
+    "contracts/interfaces/IERC20Minimal.sol": {
+      "sha256": "0xb1c34f61f6f4d289b480b4d3d4a9b3fc83929aca356bf2c7142f09aa1f9310bc",
+      "keccak256": "0x742a676835cb02a918816cab829351c96e9019f47e4edcf0bda8e1734682d98f"
+    },
+    "contracts/interfaces/IERC4626Minimal.sol": {
+      "sha256": "0x37a8a3e7acb97ba6bc97187e0a1345a7481420ad819f18d999809a1f30629b61",
+      "keccak256": "0x63456bd69013fc4d1b9a6b6c73525aaf5ff630ce310f45b607f23ea340a0de9c"
+    },
+    "contracts/interfaces/IMerklDistributor.sol": {
+      "sha256": "0x8090dfc4b450fe6b8b4516be4bd7e07ff11a136669232471c1b5ce54d1ddc404",
+      "keccak256": "0x9797f08d30deaaaa2d1e7a8cf51de2ccf16ad581d362f228812340002e4b8751"
+    },
+    "contracts/libraries/ImmutableCreationCode.sol": {
+      "sha256": "0xd3102de03b12903d34ae51027e6d118cd88f1d42ff1f5a52311a52206e9021b8",
+      "keccak256": "0x9a5a3d214a43c31ad4b49462a40223b75b7fbe2a94bff0e63881f280ecafa9c4"
+    },
+    "contracts/libraries/SafeERC20Lib.sol": {
+      "sha256": "0xd18d7f705ae2290d2520ebfcd459a6009b48d6ae6abb7752853f2b7623e9d3eb",
+      "keccak256": "0x5ca879486fc942ef8585ea8f9ae0ca9f90f6f24d2b09134a1bf6c846f091a1d7"
+    },
+    "contracts/libraries/YieldMath.sol": {
+      "sha256": "0xc7fd9b64a541d974b419e55871870e0b604a1dcffe8c6e98b439439c8a4c859f",
+      "keccak256": "0x83f7d74b037533764b92c1ba60eccc83ae26f41444a1be6f84de51538c5554c8"
+    },
+    "contracts/InheritanceVaultUSDC.sol": {
+      "sha256": "0x0a4634f73e72ca9cffe0022377fb2594c5447075caf4479bf481d894ed414817",
+      "keccak256": "0x200970fd0463e25dc5f356892424156f78897bec74b04f801ed9fb522d2ff19e"
+    },
+    "contracts/InheritanceVaultUSDCDeployer.sol": {
+      "sha256": "0xfbea1a9340e544780ab430913bbacf4bef700523e580eb5177d828ba0462101b",
+      "keccak256": "0x24f6b585f359cf4cadf19c5a4e4d699360ef6f561afb51accf6b1dd9ca5e9eb2"
+    },
+    "contracts/InheritanceVaultUSDCFactory.sol": {
+      "sha256": "0xdac4bbc5b79c3a5e39f978a00bbf00d1b7a0fe2ebeca214c0c7d556c9740d924",
+      "keccak256": "0xe5c975b35675c2a88e5308e65c4d4887c823e93400254ddb16dc4497fa77b48f"
+    }
+  },
+  "normalCreateTargets": [
+    {
+      "kind": "wld",
+      "nonce": 0,
+      "predictedAddress": "0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff",
+      "initCodeHash": "0xe999aa1cf667792d66e676d949a9c94e22e8bccd8050eb9e72c579257e10e596"
+    },
+    {
+      "kind": "usdc",
+      "nonce": 1,
+      "predictedAddress": "0xB3d5ead33a91287C2D39b345041D5a44dC381c5e",
+      "initCodeHash": "0xfe3c36deab0d60f263591d3c41ea5c03d95245fb2e395571e6cda8157b3f7980"
+    }
+  ],
+  "deploymentManifestHash": "0x51a004ea755fa8dda6189f9356e0b67d6e705511505681a1fffdcd0f53c6ca7d",
+  "quote": {
+    "gasPriceWei": "1500000",
+    "estimatedIncludingReturnWei": "23897360628842",
+    "reserveIncludingReturnWei": "29896404525198",
+    "returnReserveWei": "374894342069",
+    "fundingAmountWei": "40000000000000",
+    "headroomWei": "10103595474802",
+    "coversFunding": true,
+    "operatorFee": {
+      "isIsthmus": true,
+      "isJovian": true,
+      "scalar": "0",
+      "constantWei": "0",
+      "formula": "gas * scalar * 100 + constant"
+    },
+    "caveat": "Read-only snapshot; gas and L1/operator fees may change. 20% execution gas margin plus L1 upper bound; WETH deposit+transfer remainder return each reserves 120000 gas. No transaction signed or broadcast."
+  },
+  "manifestHash": "0xfd2eb55e812d764329aa10a050548a26e6a92aa85c6ac76d99c24d384d765697"
+}

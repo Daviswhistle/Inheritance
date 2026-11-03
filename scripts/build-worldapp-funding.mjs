@@ -1,0 +1,20 @@
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateWorldAppFundingManifest } from './lib/worldapp-funding-manifest.mjs';
+const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const args=process.argv.slice(2);const option=name=>{const i=args.indexOf(name);if(i<0||!args[i+1])throw Error(`Required ${name}`);return args[i+1];};
+const manifestPath=resolve(option('--manifest')),output=resolve(option('--out-dir'));
+if(output===repo||output.startsWith(resolve(repo,'app/src')))throw Error('Explicit isolated output directory required');
+function rejectSecrets(value){if(!value||typeof value!=='object')return;for(const [key,item] of Object.entries(value)){if(/private.?key|mnemonic|seed.?phrase|password|secret|keystore|credential/i.test(key))throw Error('Secret-named field is forbidden in public funding manifest');rejectSecrets(item);}}
+const manifest=JSON.parse(readFileSync(manifestPath,'utf8'));rejectSecrets(manifest);validateWorldAppFundingManifest(manifest,manifest.manifestHash);
+const appRequire=createRequire(resolve(repo,'app/package.json'));
+const viteRequire=createRequire(appRequire.resolve('vite'));
+const {build}=viteRequire('esbuild');
+const buildVersion=createHash('sha256');for(const path of ['scripts/operator-fund/main.ts','scripts/operator-deploy/diagnostics.ts','scripts/operator-fund/index.html','scripts/lib/worldapp-funding-manifest.mjs'])buildVersion.update(readFileSync(resolve(repo,path)));const buildId=buildVersion.digest('hex').slice(0,12);
+mkdirSync(output,{recursive:true});
+await build({entryPoints:[resolve(repo,'scripts/operator-fund/main.ts')],outfile:resolve(output,'operator-fund.js'),bundle:true,platform:'browser',format:'esm',target:'es2022',minify:true,define:{__OPERATOR_BUILD__:JSON.stringify(buildId),__MANIFEST__:JSON.stringify(manifest),__EXPECTED_MANIFEST_HASH__:JSON.stringify(manifest.manifestHash),__APP_ID__:JSON.stringify('app_28c40a2a42b7f6c95789c2d5231b1314'),__RPC_URL__:JSON.stringify('https://worldchain-mainnet.g.alchemy.com/public')},plugins:[{name:'app-dependencies',setup(b){b.onResolve({filter:/^(@worldcoin\/minikit-js|ethers)$/},a=>({path:appRequire.resolve(a.path)}));}}]});
+writeFileSync(resolve(output,'operator-fund.html'),readFileSync(resolve(repo,'scripts/operator-fund/index.html'),'utf8').replace('src="/operator-fund.js"',`src="/operator-fund.js?v=${buildId}&amp;manifest=${manifest.manifestHash}"`));
+console.log(JSON.stringify({output,buildId,manifestHash:manifest.manifestHash,files:['operator-fund.html','operator-fund.js']}));
