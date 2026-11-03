@@ -53,7 +53,9 @@ export async function verifyFundingReceipt({provider,manifest,fundingTxHash,user
  const ops=call.name==="handleOps"?Array.from(call.args[0]):call.name==="handleAggregatedOps"?Array.from(call.args[0]).flatMap(group=>Array.from(group.userOps)):[];
  const ep=new Contract(ENTRYPOINT,ENTRYPOINT_INTERFACE,provider);const selected=[];
  for(const op of ops.filter(op=>op.sender.toLowerCase()===WALLET)){
-  const hash=await ep.getUserOpHash(op,{blockTag:receipt.blockNumber});if(hash.toLowerCase()===userOpHash.toLowerCase())selected.push(op);
+  // ethers decoded Result tuples are read-only; contract argument resolution
+  // requires a mutable plain tuple even when every member is already primitive.
+  const hash=await ep.getUserOpHash(Array.from(op),{blockTag:receipt.blockNumber});if(hash.toLowerCase()===userOpHash.toLowerCase())selected.push(op);
  }
  assert.equal(selected.length,1,"Canonical getUserOpHash must bind exactly one submitted operation");
  verifyExactFundingCallData(selected[0].callData,manifest);
