@@ -1,0 +1,1657 @@
+{
+  "review_date": "2026-11-03",
+  "source_commit": "aa67a75c382e44d9a30e95cdd09fc286a8b44861",
+  "production_contract_sources_unchanged": true,
+  "status": "Internal review complete; M-01, M-02 and L-01 remain unremediated.",
+  "findings": [
+    {
+      "id": "M-01",
+      "severity": "Medium",
+      "conditional": true,
+      "injected_fault": "Distributor claimed getter reverts, including vaults with no rewards",
+      "status": "reproduced_unremediated"
+    },
+    {
+      "id": "M-02",
+      "severity": "Medium",
+      "conditional": true,
+      "injected_fault": "USDC rejects positive-gain fee transfer to feeRecipient after successful strategy redemption",
+      "status": "reproduced_unremediated"
+    },
+    {
+      "id": "L-01",
+      "severity": "Low",
+      "production_route": false,
+      "injected_fault": null,
+      "condition": "Third party forces 1 wei ETH into the multi-token prototype",
+      "status": "reproduced_unremediated"
+    }
+  ],
+  "toolchain": {
+    "foundry": "1.3.2",
+    "foundry_commit": "c4245d663339cdfdf478a4a17588c8fc0528e896",
+    "foundry_release_sha256": "a4c9af730595767a1c6f4f27d6e014bb720d3c4e73574abac5a9754ae4ca18d3",
+    "solc": "0.8.24",
+    "solc_binary_sha256": "fb03a29a517452b9f12bcf459ef37d0a543765bb3bbc911e70a87d6a37c30d5f",
+    "production_optimizer_runs": 200,
+    "production_via_ir": false,
+    "evm_version": "cancun",
+    "slither": "0.11.6",
+    "crytic_compile": "0.4.2"
+  },
+  "contract_source_sha256": {
+    "contracts/InheritanceVaultMorpho.sol": "6258ebd13b3a8fc1fa54e02a9e7ad306694a003d06699dd99c80431591ab55fa",
+    "contracts/InheritanceVaultMorphoDeployer.sol": "81836e96edd629860564159844169cb49d42c8d6f52fef76a6afbed2803b83e3",
+    "contracts/InheritanceVaultMorphoFactory.sol": "8af077408c25f3777b0b98a61025fefa2514389834d8175c53850dd09de7cd2a",
+    "contracts/InheritanceVaultTokens.sol": "1192e39b297afbb8060ef591930eb8aeef9d9996e3aaf5dcd03ae16b8062aa1c",
+    "contracts/InheritanceVaultTokensFactoryOnePerOwner.sol": "4892fc5670c54240457581b2d90ad3fc1b8f2ec7bcfc0f2dc64e48c09aa2f95b",
+    "contracts/InheritanceVaultUSDC.sol": "ca8ce7db70b3c2a6ee750df567358d0c81922e415d23683801e0eb1913f97ada",
+    "contracts/InheritanceVaultUSDCDeployer.sol": "fbea1a9340e544780ab430913bbacf4bef700523e580eb5177d828ba0462101b",
+    "contracts/InheritanceVaultUSDCFactory.sol": "dac4bbc5b79c3a5e39f978a00bbf00d1b7a0fe2ebeca214c0c7d556c9740d924",
+    "contracts/InheritanceVaultWLD.sol": "6de6f8bad57a32d098040d6b47be74c9c0e8f126cf276f282e41ab081db94013",
+    "contracts/InheritanceVaultWLDFactoryOnePerOwner.sol": "dc47a1eb5bf7e1a08ffe823ad8954e1defd25724e454c6085660292f574919a5",
+    "contracts/OperatorGasFunding.sol": "d387703c63bc1bd47e83e101749ac3c586e40a0ecc1a5fe6644ef864f5b23865",
+    "contracts/interfaces/IERC20Minimal.sol": "b1c34f61f6f4d289b480b4d3d4a9b3fc83929aca356bf2c7142f09aa1f9310bc",
+    "contracts/interfaces/IERC4626Minimal.sol": "37a8a3e7acb97ba6bc97187e0a1345a7481420ad819f18d999809a1f30629b61",
+    "contracts/interfaces/IMerklDistributor.sol": "8090dfc4b450fe6b8b4516be4bd7e07ff11a136669232471c1b5ce54d1ddc404",
+    "contracts/libraries/GasPriceMath.sol": "b15a3f4e1a68247bbccdd1057f3c13705995447ef23d645279de41d40a809b1c",
+    "contracts/libraries/ImmutableCreationCode.sol": "d3102de03b12903d34ae51027e6d118cd88f1d42ff1f5a52311a52206e9021b8",
+    "contracts/libraries/SafeERC20Lib.sol": "d18d7f705ae2290d2520ebfcd459a6009b48d6ae6abb7752853f2b7623e9d3eb",
+    "contracts/libraries/YieldMath.sol": "c7fd9b64a541d974b419e55871870e0b604a1dcffe8c6e98b439439c8a4c859f"
+  },
+  "tests": {
+    "baseline_without_fork_environment": {
+      "suites": 16,
+      "passed": 375,
+      "failed": 0,
+      "skipped": 5
+    },
+    "final_with_all_fork_environments_at_block_35837437": {
+      "suites": 19,
+      "passed": 402,
+      "failed": 0,
+      "skipped": 0
+    },
+    "security_characterization_and_negative_control": {
+      "suites": 3,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "fork_receipt": {
+      "startedAt": "2026-11-03T04:52:26.685Z",
+      "finishedAt": "2026-11-03T04:52:27.066Z",
+      "commit": "aa67a75c382e44d9a30e95cdd09fc286a8b44861",
+      "dirty": true,
+      "forge": "forge Version: 1.3.2-v1.3.2\nCommit SHA: c4245d663339cdfdf478a4a17588c8fc0528e896\nBuild Timestamp: 2025-08-21T16:24:18.170522247Z (1755793458)\nBuild Profile: maxperf",
+      "chainId": 480,
+      "block": "35837437",
+      "blockHash": "0x43ebd78a409a1788cca639dfabf52c4e09a24f71698793d9751ffdadaf7b4079",
+      "passed": true,
+      "tests": 22,
+      "failures": 0,
+      "skipped": 0,
+      "scope": "Local fork execution; funded test accounts and reward-root fixtures. No native World App acceptance or mainnet transaction submission."
+    },
+    "additional_checks": {
+      "forge_fmt": "passed",
+      "forge_build_sizes": "passed",
+      "natspec_203_functions": "passed",
+      "custom_error_abi_30_types": "passed"
+    },
+    "note": "The 22 fork tests and six additional security tests are subsets of the 402-test final run. Characterization proof passes do not mean remediation."
+  },
+  "coverage": {
+    "compiler_mode": "separate --ir-minimum instrumentation; not production bytecode",
+    "test_summary": {
+      "suites": 19,
+      "passed": 380,
+      "failed": 0,
+      "skipped": 6
+    },
+    "ci_custody_and_helper_lines": {
+      "covered": 1202,
+      "total": 1268,
+      "percent": 94.79,
+      "threshold_percent": 90,
+      "passed": true
+    },
+    "contracts": [
+      {
+        "file": "contracts/InheritanceVaultMorpho.sol",
+        "lines": {
+          "percent": 94.85,
+          "covered": 387,
+          "total": 408
+        },
+        "statements": {
+          "percent": 92.71,
+          "covered": 598,
+          "total": 645
+        },
+        "branches": {
+          "percent": 59.46,
+          "covered": 66,
+          "total": 111
+        },
+        "functions": {
+          "percent": 97.83,
+          "covered": 45,
+          "total": 46
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultMorphoDeployer.sol",
+        "lines": {
+          "percent": 100.0,
+          "covered": 11,
+          "total": 11
+        },
+        "statements": {
+          "percent": 100.0,
+          "covered": 11,
+          "total": 11
+        },
+        "branches": {
+          "percent": 100.0,
+          "covered": 1,
+          "total": 1
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 2,
+          "total": 2
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultMorphoFactory.sol",
+        "lines": {
+          "percent": 100.0,
+          "covered": 94,
+          "total": 94
+        },
+        "statements": {
+          "percent": 96.49,
+          "covered": 110,
+          "total": 114
+        },
+        "branches": {
+          "percent": 83.33,
+          "covered": 15,
+          "total": 18
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 26,
+          "total": 26
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultTokens.sol",
+        "lines": {
+          "percent": 78.7,
+          "covered": 85,
+          "total": 108
+        },
+        "statements": {
+          "percent": 73.64,
+          "covered": 95,
+          "total": 129
+        },
+        "branches": {
+          "percent": 53.85,
+          "covered": 14,
+          "total": 26
+        },
+        "functions": {
+          "percent": 80.0,
+          "covered": 16,
+          "total": 20
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultTokensFactoryOnePerOwner.sol",
+        "lines": {
+          "percent": 76.0,
+          "covered": 19,
+          "total": 25
+        },
+        "statements": {
+          "percent": 77.14,
+          "covered": 27,
+          "total": 35
+        },
+        "branches": {
+          "percent": 62.5,
+          "covered": 5,
+          "total": 8
+        },
+        "functions": {
+          "percent": 66.67,
+          "covered": 2,
+          "total": 3
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultUSDC.sol",
+        "lines": {
+          "percent": 98.68,
+          "covered": 374,
+          "total": 379
+        },
+        "statements": {
+          "percent": 97.56,
+          "covered": 601,
+          "total": 616
+        },
+        "branches": {
+          "percent": 84.04,
+          "covered": 79,
+          "total": 94
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 50,
+          "total": 50
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultUSDCDeployer.sol",
+        "lines": {
+          "percent": 100.0,
+          "covered": 12,
+          "total": 12
+        },
+        "statements": {
+          "percent": 100.0,
+          "covered": 12,
+          "total": 12
+        },
+        "branches": {
+          "percent": 100.0,
+          "covered": 1,
+          "total": 1
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 2,
+          "total": 2
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultUSDCFactory.sol",
+        "lines": {
+          "percent": 100.0,
+          "covered": 100,
+          "total": 100
+        },
+        "statements": {
+          "percent": 99.22,
+          "covered": 127,
+          "total": 128
+        },
+        "branches": {
+          "percent": 94.74,
+          "covered": 18,
+          "total": 19
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 27,
+          "total": 27
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultWLD.sol",
+        "lines": {
+          "percent": 95.76,
+          "covered": 113,
+          "total": 118
+        },
+        "statements": {
+          "percent": 92.86,
+          "covered": 156,
+          "total": 168
+        },
+        "branches": {
+          "percent": 72.41,
+          "covered": 21,
+          "total": 29
+        },
+        "functions": {
+          "percent": 93.33,
+          "covered": 28,
+          "total": 30
+        }
+      },
+      {
+        "file": "contracts/InheritanceVaultWLDFactoryOnePerOwner.sol",
+        "lines": {
+          "percent": 98.46,
+          "covered": 64,
+          "total": 65
+        },
+        "statements": {
+          "percent": 97.3,
+          "covered": 72,
+          "total": 74
+        },
+        "branches": {
+          "percent": 92.86,
+          "covered": 13,
+          "total": 14
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 19,
+          "total": 19
+        }
+      },
+      {
+        "file": "contracts/OperatorGasFunding.sol",
+        "lines": {
+          "percent": 91.74,
+          "covered": 111,
+          "total": 121
+        },
+        "statements": {
+          "percent": 89.3,
+          "covered": 192,
+          "total": 215
+        },
+        "branches": {
+          "percent": 40.62,
+          "covered": 13,
+          "total": 32
+        },
+        "functions": {
+          "percent": 88.89,
+          "covered": 16,
+          "total": 18
+        }
+      },
+      {
+        "file": "contracts/libraries/GasPriceMath.sol",
+        "lines": {
+          "percent": 87.5,
+          "covered": 14,
+          "total": 16
+        },
+        "statements": {
+          "percent": 80.77,
+          "covered": 21,
+          "total": 26
+        },
+        "branches": {
+          "percent": 75.0,
+          "covered": 3,
+          "total": 4
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 2,
+          "total": 2
+        }
+      },
+      {
+        "file": "contracts/libraries/ImmutableCreationCode.sol",
+        "lines": {
+          "percent": 39.47,
+          "covered": 15,
+          "total": 38
+        },
+        "statements": {
+          "percent": 36.36,
+          "covered": 20,
+          "total": 55
+        },
+        "branches": {
+          "percent": 0.0,
+          "covered": 0,
+          "total": 5
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 3,
+          "total": 3
+        }
+      },
+      {
+        "file": "contracts/libraries/SafeERC20Lib.sol",
+        "lines": {
+          "percent": 86.67,
+          "covered": 13,
+          "total": 15
+        },
+        "statements": {
+          "percent": 89.47,
+          "covered": 17,
+          "total": 19
+        },
+        "branches": {
+          "percent": 100.0,
+          "covered": 3,
+          "total": 3
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 4,
+          "total": 4
+        }
+      },
+      {
+        "file": "contracts/libraries/YieldMath.sol",
+        "lines": {
+          "percent": 67.86,
+          "covered": 19,
+          "total": 28
+        },
+        "statements": {
+          "percent": 68.75,
+          "covered": 22,
+          "total": 32
+        },
+        "branches": {
+          "percent": 0.0,
+          "covered": 0,
+          "total": 1
+        },
+        "functions": {
+          "percent": 100.0,
+          "covered": 2,
+          "total": 2
+        }
+      }
+    ],
+    "limitations": "Assembly source mapping and branch coverage remain limited; no separate stateful invariant campaign was performed."
+  },
+  "static_analysis": {
+    "contracts_analyzed": 22,
+    "detectors_enabled": 102,
+    "raw_diagnostic_count": 253,
+    "impact_counts": {
+      "High": 64,
+      "Medium": 93,
+      "Low": 65,
+      "Informational": 31
+    },
+    "triage_by_check": [
+      {
+        "check": "arbitrary-send-erc20",
+        "count": 2,
+        "disposition": "not_confirmed",
+        "reason": "Treasury and token/strategy sources are fixed; refill is restricted to bot/treasury, budgeted and balance-checked.",
+        "diagnostic_ids": [
+          "89a507d8ebc15aa3c90ee34915c5bead53498bdf3aad1c28276a93ca7ed2a9b5",
+          "89b26a0c100518b0ee30fdcccd5fa717871f328d54266ff7c19e73ceee5440c6"
+        ]
+      },
+      {
+        "check": "arbitrary-send-eth",
+        "count": 1,
+        "disposition": "not_confirmed",
+        "reason": "Payout recipients are immutable bot/keeper or treasury-only recovery; the caller cannot supply an arbitrary recipient.",
+        "diagnostic_ids": [
+          "4b740a044171e529b50af0b3d0166d29304d5b4f2963938fc38117839e0365c9"
+        ]
+      },
+      {
+        "check": "assembly",
+        "count": 5,
+        "disposition": "manual_review",
+        "reason": "Reviewed full-precision arithmetic, inert code storage/reconstruction and revert bubbling. Assembly coverage remains limited.",
+        "diagnostic_ids": [
+          "6bdfe53a18f1ad45b8409df1235c071dfb6a90b8bdd498824725c512b793e231",
+          "98df4aed23ce57e3991265ad9721e1c3a8e9efec81ac1c4f91762404a261feda",
+          "a244d379e3b7086cdc618732767930eda04dfdb4c65af772bd3fb1a5b82a383e",
+          "b1a449afb7323589b2aa8611c8f3d566b5ec7b992e93a955a6f81918e3d3f652",
+          "d2e2a2f8e1eba795c367d59adbec16a7a3e9f5c803617b1d9be05ff9cdcc6299"
+        ]
+      },
+      {
+        "check": "calls-loop",
+        "count": 1,
+        "disposition": "prototype_hardening",
+        "reason": "Prototype token lists are bounded at 32. Malformed owner-selected token views can prevent release; this is not an active production route.",
+        "diagnostic_ids": [
+          "83f26f81d2ddbfa36bd0ea401c0eac38239202ab608a0320f4b9adb80619a0c8"
+        ]
+      },
+      {
+        "check": "costly-loop",
+        "count": 1,
+        "disposition": "bounded_behavior",
+        "reason": "Prototype allowlist mutation has the explicit 32-token cap.",
+        "diagnostic_ids": [
+          "8144daf0c6e50c8f48ad4898016823db46c090ce84c689b1ba2d888d0a67ec29"
+        ]
+      },
+      {
+        "check": "cyclomatic-complexity",
+        "count": 5,
+        "disposition": "maintainability",
+        "reason": "Complex fee, income and fallback code merits further invariant work; complexity alone did not establish an exploit.",
+        "diagnostic_ids": [
+          "004f913bdb58df0e4f7e9beed03dfaae631779292103cfb34a21aaf556f54d8f",
+          "3759a0db9e1788e6c2d9493500cd33bcb11a15e02b967dd1f6a41d610f9c8b28",
+          "40d918261d1852efb289c0b7cce0806a794a17c20429dde789f135d354262fee",
+          "8cb68bb8144560ff848bcbfe82d0d771c49968148b03e5ec04fb7790adecfb9f",
+          "b3d0b8727840de9123f185504f0fa864bf8038208c0ecc1c1faff511c0eadb4b"
+        ]
+      },
+      {
+        "check": "divide-before-multiply",
+        "count": 9,
+        "disposition": "not_confirmed",
+        "reason": "Full-precision mulDiv normalization/Newton iteration and fixed-point TickMath use intentional staged arithmetic.",
+        "diagnostic_ids": [
+          "17da392da0ed426907131d4b02ebf40cb72ca7ebd05eea1e7d4189d9f6fef39f",
+          "22894347028556888fd36034eef76e6a6c4b034bf85b00b933e8b07efaf39947",
+          "581f9fb7838f418f00d823119d774de1ae6163e4fa85dd08fa973c6e96a08c50",
+          "79d86840901cbde95a39c21a272b8dd45860ebf8b27fb65fb2ee85f7ded84e47",
+          "90bf3d67a53d5368202e55ede28bbbfe562292819911654a22e8974f251266dc",
+          "95f16608b32bdf49b1aea1add63d59fe5e804f9ba585877c15c394a38c22a336",
+          "cbdaffd2fa3aec3f5e8a4f93da150aef7a131a9530d402f81ed71949196249df",
+          "f0d79a92e5b4fe1aac8792e0450770d1addae136c273fe91db24511642b18384",
+          "fa2cfdf1547beb4fc9782d96735c502bc04cd9d4080eadf464fb8472329c7dfe"
+        ]
+      },
+      {
+        "check": "incorrect-equality",
+        "count": 46,
+        "disposition": "not_confirmed",
+        "reason": "Exact checks enforce fixed-token and strategy balance deltas, minimum outputs and custody invariants; fee-on-transfer tokens are outside configured routes.",
+        "diagnostic_ids": [
+          "0502647691e888fe3eec5e9c785ec8a0518671340da1fc7cc2e7af4e3ed30bb0",
+          "055d57fc77c8085c7479b15d8bba53201aa6a27d6ea59fa4bb4b20f029be38aa",
+          "0597c2a42047c1fac2da71e562c260a9cade3c68bebfd9c875a79206c48ee7f2",
+          "07be507524e7a5b69abf935a7a7e6ec9747899ef8a11739a5da898ae8d092505",
+          "0aa150562cae1e648469818ab29572911cf3c4fa48be9ca9e482854adbca3feb",
+          "0da814ec8364b0a5707998314f74da1ef39230eed09045d09403a72bfc2e4cd5",
+          "196475a8f8e8be5592b649c8c51859728659abc60d74d8f28e87ef24ab4ee607",
+          "1dbac057754f98fa7c37ba95901adf8eb4c7ba2f74d66029349fa09717c58635",
+          "35be127fae3ecbdbe7459b147af52eec57f80b7ce9dcdba365f9bb2e6176ac2a",
+          "3f15b12248760afc964eebc791de620b860376c6d2ed8a1c38055a878bb76e5c",
+          "459b45ebd026645fe3417356428f9f6336b64b36eadb6207f96a9943ed93419c",
+          "491063919cd9247e88444b9c6426df09b0c93a03259541b8c7275c1666118447",
+          "501a4b3639aa6c249dfe2a4e45df46115635aac8dad74733753916200b4bc6de",
+          "6db85789816172843bc8e1f097a32a573ce04a7aad5ee114a593faa45f898a46",
+          "6e8f0d82cbdc9cafd285db8a339a1c4f940b2acf03a14ac623fe11772ba29aff",
+          "6ebfd8b8ac36395c7ff2415a47666a1791db96350648238f7f78d6e0468f4a90",
+          "6ec808cf9bae429f9e9431e62483d40ced663d8be7f49767147c7b74d310b13c",
+          "7300458af5ec99bd407791e39b72c3ba3d0c95fba5b0005b6400acef2af3c1de",
+          "7314f3dbf0b21487eb2e6b8e21a5b43e5356e67d353959f9eb0a20cb3b4fe82b",
+          "737b2c7e62798d6b138fedfa7cde231401c3a7ceea77627ea688b4fe20ab5fdd",
+          "752e7fae9c87410ef105501e4a800d35451ec6a521dd17eda6365fde21776c71",
+          "7a80f528e64e5ad1d72e8ceabbbfbf698ca8d271d1437124230ace292a896384",
+          "82d96d9c0dade0f76d60d7249c4273f9a575229a47322be4449da80247ce94fe",
+          "856d57bb60670ffe7f43793123a9e3a94c1b4e8a9ec4f18b2241578810660f48",
+          "86f580031fd973c3c04b9efdef850b0a2b0a2ca3c36594ce443e45c68d2a26a4",
+          "8b3b8f1c9fd811f5df7635ed0b229c8fe709de94c4f7f1c77183711fe9b145e7",
+          "901ca3ec76866d8cf44313faf8db33a0cb654c1b5e9bc8e19cab660079c186ba",
+          "9458dae14c7412b753f331f2169a8265a2e8024dda4d0936bbf7cf42bd43f1b0",
+          "9567aaea0a7b0627667beac009a9a8498264e730987db727cd344dc07a90b288",
+          "95dea2bf853d872536267e576f7c83d6d76d8b08df1000f1c81decf117a66d64",
+          "9b78cbb7ccb79ea80b09ec87659eb657dacd00c24860b855d2a8c414d25fd10d",
+          "9f0c8991e103983de42cefd8b269163ed91b8b80d8e246a187f482cc1bfe38d2",
+          "a3c65dce399f7f5bf1a3be3893d5e6b7579ac6e6981c2bfe4b4622a05617e5f9",
+          "b2b5f37dd458ce294842a5eeb789784f6b3e9c8e0224af8d238ea91b9b480b66",
+          "b9a3bf70bca868fb8d1c72d3ddb870c1cb72cd2c2a32fe8dfc9aa84e9cf6ed4f",
+          "bee6102b7e46ac92b524fcfdf9c132b2abf7680c3afa5f6368a018c5093c25ab",
+          "c1442507f4db74b56e8920b9c8080bd9523e966e795e0313380871767e9119e2",
+          "c6ac1bd7bb47aefd1fe0838d3625c57bdabdbae167e42f55f9e3d32f7ae99e27",
+          "c72130259aebce3fe3574d7f3e580c26ad2cb20f0def69b95253edf19f26c145",
+          "d42fec0f265fc29d39cf5337efb275d622cf8423c7534f8fb9a99874a9ea080f",
+          "e352689bdf9c56eb2346f07e14a5c684e3710ccf555051ca0607d612a76a8d68",
+          "e3ee547863d6c59abc8bcdb4451963afe94491c9dc43bf8511769f33cc8db2b7",
+          "e4e245e69e48b506002633bce9e954fb524ca134ce6bf5c9a68a84caefb8a214",
+          "f0f439e8bc2610a291c01fc31fbb332311f39449a4ddb67742cf1d5a05c23ccd",
+          "f28696ee94866a01bf14d5d36854b1071032f8fe21a9397af9fc84bfb39ec603",
+          "f5e28fad55f1664d1181519499ff6f68027973e6573b5b2b97ad5317661136ff"
+        ]
+      },
+      {
+        "check": "incorrect-exp",
+        "count": 1,
+        "disposition": "not_confirmed",
+        "reason": "XOR is the intentional modular-inverse seed from the documented full-precision multiplication algorithm.",
+        "diagnostic_ids": [
+          "1ac5c459698a9514c63be972b1bed19afe40378c9edf5fb4c707ee1931fa38cb"
+        ]
+      },
+      {
+        "check": "locked-ether",
+        "count": 1,
+        "disposition": "confirmed_L-01",
+        "reason": "Undeployed multi-token prototype cannot recover forced ETH, while its factory requires zero ETH for release.",
+        "diagnostic_ids": [
+          "53129129096101a329897cba400b09d10fa7212e2e4d65b16041e41d5c75cad0"
+        ]
+      },
+      {
+        "check": "low-level-calls",
+        "count": 7,
+        "disposition": "manual_review",
+        "reason": "ERC20 optional returns, authorized ETH payout and immutable creation-code assembly are deliberate; failed calls revert or use the documented fallback.",
+        "diagnostic_ids": [
+          "0058fcd04b49c6a56d7fecb4618c8806e6b0c93f15df6620e016d1f2233cb249",
+          "2d3a07ccec0ff2df09234294bfb034a63024c97348d0df5e37149dd65ea7d68f",
+          "34d2e2e6204f86f4c4fd0a41d5c55e891eb38e7aaf6be6b01f0a20f966a46d12",
+          "489f3f76a61bfe3df60b7ab0cfa26420cfaa138a43650a9d56d1fca996fa0e75",
+          "b0b9d4fd0f0a78274e996e7f81680e05975d4a4ec253091f0e976dfdf05ec980",
+          "b8dbbe79cd145b79f99c4f74b8722f3d5b8dd055ec779d514aca46f7f2351298",
+          "ccc6ec274c8e85899b49f4aade053f4ce4a4a709979fbfa79e2e3f38c813b31a"
+        ]
+      },
+      {
+        "check": "missing-zero-check",
+        "count": 10,
+        "disposition": "not_confirmed",
+        "reason": "Recipients are checked through _validRecipient; deployer inputs are fixed by validated factories and revalidated in child constructors.",
+        "diagnostic_ids": [
+          "05d82f3b04da9ecdd400bd47042516173bfdba5a0bc1e4efa71fd335801c87f4",
+          "49e114d25cf5280a5a291c1717445488f74cbcdee3e01216da232ba1cfcd93d0",
+          "4c853afc132e1cf7f55a01a64b7e0f9245bf024c9f224ee54a0a1d509e534783",
+          "54033e23eccb3ebd971d62987a6848c8bb4ae3b53b891757212a8dc7021e0b56",
+          "5a4201fdf0b28baf652053de21be9814840cf9c5f6e32c18b40f7fc439a9c15d",
+          "5e9da336fa55935b9105208b2b583db25258fc3640564b4573ad1c0f65094467",
+          "7dcb54b0f1a8a683e3d930fdf163a05ced6ec6bcee2c042d3ee1085abd01c222",
+          "82b9a15b2836992735c743783a46e90311d1ed961e0fc8191ad4a12485f7a088",
+          "84d8237908bc2549c518db6bf8b6eb18d66f22a52743314b125fd93ab67edc06",
+          "ba3a1d952aa6d58b9cdf950554bba1d1cf75ff325d1833db16c9dd8eab157760"
+        ]
+      },
+      {
+        "check": "naming-convention",
+        "count": 9,
+        "disposition": "style",
+        "reason": "Identifier conventions do not establish a custody vulnerability.",
+        "diagnostic_ids": [
+          "1f14eed6128a2a3cba536c9f96480adf1a6e4ef35d8393926098b09f147c2591",
+          "36024a4afb8fcc6eabef6871ed2ab5db59eb1d59673971cafc2dbf7fe8c3588f",
+          "3911351f425693d2bdd93d4077d14d9f9e56302ec635bff8cb9363f1ebd5fb6b",
+          "7d874e661f7f8385d507c1f8fd4485565652ffc4f89538f6286cb5d2cd8dd193",
+          "7e9994c9090929cbf82d69495ce66ac4f3d680453051f48b99542c563a7fbdf9",
+          "81b81ba336081f0aa3d3f5c36675734bcb122ff6487d2246dac6807b96afe17f",
+          "916318a1dcb490b72cbb127412f345166faef25dd3aa4d43ed8a55703d28feaa",
+          "9456e43fb914109ee85f74f719109205c4192cd412246e29503f1ac22fd98fa9",
+          "b9db427ad9a8e5d51126fa590d3311cb49dada94bb4fb42f4cf022e133d2d804"
+        ]
+      },
+      {
+        "check": "reentrancy-balance",
+        "count": 60,
+        "disposition": "not_confirmed",
+        "reason": "Asset-moving entrypoints have nonReentrant guards and authorization; balance deltas are intentional postconditions on fixed assets. No actionable callback path was established.",
+        "diagnostic_ids": [
+          "035da526dff7f2dba9911308401f5dfbaa5f92f81ff67c430ee984849fe5fecc",
+          "043707ef2ccbc2bd351d648e24cbbb778a7cb7922c092c25f8413671300959a2",
+          "04e11d824cdaf8ad1b7e8418e3b02704177da3e0a0d12b28a94c08bb4d36e1eb",
+          "0785d16e3dd0f6616d52560d1023c26f9a30b5babfa0e0d831924e5aa4bccf8e",
+          "0950a6873c8ab21f99dd51ee77f4304278d982e0e25ba5974a207cd68922d806",
+          "0d2cbbe3aae336c3f93307b5b7057c6ebb429d87923597e2eb8d8da4d558ddee",
+          "0f243250a1516f24d05fadd868611e009c5c26c1ec4592a033afa26dfde9cd8e",
+          "1053f07518e356959fc77d108e8834b77074819ec8154295658c692f85a61d53",
+          "10ca1ae35e95a061db22d574520ad57c81c0e906ff8bf8d0ed185209979c753b",
+          "14480103ce5c942875a70588961f6ca89e00f1199a091b6d80ade4d3b6dc7609",
+          "14ee682f3dc321593ef5eeee43e2e38cbdf74a403574a5b3ae9b589127603fcc",
+          "18b52574ff23a3393a30594fa5606b329ca17e8fcc3bee6ca684cbfcad6979d9",
+          "1cc9a3a9ca7602b1db4dcf9e5ab919e3e2dcb52c00fce64c4fb4e44dd5114034",
+          "2ec7b821512f3d91ae08098b5a2a09e3635ff990a74410bf99188ef47ba37ced",
+          "3771ecd078faa8e616247ddddbd11d29009424b20696d58cedd0d2a31812a02d",
+          "39a313f126a2ff54baec3b4e10cb40d3bcdc5b5e914ade62c820220b0fa77301",
+          "39e486f31f38165e3dd4052265c59870632e54c26526cc6adc6094eec2caf06d",
+          "3b96382587311320f98b8e93797c87d5dfef24aff7b4ee3b40c017aa96fd5f56",
+          "3c4858e3922b633df2cc041633c5dd7961f8e8eb9facc237a5ff7d31625de6cd",
+          "3d4afb1a808248d9edf2d05c50b08a512bc9f61323f1a418d16ed8c6de144709",
+          "455b4960e3f3a8207c4064bfd7375456a5cd49affe6e9387220a690b012c55d1",
+          "5459340a38111acab7d5b850129b3abe098522c7016955e4ec1e95f78a92300e",
+          "585ed21d0e34b494b15bac2ca548e289ad87335d6e67fcc4b87e88c720ebd7d7",
+          "5d96d6c6476c3bb0ea5086a8a3fc38d365742fdaa9767f8add27b4816089af6c",
+          "5f41715bd6cc6231d5be1cc368a57638de38539b1f27ed7e4d0a258ca54ed290",
+          "62096a225ed7f64f458b312cfbc16112c607aba307017d6164789eb0fd78ae8d",
+          "640a18716af6efe0fb3cb271c41a4407e66551793b5c85c584fdb69cc0995eda",
+          "69a7f4adb3e2f30166fd702ce33a5611e4c3fc0ab0c3dee29409a64e268eab81",
+          "75f8650cd7203d68188274aa791734faf133f994fc19e03b612091d685274793",
+          "781386d866074ba44bcd6e54794526a20f540381c0e600d7e05c847f8a710c17",
+          "7c720b6f2243f9df8c861b2b663cd1279ad2c572c9ed459508c184edb14c346a",
+          "80d7d452dffa6cdd316d3af402f576adbf6a94d3a5616818f3603b23b00dc09a",
+          "8af912c3abb05313d0b7682d3f7d9775946c1bbb72dea7be7a50a0950af113e0",
+          "8cb9eefc3379dcd12951a2779856d7168704c47af3dad326c16bb684459af9f6",
+          "8daccf2eb49f58a9ce00d86dfa351e44540f2f22c6d18161152abee0fcfa7f52",
+          "92dbf487c0445da614cc3bc21fcdb451aa9d550af8e72e46497acd7eedb112e4",
+          "9c88a5d1f517a422faa72ace1cf1201647c9e5b82f21cf7d940cd14608a4d2cd",
+          "9cce4e1d4527bdddb3f5e366823fd51cac71d66bc32f1bcf8ebdf9faa2f6a1a9",
+          "9db31df7937ffebc93e953db0ffae1788f6dc7bb7f2330d37f295e3154de6058",
+          "ab30c2adf71a2de3521e2b7484d1124dc45e0788b0ab4251131ba8caf7e013bd",
+          "ac95c4984fbb32264b6f1f3d3cf944f616e64cd5672641de3ac2c5d73c9fc474",
+          "af20595b06c7eb29253676bb6c47a3f48e845ce180ab5b812c11c80c6852fd5d",
+          "b576c75317558cb2162377f8c23fd3cfa79138f9d0b407bb7045eb5ca312e35c",
+          "b6536fa50eeb51162069988420b2658e759f92864c99207d6cb884150599755b",
+          "b90564c9124bc23a07a1b2b37dc453a8d7acf19843c27645acefcdc5623c789a",
+          "bdb648209c7ce9565736af4dbf2bc586f650d8633debd739f4f544ea9dd51055",
+          "be9e7bddc62273884cd754f015ac354bf852238fb15cc2ab32db04f26f45bc21",
+          "c87e2189bc28aa8f06bb6ff662e7384a6c14819e8099fa3e7fdb97d8834b364e",
+          "c8af07f4784a98e010cddcfaaac8269bdc668901827110ba7a62c8ff0a521617",
+          "cc3d1d3b6e9b57c4bcff60d4b87eade6e796fbe47afec60e9279c3cc4c0c35d9",
+          "cd98c2c428dec249c4b3bf8c9594aad10bc30d9a829571fe9195ee3a929bb4a3",
+          "da9b3579f3f6593b62c501e5cf85d1fb58509ffe275acf4f3049074d8c501ee5",
+          "dbbb887dcc5e371e7a66d0b4b8088e419594a3ef567dcd68a8587287bc414dd4",
+          "e184e5354a0fb16ecf50a8597073d337d501431445fb0db5d0c8fd1346c1dc14",
+          "e693a1ff7a3c0795279f49b69c1d03f4825663439d3142e179612699bf6179d1",
+          "e84ae25f356f96ef8600415c8b5ed134a3d7ff32cca6be9d2b3228b47f7b015a",
+          "e95e6be732cf6a35c1bb1650cf095afa9653f79dcf9dfa42537167185811584e",
+          "f0c54b8da5a753027d96a6c3ce5bc82ae889eaa6cef4f909acedbaae85fe4e8b",
+          "f7b19a7f588aa456d3f18cd89b88ea2248cc18f715756ffc87b05aced438050d",
+          "fb5dc402dc6d71ac9b91a19af854328d6c99e0e1a67267fc50277e58834ae58f"
+        ]
+      },
+      {
+        "check": "reentrancy-benign",
+        "count": 10,
+        "disposition": "not_confirmed",
+        "reason": "Guarded asset operations and role/state validation prevent an actionable financial callback; event and view ordering alone is not an exploit.",
+        "diagnostic_ids": [
+          "0a9fd7be39485fbb6e235acf077692d4ba03642ddb554114a3dfedbd56b03916",
+          "6ecc17c4254b9c31211d0e320bb87dd24ed8237df95f69c479f34219ab6aa4c4",
+          "b92705f4d3fcc83361147980273b9b96c3b38deaa8734738d725911b66c96c89",
+          "cbe71bf8832aab06d027a3f593ae48005d544309f5c0fee3173c76bd9eda884d",
+          "cdb11f38f6b11957c06aabb9b3d3281f5bdd240041d6975b9fa9146d8e80f5ee",
+          "d133f545147f37fc8bf26724a7b5870c27992798f92a07fc70a8ded92999972b",
+          "d6512f181adfb3a68750778b111192337b2f9924fbc472ad3df540365d00a2fd",
+          "e3b79ba13f885b09cf708da2622b397d72d182d21913ae4f3ed548c5f57e678f",
+          "e5b00f128707e043eace0c1a2a68cc3735bfeee3f35c4a1b350fee0b8a235984",
+          "ec766574425395f4471332d64c206e1919a7a3f4a094d5f8a08693632bc39613"
+        ]
+      },
+      {
+        "check": "reentrancy-no-eth",
+        "count": 11,
+        "disposition": "not_confirmed",
+        "reason": "Mutating financial paths and deployer creation are guarded; public read-only transient values do not grant a write or spending right in this repository.",
+        "diagnostic_ids": [
+          "1c6755940fdfcc97cc7eb52333826ed1fd93341f513307cbe665af4dec3537e1",
+          "23d4a4bc76606e4aba28fcc780c89833464e5999a5febe0128e25064ded72116",
+          "3144335cbffffa6a9d7e091b6caccda52b7949b0719ec4391c5cbe03079065ff",
+          "328fb79a18be36bf1a9e542d13ecc3ead23244da8151cb6a36f24121aa5781ff",
+          "a112aa7bbf29ca1fa93a4e88592a3347cb692873aff1bc4d5abd7154508b95f5",
+          "bc83833d2451871fdd942f75b09da1ce75661d78d015c3e6b9186b97fca14a74",
+          "c2c7ffbb3d76e8fb9cf4020d7d9a31db52b97366cc985c5ae3e252462bbc2890",
+          "d8af8ce720f420a3c6f31135ba92e535e59253a915a1b46ab8adfd23841f9dd2",
+          "e753809572e409b4ea054662ba73392b38338e89e8e29a34129cf12234b146ba",
+          "ea0a56afc90948b29718be52ed815c1b3f239b4a58be5061c6b72ff8840fb420",
+          "ef533fde6515d5f90c235b7e2ff63860d138f4aa399f54608674c31d915a6c93"
+        ]
+      },
+      {
+        "check": "timestamp",
+        "count": 44,
+        "disposition": "intended_design",
+        "reason": "Heartbeat, review and budget windows intentionally use chain timestamps; owner-renewal versus settlement ordering remains transaction-order dependent.",
+        "diagnostic_ids": [
+          "01e7b752e727abd2a69adba34fe22c5fd61ba5891d47c6b149f8af7038842912",
+          "0297619b519b1da019a51ec29dfd6cb80e453c695b9c52e47f49314034cf1fc0",
+          "0a62748cf2dcef2635b1d5e94953d973102dd95029249addb03f129a3ade614c",
+          "10637e9909d160de4a420165467049cff610fa611e97e033e47ccfa6edb632f3",
+          "14fe29915281d7607f15176516da4d1fa3a734303781134e2cb235321e345161",
+          "1ac504f27dba1c4d6571de93393b247b65edb32f741847add542d62533672d43",
+          "269df661cfa727906b0ddcbe89e0f91a1c33112c0e8fca6e5dbc47ef2964d8b0",
+          "2914ec571bda5e6e4d8c57d3150f3e9474166b5d01782c737ed6379823a9038b",
+          "312eb0c91eb4ce09e8e786ee7e0e810fdd54461bdc168bf0f5816d857052ae51",
+          "335f7092a1054e30c64abb2b718f81703799511fd982a73486e2e746339e857d",
+          "381250e6d7199f3dc04c50ae266ae8b08bdd02838a3a0aa8ba2e5ab792b9e5d1",
+          "3c68291ee161b1df0998c3ae7ea80f359293e533080c846f0d059038fbded36e",
+          "3f1980bbb0c59ddb85507fd19c34fe87faa64845036dc33c4b884c3789350e40",
+          "4319abb682c3eb7029debaf76e9f7b83ed10b279231ce9e26cf613800838f48d",
+          "4d5f2cfd7247c51ec2b41da8cde3ac9a9c0c19d70f3ac57d9c374f260ec4d4bc",
+          "5121ad8755205dcf73760480c6c692e61df3bdfdf7f99168e5e2e791765c1c81",
+          "54f0881edc2b91946e7fb2f4ec1c994f28998674d315e627e70133fe4e698ba5",
+          "56264b48d6a44b76bfc6950ab096992f483a8e2450a37a362815f0376ddc002e",
+          "5e67b777fc8e40560e36304240195f32ca7908fa163149daa726587aa44ff7fa",
+          "62303c9d33e570854c38c51ce40ca4077046bd37b6d666a1ef76ed66f7227a90",
+          "656c17522127e40e0dfc7f1627e33a170363af1958b51bcd5159653a44d38ad5",
+          "6baafecbc442c5470ac5dd2193d71d118dbce8cdcf1d029ea100e2dca1e259b2",
+          "72436bb311b36018e792bec40601a3c61af26cf763919e4c6a13fbc2c791ecbf",
+          "7baa85b67350905f80775e3f88158e45dc83e798fbbacd422db440d37c6f1190",
+          "7dc42020a156e8669d3e8889da0d8300f5b04987f193374a25a7a8e992362edb",
+          "81c8aa3110d463bd757853a5a73e01c2649fc2e107fca3a89cff4d27c7a83530",
+          "8afa53e3feb2e18721860abda7f0af4d30503d3485eae0df9316a664b7163591",
+          "8cf3ae99329075059143ba024c827abf82209de9703f68bc444bc82c08bb1ad9",
+          "9a2716ea1f033a1e1cca84977b80edc12ea60ffc96b45e03f88767ada36d9dcc",
+          "9f42987e5b23034a84b1ec920a49222a4901f4e8962c24b317a4d01922e8d978",
+          "a2268b672e42dc186fcd90145cee57de91196018b37f87b578a2ab98aca2794b",
+          "a5df935f28c07bbdc24bd39c18d93c8a2b2ce1328cc13d939eb756b38a434d8a",
+          "b731a9e9e2df649b9d95519b10f6b1393791025e0d81a6767a503c25c40e1838",
+          "b753a8768071cf60b6512399d9df3177ec63159267b36c684ad0cb0b1421cb94",
+          "c07f877439c8fc85e1927c359a398e7e3aa5ff533c93ae5c2f0e4d4f49f51950",
+          "c1939f9173571ce4785e3459d9b7a00917161bd83eea613a10dd04f4697234e1",
+          "c883b118ab171d336e7f55534d06bf41a881e64c6c9ebcf80b487f8833a2db95",
+          "cb1aeb15eeaa1c074b6c2c15806c55b7eabb1d09c9e695148d7c1f41fd2c97bd",
+          "d147c4546ab7dd4cf421b557085ab31131e5876b73ed70e291b8355fab14c6ab",
+          "e06a1d8c834798a81282ae2500ddd7d53247a32cbc6c92e16b92f05f586a802c",
+          "e075502342ecd943d16c676718506d009a92d6d0b4af320e49a6f486f52e3d01",
+          "ee992aebf20c10173cede61aca6f87571f2f2b7c6338e26ca2a5888cabb16aa1",
+          "f705ceb54dcbd9fce8a9b69b8eb617f21757848766c43fc8165c9b06c6d27852",
+          "fdffe3d13bddf1955102888ba8775a1a167b1bb904bda303b4e355bd1c1725ae"
+        ]
+      },
+      {
+        "check": "too-many-digits",
+        "count": 4,
+        "disposition": "intended_math",
+        "reason": "Documented fixed-point tick constants and precision factors are deliberate.",
+        "diagnostic_ids": [
+          "c1448bf39df8142f58c03914b8b79e8bfe22420dc8da028a5c2ce4868e8895ef",
+          "c19e150d2cca9c26d069c1e23c0b2fa7c0ae75e06c381af3b77e834ef2f78e0e",
+          "d6d79e59b823b07217110d0eaf69c9aa8d83c2307d16291243da516036b5fb9a",
+          "fb37ab7de99dab154bcc0c3469ac37be7d25a727244c3f2a79a11546c2ad079a"
+        ]
+      },
+      {
+        "check": "uninitialized-local",
+        "count": 23,
+        "disposition": "not_confirmed",
+        "reason": "Solidity locals and memory structs in these paths have the intended zero defaults; no uninitialized storage pointer is involved.",
+        "diagnostic_ids": [
+          "089a0bc0379f051a08d40b17242e5a148938b7da67d47d52ba6a12d69aabd535",
+          "10f6434ccbbb8f97551e7f105178ac94532e5383a7742c07935b383494023963",
+          "257b6aa1e6509ba0c330d974253fb49c9a2f2a9400e176975cef959e664592ab",
+          "2db925c001ba635bc1b493b63d1b94ea3d02a0d19a7821167368fe3bb56349ad",
+          "30cc1eb89a499a7c37e84d573d8382375c26e94278deaf14dd6eb7089738d4b0",
+          "40d301e09a468b4904223a4a41948e5e872a289eddf7ce2995a81a3bec7461ca",
+          "4298d9e41e245b3fa409bf83f5a71316731c80cc980b69d9464ae046c565a34a",
+          "47730be0d739d6a1c7571d2685e1ef708b143ec87adb9fb231a1bdf0e1d20eec",
+          "51ba0b01568539facfb82c5314cb35350fab01e5db770375e952448cd360e37d",
+          "563b1fb98aedd4985eb1ab00e46bb64d4dff9ad1fee96e55371d931e5949534c",
+          "582759f3026b307d471bb3870742c4a999a09971504a517e11d9bea72f52fe0a",
+          "5b679af8a1dbc8c5a3223df927a6f08179e6c7e661d23b67f55541da38ab36e8",
+          "604497b17a1c3aa7d4391d7b651f7d2ce784ec3545d30b833391b22f67160cb4",
+          "795ab3b4f781aa2ab9ff96554034667ebc1b0b9d8ac6eaacad32633d9b69ab7f",
+          "87633584bd61e95b315acce599fc4f4300bf7b646b64e5cbb6a92a9a1e86c996",
+          "8a925f0363fa1dd7207e8f27ed0cbe0fd9c983aa66d5a3408c8430ce7fce4497",
+          "a43f0fa78b0bd935c7f94091448f74814d81a90d9fed18562b6f9745430cf60c",
+          "ab17fff649b5541074eb592561836a2f593932fa16aec6d38ca60043b40866fa",
+          "cec5c6cfeed43f73e6ddb0acb8f03596efffeba9f27d4425bfbcc3fdee1991a6",
+          "cfc6c4ac560222b56d777db872d10c68c1518d0804c6bc970c7a65e8d64121ff",
+          "d81c0cade5b23f1bc703b789f724a289d33c856c123b5a2012e94cd20ff54562",
+          "ebc54dd8be05f8a7bcd83174f2c914afc5c006fca1eadadb82c43bd4feeb0c8f",
+          "ec9c4de38eb3587420357e65b8cc6bc9070d89812f8963d16e6eea868c989f85"
+        ]
+      },
+      {
+        "check": "unused-return",
+        "count": 3,
+        "disposition": "not_confirmed",
+        "reason": "Unused pool fields are deliberate; receipt withdrawal is constrained by prior share transfer and subsequent token/share balance checks.",
+        "diagnostic_ids": [
+          "224a7fb08d48596f6b54f7ac3b54b1b0cef71b33cb17292f68619b22bfb84360",
+          "6d7c916a1abdf44ca349f6465b62b298d013b93d95ca33d11e1116a5eb566abe",
+          "fa914ce44db51c025b8bf6ad99fa4453290bfdf5efba6643cfc26260ff1fa662"
+        ]
+      }
+    ],
+    "note": "Slither returns a nonzero findings status. Raw severities are not confirmed vulnerabilities; all diagnostic IDs are accounted for by check category."
+  },
+  "live_readback": {
+    "chainId": 480,
+    "block": 37172835,
+    "blockHash": "0x7550763b7afd77de3c9f791735ed7e0a3305fb57f4cc597e930938b4bb64e2a5",
+    "checkedAt": "2026-11-03T04:51:05.426Z",
+    "sourceCommit": "aa67a75c382e44d9a30e95cdd09fc286a8b44861",
+    "configurations": [
+      {
+        "address": "0x1a856aE8c3abd8a3746F542688a1846Bc6208435",
+        "helper": "0x8203f1bDDA15405Bf405541e6E19Fcec95767269",
+        "child": "InheritanceVaultMorpho",
+        "parts": [
+          "0xDBa97096771a43B523c16D4189Bc3256FC0d4177",
+          "0x95Aefe08db9fCfb0dF1946cFe7252AdEf4188a79"
+        ],
+        "WLD": "0x2cFc85d8E48F8EAB294be644d9E25C3030863003",
+        "strategy": "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f",
+        "feeRecipient": "0x93bC44B8296977Feb479F95855D9b9E051C17dA2",
+        "performanceFeeBps": "1000"
+      },
+      {
+        "address": "0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2",
+        "helper": "0x761B2E1331AFa48A00601C62aa1AAFD5f17CAA41",
+        "child": "InheritanceVaultUSDC",
+        "parts": [
+          "0x4747B38E46B9D0e3227066Bec884fC959F34bb12",
+          "0xa67DdBed7f48f1b8E38753339ae42a8A7DE083D0"
+        ],
+        "asset": "0x79A02482A880bCE3F13e09Da970dC34db4CD24d1",
+        "strategy": "0xb1E80387EbE53Ff75a89736097D34dC8D9E9045B",
+        "feeRecipient": "0x93bC44B8296977Feb479F95855D9b9E051C17dA2",
+        "performanceFeeBps": "1000",
+        "feeRecipientUSDCBlacklisted": false
+      }
+    ],
+    "rows": [
+      {
+        "name": "InheritanceVaultMorphoFactory",
+        "address": "0x1a856aE8c3abd8a3746F542688a1846Bc6208435",
+        "codeHash": "0x25bb40335fde5b4f074ac545bc32cc66f5b8afcf5405ffb3ad5ad4678818acc8",
+        "actualBytes": 6286,
+        "compiledBytes": 6286,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 996,
+            "length": 32
+          },
+          {
+            "start": 2542,
+            "length": 32
+          },
+          {
+            "start": 3954,
+            "length": 32
+          },
+          {
+            "start": 853,
+            "length": 32
+          },
+          {
+            "start": 2399,
+            "length": 32
+          },
+          {
+            "start": 4532,
+            "length": 32
+          },
+          {
+            "start": 4605,
+            "length": 32
+          },
+          {
+            "start": 604,
+            "length": 32
+          },
+          {
+            "start": 892,
+            "length": 32
+          },
+          {
+            "start": 3116,
+            "length": 32
+          },
+          {
+            "start": 6233,
+            "length": 53,
+            "kind": "metadata"
+          }
+        ],
+        "immutableValues": {
+          "3848": [
+            "0x0000000000000000000000002cfc85d8e48f8eab294be644d9e25c3030863003"
+          ],
+          "3850": [
+            "0x000000000000000000000000348831b46876d3df2db98bdec5e3b4083329ab9f"
+          ],
+          "3852": [
+            "0x00000000000000000000000093bc44b8296977feb479f95855d9b9e051c17da2"
+          ],
+          "3854": [
+            "0x00000000000000000000000000000000000000000000000000000000000003e8"
+          ],
+          "3857": [
+            "0x0000000000000000000000008203f1bdda15405bf405541e6e19fcec95767269"
+          ]
+        }
+      },
+      {
+        "name": "InheritanceVaultMorphoDeployer",
+        "address": "0x8203f1bDDA15405Bf405541e6E19Fcec95767269",
+        "codeHash": "0x0f2d7d5534c01ae8b7187cf2e320297ce990df34dbbb35dd248fc055ff649ae6",
+        "actualBytes": 1216,
+        "compiledBytes": 1216,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 284,
+            "length": 32
+          },
+          {
+            "start": 369,
+            "length": 32
+          },
+          {
+            "start": 510,
+            "length": 32
+          },
+          {
+            "start": 323,
+            "length": 32
+          },
+          {
+            "start": 463,
+            "length": 32
+          },
+          {
+            "start": 192,
+            "length": 32
+          },
+          {
+            "start": 550,
+            "length": 32
+          },
+          {
+            "start": 105,
+            "length": 32
+          },
+          {
+            "start": 590,
+            "length": 32
+          },
+          {
+            "start": 231,
+            "length": 32
+          },
+          {
+            "start": 631,
+            "length": 32
+          },
+          {
+            "start": 674,
+            "length": 32
+          },
+          {
+            "start": 708,
+            "length": 32
+          },
+          {
+            "start": 742,
+            "length": 32
+          },
+          {
+            "start": 776,
+            "length": 32
+          },
+          {
+            "start": 1163,
+            "length": 53,
+            "kind": "metadata"
+          }
+        ],
+        "immutableValues": {
+          "3682": [
+            "0x0000000000000000000000001a856ae8c3abd8a3746f542688a1846bc6208435"
+          ],
+          "3684": [
+            "0x0000000000000000000000002cfc85d8e48f8eab294be644d9e25c3030863003"
+          ],
+          "3686": [
+            "0x000000000000000000000000348831b46876d3df2db98bdec5e3b4083329ab9f"
+          ],
+          "3688": [
+            "0x00000000000000000000000093bc44b8296977feb479f95855d9b9e051c17da2"
+          ],
+          "3690": [
+            "0x00000000000000000000000000000000000000000000000000000000000003e8"
+          ],
+          "3692": [
+            "0x000000000000000000000000dba97096771a43b523c16d4189bc3256fc0d4177"
+          ],
+          "3694": [
+            "0x00000000000000000000000095aefe08db9fcfb0df1946cfe7252adef4188a79"
+          ],
+          "3696": [
+            "0x00000000000000000000000000000000000000000000000000000000000062a3"
+          ],
+          "3698": [
+            "0x0000000000000000000000000000000000000000000000000000000000003152"
+          ]
+        }
+      },
+      {
+        "name": "InheritanceVaultMorpho immutable creation-code parts",
+        "addresses": [
+          "0xDBa97096771a43B523c16D4189Bc3256FC0d4177",
+          "0x95Aefe08db9fCfb0dF1946cFe7252AdEf4188a79"
+        ],
+        "codeHash": "0x9f2ed30fc9cca550b01318954a46ab14a0bfa64d811f6e2fb20d285b7ad55ee1",
+        "actualBytes": 25251,
+        "compiledBytes": 25251,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 25198,
+            "length": 53,
+            "kind": "metadata"
+          }
+        ]
+      },
+      {
+        "name": "InheritanceVaultUSDCFactory",
+        "address": "0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2",
+        "codeHash": "0x531b13987e315b4f8da239cb16111716a78a50858ff62c17079599185bda2bdd",
+        "actualBytes": 6665,
+        "compiledBytes": 6665,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 626,
+            "length": 32
+          },
+          {
+            "start": 2622,
+            "length": 32
+          },
+          {
+            "start": 4333,
+            "length": 32
+          },
+          {
+            "start": 1179,
+            "length": 32
+          },
+          {
+            "start": 2763,
+            "length": 32
+          },
+          {
+            "start": 914,
+            "length": 32
+          },
+          {
+            "start": 2479,
+            "length": 32
+          },
+          {
+            "start": 4911,
+            "length": 32
+          },
+          {
+            "start": 4984,
+            "length": 32
+          },
+          {
+            "start": 665,
+            "length": 32
+          },
+          {
+            "start": 953,
+            "length": 32
+          },
+          {
+            "start": 3439,
+            "length": 32
+          },
+          {
+            "start": 6612,
+            "length": 53,
+            "kind": "metadata"
+          }
+        ],
+        "immutableValues": {
+          "8335": [
+            "0x00000000000000000000000079a02482a880bce3f13e09da970dc34db4cd24d1"
+          ],
+          "8337": [
+            "0x0000000000000000000000002cfc85d8e48f8eab294be644d9e25c3030863003"
+          ],
+          "8339": [
+            "0x000000000000000000000000b1e80387ebe53ff75a89736097d34dc8d9e9045b"
+          ],
+          "8341": [
+            "0x00000000000000000000000093bc44b8296977feb479f95855d9b9e051c17da2"
+          ],
+          "8343": [
+            "0x00000000000000000000000000000000000000000000000000000000000003e8"
+          ],
+          "8346": [
+            "0x000000000000000000000000761b2e1331afa48a00601c62aa1aafd5f17caa41"
+          ]
+        }
+      },
+      {
+        "name": "InheritanceVaultUSDCDeployer",
+        "address": "0x761B2E1331AFa48A00601C62aa1AAFD5f17CAA41",
+        "codeHash": "0x6e241c14ef196701d001fdbd5f8b4d8dc9789588ec11bf82be6dc7090bc9e1a2",
+        "actualBytes": 1322,
+        "compiledBytes": 1322,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 349,
+            "length": 32
+          },
+          {
+            "start": 434,
+            "length": 32
+          },
+          {
+            "start": 615,
+            "length": 32
+          },
+          {
+            "start": 131,
+            "length": 32
+          },
+          {
+            "start": 528,
+            "length": 32
+          },
+          {
+            "start": 388,
+            "length": 32
+          },
+          {
+            "start": 568,
+            "length": 32
+          },
+          {
+            "start": 257,
+            "length": 32
+          },
+          {
+            "start": 655,
+            "length": 32
+          },
+          {
+            "start": 199,
+            "length": 32
+          },
+          {
+            "start": 695,
+            "length": 32
+          },
+          {
+            "start": 296,
+            "length": 32
+          },
+          {
+            "start": 737,
+            "length": 32
+          },
+          {
+            "start": 780,
+            "length": 32
+          },
+          {
+            "start": 814,
+            "length": 32
+          },
+          {
+            "start": 848,
+            "length": 32
+          },
+          {
+            "start": 882,
+            "length": 32
+          },
+          {
+            "start": 1269,
+            "length": 53,
+            "kind": "metadata"
+          }
+        ],
+        "immutableValues": {
+          "9279": [
+            "0x00000000000000000000000087813f596e4ab2ed29182bd8a632d21ae2a78db2"
+          ],
+          "9281": [
+            "0x00000000000000000000000079a02482a880bce3f13e09da970dc34db4cd24d1"
+          ],
+          "9283": [
+            "0x0000000000000000000000002cfc85d8e48f8eab294be644d9e25c3030863003"
+          ],
+          "9285": [
+            "0x000000000000000000000000b1e80387ebe53ff75a89736097d34dc8d9e9045b"
+          ],
+          "9287": [
+            "0x00000000000000000000000093bc44b8296977feb479f95855d9b9e051c17da2"
+          ],
+          "9289": [
+            "0x00000000000000000000000000000000000000000000000000000000000003e8"
+          ],
+          "9291": [
+            "0x0000000000000000000000004747b38e46b9d0e3227066bec884fc959f34bb12"
+          ],
+          "9293": [
+            "0x000000000000000000000000a67ddbed7f48f1b8e38753339ae42a8a7de083d0"
+          ],
+          "9295": [
+            "0x000000000000000000000000000000000000000000000000000000000000668f"
+          ],
+          "9297": [
+            "0x0000000000000000000000000000000000000000000000000000000000003348"
+          ]
+        }
+      },
+      {
+        "name": "InheritanceVaultUSDC immutable creation-code parts",
+        "addresses": [
+          "0x4747B38E46B9D0e3227066Bec884fC959F34bb12",
+          "0xa67DdBed7f48f1b8E38753339ae42a8A7DE083D0"
+        ],
+        "codeHash": "0xf55e1a734c293f5549fd7300cd98766abb2d9f93e2367d5241a4982d237c0675",
+        "actualBytes": 26255,
+        "compiledBytes": 26255,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 26202,
+            "length": 53,
+            "kind": "metadata"
+          }
+        ]
+      },
+      {
+        "name": "InheritanceVaultWLDFactoryOnePerOwner",
+        "address": "0xb74342FC15C504108cFD91366493590A9d570D26",
+        "codeHash": "0x2579b984983c745c9c28a4efbeb5e6fa692763528ed5023b8b56b1658286862a",
+        "actualBytes": 11906,
+        "compiledBytes": 11906,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 727,
+            "length": 32
+          },
+          {
+            "start": 1556,
+            "length": 32
+          },
+          {
+            "start": 1922,
+            "length": 32
+          },
+          {
+            "start": 2477,
+            "length": 32
+          },
+          {
+            "start": 3029,
+            "length": 32
+          },
+          {
+            "start": 11853,
+            "length": 53,
+            "kind": "metadata"
+          },
+          {
+            "start": 11800,
+            "length": 53,
+            "kind": "embedded child metadata"
+          }
+        ],
+        "immutableValues": {
+          "11340": [
+            "0x0000000000000000000000002cfc85d8e48f8eab294be644d9e25c3030863003"
+          ]
+        }
+      },
+      {
+        "name": "OperatorGasFunding",
+        "address": "0x7544804412033CBd0Eaf47eC5e356C161298F9e9",
+        "codeHash": "0x1384ba4063fd7c92ff06ca6e1ce1169b5acacbdcf1f8809852921c80175382d1",
+        "actualBytes": 10984,
+        "compiledBytes": 10984,
+        "normalizedMatch": true,
+        "mismatchCount": 0,
+        "firstMismatches": [],
+        "masks": [
+          {
+            "start": 992,
+            "length": 32
+          },
+          {
+            "start": 1542,
+            "length": 32
+          },
+          {
+            "start": 1674,
+            "length": 32
+          },
+          {
+            "start": 1795,
+            "length": 32
+          },
+          {
+            "start": 1864,
+            "length": 32
+          },
+          {
+            "start": 2003,
+            "length": 32
+          },
+          {
+            "start": 2234,
+            "length": 32
+          },
+          {
+            "start": 3000,
+            "length": 32
+          },
+          {
+            "start": 3988,
+            "length": 32
+          },
+          {
+            "start": 6012,
+            "length": 32
+          },
+          {
+            "start": 6482,
+            "length": 32
+          },
+          {
+            "start": 585,
+            "length": 32
+          },
+          {
+            "start": 2182,
+            "length": 32
+          },
+          {
+            "start": 2335,
+            "length": 32
+          },
+          {
+            "start": 4202,
+            "length": 32
+          },
+          {
+            "start": 4695,
+            "length": 32
+          },
+          {
+            "start": 4884,
+            "length": 32
+          },
+          {
+            "start": 4949,
+            "length": 32
+          },
+          {
+            "start": 1260,
+            "length": 32
+          },
+          {
+            "start": 2387,
+            "length": 32
+          },
+          {
+            "start": 4156,
+            "length": 32
+          },
+          {
+            "start": 4636,
+            "length": 32
+          },
+          {
+            "start": 4762,
+            "length": 32
+          },
+          {
+            "start": 4827,
+            "length": 32
+          },
+          {
+            "start": 10931,
+            "length": 53,
+            "kind": "metadata"
+          }
+        ],
+        "immutableValues": {
+          "12077": [
+            "0x00000000000000000000000093bc44b8296977feb479f95855d9b9e051c17da2"
+          ],
+          "12079": [
+            "0x00000000000000000000000020a85a9e929c69a440938eb650d70619b7562ed5"
+          ],
+          "12081": [
+            "0x0000000000000000000000008c31bbc49c371d431f884ab18ba5aa25b0d9170b"
+          ]
+        }
+      }
+    ],
+    "note": "Read-only normalized comparisons exclude compiler CBOR metadata and compiler-declared runtime immutable offsets. Constructor configuration read separately. No transactions."
+  },
+  "compiler_registry": {
+    "source": "https://github.com/ethereum/solidity/tree/develop/docs",
+    "snapshot_sha256": {
+      "bugs.json": "7766acac0c69aa152c98bc4fefa97679c19a56eac997e3043ea6738c764a23df",
+      "bugs_by_version.json": "42aede2095751ac858504786834ee6c0698f16782fb6470790c474ebae51ae08"
+    },
+    "entries_for_0_8_24": [
+      {
+        "uid": "SOL-2026-7",
+        "name": "YulOptimizerKnowledgeBaseStaleBookkeeping",
+        "introduced": "0.8.19",
+        "fixed": "0.8.38",
+        "severity": "low",
+        "conditions": {
+          "yulOptimizer": true
+        },
+        "link": "https://blog.soliditylang.org/2026/10/22/yul-optimizer-knowledge-base-stale-bookkeeping-bug/"
+      },
+      {
+        "uid": "SOL-2026-5",
+        "name": "MemoryByteArrayElementDeleteClearsWholeWord",
+        "fixed": "0.8.37",
+        "severity": "low/medium",
+        "conditions": {
+          "viaIR": false
+        },
+        "link": "https://blog.soliditylang.org/2026/09/10/memory-byte-array-element-delete-clears-whole-word-bug/"
+      },
+      {
+        "uid": "SOL-2026-4",
+        "name": "SpillSlotCollisionAcrossMutualRecursion",
+        "introduced": "0.7.2",
+        "fixed": "0.8.37",
+        "severity": "low/medium",
+        "conditions": {
+          "viaIR": true
+        },
+        "link": "https://blog.soliditylang.org/2026/09/10/spill-slot-collision-across-mutual-recursion-bug/"
+      },
+      {
+        "uid": "SOL-2026-2",
+        "name": "UnsoundSpillInMutualRecursion",
+        "introduced": "0.7.2",
+        "fixed": "0.8.36",
+        "severity": "medium",
+        "conditions": {
+          "viaIR": true
+        },
+        "link": "https://blog.soliditylang.org/2026/07/09/unsound-spill-in-mutual-recursion-bug/"
+      },
+      {
+        "uid": "SOL-2025-1",
+        "name": "LostStorageArrayWriteOnSlotOverflow",
+        "introduced": "0.1.0",
+        "fixed": "0.8.32",
+        "severity": "low",
+        "link": "https://blog.soliditylang.org/2025/12/18/lost-storage-array-write-on-slot-overflow-bug/"
+      }
+    ],
+    "assessment": "No concrete compiler exploit demonstrated. Relevant memory-delete, recursion and wraparound source patterns were not identified. SOL-2026-7 generated-code applicability was not fully excluded."
+  },
+  "raw_evidence_local_directory": "/tmp/inheritance-security-20261103.TyXfDq",
+  "raw_evidence": [
+    {
+      "file": "baseline-tests.log",
+      "sha256": "c1e68f83a54f7f9f7c2cb98882c44ea6dfe73bc072773538311d3274758d5501",
+      "bytes": 28458
+    },
+    {
+      "file": "final-tests.log",
+      "sha256": "c151dbba28853d63ab70e9945952db20660384d623cb8f8e4aa184ff37f71d3a",
+      "bytes": 31722
+    },
+    {
+      "file": "review-proofs.log",
+      "sha256": "3860099896ed70b97ca682c0504f1670f832fe73f93f67960a1edd7ec418f02a",
+      "bytes": 1854
+    },
+    {
+      "file": "final-forks/forge.log",
+      "sha256": "6061ec6a5081718e0b64aff3a0327f49e85c8dca950829502caf2b7bc83f2083",
+      "bytes": 3729
+    },
+    {
+      "file": "final-forks/receipt.json",
+      "sha256": "526270564ec6cc1d1e945453f5f39c2e0e0c3880d12408b8dbe2934f83ea0170",
+      "bytes": 686
+    },
+    {
+      "file": "slither.json",
+      "sha256": "8c64978317707d8f347dd3daa6f940f78398378b4c984129709c10c52f391a3a",
+      "bytes": 17230709
+    },
+    {
+      "file": "coverage-summary.txt",
+      "sha256": "46ef75b404b4bc83be81f5d17526fe263bad5b0932948d758431026989227f08",
+      "bytes": 41866
+    },
+    {
+      "file": "build-sizes.log",
+      "sha256": "7edcae35e8b1f2a296e7a19e350f9cbf23e1e4f98a296642305205fd8b43cf8f",
+      "bytes": 49250
+    },
+    {
+      "file": "live-readback.json",
+      "sha256": "e180e0e3fdabfeb543ff956a356a550985a88fa0380171295057b061b4144f7b",
+      "bytes": 15270
+    },
+    {
+      "file": "readback.mjs",
+      "sha256": "86f909898cb78b2f3f70183980b9115b0ed1621f1b3ced0e2d94776fa7c327cd",
+      "bytes": 6992
+    },
+    {
+      "file": "bugs.json",
+      "sha256": "7766acac0c69aa152c98bc4fefa97679c19a56eac997e3043ea6738c764a23df",
+      "bytes": 72036
+    },
+    {
+      "file": "bugs_by_version.json",
+      "sha256": "42aede2095751ac858504786834ee6c0698f16782fb6470790c474ebae51ae08",
+      "bytes": 94316
+    }
+  ],
+  "boundaries": [
+    "Read-only mainnet RPC plus local forks; no signatures or broadcasts.",
+    "Normalized code comparisons exclude CBOR metadata and compiler-declared runtime immutable references; configuration read separately.",
+    "Historical legacy factory source reconstruction and all-user child vault/balance inventories are outside this current-source review.",
+    "No independent third-party audit certification, full strategy audit, backend audit or native World App acceptance claim."
+  ]
+}

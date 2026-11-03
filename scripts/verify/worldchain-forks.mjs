@@ -25,7 +25,7 @@ const dirty = Boolean(execFileSync("git", ["status", "--porcelain"], { encoding:
 const out = resolve(process.env.FORK_EVIDENCE_DIR || "/tmp/inheritance-worldchain-forks");
 mkdirSync(out, { recursive: true });
 const env = { ...process.env };
-for (const prefix of ["WORLDCHAIN", "MORPHO", "USDC", "INCOME"]) {
+for (const prefix of ["WORLDCHAIN", "MORPHO", "USDC", "INCOME", "SECURITY"]) {
   env[`${prefix}_FORK_RPC`] = rpc;
   env[`${prefix}_FORK_BLOCK`] = block;
 }
@@ -38,9 +38,10 @@ const result = spawnSync(forge, ["test", "--match-contract", ".*ForkTest", "-vv"
 const log = `${result.stdout || ""}\n${result.stderr || ""}`.replaceAll(rpc, "[RPC]");
 writeFileSync(resolve(out, "forge.log"), log);
 const requiredSuites = ["GasRefillWorldChainForkTest", "OperatorGasFundingForkTest",
-  "OwnerIncomeWorldChainForkTest", "MorphoWorldChainForkTest", "USDCWorldChainForkTest"];
+  "OwnerIncomeWorldChainForkTest", "MorphoWorldChainForkTest", "USDCWorldChainForkTest",
+  "SecurityReviewColdShareFeeForkTest"];
 const summary = log.match(/Ran (\d+) test suites[^\n]*: (\d+) tests passed, (\d+) failed, (\d+) skipped/);
-const passed = result.status === 0 && !result.error && summary && Number(summary[1]) === 5
+const passed = result.status === 0 && !result.error && summary && Number(summary[1]) === requiredSuites.length
   && Number(summary[2]) > 0 && Number(summary[3]) === 0 && Number(summary[4]) === 0
   && requiredSuites.every(name => log.includes(`:${name}`));
 const receipt = { startedAt, finishedAt: new Date().toISOString(),
