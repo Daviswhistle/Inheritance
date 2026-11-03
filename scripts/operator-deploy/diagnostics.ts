@@ -15,13 +15,20 @@ function clean(value: string) {
   return value.slice(0,700)
     .replace(/https?:\/\/[^\s"'<>]+/gi,'[URL removed]')
     .replace(/(?:bearer\s+)[\w.\-]+/gi,'[credential removed]')
-    .replace(/(?:signature|nonce|token|authorization|password|secret|calldata|rawtransaction)\s*[:=]\s*[^\s,;]+/gi,'[sensitive value removed]')
+    .replace(/(?:signature|nonce|token|authorization|password|secret|calldata|rawtransaction)[\"']?\s*[:=]\s*[\"']?[^\s,;\"'}]+/gi,'[sensitive value removed]')
     .replace(/0x[\da-f]{8,}/gi,'[hex removed]')
     .replace(/[A-Za-z0-9_+\/-]{40,}(?:={0,2})/g,'[long value removed]')
     .slice(0,500);
 }
 export function sanitizeNativeDiagnostics(input: unknown): Record<string, unknown> {
   let remaining=2000;
+  const describe=(value:unknown,depth:number):unknown=>{
+    if(depth>3||remaining<=0)return '[bounded]';
+    if(typeof value==='string'){const text=clean(value).slice(0,remaining);remaining-=text.length;return text;}
+    if(value===null||typeof value!=='object')return `[unavailable: ${value===null?'null':typeof value}]`;
+    if(Array.isArray(value))return value.slice(0,6).map(item=>describe(item,depth+1));
+    const child=visit(value,depth);return Object.keys(child).length?child:'[omitted object]';
+  };
   const visit=(value:unknown,depth:number):Record<string,unknown>=>{
     if(!value||typeof value!=='object'||depth>3||remaining<=0)return {};
     const result:Record<string,unknown>={};
@@ -31,7 +38,7 @@ export function sanitizeNativeDiagnostics(input: unknown): Record<string, unknow
       }else if(gasKeys.has(key)&&(typeof item==='number'&&Number.isFinite(item)||typeof item==='string'&&/^\d{1,20}$/.test(item))){
         result[key]=item;remaining-=24;
       }else if(branches.has(key)){
-        const child=visit(item,depth+1);result[key]=Object.keys(child).length?child:'[omitted]';
+        result[key]=describe(item,depth+1);
       }else if(/^[a-zA-Z_][a-zA-Z0-9_]{0,47}$/.test(key)&&!/(?:signature|nonce|token|authorization|password|secret|calldata|rawtransaction|address|wallet)/i.test(key)){result[key]='[omitted]';remaining-=key.length+12;}
       if(remaining<=0)break;
     }
