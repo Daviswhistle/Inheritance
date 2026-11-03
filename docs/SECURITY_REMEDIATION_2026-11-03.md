@@ -3,14 +3,15 @@
 ## Status and authority
 
 This is a **new-generation source repair, not an upgrade of the live contracts**.
-The production Mini App and current factory addresses remain unchanged. On November 4,
-the operator approved and funded 0.00004 WETH for deployment; canonical proof passed.
-The WLD replacement factory is mined at `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
-and the USDC replacement at `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e`
-is mined too. Exact generation verification passed for both; USDC finality and
-app/Worker cutover remain pending. See
-[deployment progress](WORLDAPP_DEPLOYMENT_2026-11-03.md). App/Worker cutover, asset migration,
-notifications and submission have not occurred.
+The remediated WLD factory `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
+and USDC factory `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e`
+are finalized and active as the production primary routes. Both generations
+passed exact code/configuration verification. Runtime `1e4715d` and deployment
+41676338353 passed production file and seven-factory Worker readbacks.
+The operator funded 0.00004 WETH; remainder return is in progress within that
+budget. See [deployment progress](WORLDAPP_DEPLOYMENT_2026-11-03.md).
+Old immutable contracts and their assets have not been upgraded or migrated.
+Mini App submission remains stopped; no external message was sent.
 The operator requested repairs and validation, with reasons and costs before any
 redeployment or asset movement. Submission remains stopped.
 
@@ -25,7 +26,7 @@ This is internal engineering review, not an independent audit certificate.
 | Finding | New behavior | Important boundary |
 | --- | --- | --- |
 | M-01: Merkl `claimed` outage blocks principal | A gas-bounded self-call isolates getter failure, malformed ABI and gas exhaustion. WLD exits use strategy assets while retaining unknown idle WLD; USDC principal exits independently of its WLD reward read. Inheritance fixes the beneficiary and releases cash or shares without waiting for the reward counter. | Unknown WLD is retained, not treated as zero rewards or silently given to the owner. Strict reward reconciliation still requires a valid counter. |
-| M-02: rejected USDC fee transfer rolls back inheritance | A self-only subcall encloses redemption, invariant checks, accounting and fee transfer. If any step fails, the entire subcall rolls back; the outer guarded settlement transfers receipt shares with the normal proportional share fee. | This is a receipt-share payout, not a promise of immediately spendable USDC. Transferability of the strategy shares remains necessary. No fee waiver or new operator custody is introduced. |
+| M-02: rejected USDC fee transfer rolls back inheritance | A self-only subcall encloses redemption, invariant checks, accounting and fee transfer. If any step fails, the entire subcall rolls back; the outer guarded settlement transfers receipt shares with the proportional share fee when bounded valuation succeeds. If valuation fails, the existing unpriced-share exit policy waives that fee rather than blocking payout. | This is a receipt-share payout, not a promise of immediately spendable USDC. Transferability of the strategy shares remains necessary. The existing valuation-failure fee waiver is retained; no new operator custody is introduced. |
 | L-01: forced ETH locks prototype slot | Owner-only, reentrancy-guarded `sweepEth` permits recovery before or after expiry, so the empty slot can be released. | The multi-token prototype is not a production route and need not be deployed. |
 
 ### Deferred WLD ownership and accounting
@@ -72,6 +73,29 @@ unverified reward assumption.
   once and retire. No autonomous extra reward transaction was added.
 - Settled-vault discovery uses three entries per page so the extra capability
   reads remain within the Worker request budget.
+
+## Actual deployed generation checks — November 4
+
+Local World Chain forks at each actual deployment block created child vaults
+through the mined factories and matched their reviewed runtimes and immutable
+configuration. Owner-slot restrictions, owner/heir permissions and independent
+principal reads during an injected Merkl failure passed for both assets.
+
+On the actual USDC child with the real Re7 strategy unchanged, normal cash
+inheritance paid 100.359153 USDC to the heir and 0.039905 USDC in service fees.
+Injecting only a fee-recipient USDC transfer rejection rolled back redemption,
+USDC movement and share burning, then delivered 96.832488637665992908 shares
+to the fixed heir. Its 150,000-gas bounded strategy valuation failed while a
+2,000,000-gas probe succeeded: the pre-existing unpriced-share exit policy set
+the share fee to zero. That fee is not accrued for later collection or charged
+again when the wallet-held shares are redeemed. This exception protects exit;
+it is not an additional user charge. A separate explicit mock-strategy fixture
+verified proportional nonzero share fees when bounded valuation succeeds.
+Neither test used real customer funds or changed the production contracts.
+
+Private proofs: `deployed-wld-fork-proof.json`, `deployed-usdc-create-proof.json`,
+`deployed-usdc-real-strategy-m02.json`, `deployed-usdc-fee-waiver-analysis.json`,
+and `deployed-usdc-fork-proof.json` (mock-strategy variant, explicitly labelled).
 
 ## Toolchain and validation
 

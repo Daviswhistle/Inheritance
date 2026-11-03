@@ -1,5 +1,58 @@
 # Release evidence
 
+## November 4, 2026 — repaired yield factories and production cutover
+
+Runtime `1e4715d6425c3b369fd3519e1a905dfaa47f11f4` is deployed at
+https://3a35cdc0.inheritance.pages.dev. Deployment `41676338353` and CI
+`41676338421` succeeded. All 22 public files match the immutable deployment and
+an explicit production-mode local build; root SHA256 is
+`9b4c2ff874c5fc3e029e46d014e8db084caf6d2266f3d2355d402aaf11ff3391`.
+Worker `b07b7a46-8a56-4a0c-be02-c39f193a152f` supports the new and all retained
+automatic generations before Pages activation. Native iOS run `41673388897` passed interrupted-deposit recovery but failed
+`testRealSDKLoginAndNativeLifecycle`: the test retained an obsolete keyboard AX
+object after a keyboard-layout change and spent its stability deadline resolving
+it. Its screenshot shows the full focused input above the keyboard; native/CSS
+geometry and all nine hit-test samples confirm visibility. Test-only fix
+`ca55eac` reads portrait input/WebView/Done/keyboard frames from one fresh snapshot
+and reacquires the landscape keyboard query per poll, preserving all bounds,
+height, visibility, timing and three-sample stability requirements. Swift parse
+passes. The older queued runtime run `41676338433` was cancelled after this fix;
+replacement native run `41678818435` is in progress. No new pass is claimed yet.
+Production runtime remains `1e4715d`; the repair changes only the test harness.
+
+The finalized WLD factory is `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
+(block 37192969); the finalized USDC factory is
+`0xB3d5ead33a91287C2D39b345041D5a44dC381c5e` (block 37193547). Both fix the
+1000-bps service-fee recipient at `0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`.
+Factory/helper runtime, immutable values, child-creation chunks and reconstructed
+child code match the reviewed generation. All four contracts have exact
+Sourcify matches and full Blockscout source records; this is source verification,
+not an independent security audit. Old immutable contracts keep their original
+configuration. No existing customer assets were migrated.
+
+- Public health confirms seven supported automatic factories; the frontend also
+  retains the manual-only basic generation. New primary routes use the repaired
+  factories and all four earlier yield generations remain accessible.
+- Portal has the original ten contracts plus the two new factories, unchanged
+  Permit2 token permissions, KR only and unverified status. Funding-only router
+  and WETH permissions were removed; the temporary operator scripts are inert.
+- Actual Android World App: force-stop/deep-link entry pixels, authenticated Home,
+  retained recipient/30-day settings, and WLD/USDC asset tabs verified. Empty
+  vault positions remain distinct from wallet balances. No new deposit,
+  withdrawal, notification or transaction approval was requested in this smoke check.
+- Local forks created children through both actual deployed factories and
+  verified exact runtimes, immutables and owner/heir restrictions. Merkl faults
+  preserved principal access. Real unchanged Re7 USDC cash settlement and
+  rejected-fee rollback/share payout passed; bounded valuation failure used the
+  existing zero-share-fee policy. A separate mock-strategy variant confirmed
+  proportional share fees when valuation succeeds. These are local-chain tests.
+
+Deployment was funded with the approved 0.00004 WETH. Both CREATEs cost
+23096220264673 wei; remainder wrapping cost 71479824343 wei. Return of
+16534664601754 wei WETH is pending its preceding transaction's finality.
+See [deployment evidence and final reconciliation](WORLDAPP_DEPLOYMENT_2026-11-03.md).
+Submission remains stopped.
+
 ## November 3, 2026 — login recovery, sign-out and ended-plan restart
 
 Runtime `f6dc58a06633c28144bcc292be732db25183ec6a` is deployed at

@@ -1,5 +1,58 @@
 # Mac continuation — 2026-11-03
 
+## Production cutover — 2026-11-04
+
+Both replacement factories are finalized and active for new primary routes:
+WLD `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff` (37192969),
+USDC `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e` (37193547).
+Both immutable fee recipients are `0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`,
+1000 bps. Earlier immutable contracts and their balances are unchanged.
+
+Main/runtime `1e4715d6425c3b369fd3519e1a905dfaa47f11f4`; deployment run
+41676338353 succeeded. Immutable Pages deployment:
+https://3a35cdc0.inheritance.pages.dev. Worker version:
+`b07b7a46-8a56-4a0c-be02-c39f193a152f`.
+All 22 public files match both the immutable deployment and the local build
+with explicit `NODE_ENV=production`; root SHA256 is
+`9b4c2ff874c5fc3e029e46d014e8db084caf6d2266f3d2355d402aaf11ff3391`.
+An earlier local build inherited a development React environment and therefore
+had different React/entry hashes; correcting the local build mode produced exact
+matches without a source or production change. Python's local CA bundle also
+failed HTTPS validation; verification used Node's working TLS trust, never
+certificate-verification bypasses.
+
+Ten selected GitHub variable values were read back after applying the eight
+changes. The public automation health verifies seven supported factories:
+current basic WLD, both new yield generations, and all four earlier yield
+factories. The frontend additionally retains the manual-only basic generation.
+Portal readback: original ten contracts plus the two new factories, four Permit2
+tokens unchanged, KR only, unverified. Funding-only WETH/router permissions
+remain removed and both operator JS routes remain inert.
+
+Nonce 2 wrapped **16534664601754 wei** as WETH in block **37194135**;
+transaction `0x4f5233f56f42362df424b4f86b19d11db790d0e9bcf107294b0cc54ee4f6e1b8`,
+all-in wrap fee **71479824343 wei**. Wait for its finality before nonce 3 returns
+that exact WETH amount to the approved World App Safe. Return has not yet run.
+No additional funding, customer asset migration, external message or Mini App
+submission is authorized by this checkpoint.
+
+Evidence outside the public repository: `production-cutover-artifacts-nov04.json`,
+`production-automation-health-nov04.json`, `portal-cutover-nov04.json`,
+`rollout-variable-plan-nov04.json`, and `remainder-wrap-nov04.json`.
+
+### iOS test-harness follow-up
+
+Run 41673388897 failed only the login/native-lifecycle visibility helper;
+interrupted-deposit recovery passed. Screenshot and AX/CSS evidence show the
+focused input fully visible. The retained keyboard query had pinned a stale
+identity during a keyboard layout change. Test-only ca55eac now uses one fresh
+portrait snapshot and reacquires landscape keyboard geometry on each poll;
+all original visibility/height/stability checks remain. Swift parse passed.
+Replacement native run 41678818435 is in progress; do not call it passed before
+reading its result. The older queued run 41676338433 was cancelled. Public app
+runtime remains 1e4715d. Failure artifacts are private under
+`ios-failure-41673388897/` in the deployment evidence directory.
+
 ## Both factory CREATEs mined and verified — 2026-11-04
 
 The WLD CREATE is finalized. The USDC CREATE succeeded in block **37193547**:
