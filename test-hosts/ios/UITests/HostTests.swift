@@ -61,7 +61,7 @@ final class HostTests: XCTestCase {
         scrollInputAboveFixedFooter(amount, in: web, app: app)
         amount.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
-        waitForStableControl(amount, in: web)
+        waitForStableControl(amount, app: app)
         amount.typeText("12.345678")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in amount.value as? String == "12.345678" }, object: nil)], timeout: 10), .completed)
@@ -75,7 +75,7 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(recipient.isHittable)
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
-        waitForStableControl(recipient, in: web)
+        waitForStableControl(recipient, app: app)
         recipient.typeText("@test_heir")
         // Use the host's actual fixture identity. An unresolved name inserts
         // an error row that, with longer help text, puts the target label below
@@ -117,7 +117,7 @@ final class HostTests: XCTestCase {
             scrollInputAboveFixedFooter(recipient, in: web, app: app)
             recipient.tap()
             XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
-            waitForStableControl(recipient, in: web)
+            waitForStableControl(recipient, app: app)
             XCUIDevice.shared.orientation = .landscapeLeft
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
             assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
@@ -144,7 +144,7 @@ final class HostTests: XCTestCase {
         let factory = try XCTUnwrap(config["usdcFactory"] as? String)
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&account=heir&approval=auto&residence=KR"]
+                               "-testURL", "http://localhost:7777/?platform=ios&account=heir&approval=auto&trace=1&residence=KR"]
         app.launch()
         let initialPortrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initialPortrait, object: nil)], timeout: 20), .completed)
@@ -163,14 +163,14 @@ final class HostTests: XCTestCase {
         scrollInputAboveFixedFooter(amount, in: web, app: app)
         amount.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
-        waitForStableControl(amount, in: web)
+        waitForStableControl(amount, app: app)
         amount.typeText("1.000001")
         dismissKeyboard(in: web, app: app)
         let recipient = web.textFields.matching(NSPredicate(format: "label CONTAINS %@ OR placeholderValue == %@", "Who should receive", "@username or wallet address")).firstMatch
         scrollInputAboveFixedFooter(recipient, in: web, app: app)
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
-        waitForStableControl(recipient, in: web)
+        waitForStableControl(recipient, app: app)
         recipient.typeText(recipientAddress)
         dismissKeyboard(in: web, app: app)
         let review = web.buttons["Review plan"].firstMatch
@@ -257,7 +257,7 @@ final class HostTests: XCTestCase {
 
     private func dismissKeyboard(in web: XCUIElement, app: XCUIApplication) {
         let done = web.buttons["Done"].firstMatch
-        waitForStableControl(done, in: web, timeout: 60)
+        waitForStableControl(done, app: app, timeout: 60)
         done.tap()
         if app.launchArguments.contains(where: { $0.contains("trace=1") }) {
             let closed = NSPredicate { _, _ in !app.keyboards.firstMatch.exists }
@@ -285,7 +285,7 @@ final class HostTests: XCTestCase {
         // The reported failure had the fixed Done button over this label. A tap
         // must not activate that label when keyboard dismissal changes layout.
         let done = web.buttons["Done"].firstMatch
-        waitForStableControl(done, in: web, timeout: 60)
+        waitForStableControl(done, app: app, timeout: 60)
         func geometry() -> (button: [Double], interval: [Double])? {
             guard let raw = app.staticTexts["test-host-status"].value as? String,
                   let data = raw.data(using: .utf8),
@@ -347,23 +347,43 @@ final class HostTests: XCTestCase {
         capture("done-over-interval-label", app)
     }
 
-    private func waitForStableControl(_ control: XCUIElement, in web: XCUIElement, timeout: TimeInterval = 20) {
+    private func waitForStableControl(_ control: XCUIElement, app: XCUIApplication, timeout: TimeInterval = 20) {
+        let controlLabel = control.label
+        let controlIdentifier = control.identifier
+        let controlType = control.elementType
         var previous = CGRect.zero
+        var previousWeb = CGRect.zero
+        var previousKeyboard = CGRect.zero
         var stableSince: Date?
         var observations = 0
         let stable = NSPredicate { _, _ in
-            guard control.exists && control.isHittable else {
+            // The keyboard resizes WKWebView. A separately resolved web.frame
+            // can retain the old AX geometry, then return zero after retries.
+            // Read both rectangles from one fresh app snapshot, as in
+            // assertVisibleInput, while retaining the actual hittability check.
+            let keyboardFrame = app.keyboards.firstMatch.frame
+            guard !keyboardFrame.isEmpty, let snapshot = try? app.snapshot() else {
                 stableSince = nil; observations = 0; return false
             }
-            let frame = control.frame
-            let webFrame = web.frame
-            print("CONTROL STABILITY: frame=\(frame) web=\(webFrame) observations=\(observations)")
+            let nodes = self.flattenedSnapshots(snapshot)
+            guard let webSnapshot = nodes.first(where: { $0.elementType == .webView && !$0.frame.isEmpty }),
+                  let controlSnapshot = self.flattenedSnapshots(webSnapshot).first(where: {
+                      $0.elementType == controlType && $0.label == controlLabel
+                          && (controlIdentifier.isEmpty || $0.identifier == controlIdentifier)
+                  }), control.exists && control.isHittable else {
+                stableSince = nil; observations = 0; return false
+            }
+            let frame = controlSnapshot.frame
+            let webFrame = webSnapshot.frame
+            print("CONTROL STABILITY: frame=\(frame) web=\(webFrame) keyboard=\(keyboardFrame) observations=\(observations)")
             guard frame.height >= 44, frame.minY >= webFrame.minY,
-                  frame.maxY <= webFrame.maxY else {
+                  frame.minX >= webFrame.minX, frame.maxX <= webFrame.maxX,
+                  frame.maxY <= min(webFrame.maxY, keyboardFrame.minY) else {
                 stableSince = nil; observations = 0; return false
             }
-            if frame != previous || stableSince == nil {
-                previous = frame; stableSince = Date(); observations = 1; return false
+            if frame != previous || webFrame != previousWeb || keyboardFrame != previousKeyboard || stableSince == nil {
+                previous = frame; previousWeb = webFrame; previousKeyboard = keyboardFrame
+                stableSince = Date(); observations = 1; return false
             }
             observations += 1
             return observations >= 3 && Date().timeIntervalSince(stableSince ?? Date()) >= 0.8

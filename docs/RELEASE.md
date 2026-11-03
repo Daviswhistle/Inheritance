@@ -2,7 +2,20 @@
 
 ## November 3, 2026 — login recovery, sign-out and ended-plan restart
 
-Implementation is ready for deployment; live release receipt follows after deployment.
+Runtime `f6dc58a06633c28144bcc292be732db25183ec6a` is deployed at
+https://5a3a5e6a.inheritance.pages.dev. Production HTML and all four referenced
+assets match the immutable deployment (November 3, 19:01 KST readback).
+Deployment `41615531163` and CI `41615531224` succeeded. Native iOS run
+`41615531022` passed the login/keyboard test but failed the pending-deposit test
+before its transaction: the stability helper queried an old WKWebView rectangle
+and received a zero frame after keyboard resize. The failure screenshot shows
+the focused recipient field above the keyboard; its AX snapshot contains the
+real nonzero viewport. Earlier functional run `41615178147` passed both tests.
+The helper now reads both rectangles from one fresh app snapshot, retaining
+hittability, 44-point height, full visibility and three stable samples over 0.8s.
+It also checks stable viewport geometry and enables gesture diagnostics in the
+pending-deposit test. A native rerun is required; this is a test fix, not a claim
+that the failed run passed.
 Submission remains stopped. No new production transaction or outbound message.
 
 - Official MiniKit wallet authentication now has a 60-second overall timeout,
@@ -29,6 +42,9 @@ Local validation:
 - Chromium and WebKit exit suites each pass all 16 checks, including real disposable-chain
   redeposit and full recovery after the ended plan's old deadline. Recovery
   storage 10 checks, mobile regressions 13 checks and unified routing tests pass.
+- Actual Android World App: cold link entry, successful sign-in, header sign-out,
+  return to guest, re-login with unchanged saved plan, Help sign-out and final
+  account-card presentation verified. No transaction approval or funds used.
 - Test-host browser checks are not actual iOS World App validation. Previously
   reported immutable-contract security findings are unchanged by this revision.
 

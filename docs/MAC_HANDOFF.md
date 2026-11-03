@@ -25,7 +25,8 @@ transaction, notification, external message or submission was performed.
 
 ## November 3 — login, logout and restarting an ended plan
 
-The next runtime adds visible sign-out, a bounded login with reload recovery,
+Runtime `f6dc58a` is deployed at https://5a3a5e6a.inheritance.pages.dev.
+It adds visible sign-out, a bounded login with reload recovery,
 and suppresses late authentication responses after timeout/sign-out. Wallet
 identity no longer waits for a balance RPC response. Sign-out clears the local
 session and resets the document; account-scoped transaction recovery records

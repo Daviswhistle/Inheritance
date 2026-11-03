@@ -37,6 +37,7 @@ try{
  pass('Sign out clears account/session, preserves recovery storage and does not automatically sign back in');
  await page.reload();await page.getByRole('button',{name:'동의하고 로그인',exact:true}).waitFor();await login();await signedIn();
  await page.locator('.tab-item').nth(3).click();assert.match(await page.locator('main').innerText(),/맡긴 자산과 상속 설정은 그대로 유지됩니다/);
+ const heading=page.getByRole('heading',{name:'계정',exact:true});assert.ok(await heading.evaluate(e=>e.getBoundingClientRect().left-e.parentElement.parentElement.getBoundingClientRect().left>=16));await shot('account-help');
  await page.locator('main').getByRole('button',{name:'로그아웃',exact:true}).click();await page.getByRole('button',{name:'동의하고 로그인',exact:true}).waitFor();pass('Help explains sign-out effects and its action returns to sign-in');
  // Suppress RPC responses to ensure identity establishment is independent of balances.
  await page.route('**/__host/rpc',route=>route.abort());await login();await signedIn();pass('A failed balance RPC does not prevent successful authentication');
