@@ -78,8 +78,10 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(recipient.isHittable)
         recipient.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        dismissQuickPathOnboardingIfPresent(app)
         waitForStableControl(recipient, app: app)
         recipient.typeText("@test_heir")
+        dismissQuickPathOnboardingIfPresent(app)
         // Use the host's actual fixture identity. An unresolved name inserts
         // an error row that, with longer help text, puts the target label below
         // the minimum scroll position allowed by input-clearance protection.
@@ -476,6 +478,53 @@ final class HostTests: XCTestCase {
         XCTAssertLessThan(input.frame.maxY, app.frame.maxY - 180, "Amount field must clear the fixed footer")
     }
 
+    /// A fresh simulator can show the system QuickPath lesson over the text
+    /// keyboard. Only its exact text and Continue button in the same lower
+    /// screen container authorize a tap; unrelated app/system prompts stay put.
+    private func dismissQuickPathOnboardingIfPresent(_ app: XCUIApplication) {
+        let tip = "Speed up your typing by sliding your finger across the letters to compose a word."
+        let hosts = [("host-app", app), ("springboard", XCUIApplication(bundleIdentifier: "com.apple.springboard")),
+                     ("keyboard-management", XCUIApplication(bundleIdentifier: "com.apple.UIKit.KeyboardManagement"))]
+        let screen = app.frame
+        for (hostName, host) in hosts {
+            guard host.state != .notRunning else { continue }
+            let message = host.staticTexts.matching(NSPredicate(format: "label == %@", tip)).firstMatch
+            guard message.exists else { continue }
+            let containers = host.otherElements.containing(.staticText, identifier: tip)
+                .containing(.button, identifier: "Continue").allElementsBoundByIndex
+            let container = containers.filter {
+                let frame = $0.frame
+                return !frame.isEmpty && frame.minY >= screen.minY + screen.height * 0.45
+                    && frame.maxY <= screen.maxY + 1 && frame.minX >= screen.minX
+                    && frame.maxX <= screen.maxX + 1
+            }.min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+            guard let container else {
+                XCTFail("Exact QuickPath text appeared without its identified keyboard-area Continue container")
+                return
+            }
+            let button = container.buttons.matching(NSPredicate(format: "label == %@", "Continue")).firstMatch
+            XCTAssertTrue(button.exists && button.isHittable, "The identified QuickPath Continue must be hittable")
+            capture("quickpath-onboarding-before", app)
+            print("QUICKPATH ONBOARDING: host=\(hostName) container=\(container.frame) button=\(button.frame)")
+            button.tap()
+            let dismissed = NSPredicate { _, _ in
+                !host.staticTexts.matching(NSPredicate(format: "label == %@", tip)).firstMatch.exists
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed,
+                           "The exact QuickPath lesson must disappear after Continue")
+            let realKeyboard = NSPredicate { _, _ in
+                let keyboard = app.keyboards.firstMatch
+                return keyboard.exists && keyboard.keys["Q"].exists && keyboard.keys["P"].exists
+                    && keyboard.keys["Q"].isHittable && keyboard.keys["P"].isHittable
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: realKeyboard, object: nil)], timeout: 10), .completed,
+                           "Actual native QWERTY keys must be available after the QuickPath lesson")
+            capture("quickpath-onboarding-after", app)
+            return
+        }
+        print("QUICKPATH ONBOARDING: exact lesson absent; no action")
+    }
+
     private func assertVisibleInput(_ input: XCUIElement, in web: XCUIElement,
                                     app: XCUIApplication, height: CGFloat,
                                     text: String, screenshot name: String) {
@@ -485,30 +534,52 @@ final class HostTests: XCTestCase {
         var observations = 0
         var lastInvalidGeometry = ""
         let status = app.staticTexts["test-host-status"]
+        var poll = 0
+        func diagnostic(_ message: String) {
+            print("INPUT SAMPLE \(name) poll=\(poll): \(message)")
+        }
+        func reset(_ reason: String) {
+            diagnostic("reset=\(reason) priorSamples=\(observations) stableAge=\(stableSince.map { Date().timeIntervalSince($0) } ?? 0)")
+            stableSince = nil; observations = 0
+        }
         let visibleAndStable = NSPredicate { _, _ in
+            poll += 1
+            let pollStart = Date()
             // Snapshot values are truncated at 512 characters by XCTest. Read
             // the complete telemetry directly, then take one coherent snapshot
             // for app frames. All values must agree across stable samples.
+            diagnostic("status_query_start")
+            let statusStart = Date()
             let raw = status.value as? String ?? ""
-            guard let snapshot = try? app.snapshot() else {
-                stableSince = nil; observations = 0; return false
+            diagnostic("status_query_end seconds=\(Date().timeIntervalSince(statusStart))")
+            // Query one fresh WebView tree for DOM controls. System keyboard
+            // identity is independent and is reacquired for every sample.
+            diagnostic("web_snapshot_start")
+            let snapshotStart = Date()
+            let snapshot: any XCUIElementSnapshot
+            do {
+                snapshot = try app.webViews.firstMatch.snapshot()
+            } catch {
+                let failure = error as NSError
+                diagnostic("web_snapshot_error seconds=\(Date().timeIntervalSince(snapshotStart)) domain=\(failure.domain) code=\(failure.code)")
+                reset("web_snapshot_error"); return false
             }
+            diagnostic("web_snapshot_end seconds=\(Date().timeIntervalSince(snapshotStart))")
             let nodes = self.flattenedSnapshots(snapshot)
-            guard let inputSnapshot = nodes.first(where: { $0.elementType == .textField && $0.label == inputLabel }),
-                  let webSnapshot = nodes.first(where: { $0.elementType == .webView && !$0.frame.isEmpty }),
-                  let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty }),
-                  let keyboardSnapshot = nodes.first(where: { $0.elementType == .keyboard && !$0.frame.isEmpty }) else {
-                stableSince = nil; observations = 0; return false
+            let inputSnapshot = nodes.first(where: { $0.elementType == .textField && $0.label == inputLabel })
+            let webSnapshot = nodes.first(where: { $0.elementType == .webView && !$0.frame.isEmpty })
+            let doneSnapshot = nodes.first(where: { $0.elementType == .button && $0.label == "Done" && !$0.frame.isEmpty })
+            guard let inputSnapshot, let webSnapshot, let doneSnapshot else {
+                let fieldLabels = nodes.filter { $0.elementType == .textField }.prefix(4).map { String($0.label.prefix(80)) }
+                diagnostic("missing_nodes input=\(inputSnapshot != nil) web=\(webSnapshot != nil) done=\(doneSnapshot != nil) nodeCount=\(nodes.count) fields=\(fieldLabels)")
+                reset("missing_nodes"); return false
             }
-            // Use the same fresh AX sample in portrait. Retaining a keyboard
-            // XCUIElement across polls pins its old identity when the keyboard
-            // layout changes (decimal -> text), blocking on obsolete lookups.
-            // After rotation XCTest snapshots retain portrait keyboard axes;
-            // reacquire a fresh query for screen-oriented landscape geometry.
-            let landscape = snapshot.frame.width > snapshot.frame.height
-            let keyboardFrame = landscape ? app.keyboards.firstMatch.frame : keyboardSnapshot.frame
+            diagnostic("keyboard_query_start")
+            let keyboardStart = Date()
+            let keyboardFrame = app.keyboards.firstMatch.frame
+            diagnostic("keyboard_query_end seconds=\(Date().timeIntervalSince(keyboardStart)) frame=\(keyboardFrame)")
             guard !keyboardFrame.isEmpty else {
-                stableSince = nil; observations = 0; return false
+                reset("empty_keyboard"); return false
             }
             let field = inputSnapshot.frame
             let webFrame = webSnapshot.frame
@@ -524,7 +595,7 @@ final class HostTests: XCTestCase {
                   let visibleHeight = viewport["height"] as? Double,
                   let scale = viewport["scale"] as? Double else {
                 if raw != lastInvalidGeometry { print("INPUT METRICS NOT READY \(name): \(raw)"); lastInvalidGeometry = raw }
-                stableSince = nil; observations = 0; return false
+                reset("invalid_metrics"); return false
             }
             let occlusion = min(min(keyboardFrame.minY, doneFrame.minY), webFrame.maxY)
             // Both full CSS geometry and native geometry must fit. A clipped
@@ -544,13 +615,19 @@ final class HostTests: XCTestCase {
             let geometry = "\(field)|\(webFrame)|\(keyboardFrame)|\(doneFrame)|\(raw)"
             guard valid else {
                 if geometry != lastInvalidGeometry { print("INPUT GEOMETRY INVALID \(name): \(geometry)"); lastInvalidGeometry = geometry }
-                stableSince = nil; observations = 0; return false
+                reset("invalid_geometry"); return false
             }
             if geometry != lastGeometry || stableSince == nil {
-                lastGeometry = geometry; stableSince = Date(); observations = 1; return false
+                reset(stableSince == nil ? "start_stability" : "geometry_changed")
+                lastGeometry = geometry; stableSince = Date(); observations = 1
+                diagnostic("valid samples=1 stableAge=0 pollSeconds=\(Date().timeIntervalSince(pollStart))")
+                return false
             }
             observations += 1
-            return observations >= 3 && Date().timeIntervalSince(stableSince ?? Date()) >= 0.8
+            let stableAge = Date().timeIntervalSince(stableSince ?? Date())
+            let accepted = observations >= 3 && stableAge >= 0.8
+            diagnostic("valid samples=\(observations) stableAge=\(stableAge) pollSeconds=\(Date().timeIntervalSince(pollStart)) accepted=\(accepted)")
+            return accepted
         }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visibleAndStable, object: nil)], timeout: 30), .completed,
                        "Entire input must remain visible after native and DOM geometry settle")
