@@ -69,7 +69,9 @@ jobs:
   deploy:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.operator_mode == 'none' }}
     name: Build & deploy to Pages
-    needs: auth
+    # New primary routes must not become visible before the Worker recognizes
+    # them and continues to support every retained generation.
+    needs: [auth, notify]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -190,8 +192,7 @@ jobs:
           workingDirectory: app
           command: pages deploy
 
-  # 알림 백엔드. 별도 job 인 이유는 프론트엔드와 실패 조건이 다르기 때문이다 —
-  # 프론트 배포가 성공해도 백엔드가 죽어 있으면 "알림이 안 온다" 는 형태로만 드러난다.
+  # Worker 검증을 통과한 뒤에만 Pages에 새 계약 경로를 노출한다.
   notify:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.operator_mode == 'none' }}
     name: Deploy notification backend
@@ -353,6 +354,32 @@ jobs:
             echo "시도 $i 실패, 재시도…"; sleep 10
           done
           echo "::error::배포된 Worker 가 응답하지 않습니다."; exit 1
+
+      - name: Verify new and retained factory support before Pages rollout
+        working-directory: .
+        env:
+          FACTORY_ADDRESS: ${{ vars.VITE_FACTORY_ADDRESS }}
+          YIELD_FACTORY_ADDRESS: ${{ vars.VITE_YIELD_FACTORY_ADDRESS }}
+          USDC_YIELD_FACTORY_ADDRESS: ${{ vars.VITE_USDC_YIELD_FACTORY_ADDRESS }}
+          FRONTEND_LEGACY_WLD: ${{ vars.VITE_LEGACY_YIELD_FACTORY_ADDRESSES }}
+          FRONTEND_LEGACY_USDC: ${{ vars.VITE_LEGACY_USDC_YIELD_FACTORY_ADDRESSES }}
+          BACKEND_LEGACY_WLD: ${{ vars.LEGACY_YIELD_FACTORY_ADDRESSES }}
+          BACKEND_LEGACY_USDC: ${{ vars.LEGACY_USDC_YIELD_FACTORY_ADDRESSES }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { checkDeployedFactorySupport } from './scripts/check-deployed-factory-support.mjs';
+          if (!process.env.FACTORY_ADDRESS) throw Error('Missing primary basic factory configuration');
+          // Retain all four existing yield generations even if both variable
+          // sets accidentally omit the immediately previous primary routes.
+          const retained = '0x1a856aE8c3abd8a3746F542688a1846Bc6208435,0xfC3F6f0B2234923b3F3aDBAaC797e920C8FdA248,0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2,0x67c8DE756FCD04dc5976960533931984d0348758';
+          const configured = ['FACTORY_ADDRESS','YIELD_FACTORY_ADDRESS','USDC_YIELD_FACTORY_ADDRESS','FRONTEND_LEGACY_WLD','FRONTEND_LEGACY_USDC','BACKEND_LEGACY_WLD','BACKEND_LEGACY_USDC'].map(key => process.env[key]);
+          const expectedFactories = [...configured, retained].filter(value => value?.trim()).join(',');
+          console.log(JSON.stringify(await checkDeployedFactorySupport({
+            url: 'https://world-inheritance-notify.rkddkwl725.workers.dev/api/automation/health',
+            expectedFactories,
+            expectedChainId: 480,
+          })));
+          NODE
 
   operator_page:
     name: Publish isolated operator page without changing product runtime

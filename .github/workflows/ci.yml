@@ -92,6 +92,10 @@ jobs:
         working-directory: .
         run: node scripts/test-worldapp-funding-proof-result.mjs
 
+      - name: Reject rollout that drops an existing factory generation
+        working-directory: .
+        run: node scripts/test-deployed-factory-support.mjs
+
       - name: Typecheck
         run: pnpm typecheck
 
