@@ -4617,7 +4617,7 @@ export default function App() {
             {singleCheckinReview && <Button disabled={pendingAction} onClick={() => setSingleCheckinReview("")}>{t("home.checkin.cancel")}</Button>}
           </CardContent></Card>}
         {isYieldVault && (tab === "inherit" && !isMyVault && hasRewardAction || tab === "money" && hasRewardAction) && <YieldRewardsCard
-          usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
+          usdc={isUsdcVault} held={isUsdcVault ? heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null : selectedYieldHoldings?.idle ?? null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
           received={selectedReceivedRewards} deferred={selectedDeferredRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}
@@ -5002,7 +5002,7 @@ export default function App() {
           position={selectedYieldPosition} holdings={selectedYieldHoldings} terms={yieldTerms} canExit={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)}
           busy={pendingAction} onExit={() => void runVaultAction(exitYieldShares)} />}
             {!hasRewardAction && <YieldRewardsCard
-          usdc={isUsdcVault} held={heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null}
+          usdc={isUsdcVault} held={isUsdcVault ? heldRewardCash?.scope === balanceScope ? heldRewardCash.amount : null : selectedYieldHoldings?.idle ?? null}
           canWithdraw={isMyVault && !isSettledClaim && (!isExpiredOrLater || inheritanceCancelled)} onWithdraw={() => void runVaultAction(withdrawUsdcRewards)}
           data={selectedRewards?.data ?? null} error={selectedRewards?.error ?? ""} loading={selectedRewards?.loading ?? true}
           received={selectedReceivedRewards} deferred={selectedDeferredRewards} onProcess={() => void runVaultAction(processReceivedYieldRewards)}

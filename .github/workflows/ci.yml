@@ -180,6 +180,7 @@ jobs:
           forge build
           node scripts/test-finalizer.mjs
           node scripts/test-deferred-rewards-chain.mjs
+          node scripts/test-remediation-gas.mjs
 
       - name: Verify opt-in yield ABI and minimum-output contract
         working-directory: .

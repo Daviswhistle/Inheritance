@@ -1,18 +1,22 @@
 // Real disposable Anvil receipts: no production RPC, wallets or funds.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const require = createRequire(new URL('../../app/package.json', import.meta.url));
 const { Contract, JsonRpcProvider } = require('ethers');
+// A cold optimized-IR compile can exceed the host's readiness deadline on CI.
+// Complete it explicitly before timing server startup; never loosen transaction waits.
+const build = spawnSync('forge', ['build'], { stdio: 'inherit', timeout: 600000 });
+if (build.error || build.status !== 0) throw build.error || new Error(`Contract build failed: ${build.status}`);
 const socket = createServer();
 await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
 const port = socket.address().port;
 await new Promise(resolve => socket.close(resolve));
 const origin = `http://localhost:${port}`;
-const host = spawn(process.execPath, [new URL('./start.mjs', import.meta.url).pathname, `--port=${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+const host = spawn(process.execPath, [new URL('./start.mjs', import.meta.url).pathname, '--skip-build', `--port=${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
 let output = '', provider;
 host.stdout.on('data', data => output = (output + data).slice(-16000));
 host.stderr.on('data', data => output = (output + data).slice(-16000));

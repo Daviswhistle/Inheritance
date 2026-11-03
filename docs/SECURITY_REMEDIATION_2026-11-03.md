@@ -98,11 +98,16 @@ it is not a way to deploy this new revision.
   existing per-custody and aggregate 90% gates. This is separate minimum-IR
   instrumentation, not production bytecode or a branch/security proof.
 - Local finalizer integration: **151 checks passed**, all transactions on Anvil.
+  Simultaneous gas exhaustion in Merkl, strategy redeem and share valuation also
+  passed through the actual factory entrypoints. Estimated gas with 20% padding:
+  **786,788 WLD / 794,703 USDC**, both within the existing **900,000** limit.
+  Actual usage was **621,780 / 628,273**; both padded-limit and full-limit execution
+  preserved the fixed beneficiary and retained unknown WLD.
 - Notification/auth integration **81**, scheduling **28**, alerts **29** passed.
 - Original Chromium exit flow: **16 checks** including accessibility, cancellation,
   atomic rollback, process-loss recovery, restart, rounding and mixed-asset exit.
-  New mobile-browser flows cover deferred principal withdrawal and gift-only
-  payout with receipt and actual balance verification. These are test-host
+  Three new mobile-browser flows cover deferred principal withdrawal and both
+  USDC/WLD gift-only payout with receipt and actual balance verification. These are test-host
   results, not new production-wallet or actual iOS World App acceptance.
 
 Reproducible commands (Foundry 1.3.2 on PATH):
