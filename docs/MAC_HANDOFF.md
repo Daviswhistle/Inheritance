@@ -1,6 +1,29 @@
 # Mac continuation — 2026-11-03
 
-## Funding approved and received — 2026-11-04
+## First factory mined and verified — 2026-11-04
+
+Funding block 37192271 is finalized. The guarded runner submitted only nonce 0,
+and the WLD factory CREATE succeeded in block **37192969**:
+- Factory: `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
+- Transaction: `0xfefc01fb9398c57bfeb99484f368d607478d68314443d4cb7ccf78167e9a5bea`
+- Actual all-in transaction fee: **11700173426350 wei**.
+- Remaining temporary EOA ETH: **28299826573650 wei**.
+- Fee recipient: `0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`, 1000 bps.
+
+Exact factory/helper runtime, all immutable values, both creation-code chunks,
+reconstructed child bytecode and ABI settings passed verification at the receipt
+block. Private evidence: `wld-deployment-verified-nov04.json` and
+`wld-deployment-cost-nov04.json` in the deployment evidence directory.
+
+The runner now returns `pending_finality` for nonce 0. Wait until finalized
+block >=37192969 before its next step. The USDC factory is not deployed; neither
+remainder wrapping nor return has run. New factory routes are not activated in
+the app/Worker/Portal. Funding must never be repeated. Existing budget approval
+remains valid; no additional user action is required for the fixed guarded steps.
+Latest full CI 41667520290 passed, including the new receipt and rollout checks.
+
+
+## Earlier funding approval and receipt — 2026-11-04
 
 The operator explicitly approved **0.00004 WETH total funding**, with deployment
 and return costs within that amount, then completed native approval. The exact

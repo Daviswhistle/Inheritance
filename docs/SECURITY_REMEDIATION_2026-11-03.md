@@ -4,10 +4,11 @@
 
 This is a **new-generation source repair, not an upgrade of the live contracts**.
 The production Mini App and current factory addresses remain unchanged. On November 4,
-the operator approved and funded 0.00004 WETH for deployment; canonical proof passed
-and the runner is waiting for finality before signing. See
-[deployment progress](WORLDAPP_DEPLOYMENT_2026-11-03.md). No factory deployment,
-asset migration, notification or submission has been performed.
+the operator approved and funded 0.00004 WETH for deployment; canonical proof passed.
+The WLD replacement factory is mined at `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
+and exact generation verification passed. Its finality precedes the USDC deployment. See
+[deployment progress](WORLDAPP_DEPLOYMENT_2026-11-03.md). The USDC replacement, app/Worker cutover,
+asset migration, notifications and submission have not occurred.
 The operator requested repairs and validation, with reasons and costs before any
 redeployment or asset movement. Submission remains stopped.
 
