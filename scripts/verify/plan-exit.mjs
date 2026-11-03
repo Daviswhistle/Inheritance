@@ -86,8 +86,20 @@ try{
  for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();
  await p.reload();await review();assert.match(await p.locator('.money-review').innerText(),/돌려받을 자산이 없습니다/);assert.equal(await p.locator('.money-review h2').innerText(),'상속 종료');assert.equal(await p.getByText('자산은 계속 운용하고 싶어요',{exact:true}).count(),0);assert.doesNotMatch(await p.locator('.money-review').innerText(),/입금 지갑|출금과 수령인/);await confirm();await p.getByText('상속을 종료했습니다. 회수할 자산은 없었습니다.',{exact:true}).first().waitFor();
  pass('Empty plans can end without falsely claiming a payment');
- const countBeforeEmpty=await requests();await openExit();await p.getByText('종료할 상속 플랜이 없습니다.',{exact:true}).waitFor();assert.equal(await requests(),countBeforeEmpty);
- pass('Already empty, recipient-free plans do not request a redundant paid transaction');
+ const countBeforeEmpty=await requests();await p.locator('.owner-plan-settings:has([data-state=ended])').waitFor();
+ assert.equal(await p.getByRole('button',{name:'기한 연장하기',exact:true}).count(),0);
+ assert.equal(await p.getByRole('button',{name:'상속 종료',exact:true}).count(),0);
+ assert.equal(await p.locator('.page-intro h1').innerText(),'플랜 관리');await shot('ended-plan-ko');
+ await p.locator('.owner-plan-settings:has([data-state=ended])').getByRole('button',{name:'상속 다시 설정하기',exact:true}).click();await p.locator('.plan-setup-card').waitFor();assert.equal(await requests(),countBeforeEmpty);
+ await provider.send('evm_increaseTime',[31*86400]);await provider.send('evm_mine',[]);
+ await p.reload();await p.locator('.savings-empty').waitFor();const countAfterReload=await requests();await p.locator('.savings-empty .btn-primary').click();await p.locator('.plan-setup-card').waitFor();
+ assert.equal(await p.locator('.owner-plan-settings').count(),0);assert.equal(await requests(),countAfterReload);
+ pass('Ended empty plans offer setup directly from Plan and Home without renewal, exit, heir heading or wallet requests');
+ if(await p.locator('#plan-residence-country').count()){await p.locator('#plan-residence-country').selectOption('KR');await p.locator('#plan-residence-attestation').check();await p.locator('.plan-residence-confirmation .btn-primary').click()}
+ await p.locator('#plan-wld').fill('1');await p.locator('#heir-input').fill(c.heir);await p.locator('.plan-submit').click();await p.locator('#yield-consent').check();await p.locator('.plan-submit').click();await p.locator('.plan-alignment-review').waitFor();
+ await p.locator('.plan-alignment-review .btn-primary').click();await until(async()=>await wv.heir()===c.heir&&await wv.hasAssets(),'ended plan restarted with deposit');
+ assert.equal(await uv.heir(),c.owner);await p.locator('.home-checkin-action').waitFor();await shot('restarted-plan-ko');await review();await confirm();await p.getByText('상속을 종료하고 자산을 돌려받았습니다.',{exact:true}).first().waitFor();
+ pass('Restart review reuses the ended WLD vault after its old deadline, renews and restores its recipient, deposits real test assets and leaves the unselected USDC plan ended');
  const basic=new Contract(c.plain,[...fAbi,'function deposit(uint256)'],signer);await(await basic.createVault(c.heir,30*86400)).wait();await(await wld.approve(c.plain,parseEther('2'))).wait();await(await basic.deposit(parseEther('2'))).wait();
  await(await wld.transfer(await uv.getAddress(),parseEther('1'))).wait();await p.reload();await p.locator('.retained-assets').waitFor();await p.locator('.retained-assets .btn-primary').click();await p.locator('.money-review').waitFor();
  assert.match(await p.locator('.money-review').innerText(),/2.0 WLD/);assert.match(await p.locator('.money-review').innerText(),/1.0 WLD/);const beforeMixed=await wld.balanceOf(c.owner);await confirm();await p.getByText('상속을 종료하고 자산을 돌려받았습니다.',{exact:true}).first().waitFor();
@@ -102,4 +114,4 @@ try{
  assert.equal(await verify([]),false);
  pass('Receipt verification rejects wrong token, source, recipient, missing transfer and insufficient received amount');
  writeFileSync(out+'/evidence.json',JSON.stringify({checks,realFundsUsed:false},null,2));
-}catch(error){if(p)await p.screenshot({path:out+'/failure.png'}).catch(()=>{});writeFileSync(out+'/host.log',log);throw error}finally{await browser?.close();provider?.destroy();host.kill('SIGTERM');}
+}catch(error){if(p)writeFileSync(out+'/failure.txt',await p.locator('body').innerText().catch(()=>''));if(p)await p.screenshot({path:out+'/failure.png'}).catch(()=>{});writeFileSync(out+'/host.log',log);throw error}finally{await browser?.close();provider?.destroy();host.kill('SIGTERM');}

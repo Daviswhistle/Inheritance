@@ -473,14 +473,14 @@ export function PlanSetup({
   const alignmentReview = alignmentConflicts.length > 0 && <section className="plan-review plan-alignment-review" aria-labelledby="plan-alignment-title">
     <h3 id="plan-alignment-title">{t("plan.alignment.title")}</h3>
     <p>{t("plan.alignment.body")}</p>
-    {alignmentConflicts.some(conflict => conflict.currentPeriodSeconds !== BigInt(conflict.requestedPeriod) * 86400n)
+    {alignmentConflicts.some(conflict => conflict.currentHeir.toLowerCase() === account.toLowerCase() || conflict.currentPeriodSeconds !== BigInt(conflict.requestedPeriod) * 86400n)
       && <p>{t("plan.alignment.timer")}</p>}
     <ul>
       {alignmentConflicts.map(conflict => <li key={conflict.address}>
         <strong>{conflict.symbol}</strong> · {conflict.address.slice(0, 6)}…{conflict.address.slice(-4)}: {conflict.currentHeir.slice(0, 6)}…{conflict.currentHeir.slice(-4)}, {formatInterval(conflict.currentPeriodSeconds)}
         <span aria-hidden="true"> → </span>
         {conflict.requestedHeir.slice(0, 6)}…{conflict.requestedHeir.slice(-4)}, {t("plan.alignment.days", { days: conflict.requestedPeriod })}
-        {conflict.currentPeriodSeconds !== BigInt(conflict.requestedPeriod) * 86400n && <span>{t("plan.alignment.changeReset")}</span>}
+        {(conflict.currentHeir.toLowerCase() === account.toLowerCase() || conflict.currentPeriodSeconds !== BigInt(conflict.requestedPeriod) * 86400n) && <span>{t("plan.alignment.changeReset")}</span>}
       </li>)}
     </ul>
     <div className="plan-action-row">

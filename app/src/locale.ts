@@ -1,6 +1,11 @@
 export type Locale = "en" | "ko";
 
 const en = {
+  "account.title": "Account",
+  "account.signOut": "Sign out",
+  "account.signOutHelp": "Sign out of Inheritance on this device. Your saved assets and inheritance settings stay in place.",
+  "entry.connect.timeout": "Sign-in is taking too long. Reload this screen and try again. If World App still shows an approval request, close it first.",
+  "entry.connect.retry": "Reload and try again",
   "failure.Expired": "The countdown has already ended, so this cannot be changed now.",
   "failure.NotExpiredYet": "The countdown is still running, so there is nothing to claim yet.",
   "failure.HeartbeatOutOfRange": "The renewal period must be between 1 and 365 days.",
@@ -347,6 +352,9 @@ const en = {
   "journey.action.confirmSettings": "Confirm changes",
   "journey.action.edit": "Back to editing",
   "journey.action.resume": "Check pending changes",
+  "journey.owner.ended": "Inheritance ended",
+  "journey.owner.endedBody": "No recipient is designated and no inheritance assets remain. Set a recipient and deposit amount to start again.",
+  "journey.owner.restart": "Set up inheritance",
   "journey.owner.settings": "Your plan settings",
   "journey.owner.shared": "One heir and one check-in interval apply to all your active assets, including earlier deposits.",
   "journey.owner.inconsistent": "Your assets currently have different settings. Updating the heir or interval applies that choice to every active asset.",
@@ -865,6 +873,11 @@ const en = {
 type LocaleKey = keyof typeof en;
 
 const ko: Record<LocaleKey, string> = {
+  "account.title": "계정",
+  "account.signOut": "로그아웃",
+  "account.signOutHelp": "이 기기에서 Inheritance를 로그아웃합니다. 맡긴 자산과 상속 설정은 그대로 유지됩니다.",
+  "entry.connect.timeout": "로그인 응답이 늦어지고 있습니다. 화면을 새로고침한 뒤 다시 시도해 주세요. World App 승인창이 남아 있다면 먼저 닫아 주세요.",
+  "entry.connect.retry": "새로고침하고 다시 시도",
   "failure.Expired": "기한이 지나 설정을 바꿀 수 없습니다. 홈에서 기한을 연장한 뒤 다시 시도해 주세요.",
   "failure.NotExpiredYet": "아직 수령을 신청할 수 없습니다. 소유자가 설정한 연장 기한이 지나야 신청할 수 있습니다.",
   "failure.HeartbeatOutOfRange": "연장 주기는 1~365일 중에서 선택해 주세요.",
@@ -1207,6 +1220,9 @@ const ko: Record<LocaleKey, string> = {
   "journey.action.confirmSettings": "변경 내용 승인하기",
   "journey.action.edit": "다시 수정",
   "journey.action.resume": "진행 중인 거래 확인",
+  "journey.owner.ended": "상속이 종료되었습니다",
+  "journey.owner.endedBody": "지정된 수령인과 예치된 상속 자산이 없습니다. 다시 시작하려면 수령인과 예치 금액을 설정해 주세요.",
+  "journey.owner.restart": "상속 다시 설정하기",
   "journey.owner.settings": "내 플랜 설정",
   "journey.owner.shared": "WLD와 USDC 모두 아래 설정을 따릅니다. 이전 플랜에 남아 있는 자산도 상속이 진행 중이면 함께 변경됩니다.",
   "journey.owner.inconsistent": "자산마다 수령인 또는 연장 주기가 다릅니다. 변경하면 상속이 진행 중인 모든 자산에 아래 설정을 일괄 적용합니다.",

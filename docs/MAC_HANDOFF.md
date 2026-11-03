@@ -23,6 +23,24 @@ See ANDROID_COLD_START.md for timed captures, action checks and the corrected
 verification procedure; no product runtime fix was claimed for this finding. No new real
 transaction, notification, external message or submission was performed.
 
+## November 3 — login, logout and restarting an ended plan
+
+The next runtime adds visible sign-out, a bounded login with reload recovery,
+and suppresses late authentication responses after timeout/sign-out. Wallet
+identity no longer waits for a balance RPC response. Sign-out clears the local
+session and resets the document; account-scoped transaction recovery records
+remain for the next sign-in. It does not end a plan or move funds.
+
+Ended empty plans no longer offer renewal/exit transactions or identify their
+owner as the recipient. Restart opens setup directly and explicitly reviews
+reactivation of the selected existing vault, including renewal of an expired
+deadline. Unselected ended assets stay ended. See RELEASE.md for validation
+and deployment status; submission is still stopped.
+
+The separate November 3 security branch was reviewed and its conditional exit
+failures reproduced. This UI/auth change does not remediate immutable deployed
+contracts or claim a new security audit.
+
 ## November 3 — authentication and guideline corrections
 
 Current production is `aa67a75` / https://d92b0dde.inheritance.pages.dev.

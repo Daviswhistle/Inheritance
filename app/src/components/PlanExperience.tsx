@@ -94,7 +94,8 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
   </section>;
 }
 
-export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, resolvedHeir, resolving, busy, disabled, onPeriodReview, onHeirReview, onCancel, onExit, hasExitAssets, exitDisabled, cancelReview, review, onConfirm, onDismiss, pending, onResume, onCheckIn, inconsistent }: {
+export function OwnerPlanSettings({ ended, canCheckIn, onRestart, heirLabel, period, onPeriod, heir, onHeir, resolvedHeir, resolving, busy, disabled, onPeriodReview, onHeirReview, onCancel, onExit, hasExitAssets, exitDisabled, cancelReview, review, onConfirm, onDismiss, pending, onResume, onCheckIn, inconsistent }: {
+  ended: boolean; canCheckIn: boolean; onRestart: () => void;
   heirLabel: string; period: string; onPeriod: (value: string) => void; heir: string; onHeir: (value: string) => void;
   resolvedHeir: string; resolving: boolean; busy: boolean; disabled: boolean;
   onPeriodReview: () => void; onHeirReview: () => void; onCancel: () => void; onExit: () => void; hasExitAssets: boolean; exitDisabled: boolean; cancelReview: boolean;
@@ -102,6 +103,11 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
   pending: boolean; onResume: () => void; onCheckIn: () => void; inconsistent: boolean;
 }) {
   const { t } = useLocale();
+  if (ended && !pending) return <Card className="owner-plan-settings"><CardHeader>
+    <CardTitle>{t("journey.owner.ended")}</CardTitle></CardHeader><CardContent className="grid gap-3">
+      <p data-state="ended">{t("journey.owner.endedBody")}</p>
+      <Button variant="primary" disabled={busy} onClick={onRestart}>{t("journey.owner.restart")}</Button>
+    </CardContent></Card>;
   return <Card className="owner-plan-settings"><CardHeader><CardTitle>{t("journey.owner.settings")}</CardTitle>
     <p className="plan-card-intro">{t("journey.owner.shared")}</p></CardHeader><CardContent className="grid gap-3">
       <dl className="plan-review-list"><div><dt>{t("plan.review.recipient")}</dt><dd>{heirLabel || t("home.settingsDiffer")}</dd></div></dl>
@@ -125,8 +131,8 @@ export function OwnerPlanSettings({ heirLabel, period, onPeriod, heir, onHeir, r
         {heir && <p className={resolvedHeir ? "plan-review-address" : "text-xs"}>{resolving ? t("plan.recipient.checking") : resolvedHeir || t("plan.recipient.notFound")}</p>}
         <Button disabled={busy || disabled || !resolvedHeir || resolving} onClick={onHeirReview}>{t("journey.action.changeHeir")}</Button>
         </div></details>
-        {disabled && <p>{t("journey.owner.checkInFirst")}</p>}
-        <Button variant="outline" disabled={busy} onClick={onCheckIn}>{t("home.checkin.direct")}</Button>
+        {canCheckIn && disabled && <p>{t("journey.owner.checkInFirst")}</p>}
+        {canCheckIn && <Button variant="outline" disabled={busy} onClick={onCheckIn}>{t("home.checkin.direct")}</Button>}
         <details><summary>{t("journey.owner.stop")}</summary><p>{t(hasExitAssets ? "journey.owner.stopExplanation" : "exit.noFunds")}</p>
           <div className="grid gap-3"><Button variant="primary" disabled={busy || exitDisabled} onClick={onExit}>{t(hasExitAssets ? "exit.action" : "journey.owner.stop")}</Button>
           {hasExitAssets && <details><summary>{t("exit.keepTitle")}</summary><p>{t("exit.detachBody")}</p>

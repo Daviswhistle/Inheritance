@@ -6,6 +6,9 @@ const ADDRESS_KEY = "wld-account";
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 type Session = { address: string; token: string; expiresAt: number };
 let memorySession: Session | null = null;
+let authGeneration = 0;
+let pendingAuth: { cancel: () => void } | null = null;
+let authRequiresReload = false;
 
 /** Bound both headers and body reads so an offline sign-in can be retried. */
 async function authResponse(url: string, init: RequestInit = {}): Promise<{ response: Response; data: unknown }> {
@@ -53,14 +56,14 @@ function readSession(): Session | null {
     if (raw) {
       const session: unknown = JSON.parse(raw);
       if (validSession(session)) return session;
-      clearSession();
+      clearStoredSession();
       return null;
     }
   } catch {
     // Storage may be unavailable in embedded contexts. Memory lasts only this page.
   }
   if (validSession(memorySession)) return memorySession;
-  clearSession();
+  clearStoredSession();
   return null;
 }
 
@@ -87,32 +90,62 @@ export async function fetchAuthNonce(): Promise<string | null> {
 
 export type AuthResult =
   | { ok: true; address: string; verified: boolean }
-  | { ok: false; error: string; userFacing: boolean };
+  | { ok: false; error: string; userFacing: boolean; requiresReload?: boolean };
 
+/** The native wallet command cannot be cancelled safely. After a timeout this
+ * page must reload before issuing another command; late results have no authority. */
 export async function signInWithWorldApp(signature: (nonce: string) => Promise<{
   ok: true; address: string; message: string; signature: string;
-} | { ok: false; error: string; userFacing: boolean }>): Promise<AuthResult> {
-  const nonce = await fetchAuthNonce();
-  if (!nonce) return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
-  const signed = await signature(nonce);
-  if (!signed.ok) return signed;
-  try {
-    const { response, data: body } = await authResponse("/api/auth/verify", {
-      method: "POST", headers: { "content-type": "application/json" }, cache: "no-store",
-      body: JSON.stringify({ nonce, payload: { message: signed.message, signature: signed.signature, address: signed.address } }),
-    });
-    const data = body as {
-      isValid?: boolean; address?: string; token?: string; expiresAt?: number; message?: string;
-    };
-    if (!response.ok || !data.isValid || typeof data.address !== "string" || data.address.toLowerCase() !== signed.address.toLowerCase()) {
-      return { ok: false, error: data.message || "Signature verification failed", userFacing: true };
+} | { ok: false; error: string; userFacing: boolean }>, options: { timeoutMs?: number } = {}): Promise<AuthResult> {
+  if (authRequiresReload) return { ok: false, error: "Reload to retry sign-in", userFacing: true, requiresReload: true };
+  if (pendingAuth) return { ok: false, error: "Sign-in is already in progress", userFacing: true };
+  const generation = ++authGeneration;
+  let active = true;
+  const cancelled: AuthResult = { ok: false, error: "Sign-in was cancelled", userFacing: true };
+  let finish!: (result: AuthResult) => void;
+  const interrupted = new Promise<AuthResult>((resolve) => { finish = resolve; });
+  const attempt = { cancel: () => { active = false; finish(cancelled); } };
+  pendingAuth = attempt;
+  const current = () => active && authGeneration === generation;
+  const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs! > 0 ? options.timeoutMs! : 60_000;
+  const timer = setTimeout(() => {
+    active = false;
+    authRequiresReload = true;
+    finish({ ok: false, error: "Sign-in timed out. Reload to try again.", userFacing: true, requiresReload: true });
+  }, timeoutMs);
+  const run = async (): Promise<AuthResult> => {
+    try {
+      const nonce = await fetchAuthNonce();
+      if (!current()) return cancelled;
+      if (!nonce) return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
+      const signed = await signature(nonce);
+      if (!current()) return cancelled;
+      if (!signed.ok) return signed;
+      const { response, data: body } = await authResponse("/api/auth/verify", {
+        method: "POST", headers: { "content-type": "application/json" }, cache: "no-store",
+        body: JSON.stringify({ nonce, payload: { message: signed.message, signature: signed.signature, address: signed.address } }),
+      });
+      if (!current()) return cancelled;
+      const data = body as {
+        isValid?: boolean; address?: string; token?: string; expiresAt?: number; message?: string;
+      };
+      if (!response.ok || !data.isValid || typeof data.address !== "string" || data.address.toLowerCase() !== signed.address.toLowerCase()) {
+        return { ok: false, error: data.message || "Signature verification failed", userFacing: true };
+      }
+      const session = { address: data.address, token: data.token, expiresAt: data.expiresAt };
+      if (!validSession(session)) return { ok: false, error: "The sign-in server returned an invalid session", userFacing: true };
+      saveSession(session);
+      return { ok: true, address: session.address, verified: true };
+    } catch {
+      return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
     }
-    const session = { address: data.address, token: data.token, expiresAt: data.expiresAt };
-    if (!validSession(session)) return { ok: false, error: "The sign-in server returned an invalid session", userFacing: true };
-    saveSession(session);
-    return { ok: true, address: session.address, verified: true };
-  } catch {
-    return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
+  };
+  try {
+    return await Promise.race([run(), interrupted]);
+  } finally {
+    active = false;
+    clearTimeout(timer);
+    if (pendingAuth === attempt) pendingAuth = null;
   }
 }
 
@@ -122,6 +155,12 @@ export function readSessionAddress(): string | null {
 }
 
 export function clearSession(): void {
+  ++authGeneration;
+  pendingAuth?.cancel();
+  clearStoredSession();
+}
+
+function clearStoredSession(): void {
   memorySession = null;
   try { sessionStorage.removeItem(SESSION_KEY); } catch { /* storage may be blocked */ }
   try {

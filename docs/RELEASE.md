@@ -1,5 +1,38 @@
 # Release evidence
 
+## November 3, 2026 — login recovery, sign-out and ended-plan restart
+
+Implementation is ready for deployment; live release receipt follows after deployment.
+Submission remains stopped. No new production transaction or outbound message.
+
+- Official MiniKit wallet authentication now has a 60-second overall timeout,
+  rejects overlapping attempts and ignores late responses after timeout/sign-out.
+  The timeout screen offers reload recovery. Authenticated identity no longer
+  waits for balance RPC connectivity.
+- Header and Help expose Sign out / 로그아웃. It clears the local credentials
+  and resets the page, preserving account-scoped transaction recovery journals.
+  Help explains that assets and inheritance settings remain unchanged.
+- Ended empty plans show restart instead of redundant renewal/exit actions.
+  The owner is no longer labelled as the heir after recipient removal. Restart
+  opens setup directly and reviews reuse of the selected vault, with a renewed
+  deadline before recipient reassignment; unselected ended assets stay ended.
+
+Local validation:
+- Typecheck, lint, build, locale 10 checks, CSS class consistency and built-copy
+  checks pass; server authentication/authorization 77 checks pass.
+- New login lifecycle regressions cover whole-login timeout, duplicate native
+  commands, late nonce/signature/server responses, logout and successful sign-in.
+- Chromium and WebKit each pass six login/session journeys with real MiniKit SDK
+  and a simulated host: rejection/retry, sign-out/re-entry, Help, blocked RPC,
+  unanswered wallet and late response, then successful reload/retry. Header
+  layout and touch targets checked at 320px and 390px.
+- Chromium exit suite passes all 16 checks, including real disposable-chain
+  redeposit and full recovery after the ended plan's old deadline. Recovery
+  storage 10 checks, mobile regressions 13 checks and unified routing tests pass.
+- Test-host browser checks are not actual iOS World App validation. Previously
+  reported immutable-contract security findings are unchanged by this revision.
+
+
 ## November 3, 2026 — authentication and guideline corrections (submission stopped)
 
 Runtime `aa67a75c382e44d9a30e95cdd09fc286a8b44861` is deployed at

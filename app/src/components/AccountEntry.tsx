@@ -7,10 +7,11 @@ import { useActionClearance } from "@/use-action-clearance";
 import { useState } from "react";
 import { PlanLegalDialog } from "./PlanSetup";
 
-export function AccountEntry({ view, installed, busy, onConnect, onNavigate, linkedVault }: {
+export function AccountEntry({ view, installed, busy, requiresReload = false, onConnect, onNavigate, linkedVault }: {
   view: "vault" | "money" | "inherit";
   installed: boolean;
   busy: boolean;
+  requiresReload?: boolean;
   onConnect: () => void;
   onNavigate: (view: "money" | "inherit") => void;
   linkedVault: string;
@@ -74,7 +75,10 @@ export function AccountEntry({ view, installed, busy, onConnect, onNavigate, lin
     {view !== "money" && <details className="entry-rules"><summary>{t("guide.title")}</summary><TransferGuide /></details>}
     <div className="entry-action" ref={actionRef}>
       {installed && <p className="entry-consent">{t("entry.connect.consent")}<br /><a href="/privacy.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("privacy"); }}>{t("plan.legal.privacy")}</a> · <a href="/terms.html" aria-haspopup="dialog" onClick={event => { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); setLegalDocument("terms"); }}>{t("plan.legal.terms")}</a></p>}
-      {installed
+      {requiresReload && <p role="alert">{t("entry.connect.timeout")}</p>}
+      {installed && requiresReload
+        ? <Button variant="primary" size="lg" onClick={() => window.location.reload()}>{t("entry.connect.retry")}</Button>
+        : installed
         ? <Button variant="primary" size="lg" onClick={onConnect} disabled={busy}>
           {busy ? <><span className="spinner" />{t("entry.connect.busy")}</> : <>{t("entry.connect.continue")}<Icon name="arrow" size={19} /></>}
         </Button>

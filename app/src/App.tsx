@@ -40,7 +40,6 @@ import { ConfirmedTransactionFailure, confirmTransaction, verifyIncomeWithdrawal
 import type { ReactElement } from "react";
 import {
   APP_ORIGIN,
-  CHAIN_ID,
   CONFIG_ERROR,
   EXPLORER,
   FACTORY_ADDRESS,
@@ -299,26 +298,11 @@ const TABS: { key: TabKey }[] = [
 const LOG_SCAN_CHUNK = 90;
 
 
-/**
- * 읽기 전용 provider 생성.
- *
- * 체인 ID를 하드코딩하지 않는다. 이전에는 `{ chainId: 480 }` 을 정적 network 로
- * 넘겨서, 다른 체인(local anvil, World Chain Sepolia 등)에서 연결하면 모든 호출이
- * `network changed: 480 => <실제>` 로 실패했다. 덕분에 이 앱은 메인넷 외에는
- * 아예 테스트가 불가능했다.
- *
- * 대신 실제로 연결된 체인을 조회해 기대 체인과 다르면 경고한다.
- */
-async function createProvider(): Promise<ethers.JsonRpcProvider> {
-  const p = new ethers.JsonRpcProvider(RPC_URL);
-  const net = await p.getNetwork();
-  if (net.chainId !== BigInt(CHAIN_ID)) {
-    console.warn(
-      `Unexpected chain: got ${net.chainId}, expected ${CHAIN_ID}. ` +
-        `Check VITE_RPC / VITE_FACTORY_ADDRESS — they must match.`,
-    );
-  }
-  return p;
+/** Construct the read client without delaying sign-in on an RPC response.
+ * Ethers detects the network when a balance/contract read actually needs it;
+ * those reads have their own unavailable/retry presentation. */
+function createProvider(): ethers.JsonRpcProvider {
+  return new ethers.JsonRpcProvider(RPC_URL);
 }
 
 export default function App() {
@@ -760,6 +744,8 @@ export default function App() {
   const [releaseMessage, setReleaseMessage] = useState("");
   const [sweeping, setSweeping] = useState<boolean>(false);
   const [ctaLoading, setCtaLoading] = useState<boolean>(false);
+  const loginInFlight = useRef(false);
+  const [loginRequiresReload, setLoginRequiresReload] = useState(false);
   const [creating, setCreating] = useState(false);
   const [moneyReview, setMoneyReview] = useState<{ kind: "deposit" | "withdraw" | "income"; scope: string; amount: string; to: string } | null>(null);
   const [pendingAction, setPendingAction] = useState(false);
@@ -1144,7 +1130,7 @@ export default function App() {
    * 주소라 아무나 열 수 있다 — 그래서 상속인이 아닌 지갑에게 "You can now file a
    * claim" 이라고 말하는 일이 있었다. 버튼은 없는데도 **수익자를 단정**하는 셈이다.
    */
-  const iAmHeir = Boolean(account) && Boolean(vaultHeir) && account.toLowerCase() === vaultHeir.toLowerCase();
+  const iAmHeir = !isVaultOwner && Boolean(account) && Boolean(vaultHeir) && account.toLowerCase() === vaultHeir.toLowerCase();
   const iAmInvolved = isVaultOwner || iAmHeir;
 
   /**
@@ -1196,6 +1182,8 @@ export default function App() {
 
   // Wallet authentication starts only from an explicit sign-in action.
   const continueWorldApp2 = async () => {
+    if (loginInFlight.current || loginRequiresReload) return;
+    loginInFlight.current = true;
     setCtaLoading(true);
     try {
       const appId = document
@@ -1219,11 +1207,16 @@ export default function App() {
         // 둘 다 Pages Function(`/api/auth/*`)이 담당한다.
         const auth = await signInWithWorldApp((nonce) => walletAuth(nonce));
         if (!auth.ok) {
+          if (auth.requiresReload) {
+            setLoginRequiresReload(true);
+            setStatus("");
+            return;
+          }
           setStatus(auth.error);
           if (auth.userFacing) pushToast('error', auth.error);
           return;
         }
-        setProvider(await createProvider());
+        setProvider(createProvider());
         setSigner(null);
         setAccount(auth.address);
         setServerVerified(auth.verified);
@@ -1240,8 +1233,19 @@ export default function App() {
       setStatus('Continue error: ' + msg);
       pushToast('error', msg);
     } finally {
+      loginInFlight.current = false;
       setCtaLoading(false);
     }
+  };
+
+  const signOut = () => {
+    if (pendingAction) return;
+    clearSession();
+    // A fresh document discards account data, requests and native listeners.
+    // Keep account-scoped transaction journals for receipt recovery on sign-in.
+    setAccount("");
+    setUsername("");
+    window.location.reload();
   };
 
   const refreshNotifyPermission = useCallback(async (): Promise<"granted" | "denied" | "unknown"> => {
@@ -1585,7 +1589,7 @@ export default function App() {
       if (!saved || !ethers.isAddress(saved)) return;
       try {
         const addr = ethers.getAddress(saved);
-        setProvider(await createProvider());
+        setProvider(createProvider());
         setSigner(null);
         setAccount(addr);
         setServerVerified(true);
@@ -2961,13 +2965,15 @@ export default function App() {
         if (!identity) continue;
         const step = assetByFactory.get(route.factory.toLowerCase());
         const selectedForDeposit = step?.depositState === "ready";
-        if (identity.claimedAt > 0n || identity.heir.toLowerCase() === plan.account.toLowerCase() || identity.heir === ethers.ZeroAddress) {
+        const restarting = identity.heir.toLowerCase() === plan.account.toLowerCase();
+        if (restarting && !selectedForDeposit) continue;
+        if (identity.claimedAt > 0n || identity.heir === ethers.ZeroAddress) {
           if (selectedForDeposit) throw new Error(`${route.symbol} vault is closed or its inheritance is cancelled. Manage or release it before starting a new deposit.`);
           continue;
         }
         const settingsDiffer = identity.heir.toLowerCase() !== plan.heir.toLowerCase() || identity.periodSeconds !== periodSeconds;
         if (settingsDiffer) {
-          if (identity.deadline <= BigInt(latestBlock.timestamp)) {
+          if (!restarting && identity.deadline <= BigInt(latestBlock.timestamp)) {
             if (selectedForDeposit) throw new Error(`${route.symbol} settings differ, but its check-in period has ended. The app will not overwrite them; renew or manage that vault first.`);
             continue;
           }
@@ -2975,7 +2981,7 @@ export default function App() {
             currentPeriod: Number(identity.periodSeconds) / 86400, currentPeriodSeconds: identity.periodSeconds,
             requestedHeir: plan.heir, requestedPeriod: plan.periodDays });
         }
-        if (selectedForDeposit && identity.deadline <= BigInt(latestBlock.timestamp)) {
+        if (selectedForDeposit && !restarting && identity.deadline <= BigInt(latestBlock.timestamp)) {
           throw new Error(`${route.symbol} check-in period has ended. Renew it before adding funds.`);
         }
       }
@@ -2993,13 +2999,15 @@ export default function App() {
             || currentIdentities.get(candidate.factory.toLowerCase())?.address.toLowerCase() === conflict.address.toLowerCase());
           if (!route) return [];
           const calls = [];
+          const restarting = conflict.currentHeir.toLowerCase() === plan.account.toLowerCase();
+          if (restarting) calls.push({ address: route.factory, abi: planFactoryAbi(route), functionName: "pingMyVault", args: [] });
           if (conflict.currentHeir.toLowerCase() !== plan.heir.toLowerCase()) calls.push({
             address: route.factory, abi: planFactoryAbi(route), functionName: "updateMyHeir", args: [plan.heir],
           });
           if (conflict.currentPeriodSeconds !== periodSeconds) {
             // The reviewed interval starts at this check-in. Preserving an old
             // lastPing could immediately expire a funded, unselected asset.
-            calls.push({ address: route.factory, abi: planFactoryAbi(route), functionName: "pingMyVault", args: [] });
+            if (!restarting) calls.push({ address: route.factory, abi: planFactoryAbi(route), functionName: "pingMyVault", args: [] });
             calls.push({ address: route.factory, abi: planFactoryAbi(route), functionName: "changeMyPeriod", args: [periodSeconds.toString()] });
           }
           return calls;
@@ -3010,7 +3018,7 @@ export default function App() {
             const route = planRoutes.find(candidate => currentIdentities.get(candidate.factory.toLowerCase())?.address.toLowerCase() === conflict.address.toLowerCase());
             if (!route) throw new Error("A reviewed settings target changed. Review the plan again.");
             return { factory: route.factory, vault: conflict.address, heir: conflict.currentHeir,
-              periodSeconds: conflict.currentPeriodSeconds.toString(), checkIn: conflict.currentPeriodSeconds !== periodSeconds };
+              periodSeconds: conflict.currentPeriodSeconds.toString(), checkIn: conflict.currentHeir.toLowerCase() === plan.account.toLowerCase() || conflict.currentPeriodSeconds !== periodSeconds };
           });
           const sent = await persistBeforeSend(current => ({ ...current, alignment: { state: "submitting", beforeBlock, targets } }),
             () => sendWorldChainTx(alignCalls));
@@ -3549,9 +3557,9 @@ export default function App() {
   const checkInAllPlans = async (confirmClaimCancellation = false) => {
     if (!provider || !account || !miniInstalled) { setStatus("Open in World App and connect before checking in."); return; }
     if (ownedPlanRead.loading || ownedPlanRead.incomplete) { setStatus("Refresh every owned vault before checking in. No check-in was sent."); return; }
-    if (unsettledOwnedPlans.length === 0) { setStatus("There are no active inheritance vaults to check in to."); return; }
+    if (activeOwnedPlans.length === 0) { setStatus("There are no active inheritance vaults to check in to."); return; }
     try {
-      const targets = await Promise.all(unsettledOwnedPlans.map(async item => {
+      const targets = await Promise.all(activeOwnedPlans.map(async item => {
         const route = yieldRouteFor(item.factory);
         const identityRoute: AppPlanRoute = route ? {
           symbol: route.symbol, asset: route.asset, decimals: route.decimals, factory: route.factory,
@@ -3567,7 +3575,7 @@ export default function App() {
           || identity.owner.toLowerCase() !== account.toLowerCase()
           || identity.heir.toLowerCase() !== item.heir.toLowerCase()
           || identity.periodSeconds !== item.periodSeconds || identity.claimedAt > 0n
-          || identity.heir === ethers.ZeroAddress) {
+          || identity.heir === ethers.ZeroAddress || identity.heir.toLowerCase() === account.toLowerCase()) {
           throw new Error(`${item.symbol} vault changed. Refresh the plan before checking in.`);
         }
         const claimFiledAt = BigInt(await new ethers.Contract(identity.address, vaultAbi, provider).claimFiledAt());
@@ -4426,9 +4434,10 @@ export default function App() {
               {username ? `@${username}` : short(account)}
             </div>
           </div>
-          <span className="text-xs text-gray-500 shrink-0">
-            {serverVerified ? t("home.account.worldApp") : t("home.account.notVerified")}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-gray-500">{serverVerified ? t("home.account.worldApp") : t("home.account.notVerified")}</span>
+            <Button size="sm" variant="ghost" disabled={pendingAction} onClick={signOut}>{t("account.signOut")}</Button>
+          </div>
         </div>}
       </header>
       {settingsPending && tab !== "inherit" && <section className="container-narrow exit-feedback" role="status"><p>{t("exit.pending")}</p>
@@ -4441,7 +4450,7 @@ export default function App() {
           콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
       <main id="main-content" className={`container-narrow app-content tab-pb grid gap-4 ${!account && tab !== "support" ? "app-content-entry" : ""}`}>
         {(account || tab === "support") && <div className="page-intro"><h1 tabIndex={-1}>{tab === "inherit" && (iAmHeir || receivedYieldInheritance || !ownVault && inheritedPositions.length > 0) ? t("journey.heir.heading") : t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>}
-        {!account && !CONFIG_ERROR && tab !== "support" && <AccountEntry view={tab} installed={miniInstalled} busy={ctaLoading}
+        {!account && !CONFIG_ERROR && tab !== "support" && <AccountEntry view={tab} installed={miniInstalled} busy={ctaLoading} requiresReload={loginRequiresReload}
           onConnect={continueWorldApp2} onNavigate={next => { navigationChosenFor.current = account.toLowerCase(); setTab(next); }} linkedVault={linkedVault} />}
         {status && (account || !/Open in World App.*bridge unavailable/i.test(status)) && (
           <div className="app-action-status" role="status" aria-live="polite" aria-atomic="true">
@@ -4519,7 +4528,7 @@ export default function App() {
               <span className="eyebrow">Inheritance</span><h2>{t("home.empty.title")}</h2>
               <p>{t(activeOwnedPlans.length ? "home.empty.body" : "home.empty.noPlan")}</p>
               {nextCheckIn !== null && chainNow >= nextCheckIn && <p>{t("home.empty.deadline")}</p>}
-              <Button variant="primary" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setTab(activeOwnedPlans.length ? "money" : "inherit"); }}>{t("home.empty.action")}</Button>
+              <Button variant="primary" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setShowPlanSetup(activeOwnedPlans.length === 0); setTab(activeOwnedPlans.length ? "money" : "inherit"); }}>{t(activeOwnedPlans.length ? "home.empty.action" : "journey.owner.restart")}</Button>
             </section>}
             {activeOwnedPlans.some(item => item.symbol === "USDC" && (item.additionalWld ?? 0n) > 0n)
               && <p className="text-xs text-gray-600">{t("home.additionalWld")}</p>}
@@ -4989,6 +4998,8 @@ export default function App() {
         {tab === "inherit" && isVaultOwner && vaultIdentity?.released && <Card><CardHeader><CardTitle>{t("journey.owner.archived")}</CardTitle></CardHeader>
           <CardContent><p>{t("journey.owner.archivedBody")}</p></CardContent></Card>}
         {tab === "inherit" && showOwnerPlanSettings && <OwnerPlanSettings
+          ended={inheritanceEmpty && activeOwnedPlans.length === 0} canCheckIn={activeOwnedPlans.length > 0}
+          onRestart={() => setShowPlanSetup(true)}
           heirLabel={commonManagedSettings ? unsettledOwnedPlans[0].heir.toLowerCase() === account.toLowerCase() ? t("journey.stage.cancelled") : homeHeirUsername ? `@${homeHeirUsername}` : unsettledOwnedPlans[0].heir : ""}
           period={ownerSettingsPeriod} onPeriod={onPeriodChange} heir={newHeir} onHeir={onNewHeirInput}
           resolvedHeir={newHeirResolved?.address ?? ""} resolving={resolvingNewHeir}
@@ -5108,6 +5119,11 @@ export default function App() {
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && <>
           <div className="help-language"><span>{locale === "en" ? t("language.label") : `${t("language.label")} · Language`}</span><LanguagePicker /></div>
+          {account && <section className="help-setting grid gap-2" aria-label={t("account.title")}>
+            <h2>{t("account.title")}</h2>
+            <p>{t("account.signOutHelp")}</p>
+            <Button disabled={pendingAction} onClick={signOut}>{t("account.signOut")}</Button>
+          </section>}
           {account && <section className="help-region">
             {currentPlanEligibility.residence ? <Button variant="ghost" disabled={pendingAction} onClick={() => {
               if (clearResidenceAttestation(account)) void refreshNewPlanEligibility();

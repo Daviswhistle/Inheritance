@@ -97,6 +97,9 @@ jobs:
       - name: Check contact recovery and notification permission outcomes
         run: node ../scripts/test-mobile-fixes.mjs
 
+      - name: Test login timeout and session cancellation
+        run: node ../scripts/test-login-lifecycle.mjs
+
       - name: Test server sessions, notification authorization and durable dedupe
         run: node ../scripts/test-notify-auth.mjs
 
