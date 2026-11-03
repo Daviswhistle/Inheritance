@@ -53,11 +53,11 @@ Use `EXIT_BROWSER=webkit` for the WebKit engine and iOS SDK transport.
 `EXIT_UX_OUT` selects the private evidence directory. The test host creates its
 own disposable local chain and uses the installed MiniKit SDK and atomic wallet.
 
-Fifteen checks cover net amount/fees/destination and small-screen review and accessibility,
+Sixteen checks cover net amount/fees/destination and small-screen review and accessibility,
 review dismissal, wallet rejection, insufficient liquidity, quote failure,
 changed quote, a second-asset revert rolling back all earlier calls, process
 loss after approval, missing operation identifier, cancelled-recipient recovery,
-empty-plan semantics, redundant-transaction prevention, basic WLD plus reward-only USDC recovery, and negative receipt
+empty-plan semantics, redundant-transaction prevention, restart after the old deadline, basic WLD plus reward-only USDC recovery, and negative receipt
 proofs. The principal-plus-yield scenario returns 11.9 WLD (including 1 WLD from
 the USDC plan) and 10.9 USDC; both vaults become empty and both heirs are the
 owner. All funds are test tokens. This is not a production-money transaction or
@@ -65,3 +65,12 @@ actual iOS World App validation.
 
 Deployment and device evidence are recorded separately in RELEASE.md.
 Submission remains stopped.
+
+## Restarting after an exit
+
+A fully empty plan with its recipient removed shows an ended state and a direct
+setup action on Home and Plan. It cannot request a renewal or another exit.
+Starting again reviews the selected vault settings before renewing its timer,
+restoring the chosen recipient and depositing. Renewal precedes the recipient
+change so an expired, cancelled vault can be reused. Unselected ended vaults
+remain ended. Detached vaults that still hold assets keep their recovery path.

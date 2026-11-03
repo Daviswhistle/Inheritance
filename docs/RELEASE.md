@@ -26,7 +26,7 @@ Local validation:
   and a simulated host: rejection/retry, sign-out/re-entry, Help, blocked RPC,
   unanswered wallet and late response, then successful reload/retry. Header
   layout and touch targets checked at 320px and 390px.
-- Chromium exit suite passes all 16 checks, including real disposable-chain
+- Chromium and WebKit exit suites each pass all 16 checks, including real disposable-chain
   redeposit and full recovery after the ended plan's old deadline. Recovery
   storage 10 checks, mobile regressions 13 checks and unified routing tests pass.
 - Test-host browser checks are not actual iOS World App validation. Previously
