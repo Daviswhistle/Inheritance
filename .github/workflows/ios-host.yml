@@ -82,6 +82,19 @@ jobs:
             xcrun xcresulttool export attachments --path "$RUNNER_TEMP/iOS.xcresult" --output-path "$RUNNER_TEMP/ios-attachments"
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/iOS.xcresult" > "$RUNNER_TEMP/ios-summary.json"
           fi
+      # Reviewable output is separate from the large xcresult/video bundle so
+      # screenshots and the test verdict can be checked without downloading it.
+      - name: Save native review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-native-review
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/ios-summary.json
+            ${{ runner.temp }}/ios-attachments/*.json
+            ${{ runner.temp }}/ios-attachments/*.txt
+            ${{ runner.temp }}/ios-attachments/*.png
       - name: Save native evidence
         if: always()
         uses: actions/upload-artifact@v4
