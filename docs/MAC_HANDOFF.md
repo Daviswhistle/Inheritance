@@ -8,7 +8,7 @@ USDC `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e` (37193547).
 Both immutable fee recipients are `0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`,
 1000 bps. Earlier immutable contracts and their balances are unchanged.
 
-Main/runtime `1e4715d6425c3b369fd3519e1a905dfaa47f11f4`; deployment run
+Production runtime `1e4715d6425c3b369fd3519e1a905dfaa47f11f4`; deployment run
 41676338353 succeeded. Immutable Pages deployment:
 https://3a35cdc0.inheritance.pages.dev. Worker version:
 `b07b7a46-8a56-4a0c-be02-c39f193a152f`.
@@ -67,9 +67,42 @@ not a full pass. Forced cancellation left only incomplete xcresult Staging,
 so its captured checkpoints are logs, not reviewed screenshot artifacts.
 Commit c9e30be raises only the workflow's whole-job limit to 45 minutes; every
 individual assertion and stability requirement remains unchanged. New native
-run 41683367120 is pending completion. The older queued run 41676338433 was
-cancelled. Public app runtime remains 1e4715d. Private failure evidence:
-`ios-failure-41673388897/` and `ios-fixed-41678818435/diagnosis.txt`.
+run 41683367120 completed with 1 failure out of 2: pending-deposit recovery
+passed, the first native-keyboard visibility assertion did not. Its root
+snapshot retried, but the old logs cannot distinguish missing data from too few
+completed stable samples. The failure screenshot shows the input fully visible
+and the OS QuickPath first-use introduction covering the keyboard area; the app
+AX tree does not expose that tip. This is evidence of a simulator setup issue,
+not proof that it alone caused the assertion failure.
+
+Commit 7bd106e uses a fresh WebView snapshot for DOM geometry and a fresh native
+keyboard query per sample, adds exact-tip-only dismissal and detailed query/
+sample/reset diagnostics. No geometry, hit-test, height, timeout or stability
+assertion was relaxed. Swift Simulator SDK typechecking passed. Commit 8c36672
+prepares only the selected disposable simulator's keyboard tutorial preference,
+with readback, following Appium's documented test-device setup. Native run
+41688191187 passed the initial keyboard assertion and pending-deposit recovery,
+but failed in landscape because the new WebView-only helper incorrectly required
+a DOM Done button. PlanSetup intentionally hides that toolbar below 240 CSS
+pixels and uses the native keyboard accessory. The failure screenshot shows the
+full input and native Done; AX confirms WebView bottom 139, Done y=139/h=44,
+keyboard top 221. This was a test regression, not an obscured app input.
+Commit 8f9b186 verifies each layout separately: normal viewports require DOM Done;
+short viewports require an absent DOM toolbar and one hittable native Done wholly
+within the accessory band. Existing full visibility, 44-point height, nine hit
+samples, three stable samples and post-capture recheck remain enforced.
+Run 41691298772 on 5eebfe0 is pending completion and screenshot review.
+At 18:25 UTC on November 3 (November 4 KST), it remains queued without an
+assigned macos-15 runner; annotations and pending-deployment gates are empty.
+The queue cause is not established. Resume by inspecting this run, not by
+claiming a pass or rerunning unchanged tests. General CI 41691298593 passed.
+The older queued run 41676338433 was cancelled. Product runtime remains 1e4715d.
+Private evidence: `ios-failure-41673388897/`, `ios-fixed-41678818435/diagnosis.txt`,
+`ios-final-41683367120/diagnosis.txt`, and `ios-verified-41688191187/diagnosis.txt`.
+
+> The sections below preserve earlier checkpoints. Their pending approvals,
+> balances and deployment states describe that checkpoint only; the production
+> cutover and final funding reconciliation above are the current state.
 
 ## Both factory CREATEs mined and verified — 2026-11-04
 

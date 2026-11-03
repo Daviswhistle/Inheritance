@@ -22,9 +22,28 @@ but was cancelled at the 25-minute job limit. Eleven 60-second XCTest system
 animation idle waits accumulated; the first test had not completed and recovery
 had not started. No pass is claimed, and its incomplete xcresult has no exported
 screenshots. `c9e30be` extends only the whole-job limit to 45 minutes, leaving
-all individual checks unchanged. New native run `41683367120` is in progress.
-Production runtime remains `1e4715d`; changes are limited to the test harness
-and its workflow budget.
+all individual checks unchanged. Run `41683367120` passed pending-deposit
+recovery but failed the first input-stability assertion. Its screenshot shows
+full input visibility and an OS QuickPath introduction over the keyboard. The
+old log cannot identify which snapshot/valid-sample branch prevented completion,
+so that remaining uncertainty is retained rather than calling it an app pass.
+`7bd106e` scopes fresh snapshots to the WebView, reacquires native keyboard
+geometry, handles only the exactly identified OS lesson and records each query,
+valid sample and reset reason. `8c36672` prepares the selected simulator's
+keyboard tutorial preference with readback, consistent with
+[Appium's device preparation](https://appium.github.io/appium-xcuitest-driver/10.43/getting-started/device-setup/).
+All previous application visibility, touch and stability checks remain. Native
+run `41688191187` passed the initial keyboard assertion and pending-deposit
+recovery, but the scoped helper incorrectly required DOM Done in short landscape.
+Screenshots and AX confirm the full input and native accessory Done, which the
+product intentionally uses below 240 CSS pixels. `8f9b186` checks the two toolbar
+layouts explicitly, requiring a unique hittable native Done within its accessory
+band when the DOM toolbar is hidden. All visibility and stability checks remain.
+Replacement run `41691298772` on `5eebfe0` is pending completion and visual review.
+At 18:25 UTC November 3 it is still queued, without a macos-15 runner assigned;
+there are no annotations or pending deployment approvals. Queue cause is unknown.
+General CI `41691298593` passed all three jobs.
+Production runtime remains `1e4715d`; these changes affect only testing.
 
 The finalized WLD factory is `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`
 (block 37192969); the finalized USDC factory is
