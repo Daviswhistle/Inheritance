@@ -1,5 +1,32 @@
 # Mac continuation — 2026-11-03
 
+## World App deployment cost route — native funding blocked
+
+The requested cost source and future immutable fee recipient are World App wallet
+`0xE819320Ed3D03f9912b06a48cC5E7f06060CC67a`. No mainnet funding, deployment,
+asset migration or submission has occurred, and no money was spent. Four direct
+CreateCall native attempts failed `simulation_failed` before quote/approval;
+the helper was subsequently removed from the allowlist.
+
+`f37ef28` prepares a fixed 0.00004 ETH funding batch to an isolated temporary
+account, then normal CREATE deployment with the World App wallet as fee recipient.
+Actual Android login passed, but both funding attempts returned `validation_error`
+before any quote or operation hash. Final diagnostics confirm details undefined. Native withdrawal UI offers WETH, not native ETH.
+Block 37189627 shows the temporary account balance/nonce zero and both predicted
+factories without code. No deployment amount has been approved.
+
+Funding-only hosting run 41649046210 and CI 41649045792 passed. Normal product
+runtime remains f6dc58a and its root HTML hash is unchanged. `1ab9480` improves
+private diagnostic shape visibility and the native follow-up reproduced the error.
+Temporary permissions were restored to the original ten entries. Operator cleanup
+run 41651316157 removed the HTML routes; 035b93a/41651597772 also retire cached
+scripts. Final readback confirms two inert 62-byte scripts and unchanged normal
+root HTML. Guarded runner tests and independent source
+review passed; production dry-run is awaiting_fixed_funding. No real signing. Do not merge to
+main or fund an unreviewed path. See
+[WORLDAPP_DEPLOYMENT_2026-11-03.md](WORLDAPP_DEPLOYMENT_2026-11-03.md) for exact
+predictions, manifest, evidence and current authority. **Submission stays stopped.**
+
 ## Current authority — submission stopped
 
 The operator rejected the previous readiness assessment and explicitly said not
