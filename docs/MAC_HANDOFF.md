@@ -64,6 +64,12 @@ The separate current browser integration smoke passed **10/10**; bridge unit
 checks passed **6/6**. General CI **41700415409** also passed.
 Private evidence: `ios-final-41700415152/{review.txt,ios-summary.json,run.log}`.
 
+Later commit 3e908a2 changes only documentation and the standalone browser-smoke
+completion assertion. The native workflow, app, contracts, iOS host and its
+bootstrap/start/pending inputs are byte-identical to tested 0799828. Redundant
+automatic native run 41702978616 was intentionally cancelled; 41700415152 remains
+the reviewed native result, not a skipped failure.
+
 Run 41673388897 failed only the login/native-lifecycle visibility helper;
 interrupted-deposit recovery passed. Screenshot and AX/CSS evidence show the
 focused input fully visible. The retained keyboard query had pinned a stale
