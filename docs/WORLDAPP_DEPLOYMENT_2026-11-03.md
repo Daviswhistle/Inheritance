@@ -1,5 +1,61 @@
 # World App deployment work — 2026-11-03
 
+## Resumed — 2026-11-04
+
+The operator explicitly resumed work. Submission remains stopped and deployment
+funding still needs an exact native quote and amount approval. World App is the
+only available wallet. No real funds were used, and no new contracts were deployed.
+
+Diagnostic commit `6f06781` is now pushed. Its sanitizer regression and funding
+browser checks passed; isolated build ID is `1f49012b5f57`, with the same frozen
+v2 manifest. Hosting run 41664442631 succeeded. Hosted HTML/JS exactly match the local
+build, and normal product root HTML remains unchanged.
+The previous functional CI run 41653828104 completed successfully.
+
+Fresh chain readback at block 37192080 found the temporary EOA balance zero,
+latest/pending nonce zero, and no code at either planned factory address.
+Private evidence: `work/evidence/worldapp-deployment-nov03/resume-chain-nov04.json`.
+The operator reauthorized USB debugging. The phone loaded build `1f49012b5f57`
+and exact-wallet server signature verification passed. A single new fixed-batch
+request reached the actual native approval sheet: send **0.00004 WETH**, with no
+separate network fee displayed. No Portal permissions were changed on resumption.
+The earlier `invalid_contract` did not recur; its exact address/cause is unproved.
+Do not attribute this to the diagnostic-only source change.
+
+The native approval is pending with the operator. Amount approval was requested
+for 0.00004 WETH total funding, deployment and return within that budget, and no
+additional displayed fee. No approval response or canonical receipt is recorded
+yet. Do not retry or publish another native request while this is unresolved.
+Private screenshot: `phone/resume-native-nov04.png`; hosting proof:
+`resume-hosted-nov04.json` under the same private evidence directory.
+
+
+## Historical pause — 2026-11-03
+
+Work was paused at the operator request and resumed on November 4. No mainnet funding/signing/deployment/asset migration
+or money spending occurred. The phone operator page was closed; there is no
+pending native approval or user-operation hash.
+
+Current hosted router build `4be96bf5e6d0`, frozen manifest `0x59421057...7e9a208`,
+was verified after successful run 41653827159. Normal product root HTML remains
+unchanged. Exact target-wallet authentication passed. The first native router
+batch returned `invalid_contract` before quote/approval; details contain
+`miniappId` and `contract`, which the hosted sanitizer redacted. The rejected
+address is not yet identified. Do not guess or expand allowlists speculatively.
+
+Local commit `6f06781` permits strictly shaped public contract/app identifiers in
+diagnostics. It has not been published to the phone; do not claim the diagnostic
+fix solved native execution. The latest published functional commit is 064de83.
+These handoff/report updates remain local and uncommitted at pause.
+
+Portal temporary entries currently remain: original ten contracts plus canonical
+WETH and SwapRouter02 (12 total); Permit2 tokens unchanged. The operator-only
+funding page remains hosted, with target-wallet auth and fixed intent guards.
+Resume by publishing/rechecking the bounded diagnostics, identifying the precise
+rejected contract and correcting only a verified missing setting. Actual funding
+requires an exact fee quote and amount approval; no such approval has been given.
+World App is the operator's only wallet. Submission remains stopped.
+
 ## Current result and authority
 
 The operator wants deployment fees paid from World App wallet
@@ -138,11 +194,58 @@ as WETH to the fixed World App wallet. Remaining native dust and keys are retain
 `fallback-runner-test.log` records chain 31337 test-only signatures for nonces
 0/1/2/3. Dry-run without key access, missing approvals, unsolicited dust, exact
 funding decoder, durable-before-broadcast, byte-identical recovery, both full
-CREATE verifications, WETH return and corrupt-journal rejection passed. The
-pending-nonce refusal was source-reviewed but not separately fault-injected.
+CREATE verifications, WETH return and corrupt-journal rejection passed. The final test also injects latest nonce 1 / pending nonce 2 and verifies
+refusal before any new signature, as well as a cost-cap increase refusal.
 Independent source review found no remaining blocker for preserving this
 preparation. Production dry-run reports `awaiting_fixed_funding`; no real key was
 used to sign. The failed native funding path remains the execution blocker.
+
+## Follow-up after the operator confirmed World App is the only wallet
+
+The failed direct-native transfer route above is retired. A separate standard
+contract route is being prepared; it must not be confused with the failed v1
+batch or called successful before a native quote and canonical receipt.
+
+Uniswap's official World Chain registry identifies SwapRouter02 at
+`0x091AD9e2e6e5eD44c1c66dB50e49A601F9f36cF6`. Its live runtime hash is
+`0x8ae42530d55520d11a2d614228b01a9e9f9e85f5625606b6fa8e9e253d35c56d`,
+WETH9 is canonical WETH, and observed WETH/native balances were zero.
+The proposed atomic batch is WETH.transfer(router, q) followed by
+router.unwrapWETH9(q, fixed deployment EOA), both value zero. It requires no
+price swap, new helper deployment or allowance. **Never split these calls into
+separate transactions**: intermediate router balances are publicly withdrawable.
+
+The unwrap function sends its whole WETH balance, with q as a minimum. Zero
+preflight balance cannot prevent a donation while approval is pending. The
+receipt verifier therefore still requires exactly q to arrive; any mismatch
+halts without another funding request or deployment signature.
+
+`deployment/worldapp-router-funding-2026-11-03.json` preserves q, EOA, deployment
+manifest and both constructor hashes. Its schema is separate v2; v1 remains a
+historical artifact. Fresh block 37190038 quote reserves
+0.000029181508180761 ETH for deployments and return from q=0.00004 ETH. This is
+not the World App sending fee.
+
+Commit `064de83` freezes manifest hash
+`0x59421057c53ab0bbfb1c7cd07ffb33a7c5ce1b2fd44bd539734c0087e7e9a208`.
+The actual Safe fork batch consumed 105,643 gas and passed exact-q/rollback/dust
+checks. The v2 runner test passed CREATE/return/recovery and both fixed batch
+wrappers; production signing remains unexecuted. UI commit `81e9c2d` passes
+browser negatives for router hash/getter/inventory and prior unknown intents.
+Native build is `4be96bf5e6d0`; hosting run `41653827159` is pending verification.
+The Portal temporarily allows original ten contracts plus WETH and SwapRouter02,
+with unchanged Permit2 permissions. No EOA or CreateCall helper is allowlisted.
+
+Historical actual native receipts revealed that World App uses canonical Safe
+1.4.1 MultiSend `0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526`, runtime hash
+`0x0e4f7fc66550a322d1e7688e181b75e217e662a4f3f4d6a29b22bc61217c4b77`.
+The verifier previously accepted only canonical MultiSendCallOnly. It now pins
+both exact address/hash pairs, preserving exact outer and inner call checks.
+This was discovered before funding, not after spending user funds.
+
+References: [Uniswap World Chain deployment registry](https://developers.uniswap.org/docs/protocols/v3/deployments/v3-world-chain-deployments),
+[unwrap implementation](https://github.com/Uniswap/v3-periphery/blob/main/contracts/base/PeripheryPayments.sol),
+[Safe 1.4.1 MultiSend registry](https://github.com/safe-global/safe-deployments/blob/main/src/assets/v1.4.1/multi_send.json).
 
 ## Evidence and remaining work
 
@@ -153,9 +256,10 @@ material and device evidence. Public source contains only the reviewed manifests
 `funding-final-chain-readback.json` records final block 37189772: funding account
 balance/nonce zero and both factories without code.
 
-Remaining: establish a supported gas-funding path before asking for an exact
-real-funds approval. Temporary permissions and production operator hosting have
-been cleaned up and verified. The attempted World App funding route is currently blocked. Native
+Remaining: read back the v2 hosted route and inspect its actual native fee quote
+before asking for an exact real-funds approval. The earlier direct-native route
+remains failed and retired; the standard router route has not yet been accepted
+by World App. Native
 preflight rejection must not be described as successful deployment or disguised
 through a different opaque call route. New contract receipts, exact deployed-code
 verification, app/backend rollout and any legacy asset movement remain separate
