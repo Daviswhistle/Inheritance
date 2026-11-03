@@ -3,7 +3,7 @@
 ## Current authority — submission stopped
 
 The operator rejected the previous readiness assessment and explicitly said not
-to submit. November 2's fresh Portal readback is **unverified**, **KR only**.
+to submit. November 3's fresh Portal readback is **unverified**, **KR only**.
 Do not resubmit this revision without a subsequent explicit instruction. Earlier
 submission receipts below are historical. Code fixes, validation and deployment
 remain authorized; no additional production funds or outbound messages are used.
@@ -36,8 +36,9 @@ Public HTML, four imported assets and six static documents match the immutable
 release. CI `41483406456` and deployment `41483406606` passed. Both Chromium
 and WebKit pass all 15 exit checks. Actual Android verified the final empty exit options and review/cancel.
 Three preceding native iOS runs passed 2 tests each; final presentation run
-`41483406437` is queued for a Mac runner at this checkpoint. Do not call it
-passed or substitute simulator results for actual iOS World App. See RELEASE.md.
+`41483406437` ended before any test step because GitHub could not allocate a
+hosted Mac runner. Do not call it an app test failure or pass. The current
+auth/privacy correction and rerun results are in RELEASE.md.
 No real funds, outbound messages or submission were used.
 
 ## Latest presentation revision — November 3 integration

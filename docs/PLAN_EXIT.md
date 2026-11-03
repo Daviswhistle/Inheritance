@@ -31,7 +31,10 @@ Checks before requesting approval:
   route; it does not remove the recipient first.
 - Already empty plans with no recipient do not send redundant transactions.
 
-A durable, account-scoped recovery record is saved before requesting approval.
+The review explains device recovery storage before the user continues. The
+Privacy Policy lists the recorded fields and retention conditions in English
+and Korean. A durable, account-scoped recovery record is then saved before
+requesting approval.
 After process/tab loss, recovery checks the original operation or locates a
 unique matching receipt. Ping events also anchor exits whose recipient was
 already removed. Confirmation verifies canonical receipt, route identity,

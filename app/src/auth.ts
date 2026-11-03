@@ -70,6 +70,7 @@ function saveSession(session: Session): void {
   try {
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(ADDRESS_KEY);
+    localStorage.removeItem("wld-verified"); // Retired client-only World ID marker grants no authority.
   } catch { /* optional legacy cleanup */ }
 }
 
@@ -126,6 +127,7 @@ export function clearSession(): void {
   try {
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(ADDRESS_KEY);
+    localStorage.removeItem("wld-verified"); // Retired client-only World ID marker grants no authority.
   } catch { /* legacy storage may be blocked */ }
 }
 

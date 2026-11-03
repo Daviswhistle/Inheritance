@@ -181,7 +181,6 @@ export const USDC_ENABLED = [usdc, usdcFactory, usdcStrategy].every(value => ADD
 export const RPC_URL =
   (raw.VITE_RPC ?? "").trim() || "https://worldchain-mainnet.g.alchemy.com/public";
 
-export const REQUIRE_VERIFY = (raw.VITE_REQUIRE_VERIFY ?? "false").trim().toLowerCase() === "true";
 export const ACTION_ID = (raw.VITE_WORLD_ACTION_ID ?? "").trim() || "inheritance_access";
 export const RELEASE_SUPPORTED =
   (raw.VITE_FACTORY_RELEASE_SUPPORTED ?? "").trim().toLowerCase() === "true";

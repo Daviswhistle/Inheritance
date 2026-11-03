@@ -50,7 +50,6 @@ import {
   NOTIFY_BACKEND_ENABLED,
   NOTIFY_BACKEND_URL,
   RELEASE_SUPPORTED,
-  REQUIRE_VERIFY,
   RPC_URL,
   WLD_ADDRESS,
   MORPHO_VAULT_ADDRESS,
@@ -347,7 +346,6 @@ export default function App() {
 
   /** 로그인 서명을 서버가 실제로 검증했는지. 미검증 로그인은 위험하므로 구분한다. */
   const [serverVerified, setServerVerified] = useState<boolean>(false);
-  const [verified, setVerified] = useState<boolean>(!REQUIRE_VERIFY);
   const [status, setStatus] = useState<string>("");
 
   const [heir, setHeir] = useState<string>("");
@@ -1196,7 +1194,7 @@ export default function App() {
     );
   };
 
-  // New unified handler used by UI and auto-start
+  // Wallet authentication starts only from an explicit sign-in action.
   const continueWorldApp2 = async () => {
     setCtaLoading(true);
     try {
@@ -1236,19 +1234,6 @@ export default function App() {
         // 헤더에 유저네임과 World App 표시가 있으므로 상태 줄을 비운다.
         // 여기까지 "Connected" 를 남기면 같은 정보가 두 줄로 보인다.
         setStatus('');
-      }
-
-      // World ID 검증은 MiniKit 2.x 에서 제거되었다(World ID는 @worldcoin/idkit 이
-      // 담당). REQUIRED 인 경우에도 지금은 검증 없이 통과시킨다 — 없는 API 를
-      // 호출해 사용자에게 실패를 보여주는 것보다, REQUIRE_VERIFY=false 로 두고
-      // 사용자가 직접 켤 수 있게 하는 편이 정직하다.
-      if (REQUIRE_VERIFY && !verified) {
-        setVerified(true);
-        try {
-          localStorage.setItem('wld-verified', '1');
-        } catch {
-          void 0;
-        }
       }
     } catch (e: unknown) {
       const msg = errorText(e);
@@ -1466,17 +1451,6 @@ export default function App() {
       setWatchBusy(false);
     }
   };
-
-  useEffect(() => {
-    try {
-      if (REQUIRE_VERIFY && localStorage.getItem("wld-verified") === "1") {
-        setVerified(true);
-      }
-    } catch {
-      // localStorage 가 차단된 컨텍스트일 수 있다.
-      void 0;
-    }
-  }, []);
 
   useEffect(() => {
     try {
@@ -4416,6 +4390,7 @@ export default function App() {
             {settingsReview.targets.filter(r => BigInt(r.exit?.rewardFee ?? "0") > 0n).map(r => <div key={`${r.vault}-fee`}><dt>WLD · {t("income.fee")}</dt><dd>{formatYieldAmount(BigInt(r.exit!.rewardFee))} WLD</dd></div>)}
           </dl></details><p>{t("assets.reviewVariable")}</p></>}
         {settingsReview.targets.some(r => r.exit?.hasAssets) && <p>{t("exit.together")}</p>}
+        <p className="text-sm">{t("exit.recoveryDisclosure")}</p>
       </MoneyReview>}
       {moneyReview && moneyReview.scope === balanceScope && <MoneyReview
         title={t(moneyReview.kind === "deposit" ? "assets.action.deposit" : moneyReview.kind === "income" ? "income.title" : "assets.action.withdrawPrincipal")}
@@ -4451,22 +4426,9 @@ export default function App() {
               {username ? `@${username}` : short(account)}
             </div>
           </div>
-          {/* 서버 검증 여부를 숨기지 않는다. 서명이 서버에서 확인되지 않은
-              세션으로는 자금을 다루는 행동을 하지 않도록 배지를 남긴다. */}
-          {account && (!REQUIRE_VERIFY || verified) ? (
-            <span className="text-xs text-gray-500 shrink-0">
-              {serverVerified ? t("home.account.worldApp") : t("home.account.notVerified")}
-            </span>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={continueWorldApp2}
-              disabled={pendingAction || ctaLoading}
-              className="shrink-0"
-            >
-              {ctaLoading ? (<><span className="spinner mr-2"></span>{t("home.account.connecting")}</>) : t("home.account.connectButton")}
-            </Button>
-          )}
+          <span className="text-xs text-gray-500 shrink-0">
+            {serverVerified ? t("home.account.worldApp") : t("home.account.notVerified")}
+          </span>
         </div>}
       </header>
       {settingsPending && tab !== "inherit" && <section className="container-narrow exit-feedback" role="status"><p>{t("exit.pending")}</p>

@@ -1165,6 +1165,7 @@ try {
   await test("frontend rejects legacy address caches, stores tab session and attaches Bearer", async (context) => {
     frontend.clearSession();
     localStorage.setItem("wld-session", JSON.stringify({ address: STRANGER, at: Date.now() }));
+    localStorage.setItem("wld-verified", "1");
     assert.equal(frontend.readSessionAddress(), null);
     globalThis.fetch = async (input, init) => {
       if (input === "/api/auth/nonce") return getNonce(context.env);
@@ -1176,6 +1177,7 @@ try {
     assert.equal(result.ok, true);
     assert.equal(frontend.readSessionAddress().toLowerCase(), OWNER);
     assert.equal(localStorage.getItem("wld-session"), null);
+    assert.equal(localStorage.getItem("wld-verified"), null);
     assert.ok(JSON.parse(sessionStorage.getItem("wld-session")).token);
     assert.equal((await frontend.notificationFetch("https://notify.test/api/notifications/test", { method: "POST", body: "{}" })).status, 200);
     assert.deepEqual(context.deliveries[0].wallet_addresses, [OWNER]);

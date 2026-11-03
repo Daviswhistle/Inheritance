@@ -39,7 +39,9 @@ Validation:
   `41482006681` (06a17f3) each passed 2 tests, zero failures/skips. Downloaded
   Xcode summaries identify iPhone 16 Pro / iOS 18.5 Simulator. The final
   `2938a05` only adjusts the empty settings presentation; its automatic run
-  `41483406437` is queued for a GitHub Mac runner at this checkpoint, not passed.
+  `41483406437` was queued at this checkpoint. Follow-up: GitHub ended it before
+  any steps because no hosted Mac runner acquired the job (capacity constraints).
+  No application test ran; this is neither an app failure nor a pass.
   Simulator-host results do not constitute actual iOS World App validation.
 
 Private logs, screenshots, result bundles and production comparisons are under

@@ -1,91 +1,62 @@
-# World App guideline review — updated November 2, 2026
+# World App guideline review — November 3, 2026
 
-This is an implementation and evidence review, not a claim of World App approval,
-legal certification, or independent security audit. The previous submission was
-withdrawn by the operator before this revision. The Portal was read back as
-`unverified` before changes.
+## Current status — submission stopped
 
-## Current release — Korea-only resubmitted; awaiting review
+The operator withdrew the previous request and has not authorized resubmission.
+A fresh Portal readback on November 3 confirms **unverified**, **KR only**,
+with English and Korean support (`en`, `ko`). Only `supported_languages` changed
+in the Portal during this correction. Earlier `awaiting_review` receipts are
+historical; see [RELEASE.md](RELEASE.md). They are not the current status.
 
-The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
-KR/AR/CO submission was withdrawn for this scope change. Independent Portal
-configuration readback confirmed **unverified**, exactly **KR**, with only
-availability copy and supported countries changed. After final verification,
-the Korea-only request was submitted. Independent readback at **November 2
-02:45:23 KST / November 1 17:45:23 UTC** confirms **awaiting_review**, exactly
-**KR**, developer allowlisting preserved, and only verification_status changed.
+This is an implementation and evidence review, not World App approval, legal
+certification or an independent security audit. Current production revisions
+and test outcomes are recorded in RELEASE.md.
 
-Runtime `afd5bab` limits new plans and deposits to KR residence and KR network
-location. Prior AR/CO residence records cannot authorize new requests. Existing
-balances, withdrawals, renewals, claims and submitted-transaction recovery remain
-accessible outside KR. Local eligibility (11 tests), WebKit (21 checks / 31
-layouts), translation, type, lint and build checks passed; independent commit
-review found no actionable defect. Production `4a35244` was deployed and independently checked; actual Android
-Korea-only acceptance passed. Native policy run 41329500340 passed two tests
-with no failures, including all five traced Done gestures without extra clicks.
-Two subsequent native fixture failures were diagnosed before the Done action.
-Test-only `340fefd` corrects the fixture and query timing; final native run
-41331879980 passed both tests, all five Done gesture assertions and pending
-recovery. CI and independent review passed. The failure evidence and corrections
-remain in KEYBOARD_DISMISSAL.md; the submission receipt is tracked in RELEASE.md.
+## Authentication and privacy corrections
 
-The keyboard cause and fix remain established by the before/after native trace:
-see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
-submission receipts below are historical and no longer the active request.
+Wallet sign-in follows the official `MiniKit.walletAuth()` flow. The server
+issues and atomically consumes a one-use nonce, uses official
+`verifySiweMessage`, checks the wallet, statement, origin and World Chain, and
+issues a one-hour session. World ID proof verification is not offered or
+required. The unused flag and client-only World ID success branch have been
+removed; the old `wld-verified` marker is discarded and grants no authority.
 
-## Current submission status and requirement classification
+The English and Korean Privacy Policy now distinguishes tab-only recipient and
+interval changes from persistent end-inheritance recovery. The exit review
+explains device storage before the approval request. It records reviewed
+addresses, contracts, amounts, fees and original transaction progress; verified
+outcomes and definite rejection/failure clear the record. Uncertain requests
+remain for checking and are never automatically repeated. Login sessions remain
+tab-only and expire after one hour.
 
-The operator withdrew the October 24 request. After technical remediation, a
-new request on October 28 was read back as `awaiting_review` at 04:09 UTC
-(13:09 KST). The user subsequently withdrew that request; a fresh Portal readback
-confirmed **unverified**. After the November 2 preparation documented in RELEASE.md,
-the app was resubmitted. An independent readback at 15:23:28 UTC November 1
-(00:23:28 KST November 2) confirmed **awaiting_review**, KR/AR/CO unchanged.
-That request was subsequently withdrawn. The corrected release was submitted
-after the cause-specific fix, production and Android checks. November 2 01:52:33
-KST readback confirmed awaiting_review. That request was subsequently withdrawn
-for the operator-authorized Korea-only release. Existing-contract/fee review is requested
-in the revised package; no TFH acceptance or publication is claimed.
+## Contract-review status
 
-The earlier request did not resolve source-sharing or jurisdiction questions.
-The later November 1 instruction authorizes submission after technical preparation,
-requesting existing-contract/fee review through the Portal and disclosing the
-unverified sharing history. No separate support follow-up is authorized. Native iOS Simulator tests and actual Android
-World App results are the current engineering evidence; a physical iPhone is
-not treated as a mandatory attachment or a standalone readiness blocker.
-See [MAC_HANDOFF.md](MAC_HANDOFF.md) for the current readiness gate and
-[RELEASE.md](RELEASE.md) for the historical technical receipts.
+The technical package is [CONTRACT_REVIEW_PACKAGE.md](CONTRACT_REVIEW_PACKAGE.md).
+It links deployed contracts, source, controls, fee accounting and reproducible
+tests. The official guidelines require pre-deployment repository sharing and
+agreement on fees during code review. The operator reported no pre-deployment
+sharing record. Public source does not establish that step; preparing this
+package does not establish TFH acceptance. Existing-contract/fee acceptance and
+any additional intake requirement remain for TFH to determine. No new message
+or review request was sent during this correction.
 
-The official review policy requires a complete working app, meaningful live SDK
-integration, accurate listing information, reviewer access, and compliance with
-the laws of the selected countries. It does **not** prescribe a blanket legal
-opinion certificate or a physical-device test report attachment. The contract
-guidelines strongly recommend an independent audit; that recommendation is not
-an unconditional audit-certificate requirement. Missing evidence is not itself
-proof of a product defect or illegality.
+## Verification boundaries
 
-Actual physical Android testing now covers wallet sign-in cancel/retry/success,
-draft numeric input/Done and one authorized self-notification received on the
-phone. On the deployed October 25 runtime, the Privacy Policy modal title and
-contact-cancel manual recovery also passed. This is partial device acceptance;
-contact selection and updated notification handling also passed. Native
-deposit cancellation passed with a 0.094 WLD network quote. On October 27 a user-
-approved 0.01 WLD deposit, actual close/reopen recovery and principal withdrawal
-were confirmed on-chain and in the phone UI. The November 1 follow-up cleared the tiny residual with a confirmed zero-share
-exit and exercised native notification re-grant/cancellation; exact boundaries and costs are in
-[WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md). Native test hosts remain
-separate evidence because they simulate approval responses.
-
-November 1 financial tests used Samsung SM-S911N / Android 16 / World Money 4.0.4602. November 2 regional checks used Samsung SM-N986N / Android 13 with the same World Money version.
-Earlier emulator installation failures are historical; use the connected phone.
-Physical-iPhone acceptance has not been performed.
-
-The operator confirmed individual operation in Korea. The November 1 country
-review selected KR/AR/CO; on November 2 the operator narrowed the initial release
-to KR only. Independent Portal readback confirms that new scope. The source is public;
-no historical pre-deployment TFH sharing record was supplied.
-[LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) records the reasoned activity classification,
-broader screening and limits; no universal legal-opinion attachment is required.
+- Actual Android World App evidence covers sign-in cancellation/retry/success,
+  contacts, keyboard, one received self-notification, WLD and USDC deposit/full
+  withdrawal, reopening and regional controls. See WORLD_APP_ACCEPTANCE.md.
+- Native iOS host tests use real MiniKit transport with simulated approvals.
+  Run `41483406437` never started tests: GitHub could not allocate a hosted Mac
+  runner. Its failure is infrastructure evidence, not an app test failure or
+  pass. Latest rerun results belong in RELEASE.md.
+- Actual iOS World App approval/permissions and the beneficiary's complete
+  production claim-to-payment journey remain unverified. Local contract/browser
+  coverage does not replace those observations. Additional real-fund tests
+  require approval of their amounts.
+- The review policy requires an accurate listing, working SDK integration and
+  compliance in selected markets. It does not prescribe a blanket legal opinion
+  certificate or physical-device report attachment. Independent contract audit
+  is strongly recommended; no independent audit is claimed here.
 
 ## Official references
 

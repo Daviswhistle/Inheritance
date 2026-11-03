@@ -2,7 +2,10 @@
 
 App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`
 URL: https://inheritance.pages.dev/
-Languages: English and Korean. Mini App for World App.
+Languages: English and Korean (`en`, `ko` confirmed in Portal). Mini App for World App.
+
+Working review package only. Current Portal state is `unverified`, Korea only.
+Submission is stopped; historical submission receipts are in RELEASE.md.
 
 ## Improvements since the design review
 
@@ -164,5 +167,5 @@ Please include the existing immutable contracts and the 10% service fee on
 realized positive net gains in this code review. The contracts are already
 deployed; we have no pre-deployment TFH source-sharing record. Public source,
 deployed addresses, control boundaries, fee calculations and test coverage are
-provided in [GUIDELINE_REVIEW.md](GUIDELINE_REVIEW.md). The interface discloses the
+indexed in [CONTRACT_REVIEW_PACKAGE.md](CONTRACT_REVIEW_PACKAGE.md). The interface discloses the
 absence of an independent security audit before deposits.
