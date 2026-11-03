@@ -3,9 +3,14 @@
 import assert from "node:assert/strict";
 import { Contract,Interface,keccak256 } from "ethers";
 import { WALLET } from "./worldapp-deployment-manifest.mjs";
+import { ROUTER,ROUTER_CODE_HASH,ROUTER_FUNDING_SCHEMA } from "./worldapp-router-funding-manifest.mjs";
 import { FUNDING_WETH,FUNDING_AMOUNT_WEI } from "./worldapp-funding-manifest.mjs";
 export const ENTRYPOINT="0x0000000071727de22e5e9d8baf0edac6f37da032";
 export const MULTISEND="0x9641d764fc13c8b624c04430c7356c1c7c8102e2";
+export const SUPPORTED_MULTISENDS={
+ [MULTISEND]:"0xecd5bd14a08c5d2122379900b2f272bdf107a7e92423c10dd5fe3254386c9939",
+ "0x38869bf66a61cf6bdb996a6ae40d5853fd43b526":"0x0e4f7fc66550a322d1e7688e181b75e217e662a4f3f4d6a29b22bc61217c4b77",
+};
 export const PACKED_USER_OPERATION="(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)";
 export const ENTRYPOINT_INTERFACE=new Interface([
  `function handleOps(${PACKED_USER_OPERATION}[] ops,address beneficiary)`,
@@ -15,11 +20,11 @@ export const ENTRYPOINT_INTERFACE=new Interface([
 ]);
 const moduleABI=new Interface(["function executeUserOp(address to,uint256 value,bytes data,uint8 operation)","function executeUserOpWithErrorString(address to,uint256 value,bytes data,uint8 operation)"]);
 const multiABI=new Interface(["function multiSend(bytes transactions)"]);
-const wethABI=new Interface(["event Withdrawal(address indexed src,uint256 wad)"]);
+const wethABI=new Interface(["event Withdrawal(address indexed src,uint256 wad)","event Transfer(address indexed src,address indexed dst,uint256 wad)"]);
 const eq=(a,b,label)=>assert.equal(String(a).toLowerCase(),String(b).toLowerCase(),label);
 export function verifyExactFundingCallData(callData,manifest) {
  const call=moduleABI.parseTransaction({data:callData});assert.ok(call,"Unknown Safe4337 selector");
- const [to,value,data,operation]=call.args;eq(to,MULTISEND,"Safe4337 target");assert.equal(value,0n);assert.equal(operation,1n);
+ const [to,value,data,operation]=call.args;assert.ok(Object.hasOwn(SUPPORTED_MULTISENDS,to.toLowerCase()),"Unsupported Safe4337 batch target");assert.equal(value,0n);assert.equal(operation,1n);
  eq(moduleABI.encodeFunctionData(call.name,call.args),callData,"Noncanonical Safe4337 calldata");
  const decoded=multiABI.decodeFunctionData("multiSend",data);eq(multiABI.encodeFunctionData("multiSend",decoded),data,"Noncanonical multisend calldata");
  const packed=decoded[0].slice(2);let offset=0;
@@ -52,11 +57,23 @@ export async function verifyFundingReceipt({provider,manifest,fundingTxHash,user
  }
  assert.equal(selected.length,1,"Canonical getUserOpHash must bind exactly one submitted operation");
  verifyExactFundingCallData(selected[0].callData,manifest);
- const withdrawals=receipt.logs.filter(log=>log.address.toLowerCase()===FUNDING_WETH).flatMap(log=>{try{const e=wethABI.parseLog(log);return e?.name==="Withdrawal"&&e.args.src.toLowerCase()===WALLET&&e.args.wad===FUNDING_AMOUNT_WEI?[e]:[];}catch{return[];}});
- assert.equal(withdrawals.length,1,"Exact Safe WETH withdrawal required");
- const [before,after,nonce,walletCode,wethCode,multiCode]=await Promise.all([provider.getBalance(manifest.deploymentEOA,receipt.blockNumber-1),provider.getBalance(manifest.deploymentEOA,receipt.blockNumber),provider.getTransactionCount(manifest.deploymentEOA,receipt.blockNumber),provider.getCode(WALLET,receipt.blockNumber),provider.getCode(FUNDING_WETH,receipt.blockNumber),provider.getCode(MULTISEND,receipt.blockNumber)]);
+ const wrapper=moduleABI.parseTransaction({data:selected[0].callData}).args[0];
+ const routerFunding=manifest.schema===ROUTER_FUNDING_SCHEMA;
+ const withdrawals=receipt.logs.filter(log=>log.address.toLowerCase()===FUNDING_WETH).flatMap(log=>{try{const e=wethABI.parseLog(log);return e?.name==="Withdrawal"&&e.args.src.toLowerCase()===(routerFunding?ROUTER.toLowerCase():WALLET)&&e.args.wad===FUNDING_AMOUNT_WEI?[e]:[];}catch{return[];}});
+ assert.equal(withdrawals.length,1,"Exact funding WETH withdrawal required");
+ if(routerFunding){
+  const transfers=receipt.logs.filter(log=>log.address.toLowerCase()===FUNDING_WETH).flatMap(log=>{try{const e=wethABI.parseLog(log);return e?.name==="Transfer"&&e.args.src.toLowerCase()===WALLET&&e.args.dst.toLowerCase()===ROUTER.toLowerCase()&&e.args.wad===FUNDING_AMOUNT_WEI?[e]:[];}catch{return[];}});
+  assert.equal(transfers.length,1,"Exact Safe-to-router WETH transfer required");
+  const router=new Contract(ROUTER,["function WETH9() view returns(address)"],provider);
+  eq(keccak256(await provider.getCode(ROUTER,receipt.blockNumber)),ROUTER_CODE_HASH,"Canonical router code changed");
+  eq(await router.WETH9({blockTag:receipt.blockNumber}),FUNDING_WETH,"Router WETH9 changed");
+  const w=new Contract(FUNDING_WETH,["function balanceOf(address) view returns(uint256)"],provider);
+  assert.equal(await w.balanceOf(ROUTER,{blockTag:receipt.blockNumber-1}),0n,"Nonzero prior router inventory");
+  assert.equal(await w.balanceOf(ROUTER,{blockTag:receipt.blockNumber}),0n,"Router inventory not empty after funding");
+ }
+ const [before,after,nonce,walletCode,wethCode,multiCode]=await Promise.all([provider.getBalance(manifest.deploymentEOA,receipt.blockNumber-1),provider.getBalance(manifest.deploymentEOA,receipt.blockNumber),provider.getTransactionCount(manifest.deploymentEOA,receipt.blockNumber),provider.getCode(WALLET,receipt.blockNumber),provider.getCode(FUNDING_WETH,receipt.blockNumber),provider.getCode(wrapper,receipt.blockNumber)]);
  assert.equal(before,0n,"Recipient was already funded");assert.equal(after,FUNDING_AMOUNT_WEI,"Recipient did not receive exact fixed funding");assert.equal(nonce,0,"Recipient spent during funding block");
- eq(keccak256(multiCode),"0xecd5bd14a08c5d2122379900b2f272bdf107a7e92423c10dd5fe3254386c9939","Canonical MultiSend semantics changed");
+ eq(keccak256(multiCode),SUPPORTED_MULTISENDS[wrapper.toLowerCase()],"Canonical MultiSend semantics changed");
  eq(keccak256(walletCode),manifest.codeHashes.wallet,"Funding Safe code changed");eq(keccak256(wethCode),manifest.codeHashes.weth,"Funding WETH code changed");
  return {fundingTxHash,userOpHash,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash,wallet:WALLET,amountWei:FUNDING_AMOUNT_WEI.toString()};
 }

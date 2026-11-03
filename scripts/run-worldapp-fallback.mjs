@@ -8,6 +8,7 @@ import { readFileSync,writeFileSync,mkdirSync,chmodSync,existsSync,renameSync,op
 import path from "node:path";
 import { fileURLToPath,pathToFileURL } from "node:url";
 import { Contract,ContractFactory,Interface,JsonRpcProvider,Transaction,Wallet,getCreateAddress,keccak256,toUtf8Bytes,toBeHex } from "ethers";
+import { validateWorldAppRouterFundingManifest,ROUTER_FUNDING_SCHEMA } from "./lib/worldapp-router-funding-manifest.mjs";
 import { validateWorldAppFundingManifest,FUNDING_AMOUNT_WEI,FUNDING_WETH } from "./lib/worldapp-funding-manifest.mjs";
 import { WALLET } from "./lib/worldapp-deployment-manifest.mjs";
 import { verifyFundingReceipt } from "./lib/worldapp-funding-proof.mjs";
@@ -28,7 +29,7 @@ export function privateJournal(directory) {
   }};
 }
 async function validateIntent(funding,deployment,artifacts,repo) {
- validateWorldAppFundingManifest(funding);same(bodyHash(deployment),deployment.manifestHash,"Deployment manifest digest");
+ (funding.schema===ROUTER_FUNDING_SCHEMA?validateWorldAppRouterFundingManifest:validateWorldAppFundingManifest)(funding);same(bodyHash(deployment),deployment.manifestHash,"Deployment manifest digest");
  same(funding.deploymentManifestHash,deployment.manifestHash,"Pinned deployment manifest");
  assert.equal(deployment.chainId,480);same(deployment.deploymentEOA,funding.deploymentEOA,"Pinned EOA");same(deployment.wallet,WALLET,"Source wallet");same(deployment.feeRecipient,WALLET,"Fee recipient");
  assert.equal(deployment.factories.length,2);
@@ -166,7 +167,7 @@ export async function runWorldAppFallback({provider,fundingManifest,deploymentMa
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
  const args=Object.fromEntries(process.argv.slice(2).reduce((out,value,i,all)=>{if(i%2===0){assert.ok(value.startsWith("--")&&all[i+1]);out.push([value.slice(2),all[i+1]]);}return out;},[]));
- const fundingManifest=JSON.parse(readFileSync(path.join(ROOT,"deployment/worldapp-funding-2026-11-03.json"),"utf8"));
+ const fundingManifest=JSON.parse(readFileSync(args["funding-manifest"]||path.join(ROOT,"deployment/worldapp-router-funding-2026-11-03.json"),"utf8"));
  const deploymentManifest=JSON.parse(readFileSync(path.join(PRIVATE_FALLBACK_DIR,"deployment-manifest.json"),"utf8"));
  const provider=new JsonRpcProvider(args.rpc||"https://worldchain-mainnet.g.alchemy.com/public",480,{batchMaxCount:1,cacheTimeout:-1});
  try{console.log(JSON.stringify(await runWorldAppFallback({provider,fundingManifest,deploymentManifest,broadcast:args.broadcast==="true",approvedManifestHash:args["approved-manifest-hash"],approvedDeploymentManifestHash:args["approved-deployment-manifest-hash"],approvedMaxSpendWei:args["approved-max-spend-wei"],fundingTxHash:args["funding-tx-hash"],userOpHash:args["user-op-hash"],astArtifacts:args["ast-artifacts"]}),null,2));}
