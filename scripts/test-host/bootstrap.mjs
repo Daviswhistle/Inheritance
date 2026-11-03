@@ -63,7 +63,7 @@ shadow.innerHTML = `
   </style>
   <button id="toggle" aria-haspopup="dialog">TEST · ${account}</button>
   <dialog aria-labelledby="title">
-    <h2 id="title">Test host controls</h2>
+    <h2 id="title" tabindex="-1" autofocus>Test host controls</h2>
     <p class="note">Disposable WLD / USDC. Real MiniKit SDK and contracts; simulated host approvals, notifications and Morpho strategy. Messages are recorded only.</p>
     <p id="runtime"></p><p id="address"></p>
     <div class="row">

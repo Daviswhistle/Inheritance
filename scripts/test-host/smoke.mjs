@@ -133,6 +133,8 @@ try {
   await click(ios, 'Agree and sign in');
   await until(() => ios.ev('return window.__INHERITANCE_TEST_HOST__.pending.some(row => row.command === "wallet-auth")'), 'manual sign-in approval');
   assert.equal(await ios.ev('return document.querySelector("#inheritance-test-controls").shadowRoot.querySelector("dialog").open'), true);
+  assert.equal(await ios.ev('const shadow = document.querySelector("#inheritance-test-controls").shadowRoot; return shadow.activeElement === shadow.querySelector("#title");'), true,
+    'Manual approval must initially focus its heading, not the Account or Approval picker');
   await ios.shot('test-host-ios-approval');
   await ios.ev('document.querySelector("#inheritance-test-controls").shadowRoot.querySelector("#pending button").click(); return true;');
   await until(() => ios.ev('return !!document.querySelector(".account-row")'), 'iOS SIWE login');
