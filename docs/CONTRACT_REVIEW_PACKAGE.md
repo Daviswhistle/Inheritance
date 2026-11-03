@@ -20,8 +20,16 @@ The relevant requirements are [repository access and fee review](https://docs.wo
 
 World Chain mainnet, chain ID 480. The remediated yield factories below have
 been mined and checked against the reviewed runtime, immutable configuration
-and both child-creation-code chunks. Production app/Worker activation is still
-pending; deployment alone does not establish that cutover.
+and both child-creation-code chunks. Production app/Worker activation completed
+on November 4, 2026 (KST), from commit `1e4715d` in deployment run
+[41676338353](https://github.com/Daviswhistle/Inheritance/actions/runs/41676338353).
+The production HTML and all 21 build files matched the explicit
+`NODE_ENV=production` build and
+[immutable Pages deployment](https://3a35cdc0.inheritance.pages.dev). Worker
+version `b07b7a46-8a56-4a0c-be02-c39f193a152f` reports the basic factory, both
+new yield factories and all four legacy yield factories as supported. Portal
+permissions retain the original ten contracts plus the two new factories; the
+South Korea draft remains unverified.
 
 | Purpose | Address | Source |
 | --- | --- | --- |
@@ -68,6 +76,11 @@ receipts are retained in [RELEASE.md](RELEASE.md).
 - The service fee is calculated on realized positive net gains, separately from
   principal and the external strategy's fee. Review [YieldMath](../contracts/libraries/YieldMath.sol)
   together with both yield vaults and their income/full-withdrawal methods.
+  Receipt-share valuation has a 150,000-gas bound. If it fails, the existing
+  policy waives that exit's service fee, transfers all shares to the recipient
+  and records no fee debt; later wallet redemption does not collect it. A
+  successful quote with a larger gas allowance does not change this bounded
+  on-chain result.
 - Re7/Morpho strategy governance, liquidity, losses and fee changes are external
   risks disclosed before deposit. No independent audit has been completed.
 - The [end-inheritance flow](PLAN_EXIT.md) uses existing entrypoints in one
@@ -92,6 +105,14 @@ receipts are retained in [RELEASE.md](RELEASE.md).
 - `scripts/verify/plan-exit.mjs`: SDK batch rollback, receipt and restart recovery.
 - [Guideline assessment](GUIDELINE_REVIEW.md), [reviewer walkthrough](REVIEW_NOTES.md),
   [actual device coverage](WORLD_APP_ACCEPTANCE.md), [launch scope](LAUNCH_SCOPE.md).
+
+A deployed-USDC-child local fork retained the actual Re7 strategy code and
+normal strategy state transitions. With a synthetic 100 USDC balance and local
+USDC fee-rejection wrappers, cash settlement succeeded in the healthy case;
+fee rejection rolled the cash attempt back and delivered all receipt shares
+when the 150,000-gas valuation failed (the same quote succeeded at 2,000,000).
+Those fixtures establish the deployed policy branch, not a production issuer
+restriction, real-device transaction or future cash liquidity.
 
 The exact source/run IDs and outcomes belong in RELEASE.md. Actual iOS World
 App approval/permissions and the beneficiary's complete production payout flow

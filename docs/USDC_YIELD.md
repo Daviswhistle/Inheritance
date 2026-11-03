@@ -9,7 +9,7 @@ WLD positions remain manageable; an environment without a WLD yield route uses
 basic custody for new WLD deposits. Existing funds never move automatically.
 See [the unified flow](UNIFIED_PLAN.md) and [protected owner income](OWNER_INCOME.md).
 
-## Remediated deployment configuration — activation pending
+## Active remediated deployment configuration
 
 - World Chain, chain ID 480.
 - Asset: Circle-listed World Chain USDC, `0x79A02482A880bCE3F13e09Da970dC34db4CD24d1`, 6 decimals.
@@ -28,7 +28,11 @@ and [helper](https://repo.sourcify.dev/480/0x9713961Fb3485e97AD07860906f676E66A4
 The remediated build uses solc 0.8.38, viaIR, optimizer 200 and Cancun.
 
 The new factory and helper match the reviewed runtime, configuration and child
-creation-code chunks. App/Worker activation is pending. Legacy factories
+creation-code chunks. The production app and Worker activated these primary
+routes in run [41676338353](https://github.com/Daviswhistle/Inheritance/actions/runs/41676338353),
+commit `1e4715d`. Production files matched the explicit production build and
+[immutable Pages deployment](https://3a35cdc0.inheritance.pages.dev); live
+automation health verifies all seven expected factories. Legacy factories
 `0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2` and
 `0x67c8DE756FCD04dc5976960533931984d0348758` remain supported and retain
 their immutable fee recipient `0x93bC44B8296977Feb479F95855D9b9E051C17dA2`.
@@ -48,8 +52,12 @@ the specified USDC into the pinned strategy, leaving direct gifts idle.
 
 USDC gains are charged 10% only when realized, after proportional principal and
 realized USDC loss recovery. Gifts of cash or receipt shares are excluded. Failed
-share valuations waive that exit's fee and cannot invent a loss. Later wallet
-receipt redemption does not charge a second service fee.
+share valuations waive that exit's fee and cannot invent a loss. The valuation
+call is bounded to 150,000 gas: if it fails, all exiting shares go to the
+recipient with zero service fee, even if a larger-gas quote would succeed. This
+policy already existed before this remediation. No deferred fee debt is
+recorded, so the waived fee is not recovered later; wallet receipt redemption
+does not charge a second service fee.
 
 Canonical actually claimed WLD stays in the USDC vault. It is not swapped or
 deposited into the USDC strategy. WLD is paid with a separate 10% reward fee on
@@ -112,6 +120,18 @@ used a 0.00001 ETH daily cap. Current deployment configuration uses the verified
 operator gas-funding controller with `FINALIZER_DAILY_GAS_CAP_ETH=0`, a 0.01 gwei
 maximum gas price and 0.000001 ETH extra OP-fee reserve. The public automation
 health response must confirm the actual active limits before cutover.
+
+A separate fork using a child from the actual deployed USDC factory retained
+the real Re7 runtime and storage apart from normal deposit, accrual and
+redemption operations. A synthetic 100 USDC balance and local healthy/rejecting
+USDC proxy wrappers supplied the test funds and rejection condition. The
+healthy cash branch paid 100.359153 USDC to the fixture heir and 0.039905 USDC
+as the service fee. With the fee rejected, the cash redemption, share burn and
+USDC movements rolled back. The unchanged Re7's 150,000-gas share valuation
+failed while the 2,000,000-gas probe succeeded; under the existing waiver
+policy, all 96832488637665992908 share units went to the fixture heir and no
+share fee was collected. This is a passing local test of that policy, not a
+production transfer or proof of future strategy liquidity.
 
 USDC settlement proof binds the finalized receipt to its source factory and
 settled timestamp. If either historical RPC read is temporarily unavailable,
