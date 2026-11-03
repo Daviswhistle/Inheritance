@@ -23,6 +23,18 @@ See ANDROID_COLD_START.md for timed captures, action checks and the corrected
 verification procedure; no product runtime fix was claimed for this finding. No new real
 transaction, notification, external message or submission was performed.
 
+## November 3 — authentication and guideline corrections
+
+Current production is `aa67a75` / https://d92b0dde.inheritance.pages.dev.
+Official wallet authentication remains; the fake client-only World ID branch is
+removed. Exit recovery storage is disclosed in the review and bilingual Privacy
+Policy. Portal languages are now `en`, `ko`; country is KR and status remains
+unverified. Only language and draft description fields changed. The TFH contract
+review package is prepared, not sent or accepted. Final CI `41579363657`,
+deployment `41579363738` and native iOS `41579363563` passed (2 native tests,
+zero failures/skips). Actual Android sign-in/privacy/exit-review cancellation
+passed; production files match. See RELEASE.md. Submission remains stopped.
+
 ## November 3 — exit flow correction
 
 The operator rejected recipient removal without asset recovery. The new default

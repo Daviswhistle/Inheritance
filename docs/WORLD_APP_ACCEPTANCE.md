@@ -1,7 +1,7 @@
 # Actual World App acceptance
 
 Status: physical Android checks observed on October 25, October 27 and
-November 1–2, 2026. The WLD deposit/withdrawal test now includes a confirmed
+November 1–3, 2026. The WLD deposit/withdrawal test now includes a confirmed
 zero-share full exit, and the native notification permission dialog was exercised. This is acceptance of the observed flows, not proof of every asset,
 claim path or physical iPhone behavior. Native test hosts simulate the wallet
 host; their results are recorded separately.
@@ -11,6 +11,19 @@ Record the device model, OS version, World App version, date and UI language.
 The October 27 real-money test used runtime
 `e4be10c5225cd05504c3cb3f02082f16b1b4a623`. Current deployed source and exact
 CI/native-test results are in [RELEASE.md](RELEASE.md).
+
+## Physical device — November 3, 2026: authentication and exit privacy
+
+Production application source `61b6892` (unchanged JavaScript in `aa67a75`) was
+opened through the canonical World App deep link on connected Android. Explicit
+sign-in succeeded and displayed the expected account and empty inheritance
+state. The in-app Korean Privacy Policy explained persistent exit recovery,
+recorded fields, clearing after verified outcomes and retaining uncertain
+requests without resending them. The exit review showed the storage notice
+before the approval action. Cancellation returned to Plan; Home was restored.
+No wallet transaction request, funds, notifications or messages were sent.
+The final English/Korean revision-date correction was checked by production
+file comparison. Private screenshots/XML remain outside Git.
 
 ## Physical device — November 2, 2026: first-use instructions and opening setup
 

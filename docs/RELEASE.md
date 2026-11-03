@@ -1,5 +1,60 @@
 # Release evidence
 
+## November 3, 2026 — authentication and guideline corrections (submission stopped)
+
+Runtime `aa67a75c382e44d9a30e95cdd09fc286a8b44861` is deployed at
+https://d92b0dde.inheritance.pages.dev. Production HTML, four imported assets
+and six static documents/assets match that release and the source documents
+(November 3 13:40 KST readback). Functional changes are in `61b6892`; subsequent
+commits correct the Privacy Policy revision dates and Portal evidence wording.
+
+Corrections:
+- Remove the unused World ID verification flag and client-only success/cache
+  branch. Sign-in uses official wallet authentication and server verification.
+  Old `wld-verified` markers are removed and grant no authority.
+- Explain persistent exit recovery separately from tab-only settings records in
+  English and Korean Privacy Policy. The exit review explains storage before
+  approval; cancellation does not create an exit recovery record.
+- Portal readback confirms `unverified`, KR only, languages `en` and `ko`.
+  Only supported languages and draft descriptions changed. Descriptions now
+  reflect end-and-withdraw, recovery storage and the contract review package.
+- Replace obsolete current/awaiting-review assertions with the actual withdrawn
+  state. Prepare CONTRACT_REVIEW_PACKAGE.md with contracts, permissions, fees,
+  sources and reproducible evidence; it is not TFH acceptance.
+
+Validation:
+- Typecheck, lint, production build, locale (10), CSS and built-copy checks pass.
+- Authentication/authorization suite: 77 passed, zero failures, including the
+  retired verification marker alongside an untrusted cached address.
+- Chromium and WebKit exit suites: 15 checks each, including disclosure before
+  storage, small-screen accessibility, cancellation, atomic rollback and original
+  request recovery. Test funds only; no new mainnet transaction.
+- Bilingual legal pages: 12 browser checks, including 320px layouts and blocked
+  localStorage. Production readback also checks both updated policy dates.
+- Android World App: production cold link entry, explicit successful sign-in,
+  in-app Korean Privacy Policy storage text, exit storage review and cancellation
+  observed. Phone returned to Home; no wallet transaction approval was opened.
+- Native iOS functional revision `61b6892`, run `41578881884`: 2 tests passed,
+  zero failures/skips on iPhone 16 Pro / iOS 18.5 arm64 Simulator. Downloaded
+  Xcode summary and keyboard-dismissal / interrupted-deposit recovery screenshots
+  were inspected. Final source `aa67a75`, run `41579363563`, also passed both
+  tests with zero failures/skips in the same simulator environment; its downloaded
+  Xcode summary confirms the result. This is a native test host, not iOS World App.
+  Previous run `41483406437` had no steps because no hosted Mac runner acquired
+  it; application tests did not run in that attempt.
+
+CI/deployment IDs: source `61b6892` passed CI `41578881894` and deployment
+`41578881887`; policy-date revision `9a4f2cf` passed CI `41579156847` and deployment
+`41579157103`; final CI `41579363657` and deployment `41579363738` passed.
+The intermediate policy-date native run `41579157137` also completed successfully.
+
+Remaining external evidence: no response to the existing TFH inquiry was found
+in the connected mailbox on November 3. Existing-contract/fee review acceptance,
+actual iOS World App approval/permission behavior, and the beneficiary's complete
+production payout remain unverified. Simulator/local results do not establish
+these. No new external message, notification, real funds or submission was used.
+Private evidence: `../evidence/guideline-fixes-nov03/`.
+
 ## November 3, 2026 — end inheritance with asset recovery (submission stopped)
 
 Runtime: `2938a05014cad181db8b8bc93e8cab8e4e5016dd`.
