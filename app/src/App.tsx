@@ -5119,11 +5119,12 @@ export default function App() {
             여러 카드를 한 탭에 묶으므로 fragment 로 감싼다. */}
         {tab === "support" && <>
           <div className="help-language"><span>{locale === "en" ? t("language.label") : `${t("language.label")} · Language`}</span><LanguagePicker /></div>
-          {account && <section className="help-setting grid gap-2" aria-label={t("account.title")}>
-            <h2>{t("account.title")}</h2>
-            <p>{t("account.signOutHelp")}</p>
-            <Button disabled={pendingAction} onClick={signOut}>{t("account.signOut")}</Button>
-          </section>}
+          {account && <Card><CardHeader><CardTitle>{t("account.title")}</CardTitle></CardHeader>
+            <CardContent className="grid gap-3">
+              <p className="text-sm text-gray-600">{t("account.signOutHelp")}</p>
+              <Button disabled={pendingAction} onClick={signOut}>{t("account.signOut")}</Button>
+            </CardContent>
+          </Card>}
           {account && <section className="help-region">
             {currentPlanEligibility.residence ? <Button variant="ghost" disabled={pendingAction} onClick={() => {
               if (clearResidenceAttestation(account)) void refreshNewPlanEligibility();
