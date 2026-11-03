@@ -1,6 +1,74 @@
 # World App deployment work — 2026-11-03
 
-## Resumed — 2026-11-04
+## Funding approved and received — 2026-11-04
+
+The operator explicitly approved **0.00004 WETH total funding**, with deployment
+and return costs within that amount, then completed native approval. The exact
+fixed two-call batch succeeded in block **37192271**:
+- Funding transaction: `0x3894b0624245ccf500fc14075ff5f90e09643824ee99439c73c742484c3c47ad`
+- User operation: `0x9aa9e9825c6e7524b335d8aead600b7a9e8058ca45ca0cb01304fef5e8efa14c`
+- Temporary EOA received exactly **40000000000000 wei**, nonce remains zero.
+- The receipt's only outgoing ERC-20 Transfer from the user wallet is the approved
+  WETH amount. No extra fee was shown on the native approval sheet.
+
+Canonical receipt verification passed: selected successful UserOperation,
+getUserOpHash binding, exact atomic calldata, official code hashes, exact WETH
+transfer/unwrap, and pre/post recipient and router balances. Private evidence:
+`work/evidence/worldapp-deployment-nov03/funding-proof-nov04.json`.
+The first dry run exposed an ethers read-only Result encoding TypeError; passing
+a plain tuple to getUserOpHash repairs argument encoding without weakening proof.
+The local four-step deployment/recovery/return regression passed again.
+
+The operator page timed out after 90 seconds before manual approval completed;
+this did not cancel the transaction. Chain evidence recovered the successful
+result, and phone status refresh showed funds found with resend blocked. Commit
+`de817ee` fixes late-result capture while retaining the lock and duplicate guards.
+It is pushed but not hosted yet. Never repeat the funding transfer.
+
+The guarded runner currently returns `funding_pending_finality`. At the latest
+checkpoint (head 37192596, finalized 37191963), funding block 37192271 is not yet
+finalized; EOA balance remains exactly 40000000000000 wei and latest/pending
+nonces are zero. It has not signed or broadcast a factory deployment. Wait until finalized block >=37192271,
+then use the approved frozen manifest hashes and the canonical hashes above.
+The budget approval persists; do not ask for the same 0.00004 WETH again. Halt
+if fresh all-in costs exceed that budget. Submission remains prohibited.
+
+
+## Cutover preparation while finality is pending
+
+Fresh approved-budget reprice uses 29915834628217 wei total conservative reserve
+for two CREATEs and wrapping/return, within the 40000000000000 wei cap. This is
+an estimate, not spent cost; the guarded runner reprices again before each sign.
+
+Read-only rollout audit found that both legacy generations must be preserved:
+- WLD legacy: `0x1a856aE8c3abd8a3746F542688a1846Bc6208435` and
+  `0xfC3F6f0B2234923b3F3aDBAaC797e920C8FdA248`; earliest block 35795652.
+- USDC legacy: `0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2` and
+  `0x67c8DE756FCD04dc5976960533931984d0348758`; earliest block 35802847.
+- Both VITE_LEGACY_* GitHub variables and the separate backend LEGACY_* variables
+  need these lists. Workflow defaults add only the oldest generation, not the
+  immediately previous primary. Align backend/wrangler.toml too.
+- New primary deployment blocks must come from each actual CREATE receipt, never
+  the funding block. Do not activate predicted addresses before full bytecode,
+  configuration and child creation-code verification.
+- Deploy the remediated Worker, verify every primary/legacy route, then publish
+  the frontend. Retain all old Portal entries. Automation health must trust seven
+  factories (basic plus six yield),
+  up from the current five. Asset migration is separate and not authorized here.
+
+The ethers tuple fix (`c989331`) and actual-receipt offline regression (`a4002a9`)
+are pushed along with the late-native-result fix (`de817ee`). CI 41666722191 was still running at the latest check; local canonical proof,
+negative fixture cases and runner regressions pass.
+Hosted operator build remains 1f49012b5f57. No permission or product cutover occurred.
+
+`15b29a7` adds a read-only deployed-factory gate, and `3d7b478` wires Pages after
+Worker deployment and support verification. All five currently live factories
+passed the exact workflow check against live health. The seven-factory proposed
+configuration correctly fails until the new two are deployed/configured. Ten
+negative/positive offline tests passed; the checker is wired into CI. These
+workflow changes are source-only and have not cut over production.
+
+## Earlier resumption and approval checkpoint — 2026-11-04
 
 The operator explicitly resumed work. Submission remains stopped and deployment
 funding still needs an exact native quote and amount approval. World App is the
@@ -56,13 +124,14 @@ rejected contract and correcting only a verified missing setting. Actual funding
 requires an exact fee quote and amount approval; no such approval has been given.
 World App is the operator's only wallet. Submission remains stopped.
 
-## Current result and authority
+## Deployment authority and production baseline
 
 The operator wants deployment fees paid from World App wallet
 `0xE819320Ed3D03f9912b06a48cC5E7f06060CC67a`, also the new immutable fee recipient.
-**No mainnet funding, signing, factory deployment, asset migration or submission
-has been performed. No money has been spent.** Amount-specific approval is still
-required before a real transfer. Submission remains stopped.
+**Approved funding is received and verified; factory deployment, asset migration
+and submission have not occurred.** Deployment and remainder return may spend up
+to 0.00004 ETH in total from that funding. Additional funding needs separate
+approval. Submission remains stopped.
 
 Normal production app runtime remains `f6dc58a`. Its rebuilt baseline is pinned
 to `a8056264c8551fdea191574d919a409871722cb9`; root HTML SHA-256 remains

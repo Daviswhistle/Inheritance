@@ -3,8 +3,11 @@
 ## Status and authority
 
 This is a **new-generation source repair, not an upgrade of the live contracts**.
-The production Mini App and current factory addresses remain unchanged. No mainnet
-transaction, funding, migration, notification or submission was performed.
+The production Mini App and current factory addresses remain unchanged. On November 4,
+the operator approved and funded 0.00004 WETH for deployment; canonical proof passed
+and the runner is waiting for finality before signing. See
+[deployment progress](WORLDAPP_DEPLOYMENT_2026-11-03.md). No factory deployment,
+asset migration, notification or submission has been performed.
 The operator requested repairs and validation, with reasons and costs before any
 redeployment or asset movement. Submission remains stopped.
 

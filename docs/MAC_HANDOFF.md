@@ -1,6 +1,40 @@
 # Mac continuation — 2026-11-03
 
-## Resumed — 2026-11-04
+## Funding approved and received — 2026-11-04
+
+The operator explicitly approved **0.00004 WETH total funding**, with deployment
+and return costs within that amount, then completed native approval. The exact
+fixed two-call batch succeeded in block **37192271**:
+- Funding transaction: `0x3894b0624245ccf500fc14075ff5f90e09643824ee99439c73c742484c3c47ad`
+- User operation: `0x9aa9e9825c6e7524b335d8aead600b7a9e8058ca45ca0cb01304fef5e8efa14c`
+- Temporary EOA received exactly **40000000000000 wei**, nonce remains zero.
+- The receipt's only outgoing ERC-20 Transfer from the user wallet is the approved
+  WETH amount. No extra fee was shown on the native approval sheet.
+
+Canonical receipt verification passed: selected successful UserOperation,
+getUserOpHash binding, exact atomic calldata, official code hashes, exact WETH
+transfer/unwrap, and pre/post recipient and router balances. Private evidence:
+`work/evidence/worldapp-deployment-nov03/funding-proof-nov04.json`.
+The first dry run exposed an ethers read-only Result encoding TypeError; passing
+a plain tuple to getUserOpHash repairs argument encoding without weakening proof.
+The local four-step deployment/recovery/return regression passed again.
+
+The operator page timed out after 90 seconds before manual approval completed;
+this did not cancel the transaction. Chain evidence recovered the successful
+result, and phone status refresh showed funds found with resend blocked. Commit
+`de817ee` fixes late-result capture while retaining the lock and duplicate guards.
+It is pushed but not hosted yet. Never repeat the funding transfer.
+
+The guarded runner currently returns `funding_pending_finality`. At the latest
+checkpoint (head 37192596, finalized 37191963), funding block 37192271 is not yet
+finalized; EOA balance remains exactly 40000000000000 wei and latest/pending
+nonces are zero. It has not signed or broadcast a factory deployment. Wait until finalized block >=37192271,
+then use the approved frozen manifest hashes and the canonical hashes above.
+The budget approval persists; do not ask for the same 0.00004 WETH again. Halt
+if fresh all-in costs exceed that budget. Submission remains prohibited.
+
+
+## Earlier resumption and approval checkpoint — 2026-11-04
 
 The operator explicitly resumed work. Submission remains stopped and deployment
 funding still needs an exact native quote and amount approval. World App is the
@@ -56,7 +90,7 @@ rejected contract and correcting only a verified missing setting. Actual funding
 requires an exact fee quote and amount approval; no such approval has been given.
 World App is the operator's only wallet. Submission remains stopped.
 
-## World App deployment cost route — standard router quote pending
+## Historical router preparation — before approved funding
 
 The cost source and future immutable fee recipient are World App wallet
 `0xE819320Ed3D03f9912b06a48cC5E7f06060CC67a`. No mainnet funding, deployment,
