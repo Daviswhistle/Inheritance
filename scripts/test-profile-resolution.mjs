@@ -3,8 +3,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire, stripTypeScriptTypes } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-const repository = process.env.INHERITANCE_REPO || process.cwd();
+const repository = process.env.INHERITANCE_REPO || fileURLToPath(new URL('..', import.meta.url));
 const source = readFileSync(repository + '/app/src/App.tsx', 'utf8');
 const { ethers } = createRequire(repository + '/app/package.json')('ethers');
 function between(start, end) {
