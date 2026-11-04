@@ -4507,7 +4507,7 @@ export default function App() {
           {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <div><dt>{t("income.fee")}</dt><dd>{formatYieldAmount(selectedYieldPosition.fee, wldDecimals)} {wldSymbol}</dd></div>}
           <div><dt>{t("assets.reviewDestination")}</dt><dd>{moneyReview.kind === "deposit" ? t("home.overview.title") : moneyReview.to.toLowerCase() === account.toLowerCase() ? t("assets.reviewMyWallet") : moneyReview.to}</dd></div>
         </dl>
-        {moneyReview.kind === "deposit" && <p>{t("assets.reviewDeposit", { amount: moneyReview.amount, symbol: wldSymbol })}</p>}
+        {moneyReview.kind === "deposit" && <><p>{t("assets.reviewDeposit", { amount: moneyReview.amount, symbol: wldSymbol })}</p><p className="text-sm">{t("deposit.recoveryDisclosure")}</p></>}
         {moneyReview.kind === "withdraw" && isYieldVault && !withdrawAllSelected && <p>{t("assets.withdrawBeforeFee")}</p>}
         {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <p>{t("assets.reviewVariable")}</p>}
         {moneyReview.kind === "income" && <p>{t("income.explainer")}</p>}
