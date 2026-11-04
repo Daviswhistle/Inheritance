@@ -4722,10 +4722,10 @@ export default function App() {
           <Card className="asset-money-card">
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle>{t("assets.balanceTitle", { symbol: wldSymbol })}</CardTitle>
+                <CardTitle>{t(selectedAssetEmpty ? "assets.emptyTitle" : "assets.balanceTitle", { symbol: wldSymbol })}</CardTitle>
                 <div className="flex items-center gap-2">
 
-                  {account && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
+                  {account && !isVaultOwner && vaultHeir && account.toLowerCase() === vaultHeir.toLowerCase() && badge("Heir", "purple")}
                   {(() => {
                     if (selectedAssetEmpty) return badge(t("home.empty.label"), "gray");
                     if (vaultHeir && vaultOwner && vaultHeir.toLowerCase() === vaultOwner.toLowerCase()) return badge("Inheritance cancelled", "yellow");

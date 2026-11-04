@@ -917,7 +917,7 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
         title: "A claim was filed",
         message: endsAt
           ? `Your heir can withdraw unless you renew before ${endsAt}.`
-          : "Your heir can withdraw unless you renew during the review window.",
+          : "Your heir can withdraw unless you renew before the transfer executes.",
       });
     }
   }
