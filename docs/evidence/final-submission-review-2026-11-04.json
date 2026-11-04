@@ -2,7 +2,7 @@
   "schema_version": 1,
   "review_date": "2026-11-04",
   "review_baseline": "27344c23bc9c1c345971fe65a5e4c2feb9994ab1",
-  "scope": "Local review-branch results. No production deployment, real-fund transaction or Mini App submission.",
+  "scope": "Local review-branch results and identified GitHub CI/native runs. No production deployment, real-fund transaction or Mini App submission.",
   "runtime_source_sha256": {
     "app/src/App.tsx": "4908b6ae3af93466665da34b220e1d44962efc2b52141bec55a7e9dcccb8c476",
     "app/src/withdrawal.ts": "e7827a64b1659c39b43a873677b86b341fa93d8280de3a18f3f1d880593ad4a4",
@@ -12,7 +12,7 @@
     "app/src/minikit.ts": "d3b66d128b876d54c7672e946e8212e5602a1f3f95e6fc90db78793b2c25b714",
     "app/src/index.css": "1c72ec7f0d953c922d23fddc9e24d745ae390968a5f01f75d19b59f75f269c09",
     "app/src/launch.css": "47f1b219baccd96e0ac5e8ec10aca38359bd6f34dfac0a253f9abbd0aad4180c",
-    "scripts/verify/money-safety.mjs": "e9b370f702fb74aec7e3d72af06ee91ff26762f0b3979380bdf90d750fc6cbbd",
+    "scripts/verify/money-safety.mjs": "4505fa46818ea60cf13ce474c5a354950e18e30d4b1edefcb897c4d14d62dc21",
     "scripts/verify/product-ui.mjs": "3e5ba73e92c49a5f7cf3398b78c70b560f34264db152ce4897b56464fe8f317a",
     "scripts/verify/drv.mjs": "c037f267dc4f7e8964faae02d1b52f47896c317a247af45b713e0469c20c8c62"
   },
@@ -606,5 +606,194 @@
     "native_skipped": 0,
     "native_pngs_reviewed": 20,
     "scope": "Prior revision evidence; the current balance CSS/keyboard change requires its own remote run."
+  },
+  "remote_verified_product": {
+    "head_sha": "4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba",
+    "tested_merge_sha": "b41618e7c05f1f43dcd7a3720a3769cbf94970ed",
+    "identical_git_tree_sha": "fc0a386efc1532b9f49f4d22467dba95e57c2086",
+    "ci_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061672",
+    "ci_jobs": {
+      "Mini App": "success",
+      "Contracts (Foundry)": "success",
+      "Notification backend": "success",
+      "Money safety and product UI": "success"
+    },
+    "contracts": {
+      "passed": 476,
+      "failed": 0,
+      "skipped": 7,
+      "critical_custody_covered_lines": 1258,
+      "critical_custody_total_lines": 1325,
+      "critical_custody_percent": 94.94
+    },
+    "browser": {
+      "artifact_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061672/artifacts/13324428883",
+      "layouts": 72,
+      "axe_checks": 38,
+      "axe_violations": 0,
+      "screenshots": 45,
+      "money_checks": 12,
+      "keyboard_overflow": {
+        "pageWidth": 320,
+        "width": 226,
+        "scrollWidth": 410,
+        "height": 27,
+        "scrollHeight": 27,
+        "left": 27,
+        "top": 0,
+        "focused": true
+      },
+      "images_visually_reviewed": [
+        "ui-owner-ko-0.png",
+        "ui-additional-deposit-review-ko-320.png",
+        "ui-additional-deposit-review-bottom-ko-320.png",
+        "ui-close-rejected-ko.png"
+      ],
+      "evidence_limits": [
+        "Synthetic long amounts are recorded in geometry evidence; no screenshot of those temporary long values is included in the artifact.",
+        "Browser CI uses the real MiniKit SDK and private Anvil mock assets; native iOS evidence is a separate workflow."
+      ]
+    },
+    "native": {
+      "run_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061693",
+      "job_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061693/job/126591708452",
+      "conclusion": "success",
+      "artifact": {
+        "id": 13326960851,
+        "name": "ios-native-review",
+        "sha256": "0e53788d54f48f39dc0f8b8b4012e01d0e63c90428c104cd2d04a6c4a7f2b1c5",
+        "bytes": 4247505,
+        "digest_verified": true
+      },
+      "device": "iPhone 16 Pro / iOS 18.5 (22F77) / arm64",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "screenshots_reviewed": 20,
+      "tests": [
+        {
+          "name": "testNativeAccessoryDoneDismissesLandscapeKeyboard",
+          "passed": true,
+          "seconds": 46.132
+        },
+        {
+          "name": "testRealSDKLoginAndNativeLifecycle",
+          "passed": true,
+          "seconds": 196.666
+        },
+        {
+          "name": "testRejectedLoginCanBeRetriedRepeatedly",
+          "passed": true,
+          "seconds": 24.017
+        },
+        {
+          "name": "testZPendingDepositSurvivesProcessTermination",
+          "passed": true,
+          "seconds": 64.223
+        }
+      ],
+      "observations": [
+        "USDC decimal input 12.345678 remains visible above the native portrait decimal keyboard.",
+        "Recipient @test_heir remains visible in landscape and through three repeated landscape/foreground cycles.",
+        "Native accessory Done dismisses the landscape keyboard, and the review action/footer navigation are restored.",
+        "Pending transaction screen explicitly shows verification in progress and the saved 1.000001 USDC deposit.",
+        "Recovered home screen displays 1.000001 USDC and a 30-day check-in interval; the corresponding XCTest passed without resubmission.",
+        "The yellow TEST HOST banner, TEST owner/heir buttons and approval controls belong to the test fixture, not the released product UI.",
+        "The previously observed floating app Done button and native accessory Done are both present in portrait. The floating button can cover the right edge of helper text while the keyboard is open; it does not cover the focused input in these screenshots. This observation is unchanged from the preceding b93 artifact and is not a new blocker from this UI change."
+      ],
+      "scope": "Native WKWebView simulator/test-host evidence with the real MiniKit SDK and simulated approvals/local test funds. This is not evidence of actual World App execution or production-fund transactions. The four native cases do not independently certify the new owner-withdrawal ID-loss or strategy-fee-change paths; those belong to the separate browser/Anvil money-safety suite. Applies only to the listed PR head and tested merge snapshot."
+    }
+  },
+  "browser_test_selection_race": {
+    "failed_run": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835052903",
+    "failed_job": 126591677757,
+    "source_head": "4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba",
+    "original_observation": "Timed out waiting for the changed-fee dialog; original artifact has only host startup log and does not establish the selected asset.",
+    "reproduction": "Hold initial vaultOf response until the optional USDC-button count check has returned zero; release the response and exercise the original fee scenario.",
+    "reproduced_selection": [
+      {
+        "symbol": "USDC",
+        "count": 0,
+        "heldRegistryCalls": 1,
+        "at": 1793798920167
+      }
+    ],
+    "review_asset": "WLD",
+    "fees": {
+      "WLD": "100000000000000000",
+      "USDC": "200000000000000000"
+    },
+    "send_count": 1,
+    "submitted_factory": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
+    "factories": {
+      "WLD": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
+      "USDC": "0x0165878A594ca255338adfa4d48449f69242Eb8F"
+    },
+    "shares_before": {
+      "WLD": "10000000000000000000",
+      "USDC": "10000000000000000000"
+    },
+    "shares_after": {
+      "WLD": "11000000000000000000",
+      "USDC": "10000000000000000000"
+    },
+    "final_modal_count": 0,
+    "follow_up": "Require requested asset availability/selection and reviewed currency; capture failure diagnostics without weakening financial assertions. Product runtime unchanged.",
+    "fixed_regression": {
+      "process_exit_code": 0,
+      "full_money_scenarios_passed": 12,
+      "forced_initial_registry_delay": {
+        "environment": "Real MiniKit SDK, Chromium and IndexedDB, private Anvil with mock tokens; no external funds",
+        "checks": [
+          {
+            "name": "withdrawal: two windows permit exactly one same-account send; another account remains independent"
+          },
+          {
+            "name": "additional-deposit: two windows permit exactly one same-account send; another account remains independent"
+          },
+          {
+            "name": "late confirmation/update cannot clear or replace a newer withdrawal"
+          },
+          {
+            "name": "concurrent wallet actions reject immediately without queued automatic approvals"
+          },
+          {
+            "name": "requested asset waits through initial registry load and selects USDC after release",
+            "heldRegistryCalls": 1,
+            "absentAtWait": true,
+            "selected": "USDC"
+          },
+          {
+            "name": "10%→20% fee change requires a new explicit review and consent before exactly one deposit",
+            "feeReads": 3,
+            "sends": 1
+          },
+          {
+            "name": "forced registry delay preserves USDC review, fresh fee reconsent and exact USDC factory target",
+            "finalShares": {
+              "WLD": "10000000000000000000",
+              "USDC": "11000000000000000000"
+            },
+            "walletRequests": [
+              {
+                "at": 1793799268301,
+                "kind": "wallet-request",
+                "calls": [
+                  {
+                    "target": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+                    "selector": "0x095ea7b3"
+                  },
+                  {
+                    "target": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
+                    "selector": "0xda674c58"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "runtime_unchanged_from": "4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba"
+    }
   }
 }

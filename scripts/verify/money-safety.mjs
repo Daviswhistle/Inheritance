@@ -13,9 +13,10 @@ const socket = createServer(); await new Promise(r => socket.listen(0, '127.0.0.
 const port = socket.address().port; await new Promise(r => socket.close(r));
 const origin = `http://localhost:${port}`;
 const host = spawn(process.execPath, [new URL('../test-host/start.mjs', import.meta.url).pathname, '--skip-build', `--port=${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
-let log = '', browser, provider;
+let log = '', browser, provider, diagnosticPage;
 host.stdout.on('data', d => log += d); host.stderr.on('data', d => log += d);
 const evidence = { environment: 'Real MiniKit SDK, Chromium and IndexedDB, private Anvil with mock tokens; no external funds', checks: [] };
+const requestDiagnostics = [];
 async function until(fn, label) { for (let i = 0; i < 600; i++) { if (await fn()) return; await sleep(100); } throw Error('Timeout: ' + label); }
 function pass(name, details = {}) { evidence.checks.push({ name, ...details }); console.log('PASS', name); }
 try {
@@ -37,6 +38,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await context.addInitScript(() => localStorage.setItem('inheritance:locale', 'en'));
   const page = await context.newPage();
+  diagnosticPage = page;
   await page.goto(origin + '/?approval=auto&residence=KR');
 
   // Use the shipped modules and actual browser database, not an in-memory CAS mock.
@@ -96,10 +98,16 @@ try {
   page.on('request', request => {
     if (!request.url().endsWith('/__host/rpc')) return;
     let payload; try { payload = request.postDataJSON(); } catch { return; }
-    for (const rpc of Array.isArray(payload) ? payload : [payload]) if (rpc?.method === 'eth_call' && rpc.params?.[0]?.data === feeSelector && rpc.params[0].to?.toLowerCase() === c.usdcStrategy.toLowerCase()) feeReads++;
+    for (const rpc of Array.isArray(payload) ? payload : [payload]) if (rpc?.method === 'eth_call' && rpc.params?.[0]?.data === feeSelector) {
+      requestDiagnostics.push({ at: Date.now(), kind: 'fee-read', target: rpc.params[0].to });
+      if (rpc.params[0].to?.toLowerCase() === c.usdcStrategy.toLowerCase()) feeReads++;
+    }
   });
   await page.route('**/__host/command', async route => {
-    const body = route.request().postDataJSON(), response = await route.fetch();
+    const body = route.request().postDataJSON();
+    if (body.envelope?.command === 'send-transaction') requestDiagnostics.push({ at: Date.now(), kind: 'wallet-request',
+      calls: body.envelope.payload.transactions.map(call => ({ target: call.to, selector: call.data.slice(0, 10) })) });
+    const response = await route.fetch();
     if (body.envelope?.command === 'send-transaction') {
       sends++;
       if (dropNext) {
@@ -120,8 +128,13 @@ try {
   }
   async function asset(symbol) {
     await page.locator('.tab-item').nth(1).click();
-    const select = page.getByRole('button', { name: symbol, exact: true }); if (await select.count()) await select.click();
+    const select = page.getByRole('button', { name: symbol, exact: true });
+    // Sign-in can finish before the owned-vault registry. Waiting is mandatory:
+    // skipping an absent USDC button silently approves the default WLD asset.
+    await select.waitFor(); await select.click();
+    await until(async () => await select.getAttribute('aria-pressed') === 'true', symbol + ' selected');
     await page.locator('.principal-controls').waitFor();
+    await until(async () => (await page.locator('label[for="deposit-amount"]').textContent())?.includes(symbol), symbol + ' asset identity loaded');
   }
   async function amountInput(symbol, amount = '1') {
     await asset(symbol);
@@ -135,6 +148,8 @@ try {
   const feeReadsBefore = feeReads;
   await page.locator('.deposit-primary').click();
   const review = page.locator('.money-review');
+  assert.equal((await page.locator('.asset-switcher button[aria-pressed="true"]').innerText()).trim(), 'USDC');
+  assert.match(await review.innerText(), /\b1 USDC\b/);
   assert.match(await review.innerText(), /10%/);
   assert.equal(await page.locator('#additional-deposit-consent').isChecked(), false);
   assert.equal(await review.locator('.btn-primary').isDisabled(), true);
@@ -249,6 +264,17 @@ try {
   assert.equal(sends, afterWithdrawals);
   pass('deployed no-requestId additional-deposit journals recover with known or manually supplied original IDs');
   writeFileSync(out + '/evidence.json', JSON.stringify(evidence, null, 2));
+} catch (error) {
+  const failure = { message: String(error?.stack || error), requests: requestDiagnostics };
+  if (diagnosticPage && !diagnosticPage.isClosed()) {
+    try {
+      failure.selectedAssets = await diagnosticPage.locator('.asset-switcher button[aria-pressed="true"]').allTextContents();
+      writeFileSync(out + '/failure-body.txt', await diagnosticPage.locator('body').innerText({ timeout: 3000 }));
+      await diagnosticPage.screenshot({ path: out + '/failure.png', fullPage: true, timeout: 5000 });
+    } catch (captureError) { failure.captureError = String(captureError); }
+  }
+  writeFileSync(out + '/evidence.json', JSON.stringify({ ...evidence, failure }, null, 2));
+  throw error;
 } finally {
   writeFileSync(out + '/host.log', log);
   await browser?.close(); provider?.destroy(); host.kill('SIGINT');

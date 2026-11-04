@@ -120,15 +120,62 @@ enabled; the complete UI suite is rerun after the fix.
 
 | Area | Evidence |
 | --- | --- |
-| Contracts | Local suite: 476 passed, 0 failed, 7 opt-in fork tests skipped. No Solidity changes in this review. |
-| Critical custody coverage | [Baseline CI](https://github.com/Daviswhistle/Inheritance/actions/runs/41813035636): 1258/1325 lines, 94.94%. Morpho WLD branch coverage is 63.25%; the line result is not a branch-coverage or security-certification claim. |
+| Contracts | Local and [review CI](https://github.com/Daviswhistle/Inheritance/actions/runs/41835061672): 476 passed, 0 failed, 7 opt-in fork tests skipped. No Solidity changes in this review. |
+| Critical custody coverage | Review CI: 1258/1325 lines, 94.94%. Morpho WLD branch coverage is 63.25%; the line result is not a branch-coverage or security-certification claim. |
 | Contract documentation | NatSpec check: 207 handwritten public/external functions and receive handlers. |
 | Static app checks | TypeScript, ESLint, production build, CSS class checks and bilingual copy checks passed. |
 | Focused regressions | Withdrawal 10, additional deposit 7, storage 14, transaction confirmation 15; also login, eligibility, profile resolution, errors, mobile flows, income history and legacy routes. |
 | Production dependencies | Root npm and app pnpm audits: zero known advisories after the ws-only update. Actual ethers/viem resolutions use ws 8.21.0 in both installations; typecheck, build and affected auth/backend checks were rerun. |
 | Real SDK/browser/local chain | 12 money-safety scenarios passed, including two-window contention, fee changes, missing identifiers, reload/account switching, legacy journals, and positive-yield partial/full withdrawals for WLD and USDC. |
-| UI and accessibility | 72 layouts, 38 axe checks with zero violations, 45 screenshots; exit 0 in 43.14 seconds. The new CI job is configured to run the same product UI and money-safety scripts and upload their evidence. Its remote result must be checked on the review commit. |
+| UI and accessibility | Local: 72 layouts, 38 axe checks with zero violations, 45 screenshots; exit 0 in 43.14 seconds. Review CI independently passed the same counts and 12 money scenarios using its final frozen lockfile. |
+| iOS native host | [Review run](https://github.com/Daviswhistle/Inheritance/actions/runs/41835061693): 4 passed, 0 failed, 0 skipped on iPhone 16 Pro / iOS 18.5. All 20 exported PNGs reviewed; no new blocking visual defect found in those screens. This uses real WKWebView/MiniKit SDK with simulated approvals, not physical iOS World App. |
 | Backend | Auth, notification decisions/database writes, scheduling, runtime and monitoring regressions passed. The backend implementation is unchanged. |
+
+### Remote source and artifact verification
+
+The completed browser and native runs above correspond to product revision
+`4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba`. The actual PR merge checkout
+`b41618e7c05f1f43dcd7a3720a3769cbf94970ed` has the identical Git tree
+`fc0a386efc1532b9f49f4d22467dba95e57c2086`; it adds no source differences.
+All four jobs in that PR CI run passed. The browser evidence includes real
+Tab/ArrowRight scrolling of an oversized numeric value within a 320px page,
+with zero vertical scrolling. The [browser artifact](https://github.com/Daviswhistle/Inheritance/actions/runs/41835061672/artifacts/13324428883)
+contains 45 screenshots and JSON geometry/accessibility evidence.
+
+The [native review artifact](https://github.com/Daviswhistle/Inheritance/actions/runs/41835061693/artifacts/13326960851)
+contains 20 screenshots. Its downloaded ZIP is 4,247,505 bytes and matches the
+published SHA-256 `0e53788d54f48f39dc0f8b8b4012e01d0e63c90428c104cd2d04a6c4a7f2b1c5`.
+Login rejection/retry, keyboard dismissal, rotation/foreground recovery and
+pending-deposit process recovery passed. The floating app Done button remains
+visible alongside the native keyboard accessory; in some screenshots it can
+overlap the right edge of helper text, while the focused input stays visible.
+This is a minor actual-device follow-up, not evidence that every keyboard
+layout is flawless. The new withdrawal and fee-change paths are established
+by the separate browser/local-chain suite, not those four native tests.
+
+### Asset-selection race in the browser test
+
+A duplicate [push CI run](https://github.com/Daviswhistle/Inheritance/actions/runs/41835052903)
+of the same `4e2cacef` tree timed out waiting for the changed-fee dialog. That
+failed artifact did not record the selected asset. The failure pattern was
+then reproduced deterministically by holding the initial registry RPC response:
+the test's optional USDC-button check ran before the button existed, skipped
+selection, and continued on the later-loaded default WLD vault. Both assets
+initially charged 10%, so the first fee-only assertion did not detect this.
+Changing only USDC's fee to 20% correctly left the WLD fee unchanged. The
+captured request went to the WLD factory, WLD shares rose from 10 to 11, and
+USDC shares stayed at 10. No USDC fee-consent bypass was demonstrated.
+
+The test follow-up requires the requested asset to appear and become selected,
+and checks the reviewed currency. It also preserves selected-asset, page,
+request and screenshot diagnostics on failure. Financial assertions remain
+enabled; there is no added sleep or timeout increase to conceal the failure.
+This follow-up changes the test and review records, not product runtime code.
+The complete 12-scenario local suite passed again. Under a forced initial
+registry delay, the corrected helper waited, selected USDC, sent zero requests
+while fees were being reviewed again, and sent exactly one USDC deposit only
+after the new consent; WLD shares stayed unchanged. Both checks exited 0.
+The PR records its subsequent CI result separately from the `4e2cacef` runs.
 
 The positive-fee fixture uses the same local address for the heir and fee
 recipient. Its wallet balance increase includes both net proceeds and fees.
