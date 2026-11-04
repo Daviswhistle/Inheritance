@@ -1,3 +1,4 @@
+import { traceSignIn } from "@/auth";
 import { USDC_ENABLED, YIELD_ENABLED } from "@/config";
 import { useLocale } from "@/locale-context";
 import { Icon } from "./Icon";
@@ -79,7 +80,7 @@ export function AccountEntry({ view, installed, busy, requiresReload = false, on
       {installed && requiresReload
         ? <Button variant="primary" size="lg" onClick={() => window.location.reload()}>{t("entry.connect.retry")}</Button>
         : installed
-        ? <Button variant="primary" size="lg" onClick={onConnect} disabled={busy}>
+        ? <Button variant="primary" size="lg" onClick={() => { traceSignIn("connect-handler"); onConnect(); }} disabled={busy}>
           {busy ? <><span className="spinner" />{t("entry.connect.busy")}</> : <>{t("entry.connect.continue")}<Icon name="arrow" size={19} /></>}
         </Button>
         : <a className="btn btn-primary btn-lg" href={worldLink}>{t("entry.connect.open")}<Icon name="arrow" size={19} /></a>}

@@ -1,3 +1,11 @@
+/** Test-only timing markers; never include auth payloads or credentials. */
+export function traceSignIn(stage: string): void {
+  if (!import.meta.env?.DEV) return;
+  if (typeof window !== "undefined" && typeof document !== "undefined" && document.querySelector("#inheritance-test-controls")) {
+    window.dispatchEvent(new CustomEvent("inheritance:auth-stage", { detail: { stage, at: Math.round(performance.now()) } }));
+  }
+}
+
 /** Previously server-verified credentials stay in this tab, expire after one hour,
  * and are reverified by the Worker on every notification request. A cached address
  * alone (including legacy localStorage records) grants no notification access. */
@@ -97,8 +105,9 @@ export type AuthResult =
 export async function signInWithWorldApp(signature: (nonce: string) => Promise<{
   ok: true; address: string; message: string; signature: string;
 } | { ok: false; error: string; userFacing: boolean }>, options: { timeoutMs?: number } = {}): Promise<AuthResult> {
-  if (authRequiresReload) return { ok: false, error: "Reload to retry sign-in", userFacing: true, requiresReload: true };
-  if (pendingAuth) return { ok: false, error: "Sign-in is already in progress", userFacing: true };
+  traceSignIn("auth-enter");
+  if (authRequiresReload) { traceSignIn("auth-blocked-reload"); return { ok: false, error: "Reload to retry sign-in", userFacing: true, requiresReload: true }; }
+  if (pendingAuth) { traceSignIn("auth-blocked-pending"); return { ok: false, error: "Sign-in is already in progress", userFacing: true }; }
   const generation = ++authGeneration;
   let active = true;
   const cancelled: AuthResult = { ok: false, error: "Sign-in was cancelled", userFacing: true };
@@ -115,10 +124,14 @@ export async function signInWithWorldApp(signature: (nonce: string) => Promise<{
   }, timeoutMs);
   const run = async (): Promise<AuthResult> => {
     try {
+      traceSignIn("nonce-start");
       const nonce = await fetchAuthNonce();
+      traceSignIn(nonce ? "nonce-ready" : "nonce-failed");
       if (!current()) return cancelled;
       if (!nonce) return { ok: false, error: "Cannot reach the sign-in server", userFacing: true };
+      traceSignIn("signature-start");
       const signed = await signature(nonce);
+      traceSignIn(signed.ok ? "signature-success" : "signature-rejected");
       if (!current()) return cancelled;
       if (!signed.ok) return signed;
       const { response, data: body } = await authResponse("/api/auth/verify", {
@@ -146,6 +159,7 @@ export async function signInWithWorldApp(signature: (nonce: string) => Promise<{
     active = false;
     clearTimeout(timer);
     if (pendingAuth === attempt) pendingAuth = null;
+    traceSignIn("auth-settled");
   }
 }
 

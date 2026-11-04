@@ -17,6 +17,38 @@ final class HostTests: XCTestCase {
         super.tearDown()
     }
 
+    // Isolate the audit failure from keyboard/lifecycle work. Every attempt uses
+    // one native tap and the original 20-second bound; no recovery taps.
+    func testRejectedLoginCanBeRetriedRepeatedly() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1&residence=KR"]
+        app.launch()
+        let web = app.webViews.firstMatch
+        let plan = web.buttons["Plan"].firstMatch
+        XCTAssertTrue(plan.waitForExistence(timeout: 120))
+        plan.tap()
+        let login = web.buttons["Agree and sign in"].firstMatch
+        let reject = web.buttons["Reject"].firstMatch
+        for attempt in 1...3 {
+            let ready = NSPredicate { _, _ in login.exists && login.isEnabled }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: nil)], timeout: 20), .completed)
+            login.tap()
+            XCTAssertTrue(reject.waitForExistence(timeout: 20), "Approval missing for attempt \(attempt)")
+            print("AUTH RETRY \(attempt): \(app.staticTexts["test-host-status"].value ?? "missing")")
+            reject.press(forDuration: 0.15)
+            let settled = NSPredicate { _, _ in !reject.exists && login.exists && login.isEnabled }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 20), .completed)
+        }
+        login.tap()
+        let approve = web.buttons["Approve"].firstMatch
+        XCTAssertTrue(approve.waitForExistence(timeout: 20))
+        print("AUTH RETRY FINAL: \(app.staticTexts["test-host-status"].value ?? "missing")")
+        approve.tap()
+        XCTAssertTrue(web.textFields["USDC"].firstMatch.waitForExistence(timeout: 60), "A fresh approved retry must establish the session")
+    }
+
     func testRealSDKLoginAndNativeLifecycle() {
         continueAfterFailure = false
         let app = XCUIApplication()

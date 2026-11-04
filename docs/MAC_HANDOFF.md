@@ -1,5 +1,18 @@
 # Mac continuation — 2026-11-03
 
+## Independent audit remediation — 2026-11-04
+
+Audit findings at `a9e93b1` are addressed in
+[AUDIT_REMEDIATION_2026-11-04.md](AUDIT_REMEDIATION_2026-11-04.md).
+Additional deposits now have durable recovery and exact-receipt confirmation;
+partial withdrawals, settled reward descriptions, name lookup dependencies,
+backend retry/alerts, narrow-screen amounts and toast geometry are corrected.
+Store images and batched-approval terms were regenerated/aligned.
+The iOS retry cause is directly reproduced in the test host, with a fixed native
+regression pass; matching 18.5 CI and production/device readback are pending.
+Do not submit. No extra funds, contract deployment, asset migration or external
+message was performed. Existing funding runner is complete; do not run it again.
+
 ## Cancelled-plan screen correction — 2026-11-04
 
 The Android World App showed duplicate empty-asset text, both restart and settings
@@ -28,7 +41,7 @@ setup without a wallet request; Back restored the ended card. Reviewed private
 captures: `ended-home-live.png`, `ended-plan-live.png`, `restart-live.png`,
 `back-live.png` in `evidence/cancelled-ux-nov04/`. No production transaction,
 additional spending, customer-asset migration or Mini App submission occurred.
-The automatically triggered native iOS host run **41756895853** is still running;
+The subsequently completed native iOS host run **41756895853** failed twice at login retry;
 this checkpoint does not claim a fresh native-host pass or actual iOS World App
 validation.
 

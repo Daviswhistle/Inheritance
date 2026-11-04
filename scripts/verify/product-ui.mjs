@@ -78,6 +78,14 @@ try{
  await page.ev("const select=document.getElementById('plan-residence-country');select.value='KR';select.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(r=>setTimeout(r,30));document.getElementById('plan-residence-attestation').click();");
  await click(page,'Confirm residence');assert.ok(await page.waitFor('#heir-input',30000));
  await page.ev(`await __q.setInput('heir-input',${JSON.stringify(config.heir)});await __q.setInput('plan-wld','10');await __q.setInput('plan-usdc','12.345678');`);
+ for (const invalid of ['1.5','-1','366']) {
+  await page.ev(`await __q.setInput('period-input',${JSON.stringify(invalid)})`);
+  assert.equal(await page.ev("return document.getElementById('period-input').value"),invalid,'invalid days stay as entered');
+  assert.ok(await page.ev("return !!document.querySelector('.plan-inline-error')"),'invalid days show an explanation');
+  assert.equal(await page.ev("return [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Review plan'&&!b.disabled)"),false,'invalid days cannot proceed');
+ }
+ await page.ev("await __q.setInput('period-input','30')");
+
  for(const lang of ['en','ko']){
   await locale(page,lang);await tab(page,2);assert.ok(await page.waitFor('#heir-input'));
   for(const[width,height]of [[320,640],[390,844]]){
@@ -153,6 +161,11 @@ try{
    await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
    for(let i=0;i<4;i++){
     await tab(page,i);await sleep(100);await layout(page,`owner-${lang}-${width}-${i}`,width);if(width===390)await shot(page,`ui-owner-${lang}-${i}`);
+    if(i===0&&width===320){
+     const numbers=await page.ev("return [...document.querySelectorAll('.plan-overview-asset strong')].map(el=>{const node=el.firstChild,match=node?.textContent.match(/^[0-9,.]+/);if(!match)return null;const range=document.createRange();range.setStart(node,0);range.setEnd(node,match[0].length);return {text:match[0],lines:new Set([...range.getClientRects()].map(r=>r.top)).size}}).filter(Boolean)");
+     assert.ok(numbers.length>=2,'both asset numbers are visible');
+     assert.ok(numbers.every(n=>n.lines===1),'each complete amount stays on one line at 320px');
+    }
     if(i===1){assert.ok(await page.ev("return document.querySelector('.asset-money-card').getBoundingClientRect().top<document.querySelector('.income-card').getBoundingClientRect().top"),'balance precedes income');}
     if(width===390&&i===3)await help(page,`help-expanded-owner-${lang}`);
     if(width===390&&(i===1||i===2)){

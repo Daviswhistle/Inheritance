@@ -17,9 +17,9 @@ const port = socket.address().port;
 await new Promise(done => socket.close(done));
 const origin = `http://localhost:${port}`;
 const host = spawn(process.execPath, [new URL('../test-host/start.mjs', import.meta.url).pathname, `--port=${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
-let output = '', browser;
+let output = '', browser, page;
 host.stdout.on('data', data => output += data); host.stderr.on('data', data => output += data);
-const evidence = { capturedAt: new Date().toISOString(), fixture: 'Disposable local chain; illustrative balances; mock +10% strategy exchange rate; fixture usernames alex/sam', screenshots: [], errors: [] };
+const evidence = { capturedAt: new Date().toISOString(), fixture: 'Disposable local chain; illustrative balances; mock +10% strategy exchange rate; synthetic usernames @test_owner/@test_heir', screenshots: [], errors: [] };
 async function until(fn, label, ms = 60000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -34,20 +34,15 @@ try {
   browser = await chromium.launch({ headless: true, ...(process.env.CHROME_BIN ? { executablePath: process.env.CHROME_BIN } : {}), args: ['--no-sandbox'] });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await context.addInitScript(() => localStorage.setItem('inheritance:locale', 'en'));
-  const page = await context.newPage();
+  page = await context.newPage();
   page.on('pageerror', error => evidence.errors.push(error.message));
-  await page.route('**/__host/bootstrap.mjs', async route => {
-    const response = await route.fetch();
-    const body = (await response.text()).replace('"test_owner"', '"alex"').replace('"test_heir"', '"sam"');
-    await route.fulfill({ response, body });
-  });
   const ready = async () => {
     await page.locator('.tab-item').nth(3).waitFor();
     await page.locator('#inheritance-test-controls').evaluate(e => e.style.display = 'none');
   };
   const capture = async (name, atTop = true) => {
     if (atTop) await page.evaluate(() => scrollTo(0, 0));
-    await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); return document.fonts.ready; });
     await sleep(100);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     const path = `${out}/unified-store-${name}.png`;
@@ -57,14 +52,19 @@ try {
   await capture('welcome');
   await page.locator('.tab-item').nth(2).tap();
   await page.getByRole('button', { name: 'Agree and sign in', exact: true }).tap();
-  await page.locator('#heir-input').fill('@sam');
+  await page.locator('#plan-residence-country').selectOption('KR');
+  await page.locator('#plan-residence-attestation').check();
+  await page.getByRole('button', { name: 'Confirm residence', exact: true }).tap();
+  await page.locator('#heir-input').fill('@test_heir');
   await page.locator('#plan-wld').fill('10'); await page.locator('#plan-usdc').fill('100');
   await until(() => page.getByRole('button', { name: 'Review plan', exact: true }).isEnabled(), 'valid plan');
   await capture('create');
   await page.getByRole('button', { name: 'Review plan', exact: true }).tap();
   await page.locator('#yield-consent').check();
   await page.getByRole('button', { name: 'Open approval screen', exact: true }).tap();
-  await page.locator('.invite-disclosure').waitFor({ timeout: 60000 });
+  await until(async () => (await page.locator('.tab-item').nth(0).isVisible()) && /Your inheritance savings/.test(await page.locator('body').innerText()), 'completed plan', 20000);
+  const close = page.getByRole('button', { name: 'Close', exact: true });
+  if (await close.isVisible()) await close.tap();
   await page.locator('.tab-item').nth(0).tap(); await capture('overview');
   assert.equal((await fetch(origin + '/__host/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'yield' }) })).status, 200);
   await page.reload(); await ready(); await page.locator('.tab-item').nth(1).tap();
@@ -77,6 +77,12 @@ try {
   assert.deepEqual(evidence.errors, []);
   writeFileSync(out + '/evidence.json', JSON.stringify(evidence, null, 2));
   console.log('PASS four current UI captures: ' + out);
+} catch (error) {
+  if (page) {
+    writeFileSync(out + '/failure.txt', await page.locator('body').innerText());
+    await page.screenshot({ path: out + '/failure.png' });
+  }
+  throw error;
 } finally {
   await browser?.close(); host.kill('SIGTERM');
   await new Promise(done => { if (host.exitCode !== null) return done(); const timeout = setTimeout(() => { host.kill('SIGKILL'); done(); }, 5000); host.once('exit', () => { clearTimeout(timeout); done(); }); });

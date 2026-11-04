@@ -95,26 +95,32 @@ check("기한 지남 + 미신청 → 상속인에게 신청 안내", () => {
 });
 
 check("상속인이 신청함 → 피상속인에게 최우선 알림", () => {
-  const k = kinds({ ...base, claimPending: true, challengeEndsAt: 1_800_000_000n });
+  // A filed claim makes isExpired() false while timeRemaining() stays zero.
+  const k = kinds({ ...base, claimPending: true, timeRemaining: 0n, challengeEndsAt: 1_800_000_000n });
   assert.deepEqual(k, [ALERT.OWNER_CLAIM_FILED]);
 });
 
 check("신청 중에도 상속인 신청 안내는 반복하지 않음", () => {
-  const k = kinds({ ...base, claimPending: true }, { [ALERT.HEIR_CLAIMABLE]: "x" });
+  const k = kinds({ ...base, claimPending: true, timeRemaining: 0n }, { [ALERT.HEIR_CLAIMABLE]: "x" });
   assert.deepEqual(k, [ALERT.OWNER_CLAIM_FILED]);
 });
 
 check("7일 경과 → 상속인에게 인출 가능 알림", () => {
-  const k = kinds({ ...base, claimPending: true, claimableNow: true });
+  const k = kinds({ ...base, claimPending: true, claimableNow: true, timeRemaining: 0n });
   assert.deepEqual(k, [ALERT.HEIR_FINALIZABLE]);
 });
 
 check("7일 경과 후에도 신청 알림은 반복하지 않음", () => {
   const k = kinds(
-    { ...base, claimPending: true, claimableNow: true },
+    { ...base, claimPending: true, claimableNow: true, timeRemaining: 0n },
     { [ALERT.OWNER_CLAIM_FILED]: "x", [ALERT.HEIR_CLAIMABLE]: "x" },
   );
   assert.deepEqual(k, [ALERT.HEIR_FINALIZABLE]);
+});
+
+check("신청 상태를 읽지 못해도 인출 가능 상태에서 만료 임박 경고를 보내지 않음", () => {
+  assert.deepEqual(kinds({ ...base, claimPending: null, claimableNow: true, timeRemaining: 0n }),
+    [ALERT.HEIR_FINALIZABLE]);
 });
 
 check("상속 취소(heir = owner) → 상속인 알림 없음", () => {
@@ -281,9 +287,9 @@ check("완료 알림은 성공 뒤 중복하지 않고 실패만 재시도한다
       // 만료, 아직 신청 없음 — 상속인에게.
       { ...base, ownerStillActive: false, isExpired: true, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: false, claimableNow: false },
       // 신청됨, 이의제기 중 — 피상속인에게.
-      { ...base, ownerStillActive: false, isExpired: true, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: true, claimableNow: false },
+      { ...base, ownerStillActive: false, isExpired: false, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: true, claimableNow: false },
       // 7일 경과 — 상속인에게 출금 안내.
-      { ...base, ownerStillActive: false, isExpired: true, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: true, claimableNow: true },
+      { ...base, ownerStillActive: false, isExpired: false, timeRemaining: 0n, heartbeatInterval: 86400n, claimPending: true, claimableNow: true },
     ];
     const seen = new Set();
     for (const snap of states) {

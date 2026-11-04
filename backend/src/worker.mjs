@@ -226,7 +226,12 @@ const ensureSchema = async (env) => {
     schemaReady = env.DB
       .prepare(CREATE_TABLE_SQL)
       .run()
-      .then(() => {});
+      .then(() => {})
+      .catch((error) => {
+        // Share the in-flight attempt, but let a later request retry a D1 outage.
+        schemaReady = null;
+        throw error;
+      });
   }
   await schemaReady;
   if (env.WATCHER_TASKS) await ensureSchedulingSchema(env.DB);
@@ -938,7 +943,7 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
         kind: ALERT.HEIR_FINALIZABLE,
         to: snapshot.heirAddress,
         title: "Your inheritance is ready",
-        message: "The review window has passed. Open the app to withdraw.",
+        message: "The seven-day waiting period has passed. Open the app to receive your inheritance.",
       });
     }
   }
@@ -946,6 +951,8 @@ const decideAlerts = (snapshot, prevAlerts, nowMs = Date.now()) => {
   // 3) 기한 임박 — 피상속인에게. 주기 대비 비율.
   if (
     snapshot.isExpired !== true &&
+    snapshot.claimPending !== true &&
+    snapshot.claimableNow !== true &&
     snapshot.timeRemaining !== null &&
     snapshot.heartbeatInterval !== null &&
     snapshot.heartbeatInterval > 0n

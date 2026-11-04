@@ -37,6 +37,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
     private var webBottom: NSLayoutConstraint!
     private var keyboardScreenFrame: CGRect?
     private var lastViewportMetrics: [String: Any]?
+    private var commandTrace: [[String: Any]] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -51,6 +52,14 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
               if (new URLSearchParams(location.search).get('trace') !== '1') return;
               let previous = '';
               const interactionTrace = [];
+              const authTrace = [];
+              window.addEventListener('inheritance:auth-stage', event => {
+                const {stage, at} = event.detail || {};
+                if (typeof stage === 'string' && /^[a-z-]+$/.test(stage)) {
+                  authTrace.push({stage, at});
+                  if (authTrace.length > 40) authTrace.shift();
+                }
+              });
               for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup', 'click', 'focusin', 'focusout']) {
                 document.addEventListener(type, event => {
                   const target = event.target;
@@ -92,7 +101,13 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                       return {x, y, input: hit === element || element.contains(hit),
                         target: hit ? hit.tagName + '#' + hit.id + '.' + hit.className : null};
                     })) : [];
-                const metrics = {innerHeight, innerWidth, scrollY, interactionTrace,
+                const host = window.__INHERITANCE_TEST_HOST__;
+                const hostState = host ? {
+                  history: host.history.map(({id, command, state, response}) => ({id, command, state, errorCode: response?.error_code})),
+                  pending: host.pending.map(({id, command, state}) => ({id, command, state})),
+                  dialogOpen: document.querySelector('#inheritance-test-controls')?.shadowRoot?.querySelector('dialog')?.open,
+                } : null;
+                const metrics = {innerHeight, innerWidth, scrollY, interactionTrace, authTrace, hostState,
                   doneRect: doneRect ? [doneRect.x, doneRect.y, doneRect.width, doneRect.height] : null,
                   intervalRect: intervalRect ? [intervalRect.x, intervalRect.y, intervalRect.width, intervalRect.height] : null,
                   actionsHidden: hidden('.plan-primary-actions'),
@@ -248,6 +263,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
     private func updateViewportTrace() {
         guard var metrics = lastViewportMetrics, let webView = webView else { return }
         let frame = webView.convert(webView.bounds, to: view.window)
+        metrics["nativeCommands"] = commandTrace
         metrics["nativeWebView"] = [frame.minX, frame.minY, frame.width, frame.height]
         let keyboardFrame = view.keyboardLayoutGuide.layoutFrame
         metrics["keyboardGuide"] = [keyboardFrame.minX, keyboardFrame.minY, keyboardFrame.width, keyboardFrame.height]
@@ -310,6 +326,19 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             lastViewportMetrics = metrics
             updateViewportTrace()
             return
+        }
+        if message.name == "minikit" {
+            let body = message.body as? [String: Any]
+            let command = body?["command"] as? String ?? "invalid"
+            let names = ["init", "wallet-auth", "send-transaction", "get-permissions", "request-permission", "share-contacts", "chat"]
+            commandTrace.append([
+                "command": names.contains(command) ? command : "unknown",
+                "mainFrame": message.frameInfo.isMainFrame,
+                "originAccepted": sameOrigin(message.frameInfo.request.url) && sameOrigin(webView.url),
+                "at": ProcessInfo.processInfo.systemUptime
+            ])
+            if commandTrace.count > 40 { commandTrace.removeFirst() }
+            updateViewportTrace()
         }
         guard message.name == "minikit", message.frameInfo.isMainFrame,
               sameOrigin(message.frameInfo.request.url), sameOrigin(webView.url),

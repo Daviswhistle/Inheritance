@@ -231,6 +231,62 @@ async function addRelatedWatchers(context, count = 11) {
 }
 
 try {
+  await test("a transient schema failure retries in the same isolate and restores APIs and scheduled work", async ({ env, DB }) => {
+    const isolated = (await import("../backend/src/worker.mjs?schema-recovery-test")).default;
+    const prepare = DB.prepare.bind(DB);
+    let schemaAttempts = 0, releaseFailure;
+    const heldFailure = new Promise(resolve => { releaseFailure = resolve; });
+    DB.prepare = (sql) => {
+      const statement = prepare(sql);
+      if (sql.includes("CREATE TABLE IF NOT EXISTS watchers")) {
+        const run = statement.run.bind(statement);
+        statement.run = async () => {
+          schemaAttempts++;
+          if (schemaAttempts === 1) {
+            await heldFailure;
+            throw new Error("One-time fixture D1 outage");
+          }
+          return run();
+        };
+      }
+      return statement;
+    };
+    let synchronized = 0, executed = 0;
+    Object.assign(env, { WATCHER_TASKS: {}, FINALIZER_ENABLED: "true", FINALIZER_EXECUTOR: {
+      idFromName(name) { return name; },
+      get() { return {
+        async synchronize() { synchronized++; return { scheduled: 0, failed: 0 }; },
+        async runCycle() { executed++; return { checked: 0, finalized: 0, reason: "idle" }; },
+      }; },
+    } });
+    globalThis.fetch = async () => { throw new Error("Schema recovery must not make external requests"); };
+    const health = () => isolated.fetch(new Request(ORIGIN + "/api/health"), env);
+    const scheduled = async () => {
+      const pending = [];
+      await isolated.scheduled({ scheduledTime: 0 }, env, { waitUntil(promise) { pending.push(promise); } });
+      return Promise.allSettled(pending);
+    };
+    const failedRequests = [health(), health()];
+    const failedSchedule = scheduled();
+    assert.equal(schemaAttempts, 1, "Concurrent calls share the pending initialization");
+    releaseFailure();
+    assert.deepEqual((await Promise.all(failedRequests)).map(response => response.status), [500, 500]);
+    assert.equal((await failedSchedule)[0].status, "rejected");
+    assert.equal(synchronized, 0);
+    assert.equal(executed, 0);
+
+    const token = (await issueSession(SECRET, OWNER, ORIGIN)).token;
+    const recoveredSchedule = scheduled();
+    const recoveredRequests = await Promise.all([health(), health(), isolated.fetch(
+      new Request(ORIGIN + "/api/notifications", { headers: { Origin: ORIGIN, Authorization: `Bearer ${token}` } }), env)]);
+    assert.deepEqual(recoveredRequests.map(response => response.status), [200, 200, 200]);
+    assert.equal((await recoveredSchedule)[0].status, "fulfilled");
+    assert.equal(synchronized, 1);
+    assert.equal(executed, 1);
+    assert.equal(schemaAttempts, 2, "Recovery shares one retry and caches the successful result");
+    assert.equal((await health()).status, 200);
+    assert.equal(schemaAttempts, 2);
+  });
   await test("random alphanumeric nonces differ at the same millisecond and only hashes are stored", async ({ env, db }) => {
     const values = await Promise.all(Array.from({ length: 20 }, () => siwe.issueNonce(env)));
     assert.equal(new Set(values.map((value) => value.value)).size, 20);

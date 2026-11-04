@@ -35,6 +35,8 @@ import { FinalityUnavailableError, mergeBlockRanges, mergeIncomeReceipts, readFi
 import type { BlockRange } from "@/income-history";
 import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetAmount } from "@/plan";
 import type { PlanAssetSymbol, PlanRoute } from "@/plan";
+import { readAdditionalDeposit, saveAdditionalDeposit, clearAdditionalDeposit, submitAdditionalDeposit, confirmAdditionalDeposit } from "./additional-deposit";
+import type { AdditionalDeposit } from "./additional-deposit";
 import { readPlanJournal, writePlanJournal, clearPlanJournal } from "@/plan-storage";
 import { ConfirmedTransactionFailure, confirmTransaction, verifyIncomeWithdrawalReceipt } from "@/transactions";
 import type { ReactElement } from "react";
@@ -55,7 +57,7 @@ import {
   USDC_ENABLED,
   USDC_ADDRESS,
 } from "@/config";
-import { signInWithWorldApp, readSessionAddress, clearSession, notificationFetch, fetchRegisteredVaults } from "@/auth";
+import { traceSignIn, signInWithWorldApp, readSessionAddress, clearSession, notificationFetch, fetchRegisteredVaults } from "@/auth";
 import { walletAuth, sendWorldChainTx, sendNewPlanWorldChainTx, getNotifyPermission, requestNotifyPermission as askNotifyPermission, loadMiniKit, sendWorldChat, pickWorldContacts } from "@/minikit";
 import { LanguagePicker } from "@/i18n";
 import { useLocale } from "@/locale-context";
@@ -164,10 +166,20 @@ function optionalIncomeAbi(base: ethers.InterfaceAbi, optional: ethers.Interface
   return [...fragments, ...new ethers.Interface(optional).fragments.filter(fragment => !signatures.has(fragment.format()))];
 }
 
+async function boundedProfile<T>(task: () => T | Promise<T>, timeoutMs = 5000): Promise<Awaited<T> | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([Promise.resolve().then(task), new Promise<undefined>(resolve => {
+      timer = setTimeout(() => resolve(undefined), timeoutMs);
+    })]);
+  } catch { return undefined; }
+  finally { clearTimeout(timer); }
+}
+
 async function getUsernameFor(addr: string): Promise<string | undefined> {
   try {
     const { MiniKit } = await loadMiniKit();
-    const user = await MiniKit.getUserByAddress?.(addr);
+    const user = await boundedProfile(() => MiniKit.getUserByAddress?.(addr));
     return user?.username as string | undefined;
   } catch {
     return undefined;
@@ -349,21 +361,11 @@ export default function App() {
   const [periodInput, setPeriodInput] = useState<string>("30");
   const periodTouchedRef = useRef(false);
   const onPeriodChange = (raw: string) => {
-    // allow only digits; keep empty while editing
-    const v = (raw || '').replace(/\D+/g, '');
-    setPeriodInput(v);
+    setPeriodInput(raw);
     periodTouchedRef.current = true;
-    if (v === '') return; // don't coerce to 0 while user is clearing
-    let n = parseInt(v, 10);
-    if (Number.isNaN(n)) return;
-    if (n < 0) n = 0; // temporarily allow 0 during typing; gate with validPeriod
-    if (n > 365) n = 365;
   };
-  const periodNum = useMemo(() => {
-    const n = parseInt(periodInput || '', 10);
-    return Number.isFinite(n) ? n : NaN;
-  }, [periodInput]);
-  const periodValid = useMemo(() => Number.isFinite(periodNum) && periodNum >= 1 && periodNum <= 365, [periodNum]);
+  const periodNum = useMemo(() => /^\d+$/.test(periodInput) ? Number(periodInput) : NaN, [periodInput]);
+  const periodValid = Number.isInteger(periodNum) && periodNum >= 1 && periodNum <= 365;
 
   const [vault, setVault] = useState<string>("");
   const [vaultIdentity, setVaultIdentity] = useState<{
@@ -421,6 +423,10 @@ export default function App() {
     .filter((route, index, routes) => routes.findIndex(other => other.strategy.toLowerCase() === route.strategy.toLowerCase()) === index);
   const [walletBalances, setWalletBalances] = useState<{ account: string; amounts: Partial<Record<AssetSymbol, bigint>>; unavailable: AssetSymbol[] }>({ account: "", amounts: {}, unavailable: [] });
   const planWalletBalances = walletBalances.account.toLowerCase() === account.toLowerCase() ? walletBalances.amounts : {};
+  const [additionalDeposit, setAdditionalDeposit] = useState<AdditionalDeposit | null>(null);
+  const [depositRecoveryReady, setDepositRecoveryReady] = useState("");
+  const [depositRecoveryError, setDepositRecoveryError] = useState("");
+  const [depositRecoveryId, setDepositRecoveryId] = useState("");
   const [pendingPlan, setPendingPlan] = useState<StoredPlan | null>(null);
   const planAccountRef = useRef(account.toLowerCase());
   planAccountRef.current = account.toLowerCase();
@@ -804,6 +810,49 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [account]);
+  useEffect(() => {
+    let cancelled = false;
+    setAdditionalDeposit(null); setDepositRecoveryReady(""); setDepositRecoveryError(""); setDepositRecoveryId("");
+    if (!account) return;
+    void readAdditionalDeposit(account).then(request => {
+      if (!cancelled) { setAdditionalDeposit(request); setDepositRecoveryReady(account.toLowerCase()); }
+    }).catch(error => { if (!cancelled) setDepositRecoveryError(errorText(error)); });
+    return () => { cancelled = true; };
+  }, [account]);
+  const persistAdditionalDeposit = async (request: AdditionalDeposit) => {
+    await saveAdditionalDeposit(request);
+    if (planAccountRef.current === request.account.toLowerCase()) setAdditionalDeposit(request);
+  };
+  const finishAdditionalDeposit = async (owner: string) => {
+    await clearAdditionalDeposit(owner);
+    if (planAccountRef.current === owner.toLowerCase()) { setAdditionalDeposit(null); setDepositRecoveryId(""); }
+  };
+  const resumeAdditionalDeposit = async () => {
+    let request: AdditionalDeposit | null = null;
+    try {
+      request = await readAdditionalDeposit(account);
+      if (!request) return;
+      const route = trustedPlanRoute(request.factory);
+      if (!route || route.asset.toLowerCase() !== request.asset.toLowerCase() || route.symbol !== request.symbol
+        || route.mode !== request.mode || route.decimals !== request.decimals) throw new Error("Saved deposit route is unavailable.");
+      if (!request.txHash && /^0x[0-9a-fA-F]{64}$/.test(depositRecoveryId.trim())) {
+        request = { ...request, txHash: depositRecoveryId.trim(), hashType: "transaction" };
+        // A manually supplied ID is a candidate only. Never persist or unlock on
+        // a mismatched receipt, nor infer success from another deposit's balance.
+      }
+      await confirmAdditionalDeposit(getRwProvider(), request);
+      await finishAdditionalDeposit(request.account);
+      if (planAccountRef.current === request.account.toLowerCase()) {
+        setDepositRecoveryError(""); setAmountStr(""); setStatus("Deposit complete"); void refreshBalances();
+      }
+    } catch (error) {
+      // Only the wallet-returned ID may prove terminal failure automatically.
+      const saved = await readAdditionalDeposit(account);
+      if (error instanceof ConfirmedTransactionFailure && saved?.txHash
+        && error.txHash.toLowerCase() === saved.txHash.toLowerCase()) await finishAdditionalDeposit(saved.account);
+      setDepositRecoveryError(errorText(error));
+    }
+  };
   const runVaultAction = async (action: () => Promise<void>, needsResolvedSettings = false) => {
     if (actionInFlight.current) return;
     if (action !== createPlan && !identityMatchesVault) {
@@ -1196,16 +1245,29 @@ export default function App() {
   };
 
   // Wallet authentication starts only from an explicit sign-in action.
+  useLayoutEffect(() => {
+    const header = document.querySelector(".app-header");
+    if (!header) return;
+    const measure = () => document.documentElement.style.setProperty("--app-header-bottom", `${header.getBoundingClientRect().bottom}px`);
+    const observer = new ResizeObserver(measure);
+    observer.observe(header); window.addEventListener("resize", measure); measure();
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, [account]);
+
   const continueWorldApp2 = async () => {
-    if (loginInFlight.current || loginRequiresReload) return;
+    traceSignIn("app-handler");
+    if (loginInFlight.current || loginRequiresReload) { traceSignIn(loginInFlight.current ? "blocked-inflight" : "blocked-reload"); return; }
     loginInFlight.current = true;
     setCtaLoading(true);
     try {
       const appId = document
         .querySelector('meta[name="minikit:app-id"]')
         ?.getAttribute("content") || "";
+      traceSignIn("sdk-load-start");
       const { MiniKit } = await loadMiniKit();
+      traceSignIn("sdk-load-ready");
       const install = MiniKit.install?.(appId);
+      traceSignIn("sdk-installed");
       const bridgeOn = (install?.success === true) || (MiniKit?.isInstalled?.() === true);
       if (!bridgeOn) {
         const code = install?.errorCode || 'bridge_off';
@@ -1762,13 +1824,12 @@ export default function App() {
     const isAddressInput = ethers.isAddress(trimmed as string);
     if (isAddressInput) {
       const checksum = ethers.getAddress(trimmed);
-      const uname = await getUsernameFor(checksum);
-      return { username: uname, address: checksum } as const;
+      return { username: undefined, address: checksum } as const;
     }
     try {
       const { MiniKit } = await loadMiniKit();
       const handle = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
-      const u = await MiniKit.getUserByUsername?.(handle);
+      const u = await boundedProfile(() => MiniKit.getUserByUsername?.(handle));
       if (u?.walletAddress && ethers.isAddress(u.walletAddress)) {
         return { username: u.username, address: ethers.getAddress(u.walletAddress) } as const;
       }
@@ -2803,6 +2864,9 @@ export default function App() {
     if (!account || !factory) { setStatus("Connect first"); return; }
     if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast("error", "Open in World App"); return; }
     if (!provider) { setStatus("World Chain is still connecting. Try again shortly."); return; }
+    if (depositRecoveryReady !== account.toLowerCase() || await readAdditionalDeposit(account)) {
+      setStatus(t("deposit.pending")); return;
+    }
     if (planHydratedAccount !== account.toLowerCase()) { setStatus("Please wait for the plan details to load."); return; }
     const ensurePlanAccount = () => {
       if (planAccountRef.current !== account.toLowerCase()) throw new Error("The saved plan account no longer matches this wallet.");
@@ -3468,10 +3532,17 @@ export default function App() {
       catch { incomplete = true; return []; }
     }));
     const positions = [...new Map([...first, ...expanded.flat()].map(p => [p.address.toLowerCase(), p])).values()];
-    const names = new Map(await Promise.all([...new Set(positions.map(p => p.owner.toLowerCase()))].map(async owner => [owner, await getUsernameFor(owner)] as const)));
     if (request !== inheritedRequest.current) return;
     rememberInheritances(account, positions.map(p => p.address));
-    setInheritedRead({ account: key, loading: false, loaded: true, incomplete, positions: positions.map(p => ({ ...p, ownerName: names.get(p.owner.toLowerCase()) })) });
+    setInheritedRead({ account: key, loading: false, loaded: true, incomplete, positions });
+    // Names are display-only enrichment after the actionable chain state is visible.
+    for (const owner of new Set(positions.map(p => p.owner.toLowerCase()))) {
+      void getUsernameFor(owner).then(name => {
+        if (!name || request !== inheritedRequest.current) return;
+        setInheritedRead(current => current.account === key ? { ...current,
+          positions: current.positions.map(p => p.owner.toLowerCase() === owner ? { ...p, ownerName: name } : p) } : current);
+      });
+    }
   }, [provider, account, heirFoundVaults, linkedVault]);
   useEffect(() => {
     void refreshInheritedPositions();
@@ -3515,48 +3586,28 @@ export default function App() {
     if (amt > walletWld) { setStatus("Amount exceeds wallet balance"); return; }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      const receipt = isYieldVault ? new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider) : null;
-      const token = new ethers.Contract(selectedAssetAddress, ERC20_ABI, provider);
-      const [minShares, before] = await Promise.all([
-        receipt ? receipt.previewDeposit(amt).then((shares: bigint) => minimumOutput(shares)) : Promise.resolve(0n),
-        (receipt ?? token).balanceOf(vault),
-      ]);
-      // 순서가 의미를 갖는다: approve 가 먼저여야 deposit 의 transferFrom 이
-      // 토큰을 꺼낼 수 있다. 월드앱은 승인 직후 자동으로 철회하므로 남은
-      // allowance 가 없다는 오류가 나면 이 두 건의 순서를 확인한다.
-      const sent = await sendNewPlanWorldChainTx([
-        {
-          address: selectedAssetAddress,
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [vaultFactory, amt.toString()],
-        },
-        {
-          address: vaultFactory,
-          abi: selectedFactoryAbi,
-          functionName: isYieldVault ? "depositWithMinShares" : "deposit",
-          args: isYieldVault ? [amt.toString(), minShares.toString()] : [amt.toString()],
-        },
-      ], account, () => planAccountRef.current === account.toLowerCase());
-      if (!sent.ok) {
-        void refreshNewPlanEligibility();
-        setStatus(sent.error);
-        if (sent.userFacing) pushToast("error", sent.error);
-        return;
+      if (depositRecoveryReady !== account.toLowerCase() || await readAdditionalDeposit(account)) {
+        setStatus(t("deposit.pending")); return;
       }
-      setStatus("Pending… awaiting confirmation");
-      const prov = getRwProvider();
-      const txh = sent.tx.hash;
-      await waitForTxOrEvent(prov, {
-        txHash: txh,
-        hashType: sent.tx.hashType,
-        check: async () => {
-          // Receipt count proves a yield deposit independently of price changes
-          // and a cached value from a preceding withdrawal.
-          const held: bigint = await (receipt ?? token).balanceOf(vault);
-          return held > before;
-        },
+      const receipt = isYieldVault ? new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider) : null;
+      const minShares = receipt ? minimumOutput(await receipt.previewDeposit(amt)) : 0n;
+      if ((await getRwProvider().getNetwork()).chainId !== 480n) throw new Error("Deposit requires World Chain.");
+      const beforeBlock = await getRwProvider().getBlockNumber();
+      if (planAccountRef.current !== account.toLowerCase()) return;
+      const request: AdditionalDeposit = { version: 1, chainId: 480, account, factory: vaultFactory,
+        vault, asset: selectedAssetAddress, symbol: wldSymbol as "WLD" | "USDC", decimals: wldDecimals,
+        amount: amt.toString(), mode: isYieldVault ? "morpho" : "plain", beforeBlock };
+      await submitAdditionalDeposit(request, {
+        read: () => readAdditionalDeposit(request.account), save: persistAdditionalDeposit, clear: () => finishAdditionalDeposit(request.account),
+        send: () => sendNewPlanWorldChainTx([
+          { address: request.asset, abi: ERC20_ABI, functionName: "approve", args: [request.factory, request.amount] },
+          { address: request.factory, abi: selectedFactoryAbi,
+            functionName: isYieldVault ? "depositWithMinShares" : "deposit",
+            args: isYieldVault ? [request.amount, minShares.toString()] : [request.amount] },
+        ], request.account, () => planAccountRef.current === request.account.toLowerCase()),
+        confirm: submitted => confirmAdditionalDeposit(getRwProvider(), submitted),
       });
+      if (planAccountRef.current !== account.toLowerCase()) return;
       setStatus("Deposit complete");
       setAmountStr("");
       await refreshBalances();
@@ -4038,7 +4089,7 @@ export default function App() {
       const remaining = submission.isYieldVault && (await token.balanceOf(submission.vault) > 0n
         || await asset.balanceOf(submission.vault) > 0n
         || submission.isUsdcVault && await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(submission.vault) > 0n);
-      setStatus(remaining ? t("exit.remaining") : "Withdraw complete");
+      setStatus(fullExit && remaining ? t("exit.remaining") : "Withdraw complete");
       // 액션이 체인 상태를 바꿨으므로 다시 읽는다. 이게 없으면 사용자가 자기 행동을 한 뒤에도
       // 화면이 이전 값("Last ping", "Heartbeat", "Expires") 을 보여준다.
       void refreshVaultDetails();
@@ -4375,7 +4426,7 @@ export default function App() {
           return now < prev;
         },
       });
-      setStatus("Swept the remaining balance to your address");
+      setStatus(t("status.swept"));
       void refreshVaultDetails();
       refreshBalances();
     } catch (e: unknown) {
@@ -4497,6 +4548,17 @@ export default function App() {
             {!pendingAction && <Button variant="ghost" onClick={() => setStatus("")}>{t("common.close")}</Button>}
           </div>
         )}
+        {account && (additionalDeposit || depositRecoveryError) && <section className="app-empty-state" aria-labelledby="deposit-recovery-title">
+          <h2 id="deposit-recovery-title">{t("deposit.pendingTitle")}</h2>
+          {additionalDeposit && <p>{ethers.formatUnits(additionalDeposit.amount, additionalDeposit.decimals)} {additionalDeposit.symbol}</p>}
+          <p>{t("deposit.pending")}</p>
+          {additionalDeposit && !additionalDeposit.txHash && <label>{t("deposit.transactionId")}
+            <Input value={depositRecoveryId} onChange={e => setDepositRecoveryId(e.target.value)} placeholder="0x…" />
+          </label>}
+          {depositRecoveryError && <p role="alert">{localizeAppMessage(locale, depositRecoveryError)}</p>}
+          <Button disabled={pendingAction || !additionalDeposit || !additionalDeposit.txHash && !/^0x[0-9a-fA-F]{64}$/.test(depositRecoveryId.trim())}
+            onClick={() => void runWalletAction(resumeAdditionalDeposit)}>{t("deposit.check")}</Button>
+        </section>}
         {account && pendingPlan && (tab === "vault" || tab === "money") && <section className="app-empty-state" aria-labelledby="pending-setup-title">
           <h2 id="pending-setup-title">{t("entry.pending.title")}</h2><p>{t("entry.pending.body")}</p>
           <Button variant="primary" disabled={pendingAction} onClick={() => {
@@ -4736,7 +4798,7 @@ export default function App() {
                       variant="primary"
                       className="deposit-primary"
                       onClick={() => setMoneyReview({ kind: "deposit", scope: balanceScope, amount: amountStr, to: vault })}
-                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || !depositEntryValid || !newPlanAccessAllowed}
+                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || Boolean(additionalDeposit) || depositRecoveryReady !== account.toLowerCase() || !depositEntryValid || !newPlanAccessAllowed}
                     >
                       {t("assets.action.deposit")}
                     </Button>
@@ -5055,7 +5117,7 @@ export default function App() {
             <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("journey.action.resume")}</Button>
           </CardContent></Card>}
         {settingsRecoveryError && <p role="alert">{localizeAppMessage(locale, settingsRecoveryError)}</p>}
-        {tab === "inherit" && isMyVault && !vaultIdentity?.released && isSettledClaim && <Card><CardHeader><CardTitle>{t("journey.owner.completed", { symbol: wldSymbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
+        {tab === "inherit" && isMyVault && !vaultIdentity?.released && isSettledClaim && <Card><CardHeader><CardTitle>{t(isYieldVault && selectedDeferredRewards !== false ? "journey.owner.rewardsPending" : "journey.owner.completed", { symbol: wldSymbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
           <p>{t("journey.owner.completedBody")}</p>
           {vaultHasAssets && <Button disabled={pendingAction || !miniInstalled || sweeping} onClick={() => void runVaultAction(sweepSettled)}>{t("journey.owner.sweep")}</Button>}
         </CardContent></Card>}

@@ -147,7 +147,15 @@ export function createObservationRPC(env) {
       if (answers.size !== body.length) throw new Error("Monitoring RPC response is invalid");
       for (const call of calls) {
         const result = answers.get(call.body.id);
-        if (!result || result.error || result.result === undefined) call.reject(new Error("Monitoring chain read failed"));
+        if (result?.error) {
+          // Optional legacy getters need revert classification, without exposing
+          // provider messages that may contain RPC URLs, payloads or credentials.
+          const reverted = result.error.code === 3 ||
+            /^(execution reverted\b|function selector was not recognized\b)/i.test(result.error.message || "");
+          const error = new Error(reverted ? "execution reverted" : "Monitoring chain read failed");
+          if (Number.isInteger(result.error.code)) error.rpcCode = result.error.code;
+          call.reject(error);
+        } else if (!result || result.result === undefined) call.reject(new Error("Monitoring chain read failed"));
         else call.resolve(result.result);
       }
     } catch { for (const call of calls) call.reject(new Error("Monitoring RPC is unavailable")); }

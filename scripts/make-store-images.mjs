@@ -7,14 +7,14 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { launch } from './verify/drv.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
-const raw = process.env.STORE_RAW_DIR || '/tmp/wld-verify/shots';
+const raw = process.env.STORE_RAW_DIR || '/tmp/inheritance-store';
 const destination = path.join(root, 'app/public/store');
 mkdirSync(destination, { recursive: true });
 const image = name => 'data:image/png;base64,' + readFileSync(path.join(raw, name + '.png')).toString('base64');
 const icon = readFileSync(path.join(root, 'app/public/icon.svg'), 'utf8');
 const esc = value => value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const usdcStore = process.env.USDC_STORE_IMAGES === '1';
-const unifiedStore = process.env.UNIFIED_STORE_IMAGES === '1';
+const unifiedStore = process.env.UNIFIED_STORE_IMAGES === '1' || (!usdcStore && !process.env.YIELD_STORE_IMAGES);
 const only = process.env.STORE_ONLY?.split(',').filter(Boolean);
 const shots = unifiedStore ? { countdown: image('unified-store-overview'), create: image('unified-store-create'),
   welcome: image('unified-store-welcome'), income: image('unified-store-income') } : usdcStore ? { yield: image('usdc-store-position') } : {
@@ -44,34 +44,34 @@ for (const layout of selectedLayouts) {
     // World App supplies the card's name, icon and description itself. Keep
     // the illustration above its 94px overlay (282px in this 3x PNG).
     const html = name === 'content_card' ? `<!doctype html><html><head><meta charset="utf-8"><style>
-      body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#edf2e7}
+      body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#f4f6f9}
       svg{display:block;width:100%;height:100%}
-      .overlay{position:absolute;inset:auto 0 0;height:282px;background:#f7f8f255;backdrop-filter:blur(18px)}
+      .overlay{position:absolute;inset:auto 0 0;height:282px;background:#ffffff55;backdrop-filter:blur(18px)}
     </style></head><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 345 240" aria-label="Assets connected to a recipient">
-      <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f0f5e8"/><stop offset="1" stop-color="#dbe7d5"/></linearGradient></defs>
+      <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f8fafc"/><stop offset="1" stop-color="#dbeafe"/></linearGradient></defs>
       <rect width="345" height="240" fill="url(#bg)"/>
-      <circle cx="58" cy="75" r="68" fill="#e2ebd8"/><circle cx="302" cy="208" r="95" fill="#d0e1d2"/>
-      <path d="M104 99H236" stroke="#8ba98b" stroke-width="2" stroke-dasharray="4 5"/>
-      <rect x="84" y="44" width="100" height="93" rx="18" fill="#fff" stroke="#cfddca"/>
-      <path d="M104 72h44m-44 15h58m-58 15h31" stroke="#b6c9b1" stroke-width="5" stroke-linecap="round"/>
-      <circle cx="86" cy="110" r="24" fill="#235743"/><circle cx="86" cy="110" r="15" fill="none" stroke="#e7f1dc" stroke-width="2"/>
-      <circle cx="183" cy="52" r="17" fill="#c9dcef"/><circle cx="183" cy="52" r="10" fill="none" stroke="#7299bd" stroke-width="2"/>
-      <path d="m205 92 7 7-7 7" fill="none" stroke="#235743" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <rect x="235" y="72" width="48" height="56" rx="16" fill="#f7faf2" stroke="#bacfb5"/>
-      <circle cx="259" cy="91" r="7" fill="#709474"/><path d="M247 115c0-14 24-14 24 0" fill="#709474"/>
+      <circle cx="58" cy="75" r="68" fill="#eff6ff"/><circle cx="302" cy="208" r="95" fill="#dbeafe"/>
+      <path d="M104 99H236" stroke="#93c5fd" stroke-width="2" stroke-dasharray="4 5"/>
+      <rect x="84" y="44" width="100" height="93" rx="18" fill="#fff" stroke="#dbeafe"/>
+      <path d="M104 72h44m-44 15h58m-58 15h31" stroke="#bfdbfe" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="86" cy="110" r="24" fill="#1e40af"/><circle cx="86" cy="110" r="15" fill="none" stroke="#eff6ff" stroke-width="2"/>
+      <circle cx="183" cy="52" r="17" fill="#dbeafe"/><circle cx="183" cy="52" r="10" fill="none" stroke="#3b82f6" stroke-width="2"/>
+      <path d="m205 92 7 7-7 7" fill="none" stroke="#1e40af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="235" y="72" width="48" height="56" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
+      <circle cx="259" cy="91" r="7" fill="#3b82f6"/><path d="M247 115c0-14 24-14 24 0" fill="#3b82f6"/>
     </svg><div class="overlay"></div></body></html>` : `<!doctype html><html><head><meta charset="utf-8"><style>
-      *{box-sizing:border-box}body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#f7f8f2;color:#203b32;font-family:Arial,Helvetica,sans-serif}
-      .orb{position:absolute;right:-130px;top:-60px;width:${height+200}px;height:${height+200}px;border-radius:50%;background:#e6eddd;border:1px solid #dbe4d3}
+      *{box-sizing:border-box}body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#ffffff;color:#0f172a;font-family:Arial,Helvetica,sans-serif}
+      .orb{position:absolute;right:-130px;top:-60px;width:${height+200}px;height:${height+200}px;border-radius:50%;background:#eff6ff;border:1px solid #dbeafe}
       .brand{position:absolute;left:60px;top:50px;display:flex;align-items:center;gap:17px;font-size:29px;font-weight:600;letter-spacing:-.8px}
       .brand svg{width:53px;height:53px;border-radius:17px}
       .copy{position:absolute;left:60px;top:${top}px;width:${width-phoneWidth-screenRight-120}px}
-      .eyebrow{font-size:16px;letter-spacing:2px;color:#63806d;text-transform:uppercase;font-weight:600}
+      .eyebrow{font-size:16px;letter-spacing:2px;color:#64748b;text-transform:uppercase;font-weight:600}
       h1{font-size:${titleSize}px;line-height:1.05;letter-spacing:-3px;font-weight:500;margin:25px 0 27px;white-space:pre-line}
-      .text{font-size:26px;line-height:1.4;color:#637569;max-width:470px;margin:0 0 36px}
-      .detail{font-size:20px;line-height:1.6;color:#235743;max-width:420px}
-      .screen{position:absolute;right:${screenRight}px;top:${Math.round((height-screenHeight)/2)}px;width:${phoneWidth}px;height:${screenHeight}px;overflow:hidden;border:5px solid #fff;border-radius:31px;box-shadow:0 18px 50px #1e493122;background:#f7f8f2}
+      .text{font-size:26px;line-height:1.4;color:#475569;max-width:470px;margin:0 0 36px}
+      .detail{font-size:20px;line-height:1.6;color:#1e40af;max-width:420px}
+      .screen{position:absolute;right:${screenRight}px;top:${Math.round((height-screenHeight)/2)}px;width:${phoneWidth}px;height:${screenHeight}px;overflow:hidden;border:5px solid #fff;border-radius:31px;box-shadow:0 18px 50px #0f172a22;background:#ffffff}
       .screen img{width:100%;height:100%;object-fit:cover;display:block}
-      .footer{position:absolute;left:60px;bottom:39px;font-size:16px;color:#768275;line-height:1.55;max-width:${width-phoneWidth-screenRight-120}px}
+      .footer{position:absolute;left:60px;bottom:39px;font-size:16px;color:#64748b;line-height:1.55;max-width:${width-phoneWidth-screenRight-120}px}
     </style></head><body><div class="orb"></div><div class="brand">${icon}<span>Inheritance</span></div><div class="copy"><div class="eyebrow">A simple plan</div><h1>${esc(title)}</h1><p class="text">${esc(text)}</p><div class="detail">${esc(detail)}</div></div><div class="screen"><img alt="Actual example vault screen" src="${shots[shot]}"></div><div class="footer">inheritance.pages.dev<br>Example screens. ${usdcStore || unifiedStore ? 'Balances and rates are illustrative.' : 'Balances are illustrative.'}</div></body></html>`;
     const {frameTree}=await page.send('Page.getFrameTree');
     await page.send('Page.setDocumentContent',{frameId:frameTree.frame.id,html});

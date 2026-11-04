@@ -7,6 +7,7 @@ import { AbiCoder, id } from "ethers";
 import { ensureSchedulingSchema, ensureScheduledWatcher, synchronizeWatcherTasks,
   recordObservation, recordPendingObservation, nextObservationAt, readQueueHealth, createObservationRPC } from "../backend/src/scheduling.mjs";
 import { runScheduledWatcher } from "../backend/src/watcher-task.mjs";
+import { __test } from "../backend/src/worker.mjs";
 
 const db = new DatabaseSync(":memory:");
 for (const name of ["0001_init", "0002_alerts", "0003_auth", "0004_scheduling"])
@@ -325,5 +326,85 @@ try {
   check("inactive monitoring retires its alarm and derived hint", () => {
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM watcher_schedule WHERE vault_address=?").get(target).n, 0);
   });
+
+  // Exercise the actual alarm -> batched RPC -> completion path. Legacy vaults
+  // reject rewardsDeferred(); transport failures must still retain monitoring.
+  const cases = [
+    { name: "legacy numeric revert code", legacy: true,
+      error: { code: 3, message: "private-fixture provider detail" }, deferred: false },
+    { name: "legacy execution-reverted message", legacy: true,
+      error: { code: -32000, message: "execution reverted: private-fixture provider detail" }, deferred: false },
+    { name: "legacy unrecognized-selector message", legacy: true,
+      error: { message: "function selector was not recognized: private-fixture provider detail" }, deferred: false },
+    { name: "current settled rewards", result: coder.encode(["bool"], [false]), deferred: false },
+    { name: "current deferred rewards", result: coder.encode(["bool"], [true]), deferred: true },
+    { name: "provider failure", error: { code: -32000, message: "private-fixture provider unavailable" }, deferred: null },
+    { name: "HTTP outage", httpFailure: true, deferred: null },
+    { name: "malformed getter result", result: "0x", deferred: null },
+  ];
+  for (const [index, scenario] of cases.entries()) {
+    const vault = address(31000 + index), owner = address(32000 + index);
+    const yieldFactory = address(40000), legacyFactory = address(40001), strategy = address(40002);
+    const settlementEnv = { ...env, YIELD_FACTORY_ADDRESS: yieldFactory,
+      LEGACY_YIELD_FACTORY_ADDRESSES: legacyFactory, MORPHO_VAULT_ADDRESS: strategy,
+      WORLD_APP_ID: "app_local_fixture", WORLD_NOTIFY_API_KEY: "local-fixture-only" };
+    const settledValues = {
+      "owner()": ["address", owner], "heir()": ["address", address(0)],
+      "factory()": ["address", scenario.legacy ? legacyFactory : yieldFactory],
+      "WLD()": ["address", token], "strategy()": ["address", strategy],
+      "knownVaults(address)": ["bool", true], "claimedAt()": ["uint256", 1n],
+      "inheritanceRecipient()": ["address", heir], "totalAssets()": ["uint256", 0n],
+      "hasAssets()": ["bool", false], "isExpired()": ["bool", false],
+      "claimPending()": ["bool", true], "claimableNow()": ["bool", false],
+      "inheritanceCancelled()": ["bool", false], "challengeEndsAt()": ["uint256", 1n],
+      "timeRemaining()": ["uint256", 0n], "heartbeatInterval()": ["uint256", 86400n],
+    };
+    const encoded = new Map(Object.entries(settledValues).map(([signature, pair]) =>
+      [selector(signature), coder.encode([pair[0]], [pair[1]])]));
+    const localStore = storage();
+    await localStore.put("vault", vault);
+    insert.run(vault, owner, heir, new Date().toISOString(), new Date().toISOString());
+    let notificationCalls = 0;
+    globalThis.fetch = async (url, options) => {
+      const payload = JSON.parse(options.body);
+      if (url === "https://developer.world.org/api/v2/minikit/send-notification") {
+        assert.deepEqual(payload.wallet_addresses, [heir]);
+        notificationCalls++;
+        return Response.json({ result: [{ walletAddress: heir, sent: true }] });
+      }
+      assert.equal(url, settlementEnv.RPC_URL);
+      assert.ok(Array.isArray(payload), "The scheduled path must use batched reads");
+      if (scenario.httpFailure && payload.some(q => q.method === "eth_call" &&
+        q.params[0].data.slice(0, 10) === selector("rewardsDeferred()"))) {
+        return new Response("unavailable", { status: 503 });
+      }
+      return Response.json(payload.map(q => {
+        assert.ok(["eth_chainId", "eth_call"].includes(q.method), "No transaction RPC is permitted");
+        if (q.method === "eth_chainId") return { jsonrpc: "2.0", id: q.id, result: "0x1e0" };
+        const sel = q.params[0].data.slice(0, 10);
+        if (sel === selector("rewardsDeferred()")) return { jsonrpc: "2.0", id: q.id,
+          ...(scenario.error ? { error: scenario.error } : { result: scenario.result }) };
+        assert.ok(encoded.has(sel), "Known settlement fixture selector " + sel);
+        return { jsonrpc: "2.0", id: q.id, result: encoded.get(sel) };
+      }).reverse());
+    };
+    const snapshot = await __test.getVaultSnapshot({ ...settlementEnv,
+      OBSERVATION_RPC: createObservationRPC(settlementEnv) }, vault);
+    const result = await runScheduledWatcher(settlementEnv, localStore);
+    const repeated = await runScheduledWatcher(settlementEnv, localStore);
+    const row = db.prepare("SELECT * FROM watchers WHERE vault_address=?").get(vault);
+    check(`scheduled settlement handles ${scenario.name} without a false completion or duplicate delivery`, () => {
+      assert.equal(snapshot.rewardsDeferred, scenario.deferred);
+      const complete = scenario.deferred === false;
+      const reason = complete ? "completion_sent" : scenario.deferred === true
+        ? "rewards_settlement_pending" : "rewards_settlement_unknown";
+      assert.equal(result.reason, reason);
+      assert.equal(repeated.reason, complete ? "inactive" : reason);
+      assert.equal(notificationCalls, complete ? 1 : 0);
+      assert.equal(row.active, complete ? 0 : 1);
+      assert.ok(!JSON.stringify(row).includes("private-fixture"), "Raw provider details never enter stored errors");
+    });
+    assert.equal(await localStore.getAlarm() === null, scenario.deferred === false);
+  }
   console.log(`${checks} scheduling checks passed; 1,000-row bootstrap verified; no external messages or transactions.`);
 } finally { globalThis.fetch = realFetch; db.close(); }

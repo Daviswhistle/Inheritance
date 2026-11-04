@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compatibility launcher for the native HTML/CSS store composition renderer.
-Run scripts/verify/store-shots.mjs first to capture the actual local example UI.
+Run scripts/verify/store-host-shots.mjs first to capture the actual local example UI.
 """
 import pathlib
 import subprocess

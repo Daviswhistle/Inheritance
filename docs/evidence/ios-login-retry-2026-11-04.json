@@ -1,0 +1,1113 @@
+{
+  "environment": {
+    "platform": "iOS Simulator",
+    "runtime": "27.0",
+    "device": "iPhone 16 Pro",
+    "realWorldAppValidated": false,
+    "originalIOS185CIValidated": false
+  },
+  "baseline": {
+    "result": "failed: approval missing for attempt 3",
+    "failure": [
+      {
+        "authTrace": [
+          {
+            "at": 3281,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 3281,
+            "stage": "app-handler"
+          },
+          {
+            "at": 3281,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 3284,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 3284,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 3284,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 3285,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 3299,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 3299,
+            "stage": "signature-start"
+          },
+          {
+            "at": 4815,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 4815,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 7413,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 7413,
+            "stage": "app-handler"
+          },
+          {
+            "at": 7413,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 7414,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 7414,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 7414,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 7414,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 7423,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 7423,
+            "stage": "signature-start"
+          },
+          {
+            "at": 8927,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 8927,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 8929,
+            "stage": "host-reject-next-auth"
+          },
+          {
+            "at": 11481,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 11481,
+            "stage": "app-handler"
+          },
+          {
+            "at": 11481,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 11483,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 11483,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 11483,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 11483,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 11541,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 11541,
+            "stage": "signature-start"
+          },
+          {
+            "at": 11543,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 11543,
+            "stage": "auth-settled"
+          }
+        ],
+        "hostState": {
+          "dialogOpen": false,
+          "history": [
+            {
+              "command": "init",
+              "id": 1,
+              "state": "ready"
+            },
+            {
+              "command": "init",
+              "id": 2,
+              "state": "ready"
+            },
+            {
+              "command": "get-permissions",
+              "id": 3,
+              "state": "success"
+            },
+            {
+              "command": "init",
+              "id": 4,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 5,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 6,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 7,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 8,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 9,
+              "state": "error"
+            },
+            {
+              "command": "get-permissions",
+              "id": 10,
+              "state": "success"
+            }
+          ],
+          "pending": []
+        },
+        "nativeCommands": [
+          {
+            "at": 554748.1565191667,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554748.1583403334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554748.1586957917,
+            "command": "get-permissions",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554750.3425633333,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554750.3576758334,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554754.4726839167,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554754.4813124584,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554758.5410805834,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554758.599670875,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554778.1752400834,
+            "command": "get-permissions",
+            "mainFrame": true,
+            "originAccepted": true
+          }
+        ]
+      }
+    ]
+  },
+  "fixed": {
+    "result": "passed: 3 manual rejections and fourth approved sign-in",
+    "tests": 1,
+    "failures": 0,
+    "pendingSnapshots": [
+      {
+        "authTrace": [
+          {
+            "at": 3776,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 3777,
+            "stage": "app-handler"
+          },
+          {
+            "at": 3777,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 3781,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 3781,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 3800,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 3800,
+            "stage": "signature-start"
+          }
+        ],
+        "hostState": {
+          "dialogOpen": true,
+          "history": [
+            {
+              "command": "init",
+              "id": 1,
+              "state": "ready"
+            },
+            {
+              "command": "init",
+              "id": 2,
+              "state": "ready"
+            },
+            {
+              "command": "get-permissions",
+              "id": 3,
+              "state": "success"
+            },
+            {
+              "command": "init",
+              "id": 4,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "id": 5,
+              "state": "awaiting-approval"
+            }
+          ],
+          "pending": [
+            {
+              "command": "wallet-auth",
+              "id": 5,
+              "state": "awaiting-approval"
+            }
+          ]
+        },
+        "nativeCommands": [
+          {
+            "at": 554868.513872,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5162133334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5267057917,
+            "command": "get-permissions",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.2928384583,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.3130973334,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          }
+        ]
+      },
+      {
+        "authTrace": [
+          {
+            "at": 3776,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 3777,
+            "stage": "app-handler"
+          },
+          {
+            "at": 3777,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 3781,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 3781,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 3800,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 3800,
+            "stage": "signature-start"
+          },
+          {
+            "at": 5399,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 5399,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 8058,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 8058,
+            "stage": "app-handler"
+          },
+          {
+            "at": 8058,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 8060,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 8060,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 8060,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 8060,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 8071,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 8071,
+            "stage": "signature-start"
+          }
+        ],
+        "hostState": {
+          "dialogOpen": true,
+          "history": [
+            {
+              "command": "init",
+              "id": 1,
+              "state": "ready"
+            },
+            {
+              "command": "init",
+              "id": 2,
+              "state": "ready"
+            },
+            {
+              "command": "get-permissions",
+              "id": 3,
+              "state": "success"
+            },
+            {
+              "command": "init",
+              "id": 4,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 5,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 6,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "id": 7,
+              "state": "awaiting-approval"
+            }
+          ],
+          "pending": [
+            {
+              "command": "wallet-auth",
+              "id": 7,
+              "state": "awaiting-approval"
+            }
+          ]
+        },
+        "nativeCommands": [
+          {
+            "at": 554868.513872,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5162133334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5267057917,
+            "command": "get-permissions",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.2928384583,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.3130973334,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554875.5725598334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554875.58362075,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          }
+        ]
+      },
+      {
+        "authTrace": [
+          {
+            "at": 3776,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 3777,
+            "stage": "app-handler"
+          },
+          {
+            "at": 3777,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 3781,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 3781,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 3800,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 3800,
+            "stage": "signature-start"
+          },
+          {
+            "at": 5399,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 5399,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 8058,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 8058,
+            "stage": "app-handler"
+          },
+          {
+            "at": 8058,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 8060,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 8060,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 8060,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 8060,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 8071,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 8071,
+            "stage": "signature-start"
+          },
+          {
+            "at": 9690,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 9690,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 12410,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 12410,
+            "stage": "app-handler"
+          },
+          {
+            "at": 12410,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 12414,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 12414,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 12414,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 12414,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 12438,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 12438,
+            "stage": "signature-start"
+          }
+        ],
+        "hostState": {
+          "dialogOpen": true,
+          "history": [
+            {
+              "command": "init",
+              "id": 1,
+              "state": "ready"
+            },
+            {
+              "command": "init",
+              "id": 2,
+              "state": "ready"
+            },
+            {
+              "command": "get-permissions",
+              "id": 3,
+              "state": "success"
+            },
+            {
+              "command": "init",
+              "id": 4,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 5,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 6,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 7,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 8,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "id": 9,
+              "state": "awaiting-approval"
+            }
+          ],
+          "pending": [
+            {
+              "command": "wallet-auth",
+              "id": 9,
+              "state": "awaiting-approval"
+            }
+          ]
+        },
+        "nativeCommands": [
+          {
+            "at": 554868.513872,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5162133334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5267057917,
+            "command": "get-permissions",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.2928384583,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.3130973334,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554875.5725598334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554875.58362075,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554879.9260303751,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554879.9514088334,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          }
+        ]
+      },
+      {
+        "authTrace": [
+          {
+            "at": 3777,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 3781,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 3781,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 3781,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 3800,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 3800,
+            "stage": "signature-start"
+          },
+          {
+            "at": 5399,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 5399,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 8058,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 8058,
+            "stage": "app-handler"
+          },
+          {
+            "at": 8058,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 8060,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 8060,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 8060,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 8060,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 8071,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 8071,
+            "stage": "signature-start"
+          },
+          {
+            "at": 9690,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 9690,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 12410,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 12410,
+            "stage": "app-handler"
+          },
+          {
+            "at": 12410,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 12414,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 12414,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 12414,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 12414,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 12438,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 12438,
+            "stage": "signature-start"
+          },
+          {
+            "at": 14057,
+            "stage": "signature-rejected"
+          },
+          {
+            "at": 14057,
+            "stage": "auth-settled"
+          },
+          {
+            "at": 15694,
+            "stage": "connect-handler"
+          },
+          {
+            "at": 15695,
+            "stage": "app-handler"
+          },
+          {
+            "at": 15695,
+            "stage": "sdk-load-start"
+          },
+          {
+            "at": 15698,
+            "stage": "sdk-load-ready"
+          },
+          {
+            "at": 15698,
+            "stage": "sdk-installed"
+          },
+          {
+            "at": 15698,
+            "stage": "auth-enter"
+          },
+          {
+            "at": 15698,
+            "stage": "nonce-start"
+          },
+          {
+            "at": 15758,
+            "stage": "nonce-ready"
+          },
+          {
+            "at": 15758,
+            "stage": "signature-start"
+          }
+        ],
+        "hostState": {
+          "dialogOpen": true,
+          "history": [
+            {
+              "command": "init",
+              "id": 1,
+              "state": "ready"
+            },
+            {
+              "command": "init",
+              "id": 2,
+              "state": "ready"
+            },
+            {
+              "command": "get-permissions",
+              "id": 3,
+              "state": "success"
+            },
+            {
+              "command": "init",
+              "id": 4,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 5,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 6,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 7,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 8,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "errorCode": "user_rejected",
+              "id": 9,
+              "state": "error"
+            },
+            {
+              "command": "init",
+              "id": 10,
+              "state": "ready"
+            },
+            {
+              "command": "wallet-auth",
+              "id": 11,
+              "state": "awaiting-approval"
+            }
+          ],
+          "pending": [
+            {
+              "command": "wallet-auth",
+              "id": 11,
+              "state": "awaiting-approval"
+            }
+          ]
+        },
+        "nativeCommands": [
+          {
+            "at": 554868.513872,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5162133334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554868.5267057917,
+            "command": "get-permissions",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.2928384583,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554871.3130973334,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554875.5725598334,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554875.58362075,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554879.9260303751,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554879.9514088334,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554883.21043075,
+            "command": "init",
+            "mainFrame": true,
+            "originAccepted": true
+          },
+          {
+            "at": 554883.2706907084,
+            "command": "wallet-auth",
+            "mainFrame": true,
+            "originAccepted": true
+          }
+        ]
+      }
+    ]
+  },
+  "privacy": "Only timing stages, command names/IDs/states/error codes and native origin checks. No auth payload, nonce, signature, token, address or screenshot."
+}

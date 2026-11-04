@@ -1,14 +1,13 @@
 # Launch scope — November 2, 2026
 
-## Current release — Korea-only resubmitted; awaiting review
+## Current release — Korea-only; withdrawn and unverified
 
-The operator selected **South Korea (KR) only** on November 2. The 01:52 KST
-KR/AR/CO submission was withdrawn for this scope change. Independent Portal
-configuration readback confirmed **unverified**, exactly **KR**, with only
-availability copy and supported countries changed. After final verification,
-the Korea-only request was submitted. Independent readback at **November 2
-02:45:23 KST / November 1 17:45:23 UTC** confirms **awaiting_review**, exactly
-**KR**, developer allowlisting preserved, and only verification_status changed.
+The intended release scope remains **South Korea (KR) only**. The November 2
+Korea-only submission and its `awaiting_review` receipt are historical: the
+operator subsequently withdrew the request. The current repository record is
+**unverified**, as documented in REVIEW_NOTES.md and RELEASE.md. This is a
+withdrawal status, not Portal approval. This local audit does not submit or
+change Portal configuration; read the actual Portal before any future submission.
 
 Runtime `afd5bab` limits new plans and deposits to KR residence and KR network
 location. Prior AR/CO residence records cannot authorize new requests. Existing
@@ -37,7 +36,7 @@ the prior country assessment or declare the product prohibited there. The
 country-specific analysis below is retained for future decisions, not permission
 to re-enable those markets without authorization.
 
-The Portal request is now awaiting_review with exactly KR. Runtime `afd5bab` applies the
+The latest recorded Portal request is withdrawn and unverified; the intended availability remains exactly KR. Runtime `afd5bab` applies the
 same scope to new vault/deposit requests. Production and Android verification
 passed; exact receipts are recorded in [RELEASE.md](RELEASE.md). Earlier KR/AR/CO submissions are withdrawn.
 
@@ -298,7 +297,7 @@ route could eliminate several financial-product questions, but would not remove
 AU's payment-facility issue or every transfer/marketing rule. Disabling the
 operator relay would address a different subset and would change the service
 promise. Neither change is a cosmetic disclaimer, and neither was made during
-this review. Keeping the approved product and selecting KR only is the current release
+this review. Keeping the current product and selecting KR only is the current release
 choice. Re-enabling previously assessed AR/CO requires a new operator decision;
 other broader access needs a separately evaluated product or licensed route,
 not repeated speculative searches or a universal government letter.

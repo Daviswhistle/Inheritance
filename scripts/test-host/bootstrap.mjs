@@ -91,6 +91,17 @@ query("#account").value = account;
 query("#approval").value = approval;
 let controller;
 let pendingSignature = "";
+let consumedTouch = null;
+// WebKit may dispatch the compatibility click to another shadow control after
+// a decision removes its own row. Keep that click from arming Reject-next.
+shadow.addEventListener("click", event => {
+  if (!consumedTouch || !event.isTrusted || event.detail === 0) return;
+  if (performance.now() - consumedTouch.at > 500) { consumedTouch = null; return; }
+  if (Math.hypot(event.clientX - consumedTouch.x, event.clientY - consumedTouch.y) > 8) return;
+  consumedTouch = null;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
 function decisionButton(button, decide) {
   let start = null;
   const activate = touch => {
@@ -117,6 +128,7 @@ function decisionButton(button, decide) {
     // WKWebView can deliver a trusted touch without synthesizing click inside
     // this host's shadow dialog. A stationary completed touch is sufficient;
     // dragged/cancelled gestures never approve. Click still serves keyboards.
+    consumedTouch = { x: event.clientX, y: event.clientY, at: performance.now() };
     event.preventDefault(); activate(true);
   });
   button.onclick = () => activate(false);
@@ -169,7 +181,7 @@ query("#approval").onchange = event => {
 };
 const status = message => { query("#status").textContent = message; };
 query("#reject").onclick = () => { controller.rejectNext("send-transaction"); status("Next transaction will be rejected before submission."); };
-query("#reject-auth").onclick = () => { controller.rejectNext("wallet-auth"); status("Next sign-in will be rejected."); };
+query("#reject-auth").onclick = () => { window.dispatchEvent(new CustomEvent("inheritance:auth-stage", { detail: { stage: "host-reject-next-auth", at: Math.round(performance.now()) } })); controller.rejectNext("wallet-auth"); status("Next sign-in will be rejected."); };
 query("#delay").onclick = () => { controller.delayNext(10_000, "send-transaction"); status("Next transaction will wait 10 seconds before approval."); };
 query("#fail").onclick = () => { controller.failNext("send-transaction"); status("Next transaction will return a simulated host error."); };
 async function control(button, body) {
