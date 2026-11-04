@@ -15,7 +15,7 @@ import { NewPlanAccessNotice } from "@/components/NewPlanAccessNotice";
 import type { PlanAccessLocation } from "@/components/NewPlanAccessNotice";
 import { ReleasePlanDialog } from "@/components/ReleasePlanDialog";
 import { readExitTargets, exitQuoteStillValid, verifyExitTransfers, verifyExitEmpty, PlanExitError } from "@/plan-exit";
-import { HeirPlans, OwnerPlanSettings, InviteHeir } from "@/components/PlanExperience";
+import { HeirPlans, OwnerPlanSettings, EndedPlan, InviteHeir } from "@/components/PlanExperience";
 import { readInheritancePosition, ownerInheritancePositions, inheritanceStage, rememberedInheritances, rememberInheritances, readSettingsRequest, saveSettingsRequest, clearSettingsRequest, settingsFingerprint, verifySettingsReceipt, SETTING_EVENTS } from "@/inheritance";
 import type { InheritancePosition, HeirReadiness, SettingsTarget, SettingsRequest } from "@/inheritance";
 import { MoneyReview } from "@/components/MoneyReview";
@@ -1024,7 +1024,6 @@ export default function App() {
   const activeOwnedPlans = ownedPlanRead.account === account.toLowerCase()
     ? ownedPlanRead.items.filter(item => item.active === true) : [];
   const unsettledOwnedPlans = ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items.filter(item => item.settled === false) : [];
-  const showOwnerPlanSettings = isMyVault && unsettledOwnedPlans.length > 0 && !showPlanSetup && !pendingPlan;
   const ownedPlanTotal = (symbol: AssetSymbol) => {
     const rows = (ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items : []).filter(item => item.settled === false || item.hasAssets === true).filter(item => item.symbol === symbol
       || symbol === "WLD" && item.symbol === "USDC" && item.additionalWld !== 0n);
@@ -1037,6 +1036,21 @@ export default function App() {
   };
   const inheritanceEmpty = !ownedPlanLoading && !ownedPlanRead.incomplete
     && ownedPlanRead.items.every(item => item.hasAssets === false);
+  // An empty balance alone is not cancellation: keep active, unknown and paid
+  // inheritance states separate. Only a complete self-recipient read can end it.
+  const endedOwnedPlan = inheritanceEmpty && unsettledOwnedPlans.length > 0
+    && unsettledOwnedPlans.every(item => item.heir.toLowerCase() === account.toLowerCase());
+  const showOwnerPlanSettings = isMyVault && unsettledOwnedPlans.length > 0 && !endedOwnedPlan && !showPlanSetup && !pendingPlan;
+  const showEndedOverview = Boolean(account && endedOwnedPlan && !pendingPlan && !settingsPending
+    && (tab === "vault" || tab === "inherit" && !showPlanSetup && (!linkedVault || isMyVault)));
+
+  const restartEndedPlan = () => {
+    navigationChosenFor.current = account.toLowerCase();
+    setVault(ownVault); setLinkedVault(""); setExitComplete(null); setStatus("");
+    setShowPlanSetup(true); setTab("inherit");
+    void refreshNewPlanEligibility();
+  };
+
   const selectedBalanceKnown = isYieldVault ? Boolean(selectedYieldPosition?.valued) : vaultBalanceRead.scope === balanceScope;
   const selectedAssetEmpty = selectedBalanceKnown && !vaultHasAssets;
   const commonPlanSettings = activeOwnedPlans.length > 0
@@ -3753,6 +3767,7 @@ export default function App() {
         void registerWatcher(target.vault, request.account, target.nextHeir, true).catch(() => {});
       }
     }
+    if (isExit || request.targets.every(t => t.nextHeir.toLowerCase() === request.account.toLowerCase())) setShowPlanSetup(false);
     setExitComplete(isExit ? !exitIsEmpty ? "remaining" : request.targets.some(t => t.exit?.hasAssets) ? "funds" : "empty" : null);
     setStatus(isExit ? "" : t(request.targets.every(t => t.nextHeir.toLowerCase() === request.account.toLowerCase()) ? "exit.detached" : "journey.owner.updated"));
   };
@@ -4466,14 +4481,14 @@ export default function App() {
       </header>
       {settingsPending && tab !== "inherit" && <section className="container-narrow exit-feedback" role="status"><p>{t("exit.pending")}</p>
         <Button disabled={pendingAction} onClick={() => void runWalletAction(resumePlanSettings)}>{t("exit.checkResult")}</Button></section>}
-      {exitComplete && <section className="container-narrow exit-feedback" role="status"><strong>{t(exitComplete === "remaining" ? "exit.remaining" : exitComplete === "funds" ? "exit.complete" : "exit.emptyComplete")}</strong>{exitComplete === "funds" && <p>{t("exit.completeBody")}</p>}{exitComplete === "remaining" && <Button disabled={pendingAction} onClick={() => void runWalletAction(reviewExit, true)}>{t("exit.action")}</Button>}<Button size="sm" variant="ghost" onClick={() => setExitComplete(null)}>{t("common.close")}</Button></section>}
+      {exitComplete && !(showEndedOverview && exitComplete !== "remaining") && <section className="container-narrow exit-feedback" role="status"><strong>{t(exitComplete === "remaining" ? "exit.remaining" : exitComplete === "funds" ? "exit.complete" : "exit.emptyComplete")}</strong>{exitComplete === "funds" && <p>{t("exit.completeBody")}</p>}{exitComplete === "remaining" && <Button disabled={pendingAction} onClick={() => void runWalletAction(reviewExit, true)}>{t("exit.action")}</Button>}<Button size="sm" variant="ghost" onClick={() => setExitComplete(null)}>{t("common.close")}</Button></section>}
       {exitError && settingsReview?.kind !== "exit" && <section className="container-narrow exit-feedback" role="alert"><p>{exitError}</p>
         <Button disabled={pendingAction} onClick={() => void runWalletAction(reviewExit, true)}>{t("journey.action.refresh")}</Button>
         <Button disabled={pendingAction} onClick={() => { setExitError(""); setSettingsReview(null); setTab("money"); }}>{t("exit.openAssets")}</Button></section>}
       {/* 하단 탭 바가 fixed 이므로, 마지막 카드가 그 아래로 깔리지 않도록
           콘텐츠 쪽에 바 높이 + 여백만큼의 하단 패딩을 준다. */}
       <main id="main-content" className={`container-narrow app-content tab-pb grid gap-4 ${!account && tab !== "support" ? "app-content-entry" : ""}`}>
-        {(account || tab === "support") && <div className="page-intro"><h1 tabIndex={-1}>{tab === "inherit" && (iAmHeir || receivedYieldInheritance || !ownVault && inheritedPositions.length > 0) ? t("journey.heir.heading") : t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>}
+        {(account || tab === "support") && <div className="page-intro"><h1 tabIndex={-1}>{showEndedOverview ? t("home.title.ended") : tab === "inherit" && (iAmHeir || receivedYieldInheritance || !ownVault && inheritedPositions.length > 0) ? t("journey.heir.heading") : t(tab === "vault" ? "home.title.vault" : tab === "money" ? "home.title.money" : tab === "support" ? "home.title.support" : showPlanSetup ? "home.title.planWithoutVault" : ownVault ? "home.title.planWithVault" : "home.title.planWithoutVault")}</h1></div>}
         {!account && !CONFIG_ERROR && tab !== "support" && <AccountEntry view={tab} installed={miniInstalled} busy={ctaLoading} requiresReload={loginRequiresReload}
           onConnect={continueWorldApp2} onNavigate={next => { navigationChosenFor.current = account.toLowerCase(); setTab(next); }} linkedVault={linkedVault} />}
         {status && (account || !/Open in World App.*bridge unavailable/i.test(status)) && (
@@ -4490,7 +4505,8 @@ export default function App() {
         </section>}
         {account && <>
         {tab === "inherit" && account && (notifyHeirWorthShowing || inheritedPositions.length > 0) && heirStatusCard}
-        {account && tab === "vault" && ownVault && <Card className="plan-overview-card">
+        {showEndedOverview && <EndedPlan busy={pendingAction} returned={exitComplete === "funds"} onRestart={restartEndedPlan} />}
+        {account && tab === "vault" && ownVault && !endedOwnedPlan && <Card className="plan-overview-card">
           <CardContent className="grid gap-3">
             {!inheritanceEmpty && <><h2 className="home-assets-heading">{t("home.overview.title")}</h2>
             <div className="plan-overview-assets">
@@ -5043,20 +5059,20 @@ export default function App() {
           <p>{t("journey.owner.completedBody")}</p>
           {vaultHasAssets && <Button disabled={pendingAction || !miniInstalled || sweeping} onClick={() => void runVaultAction(sweepSettled)}>{t("journey.owner.sweep")}</Button>}
         </CardContent></Card>}
-        {tab === "inherit" && isMyVault && !vaultIdentity?.released && supportsRelease && !vaultHasAssets && (isSettledClaim || isExpiredOrLater) && <details className="plan-service-details">
+        {tab === "inherit" && isMyVault && !vaultIdentity?.released && !endedOwnedPlan && supportsRelease && !vaultHasAssets && (isSettledClaim || isExpiredOrLater) && <details className="plan-service-details">
           <summary>{t("journey.owner.release")}</summary><p>{t("journey.owner.emptyClose")}</p>
           <Button disabled={pendingAction || !miniInstalled || releasing} onClick={event => { event.currentTarget.focus(); setReleaseMessage(""); setShowReleaseConfirm(true); }}>{t("journey.owner.release")}</Button>
         </details>}
         {tab === "inherit" && linkedVault && identityMatchesVault && !iAmInvolved && !receivedYieldInheritance && !inheritedPositions.some(p => p.address.toLowerCase() === linkedVault.toLowerCase())
           && <p role="status">{t("journey.heir.notRecipient")}</p>}
-        {tab === "inherit" && account && !pendingPlan && (ownVault || inheritedPositions.length > 0 || linkedVault) && !showPlanSetup && !(showOwnerPlanSettings && inheritanceEmpty && activeOwnedPlans.length === 0) && <Button variant="ghost" disabled={pendingAction}
+        {tab === "inherit" && account && !pendingPlan && (ownVault || inheritedPositions.length > 0 || linkedVault) && !showPlanSetup && !endedOwnedPlan && !(showOwnerPlanSettings && inheritanceEmpty && activeOwnedPlans.length === 0) && <Button variant="ghost" disabled={pendingAction}
           onClick={() => {
             setShowPlanSetup(true);
             void refreshNewPlanEligibility();
             if (commonPlanSettings) { setHeir(homeHeirAddress); void onHeirInput(homeHeirAddress); setPeriodInput(String(activeOwnedPlans[0].period)); }
           }}>{t(ownVault ? "journey.owner.addAssets" : "journey.owner.createOwn")}</Button>}
 
-        {tab === "inherit" && showPlanSetup && !pendingPlan && ownVault && <Button variant="ghost" onClick={() => setShowPlanSetup(false)}>{t("journey.owner.return")}</Button>}
+        {tab === "inherit" && showPlanSetup && !pendingPlan && ownVault && <Button variant="ghost" onClick={() => setShowPlanSetup(false)}>{t(endedOwnedPlan ? "common.back" : "journey.owner.return")}</Button>}
         {tab === "inherit" && account && (pendingPlan || showPlanSetup || !ownVault && !linkedVault && inheritedPositions.length === 0 && !findingHeirVaults && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded) && gate2(
           <PlanSetup
             focusOnOpen={showPlanSetup}

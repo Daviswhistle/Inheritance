@@ -358,3 +358,10 @@ select:focus-visible { outline: 3px solid #3b82f6; outline-offset: 2px; }
 .inheritance-asset > .inheritance-investment { display: grid; gap: 8px; }
 .inheritance-investment p { margin: 0; line-height: 1.6; word-break: keep-all; }
 .inheritance-investment summary { display: flex; align-items: center; min-height: 44px; font-size: 13px; cursor: pointer; }
+
+/* A completed exit has one clear state and one next action, on Home and Plan. */
+.ended-plan-card > .card-content { display: grid; justify-items: start; gap: 16px; padding: 24px; }
+.ended-plan-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; color: var(--accent); background: var(--surface-subtle); }
+.ended-plan-card h2 { margin: 0; color: var(--ink); font-size: 24px; line-height: 1.4; letter-spacing: -0.6px; word-break: keep-all; }
+.ended-plan-card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; word-break: keep-all; }
+.ended-plan-card .btn { width: 100%; min-height: 52px; margin-top: 8px; }

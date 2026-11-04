@@ -1,5 +1,24 @@
 # Mac continuation — 2026-11-03
 
+## Cancelled-plan screen correction — 2026-11-04
+
+The Android World App showed duplicate empty-asset text, both restart and settings
+buttons, and a settings heading after inheritance had ended. The app now shares
+one ended-state card between Home and Plan, with one restart action. A confirmed
+exit uses its verified wallet-return message in that card; it does not add a
+second completion box. Reloaded/empty exits only state that no assets remain.
+The state requires complete balance reads and self-recipient settings for every
+unsettled owned plan; retained assets, active plans and unknown reads keep their
+recovery/management paths. Restart explicitly opens setup; its Back returns to
+the ended state. No production transaction or submission is part of this work.
+
+Local TypeScript and error-copy checks passed. Chromium exit tests passed before
+the duplicate completion-box consolidation; the final WebKit exit suite passed
+all 15 scenarios with actual local-chain withdrawals/recipient changes/restart,
+including receipt and rollback checks. Screenshots reviewed at
+`evidence/cancelled-ux-nov04/webkit-final/`. The Android before captures are private.
+Deployment and post-deployment Android readback are pending at this checkpoint.
+
 ## Production cutover — 2026-11-04
 
 Both replacement factories are finalized and active for new primary routes:

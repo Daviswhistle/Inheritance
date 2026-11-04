@@ -1,6 +1,7 @@
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Icon } from "./Icon";
 import { useLocale } from "../locale-context";
 import { EXPLORER } from "../config";
 import { formatYieldAmount } from "../yield";
@@ -93,6 +94,18 @@ export function HeirPlans({ positions, selectedOwner, loading, incomplete, busy,
     {incomplete && <p role="status" className="plan-inline-error">{t("journey.incomplete")}</p>}
     {(groups.length > 0 || incomplete) && <Button size="sm" variant="ghost" disabled={busy || loading} onClick={onRefresh}>{t("journey.action.refresh")}</Button>}
   </section>;
+}
+
+export function EndedPlan({ busy, returned, onRestart }: { busy: boolean; returned: boolean; onRestart: () => void }) {
+  const { t } = useLocale();
+  return <Card className="ended-plan-card" data-state="ended">
+    <CardContent>
+      <span className="ended-plan-icon"><Icon name="check" size={26} /></span>
+      <h2>{t("journey.owner.ended")}</h2>
+      <p>{t(returned ? "exit.completeBody" : "journey.owner.endedBody")}</p>
+      <Button variant="primary" disabled={busy} onClick={onRestart}>{t("journey.owner.restart")}</Button>
+    </CardContent>
+  </Card>;
 }
 
 export function OwnerPlanSettings({ ended, canCheckIn, onRestart, heirLabel, period, onPeriod, heir, onHeir, resolvedHeir, resolving, busy, disabled, onPeriodReview, onHeirReview, onCancel, onExit, hasExitAssets, exitDisabled, cancelReview, review, onConfirm, onDismiss, pending, onResume, onCheckIn, inconsistent }: {
