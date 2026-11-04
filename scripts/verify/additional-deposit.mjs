@@ -40,7 +40,7 @@ try {
    delete result.userOpHash;await route.fulfill({response,json:result});
   }else await route.fulfill({response});
  });
- await page.locator('.deposit-primary').click();await page.locator('.money-review .btn-primary').click();
+ await page.locator('.deposit-primary').click();await page.locator('#additional-deposit-consent').check();await page.locator('.money-review .btn-primary').click();
  await page.locator('#deposit-recovery-title').waitFor();await until(()=>Promise.resolve(Boolean(canonical)),'mined missing-ID request');
  await until(async()=>await held.balanceOf(vault)===before+expectedShares,'exact chain deposit');
  assert.equal(sendCount,1);

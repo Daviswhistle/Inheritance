@@ -1,10 +1,10 @@
 import { ethers } from "ethers";
-import { readPlanJournal, writePlanJournal, clearPlanJournal } from "./plan-storage";
+import { readPlanJournal, replacePlanJournal } from "./plan-storage";
 import { ConfirmedTransactionFailure, confirmTransaction } from "./transactions";
 import type { TxResult } from "./minikit";
 
 export type AdditionalDeposit = {
-  version: 1; chainId: 480; account: string; factory: string; vault: string;
+  version: 1; requestId?: string; chainId: 480; account: string; factory: string; vault: string;
   asset: string; symbol: "WLD" | "USDC"; decimals: number; amount: string;
   mode: "plain" | "morpho"; beforeBlock: number;
   txHash?: string; hashType?: "transaction" | "user-operation";
@@ -14,7 +14,8 @@ const key = (account: string) => `inheritance:additional-deposit:${account.toLow
 export function parseAdditionalDeposit(raw: string, account: string): AdditionalDeposit | null {
   try {
     const r = JSON.parse(raw) as AdditionalDeposit;
-    if (r.version !== 1 || r.chainId !== 480 || !ethers.isAddress(r.account)
+    if (r.version !== 1 || r.requestId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(r.requestId)
+      || r.chainId !== 480 || !ethers.isAddress(r.account)
       || r.account.toLowerCase() !== account.toLowerCase()
       || ![r.factory, r.vault, r.asset].every(ethers.isAddress)
       || !["WLD", "USDC"].includes(r.symbol) || !["plain", "morpho"].includes(r.mode)
@@ -26,8 +27,16 @@ export function parseAdditionalDeposit(raw: string, account: string): Additional
   } catch { return null; }
 }
 export const readAdditionalDeposit = (account: string) => readPlanJournal(key(account), raw => parseAdditionalDeposit(raw, account));
-export const saveAdditionalDeposit = (r: AdditionalDeposit) => writePlanJournal(key(r.account), JSON.stringify(r));
-export const clearAdditionalDeposit = (account: string) => clearPlanJournal(key(account));
+export async function saveAdditionalDeposit(r: AdditionalDeposit, previous: AdditionalDeposit | null) {
+  if (!await replacePlanJournal(key(r.account), previous && JSON.stringify(previous), JSON.stringify(r))) {
+    throw new Error("The deposit result is unknown. No new deposit was sent.");
+  }
+}
+export async function clearAdditionalDeposit(r: AdditionalDeposit) {
+  if (!await replacePlanJournal(key(r.account), JSON.stringify(r), null)) {
+    throw new Error("The deposit result is unknown. No new deposit was sent.");
+  }
+}
 const events = new ethers.Interface([
   "event Transfer(address indexed from,address indexed to,uint256 value)",
   "event Deposited(uint256 assets,uint256 shares)",
@@ -62,27 +71,31 @@ export async function confirmAdditionalDeposit(provider: ethers.AbstractProvider
  * verified terminal failure may unlock a retry. Throws/timeouts keep the journal. */
 export async function submitAdditionalDeposit(request: AdditionalDeposit, ports: {
   read: () => Promise<AdditionalDeposit | null>;
-  save: (r: AdditionalDeposit) => Promise<void>; clear: () => Promise<void>;
+  save: (r: AdditionalDeposit, previous: AdditionalDeposit | null) => Promise<void>;
+  clear: (r: AdditionalDeposit) => Promise<void>;
   send: () => Promise<TxResult>; confirm: (r: AdditionalDeposit) => Promise<void>;
 }): Promise<boolean> {
   if (await ports.read()) throw new Error("The deposit result is unknown. No new deposit was sent.");
-  await ports.save(request);
+  // Older version-1 journals intentionally remain readable without an ID.
+  // Every new approval gets its own ID so equal requests cannot clear each other.
+  request = { ...request, requestId: crypto.randomUUID() };
+  await ports.save(request, null);
   const sent = await ports.send();
   if (!sent.ok) {
-    if (sent.definitelyNotSubmitted) await ports.clear();
+    if (sent.definitelyNotSubmitted) await ports.clear(request);
     throw new Error(sent.error);
   }
   // SDKs may coerce a missing identifier to an empty string. Preserve the valid
   // pre-send journal rather than writing an unreadable recovery record.
   const submitted = typeof sent.tx.hash === "string" && hash.test(sent.tx.hash)
     ? { ...request, txHash: sent.tx.hash, hashType: sent.tx.hashType } : request;
-  await ports.save(submitted);
+  await ports.save(submitted, request);
   try { await ports.confirm(submitted); }
   catch (error) {
     if (error instanceof ConfirmedTransactionFailure && submitted.txHash
-      && error.txHash.toLowerCase() === submitted.txHash.toLowerCase()) await ports.clear();
+      && error.txHash.toLowerCase() === submitted.txHash.toLowerCase()) await ports.clear(submitted);
     throw error;
   }
-  await ports.clear();
+  await ports.clear(submitted);
   return true;
 }

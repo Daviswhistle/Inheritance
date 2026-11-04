@@ -78,7 +78,7 @@ and [Smart Contract Development Guidelines](https://docs.world.org/mini-apps/gui
 | Functional notifications | Expiry, claim and completion alerts only. Portal readback: two per day, no full-contact import, no wallet-access whitelist. Delivery requires each recipient's permission. |
 | Financial disclosure | Plan entry/review shows dated asset-specific lending/reward APRs and explicit unavailable states. Final review separates the live Re7 vault performance fee, Inheritance performance fee, conditional WLD network fee, exact amounts/recipient and loss/liquidity risks. A total-wallet-debit breakdown keeps each token amount separate and adds the conditional WLD fee; the mini app does not invent a preapproval fee quote or sum unlike currencies. A token-specific example illustrates the fee order without promising returns. Yield-risk consent starts unchecked. No paid yield-boost membership, token presale, guaranteed return or legal-will claim is offered. |
 | Contract control | Customer vaults/factories are not upgradeable and provide no developer asset-seizure function. Owner means the depositing user's wallet. The executor can relay a due transfer only to the fixed heir; its signer cannot choose a recipient or file the heir's claim. Morpho strategy governance remains a disclosed external risk. |
-| Contract documentation | All 203 handwritten public/external functions and receive handlers have NatSpec. CI checks the requirement. Access roles and fee behavior are explained below and in the source. These changes add comments only; executable Solidity is unchanged and no contract redeployment is performed. Compiler metadata hashes can change when comments change, so old on-chain source verification must retain the original deployment source revision. |
+| Contract documentation | All 207 handwritten public/external functions and receive handlers have NatSpec, as checked by CI at `27344c2`. Access roles and fee behavior are explained below and in the source. Compiler metadata hashes can change when comments change, so old on-chain source verification must retain the original deployment source revision. |
 | Coverage | CI now measures coverage and enforces >=90% line coverage for every primary customer vault/factory/deployer and for their aggregate including shared helpers. Unsupported Foundry configuration keys that previously claimed enforcement were removed. Branch coverage is reported separately. |
 | Store assets and support | Current UI captures are regenerated; illustrative balances are labeled. Content card is 1035×720 (3×345×240), without text or essential details in its bottom 282px. PNG files remain below 500KB. Help provides Terms, Privacy, Yield Terms and daviswhistle@naver.com. |
 | Review access | Public source: https://github.com/Daviswhistle/Inheritance. Product: https://inheritance.pages.dev/. Reviewer flow: [REVIEW_NOTES.md](REVIEW_NOTES.md). The operator has no pre-deployment TFH source-sharing record to supply; public access does not establish that historical step. |
@@ -95,7 +95,16 @@ power. Protocol fees are separately calculated on realized gains, not principal.
 The operator-only gas funding contract uses its treasury, fixed recipients,
 price checks and budgets; it has no user-vault spending authority.
 
-Local pinned Foundry 1.3.2 instrumentation measured WLD / Morpho WLD / USDC vault line
+The November 4 [CI run at `27344c2`](https://github.com/Daviswhistle/Inheritance/actions/runs/41813035636)
+passed 476 contract tests with zero failures and seven opt-in fork tests skipped.
+Its critical custody aggregate, including shared helpers, was 1258/1325 lines
+(94.94%). WLD / Morpho WLD / USDC vault line coverage was 95.76% / 94.94% /
+98.78%; Morpho WLD branch coverage was 63.25%. These are source-specific test
+and line-coverage results, not proof of current market liquidity or an
+independent security audit.
+
+Earlier measurements are retained below for provenance. They do not replace
+the current CI result above. Earlier pinned Foundry 1.3.2 instrumentation measured WLD / Morpho WLD / USDC vault line
 coverage of 95.76% / 94.85% / 98.68%. The custody aggregate **including**
 SafeERC20Lib, YieldMath and ImmutableCreationCode was 1201/1268 lines (94.72%).
 Helper coverage is lower (80.00% / 67.86% / 39.47%); it is not omitted from the
@@ -107,7 +116,7 @@ the normal optimized deployment build.
 
 ## Verification and remaining external evidence
 
-- Local contract suite: 375 passed, zero failed, five fork tests skipped without
+- Earlier local contract suite: 375 passed, zero failed, five fork tests skipped without
   an explicitly configured live RPC. This run does not certify current market liquidity.
 - Follow-up: all five World Chain fork suites ran at block **36,753,480**,
   hash `0x636136a382c158bc475fb402b8c26cc54e11a50fb0e85de3611352a5d60848fd`:

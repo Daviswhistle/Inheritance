@@ -2,8 +2,8 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useLocale } from "@/locale-context";
 import { Button } from "./ui/button";
 
-export function MoneyReview({ title, busy, children, onClose, onConfirm }: {
-  title: string; busy: boolean; children: ReactNode; onClose: () => void; onConfirm: () => void;
+export function MoneyReview({ title, busy, confirmDisabled = false, children, onClose, onConfirm }: {
+  title: string; busy: boolean; confirmDisabled?: boolean; children: ReactNode; onClose: () => void; onConfirm: () => void;
 }) {
   const { t } = useLocale();
   const ref = useRef<HTMLDialogElement>(null);
@@ -26,7 +26,7 @@ export function MoneyReview({ title, busy, children, onClose, onConfirm }: {
     <p>{t("fees.network.brief")}</p>
     <div className="release-actions">
       <Button disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
-      <Button variant="primary" disabled={busy} onClick={onConfirm}>{t("plan.action.confirm")}</Button>
+      <Button variant="primary" disabled={busy || confirmDisabled} onClick={onConfirm}>{t("plan.action.confirm")}</Button>
     </div>
   </dialog>;
 }

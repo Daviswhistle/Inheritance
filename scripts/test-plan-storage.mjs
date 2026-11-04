@@ -3,14 +3,15 @@ import { readFileSync } from "node:fs";
 import ts from "../app/node_modules/typescript/lib/typescript.js";
 const source = readFileSync(new URL("../app/src/plan-storage.ts", import.meta.url), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
-const { readPlanJournal, writePlanJournal, clearPlanJournal } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+const { readPlanJournal, writePlanJournal, clearPlanJournal, replacePlanJournal } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
 const storage = () => {
   const values = new Map();
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
 };
 const durable = () => {
   const values = new Map();
-  return { read: async key => values.get(key), write: async (key, value) => { values.set(key, value); } };
+  return { read: async key => values.get(key), write: async (key, value) => { values.set(key, value); },
+    replace: async (key, expected, value) => { const current = values.get(key); if (expected === null ? current != null : current !== expected) return false; values.set(key, value); return true; } };
 };
 const key = "inheritance:pending-plan:0xowner";
 const raw = JSON.stringify({ account: "0xowner", state: "submitting", request: "unknown" });
@@ -32,7 +33,7 @@ await check("legacy session and local records migrate after durable completion",
 });
 await check("failed migration preserves the original recovery record", async () => {
   const legacy = storage(); legacy.setItem(key, raw);
-  const db = { ...durable(), write: async () => { throw new Error("disk failed"); } };
+  const db = { ...durable(), replace: async () => { throw new Error("disk failed"); } };
   await assert.rejects(readPlanJournal(key, parse, storage(), legacy, db), /recovery record/);
   assert.equal(legacy.getItem(key), raw);
 });
@@ -84,5 +85,33 @@ await check("clear preserves other wallets and waits for durable completion", as
   await clearPlanJournal(key, mirror, legacy, db);
   assert.equal(await db.read("other-wallet"), raw);
   assert.equal(await db.read(key), null);
+});
+await check("concurrent journal creation permits one request and preserves its data", async () => {
+  const db = durable(), mirror = storage(), legacy = storage();
+  const values = await Promise.all([replacePlanJournal(key, null, "request-A", mirror, legacy, db), replacePlanJournal(key, null, "request-B", mirror, legacy, db)]);
+  assert.deepEqual(values, [true, false]); assert.equal(await db.read(key), "request-A");
+  assert.equal(await replacePlanJournal("other-wallet", null, "other", mirror, legacy, db), true);
+});
+await check("late updates and clears cannot change a newer request with the same amount", async () => {
+  const db = durable(), mirror = storage(), legacy = storage();
+  await replacePlanJournal(key, null, "request-A", mirror, legacy, db);
+  await replacePlanJournal(key, "request-A", null, mirror, legacy, db);
+  await replacePlanJournal(key, null, "request-B", mirror, legacy, db);
+  for (const next of ["request-A-with-hash", null]) assert.equal(await replacePlanJournal(key, "request-A", next, mirror, legacy, db), false);
+  assert.equal(await db.read(key), "request-B");
+});
+await check("delayed legacy migration cannot overwrite a newer journal or revive a tombstone", async () => {
+  for (const newer of [JSON.stringify({account:"0xowner", state:"new-request"}), null]) {
+    const db = durable(), mirror = storage(), legacy = storage(); mirror.setItem(key, raw);
+    let resume; const gate = new Promise(resolve => {resume = resolve;}); let first = true;
+    const delayed = {...db, read: async k => {const snapshot = await db.read(k); if(first){first=false;await gate;} return snapshot;}};
+    const migration = readPlanJournal(key, parse, mirror, legacy, delayed);
+    await Promise.resolve(); await Promise.resolve(); await db.write(key, newer); resume();
+    assert.deepEqual(await migration, newer === null ? null : JSON.parse(newer));
+    assert.equal(await db.read(key), newer);
+  }
+});
+await check("missing atomic persistence support fails closed", async () => {
+  await assert.rejects(replacePlanJournal(key, null, raw, storage(), storage(), {read:async()=>undefined,write:async()=>{}}), /recovery record/);
 });
 console.log(`${checks} plan-storage checks passed.`);

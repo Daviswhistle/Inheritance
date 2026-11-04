@@ -1,0 +1,561 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-11-04",
+  "review_baseline": "27344c23bc9c1c345971fe65a5e4c2feb9994ab1",
+  "scope": "Local review-branch results. No production deployment, real-fund transaction or Mini App submission.",
+  "runtime_source_sha256": {
+    "app/src/App.tsx": "3bcc01120d58d5176dc20ee20d91fad23147029d846921dc5fd8179f302b7106",
+    "app/src/withdrawal.ts": "e7827a64b1659c39b43a873677b86b341fa93d8280de3a18f3f1d880593ad4a4",
+    "app/src/additional-deposit.ts": "a0a207cdc7ef20d556546a311f9dfc678ecb026eb2c374e5cdb86180d87a2211",
+    "app/src/plan-storage.ts": "871746109cc35e2c49c088627e4570ebc82a8839c397ae273d64a937ff43dc41",
+    "app/src/wallet-action-lock.ts": "9ef6773285c8bb629ef413c473669d0e5b9fcb0b80082ce3971962aa25321691",
+    "app/src/minikit.ts": "d3b66d128b876d54c7672e946e8212e5602a1f3f95e6fc90db78793b2c25b714",
+    "app/src/index.css": "3dd86e07f043bfc72ec25c19aec528583b5e6fae4d078810ce2f926e15c7c420",
+    "app/src/launch.css": "47f1b219baccd96e0ac5e8ec10aca38359bd6f34dfac0a253f9abbd0aad4180c",
+    "scripts/verify/money-safety.mjs": "e9b370f702fb74aec7e3d72af06ee91ff26762f0b3979380bdf90d750fc6cbbd",
+    "scripts/verify/product-ui.mjs": "8f0f32cdafd199b05a41f32987f6aeb23eb71421e1d6f3d4a82a56ff9115d391",
+    "scripts/verify/drv.mjs": "c037f267dc4f7e8964faae02d1b52f47896c317a247af45b713e0469c20c8c62"
+  },
+  "local_environment": {
+    "node": "24.22.1",
+    "chromium": "138.0.7204.0",
+    "axe_core": "4.10.3",
+    "foundry": "1.7.1",
+    "ci_foundry_pin": "1.3.2"
+  },
+  "product_ui": {
+    "command": "node scripts/verify/product-ui.mjs",
+    "process_exit_code": 0,
+    "elapsed_seconds": 43.07,
+    "layouts_passed": 72,
+    "accessibility_checks": 38,
+    "accessibility_violations": 0,
+    "screenshots": 45,
+    "layout_states": [
+      "guest-en-320-0",
+      "guest-en-320-1",
+      "guest-en-320-2",
+      "guest-en-320-3",
+      "guest-en-390-0",
+      "guest-en-390-1",
+      "guest-en-390-2",
+      "guest-en-390-3",
+      "help-expanded-guest-en",
+      "guest-en-1280-0",
+      "guest-en-1280-1",
+      "guest-en-1280-2",
+      "guest-en-1280-3",
+      "guest-ko-320-0",
+      "guest-ko-320-1",
+      "guest-ko-320-2",
+      "guest-ko-320-3",
+      "guest-ko-390-0",
+      "guest-ko-390-1",
+      "guest-ko-390-2",
+      "guest-ko-390-3",
+      "help-expanded-guest-ko",
+      "guest-ko-1280-0",
+      "guest-ko-1280-1",
+      "guest-ko-1280-2",
+      "guest-ko-1280-3",
+      "setup-en-320",
+      "setup-en-390",
+      "review-en-320",
+      "review-en-390",
+      "setup-ko-320",
+      "setup-ko-390",
+      "review-ko-320",
+      "review-ko-390",
+      "copy-feedback-ko-320",
+      "copy-feedback-ko-390",
+      "owner-en-320-0",
+      "owner-money-en-320",
+      "owner-en-320-1",
+      "owner-en-320-2",
+      "owner-en-320-3",
+      "owner-en-390-0",
+      "owner-money-en-390",
+      "owner-en-390-1",
+      "owner-expanded-en-1",
+      "withdraw-en",
+      "owner-en-390-2",
+      "owner-expanded-en-2",
+      "owner-en-390-3",
+      "help-expanded-owner-en",
+      "owner-ko-320-0",
+      "owner-money-ko-320",
+      "owner-ko-320-1",
+      "owner-ko-320-2",
+      "owner-ko-320-3",
+      "owner-ko-390-0",
+      "owner-money-ko-390",
+      "owner-ko-390-1",
+      "owner-expanded-ko-1",
+      "withdraw-ko",
+      "owner-ko-390-2",
+      "owner-expanded-ko-2",
+      "owner-ko-390-3",
+      "help-expanded-owner-ko",
+      "heir-active-en",
+      "heir-active-ko",
+      "heir-mixed",
+      "close-plan-en-320",
+      "close-plan-en-390",
+      "close-plan-ko-320",
+      "close-plan-ko-390",
+      "close-plan-rejected-ko"
+    ],
+    "accessibility_states": [
+      "guest-en-390-0",
+      "guest-en-390-1",
+      "guest-en-390-2",
+      "guest-en-390-3",
+      "help-expanded-guest-en",
+      "guest-ko-390-0",
+      "guest-ko-390-1",
+      "guest-ko-390-2",
+      "guest-ko-390-3",
+      "help-expanded-guest-ko",
+      "setup-en-390",
+      "review-en-390",
+      "setup-ko-390",
+      "review-ko-390",
+      "copy-feedback-ko-390",
+      "additional-deposit-review-ko",
+      "owner-en-390-0",
+      "owner-en-390-1",
+      "owner-expanded-en-1",
+      "withdraw-en",
+      "owner-en-390-2",
+      "owner-expanded-en-2",
+      "owner-en-390-3",
+      "help-expanded-owner-en",
+      "owner-ko-390-0",
+      "owner-ko-390-1",
+      "owner-expanded-ko-1",
+      "withdraw-ko",
+      "owner-ko-390-2",
+      "owner-expanded-ko-2",
+      "owner-ko-390-3",
+      "help-expanded-owner-ko",
+      "heir-active-en",
+      "heir-active-ko",
+      "heir-mixed",
+      "close-plan-en-390",
+      "close-plan-ko-390",
+      "close-plan-rejected-ko"
+    ],
+    "primary_button_transition": {
+      "source": "isolated button using real index.css and launch.css; disabled-to-enabled frame sampling",
+      "samples": {
+        "previous": [
+          {
+            "ms": 0.7,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(241, 245, 249)",
+            "contrast": 1.0955171955711072
+          },
+          {
+            "ms": 14.1,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(241, 245, 249)",
+            "contrast": 1.0955171955711072
+          },
+          {
+            "ms": 31.4,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(214, 222, 240)",
+            "contrast": 1.3490947993288052
+          },
+          {
+            "ms": 47.6,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(160, 176, 221)",
+            "contrast": 2.1540799364547607
+          },
+          {
+            "ms": 64.2,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(111, 133, 203)",
+            "contrast": 3.563385271343166
+          },
+          {
+            "ms": 80.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(77, 104, 191)",
+            "contrast": 5.1877476483070275
+          },
+          {
+            "ms": 97.5,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(55, 85, 184)",
+            "contrast": 6.658247325207942
+          },
+          {
+            "ms": 114.3,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(41, 74, 179)",
+            "contrast": 7.707186316641862
+          },
+          {
+            "ms": 130.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(33, 67, 176)",
+            "contrast": 8.418701722813756
+          },
+          {
+            "ms": 147.9,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 164.3,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 180.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          }
+        ],
+        "fixed": [
+          {
+            "ms": 0.4,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 12.5,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 29.1,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 45.9,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 62.5,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 79.3,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 95.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 112.4,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 129.2,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 145.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 162.7,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 179,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 195.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          }
+        ]
+      },
+      "minima": {
+        "previous": 1.0955171955711072,
+        "fixed": 8.722410784954462
+      }
+    }
+  },
+  "money_safety": {
+    "command": "node scripts/verify/money-safety.mjs",
+    "process_exit_code": 0,
+    "environment": "Real MiniKit SDK, Chromium and IndexedDB, private Anvil with mock tokens; no external funds",
+    "checks": [
+      {
+        "name": "withdrawal: two windows permit exactly one same-account send; another account remains independent"
+      },
+      {
+        "name": "additional-deposit: two windows permit exactly one same-account send; another account remains independent"
+      },
+      {
+        "name": "late confirmation/update cannot clear or replace a newer withdrawal"
+      },
+      {
+        "name": "concurrent wallet actions reject immediately without queued automatic approvals"
+      },
+      {
+        "name": "10%→20% fee change requires a new explicit review and consent before exactly one deposit",
+        "feeReads": 3,
+        "sends": 1
+      },
+      {
+        "name": "account switch hides another wallet’s request and restores it only for its owner"
+      },
+      {
+        "name": "USDC: lost identifier survives reload, blocks a second withdrawal, rejects unrelated/failed IDs, and recovers exactly once",
+        "sends": 1,
+        "recipientIncrease": "1000000",
+        "net": "990910",
+        "fee": "9090",
+        "originalHash": "0xf5a173a59f4f8659ab1044fa6327b1e8cce8e601a6ef3e1860ceb53a7db806c4"
+      },
+      {
+        "name": "WLD: lost identifier survives reload, blocks a second withdrawal, rejects unrelated/failed IDs, and recovers exactly once",
+        "sends": 1,
+        "recipientIncrease": "1000000000000000000",
+        "net": "990909090909090910",
+        "fee": "9090909090909090",
+        "originalHash": "0xf7f84cfa1ad9442f16b7b4151a0b70f8f06bc454a424b24079f1840130cc0b3d"
+      },
+      {
+        "name": "definite native rejection clears only its own request and makes no payout"
+      },
+      {
+        "name": "USDC: All withdrawal with real gains and a positive fee preserves its minimum and recovers without resending",
+        "net": "10999090",
+        "fee": "100909",
+        "minimum": "10944094",
+        "originalHash": "0x0a2d8e093158c0a3492c87f4e9bc1bc1d070cab81fb82ecb1d82306fe2948517"
+      },
+      {
+        "name": "WLD: All withdrawal with real gains and a positive fee preserves its minimum and recovers without resending",
+        "net": "9909090909090909090",
+        "fee": "90909090909090909",
+        "minimum": "9859545454545454544",
+        "originalHash": "0x95a70bb84be5f5936643f347ed48a5deb20030642b1b117d97b6b6e33e5edd8c"
+      },
+      {
+        "name": "deployed no-requestId additional-deposit journals recover with known or manually supplied original IDs"
+      }
+    ]
+  },
+  "focused_local_regressions": [
+    {
+      "script": "scripts/test-withdrawal.mjs",
+      "exit_code": 0,
+      "seconds": 0.63
+    },
+    {
+      "script": "scripts/test-additional-deposit.mjs",
+      "exit_code": 0,
+      "seconds": 0.59
+    },
+    {
+      "script": "scripts/test-plan-storage.mjs",
+      "exit_code": 0,
+      "seconds": 0.44
+    },
+    {
+      "script": "scripts/test-transaction-confirmation.mjs",
+      "exit_code": 0,
+      "seconds": 0.52
+    },
+    {
+      "script": "scripts/test-profile-resolution.mjs",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "script": "scripts/test-error-text.mjs",
+      "exit_code": 0,
+      "seconds": 0.61
+    },
+    {
+      "script": "scripts/test-mobile-fixes.mjs",
+      "exit_code": 0,
+      "seconds": 0.51
+    },
+    {
+      "script": "scripts/test-income-history.mjs",
+      "exit_code": 0,
+      "seconds": 0.59
+    },
+    {
+      "script": "scripts/verify/unified-plan.mjs",
+      "exit_code": 0,
+      "seconds": 0.33
+    },
+    {
+      "script": "scripts/test-legacy-yield-routes.mjs",
+      "exit_code": 0,
+      "seconds": 2.55
+    }
+  ],
+  "contracts": {
+    "passed": 476,
+    "failed": 0,
+    "skipped": 7,
+    "skip_scope": "Opt-in live fork tests; no live RPC supplied"
+  },
+  "baseline_ci": {
+    "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41813035636",
+    "source": "27344c23bc9c1c345971fe65a5e4c2feb9994ab1",
+    "critical_custody_line_coverage": {
+      "covered": 1258,
+      "total": 1325,
+      "reported_percent": 94.94
+    },
+    "natspec_functions": 207
+  },
+  "published_baseline_lab": {
+    "environment": "Published static assets replayed over localhost with gzip; Chromium 138. This is a repeatable laboratory scenario, not actual handset, production network or World App latency.",
+    "results": [
+      {
+        "profile": {
+          "name": "local-unthrottled",
+          "latency": 0,
+          "mbps": 100,
+          "cpu": 1
+        },
+        "fcp": 164,
+        "lcp": 164,
+        "cls": 0,
+        "dcl": 72.90000000223517,
+        "headline": "Leave digital assets\nfor someone you care about.",
+        "errors": [],
+        "failed": []
+      },
+      {
+        "profile": {
+          "name": "simulated-mobile",
+          "latency": 150,
+          "mbps": 1.6,
+          "cpu": 4
+        },
+        "fcp": 2256,
+        "lcp": 2256,
+        "cls": 0,
+        "dcl": 1869.5,
+        "headline": "Leave digital assets\nfor someone you care about.",
+        "errors": [],
+        "failed": []
+      }
+    ]
+  },
+  "boundaries": [
+    "Native host approvals are simulated; no actual iOS World App certification.",
+    "Positive-fee fixture has the same heir and fee-recipient address; recipientIncrease includes net plus fee.",
+    "Recovery guards are scoped to one device and origin storage, not a cross-device lock.",
+    "No TFH contract/fee agreement or current Portal state independently established here."
+  ],
+  "dependency_security": {
+    "change": "Override only transitive ws to 8.21.0; SDK/ethers/viem and other direct versions retained",
+    "before_unique_advisories": 2,
+    "advisories": [
+      {
+        "id": "GHSA-58qx-3vcg-4xpx",
+        "cve": "CVE-2026-45736",
+        "severity": "moderate",
+        "condition": "The Node ws implementation is asked to close with a TypedArray as its reason, potentially leaking uninitialized memory.",
+        "fixedIn8x": "8.20.1",
+        "source": "https://github.com/websockets/ws/security/advisories/GHSA-58qx-3vcg-4xpx"
+      },
+      {
+        "id": "GHSA-96hv-2xvq-fx4p",
+        "cve": "CVE-2026-48779",
+        "severity": "high",
+        "condition": "A connected WebSocket peer sends large numbers of tiny fragments or chunks, exhausting memory in the vulnerable Node ws receiver.",
+        "fixedIn8x": "8.21.0",
+        "source": "https://github.com/websockets/ws/security/advisories/GHSA-96hv-2xvq-fx4p"
+      }
+    ],
+    "runtime_reachability_review": [
+      "The production front end uses ethers browser mappings to native WebSocket (lib.esm/providers/ws-browser.js). isows browser/workerd export also resolves to _esm/native.js.",
+      "The six existing production JS bundles contain none of the searched Node ws receiver/server markers (WS_ERR_UNSUPPORTED_MESSAGE_LENGTH, maxFragments, skipUTF8Validation, Invalid WebSocket frame, WS_ERR_UNEXPECTED_RSV_1, WebSocketServer). This corroborates, but is not itself a reachability proof.",
+      "backend/src/finalizer.mjs lines 114-125 rejects non-HTTPS RPC except local HTTP. Lines 180-187 construct FetchRequest and JsonRpcProvider, not WebSocketProvider.",
+      "app/functions/api/auth/verify.ts invokes MiniKit 2.0.3 verifySiweMessage using its default client. Installed chunk-YPZEODWL.js line 233 creates a viem client with http() transport.",
+      "No Node ws/WebSocket server/provider invocation was found in app/src, app/functions, backend or scripts/operator-deploy."
+    ],
+    "after_production_audit_counts": {
+      "root_npm": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "app_pnpm": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      }
+    },
+    "installed_resolution": [
+      {
+        "scope": ".",
+        "parent": "ethers",
+        "version": "8.21.0"
+      },
+      {
+        "scope": ".",
+        "parent": "viem",
+        "version": "8.21.0"
+      },
+      {
+        "scope": "app",
+        "parent": "ethers",
+        "version": "8.21.0"
+      },
+      {
+        "scope": "app",
+        "parent": "viem",
+        "version": "8.21.0"
+      }
+    ],
+    "file_sha256": {
+      "package.json": "18a35bf6fda8b765058cbedd1151830bee0aa9632ebeeb244b3f979cb2ca3c0b",
+      "package-lock.json": "19d4d28f29762eaf91cc940178e6deebc71709940c5bc971bc0b3352e2561238",
+      "app/pnpm-workspace.yaml": "7d22ee8379469a6ad36cf3b74b62943d0873811d38768a0a4b48dc94d8b93ae6",
+      "app/pnpm-lock.yaml": "5ca9595d619f5f3a3b9d652f6bec2b7364090db9f9881d992528d6fcaf43f585"
+    },
+    "app_lock_validation": "pnpm 10.34.9 install --lockfile-only --frozen-lockfile --offline",
+    "local_ui_before_dependency_update": true,
+    "complete_revision_gate": "The new GitHub CI browser job installs the final frozen lock and reruns money safety and product UI."
+  }
+}
