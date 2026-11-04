@@ -21,8 +21,7 @@ Reject compatibility click activating its own Reject-next-sign-in injection.
 See [root cause and baseline/fixed evidence](IOS_LOGIN_RETRY_2026-11-04.md).
 The fixed focused native test passes three real rejections and a final approval
 on iOS 27.0. The same iOS 18.5 full CI remains to be run on this final source.
-The iOS 27 full lifecycle's later Done lookup failure is retained; it is not a
-full native pass or proof of real iOS World App behavior.
+The initial iOS 27 Done lookup failure was reproduced as a hardware-keyboard setup/OS accessory geometry mismatch. Correct device settings and a native-only finite, visible and hittable accessory check passed the full lifecycle and a real native Done dismissal regression (2 tests). App-owned 44px targets remain enforced. Combined final-harness validation is tracked in the iOS record; none of these host tests prove real iOS World App behavior.
 
 Local checks: TypeScript, ESLint, production build, copy/i18n, transaction
 confirmation, durable storage, login lifecycle, profile enrichment, deferred
@@ -30,8 +29,31 @@ rewards, original product UI (68 layouts) and additional-deposit local-chain
 recovery passed. The backend's eight suites total 212 checks, with the temporary
 Node diagnostic guard corrected before the final auth rerun (82/82).
 
-Follow-up boundaries: deployment and final CI readback, Android final-build
-inspection, matching iOS 18.5 host run, and refreshed Portal draft assets are
-recorded when completed. Real iOS World App remains a separate device limitation.
+Final runtime `f4cba93453337f36f8f423dd3e09fcb3b5ac8ce3` deployed successfully
+in **41810159425** at https://2d7e96b3.inheritance.pages.dev. General CI
+**41810159434** passed all three jobs. Production root, four referenced JS/CSS
+files, three legal pages and seven store images match the immutable deployment
+(15 files); root SHA256 is
+`15f0671ae1c9e38610c6e1e34ed32b9658dba18d278dcdce2193dce872d97db3`.
+Worker version: `969b50c2-6dc3-477e-9892-4a55a955cd03`.
+
+Actual Android World App was force-closed and reopened on the final deployment;
+wallet sign-in, ended Home and WLD/USDC asset screens were reviewed. Empty assets
+no longer claim active deposits or show the owner as their own inheritance
+recipient. No real-fund transaction was sent. Safari/WebKit's real-SDK lost-ID
+top-up/reload test and all 15 local-chain exit tests passed on the final runtime.
+
+Seven new PNGs were uploaded to the Portal's existing unverified draft; upload
+responses committed each image. Description readback matches the prepared copy,
+KR/en+ko remain selected and the app remains **unverified**, not submitted.
+The metadata JSON now mirrors that actual current draft rather than replacing
+it with an older proposal. Native iOS 18.5 run **41808903884** passed login retry and process recovery but failed a geometry stability assertion because unrelated diagnostic permission logs changed. The strict geometry-signature fix and an OS-native accessory check are documented in the iOS record; the combined final harness is being rerun.
+Earlier queued native runs 41807766575 and 41808624056 were cancelled as superseded,
+before they ran; original failed 41756895853 is retained.
+
+The initial full CI's new profile regression failed because it assumed repository
+root as its working directory. The test now resolves its own script location;
+no product behavior or assertion was weakened. The later complete CI passed.
+ Real iOS World App remains a separate device limitation.
 TFH contract/fee agreement is not established by open source or these tests;
 no new inquiry was sent. Existing contract addresses, fees and assets are unchanged.

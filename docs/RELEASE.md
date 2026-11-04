@@ -1,5 +1,26 @@
 # Release evidence
 
+## November 4, 2026 — independent audit remediation
+
+Runtime `f4cba93453337f36f8f423dd3e09fcb3b5ac8ce3` is deployed at
+https://2d7e96b3.inheritance.pages.dev. Deployment **41810159425** and full general
+CI **41810159434** passed. Production and immutable root, JS/CSS, legal pages and
+seven new store PNGs match (15 files); root SHA256:
+`15f0671ae1c9e38610c6e1e34ed32b9658dba18d278dcdce2193dce872d97db3`.
+
+Additional deposits have durable recovery and exact receipt verification, with
+new sends blocked while uncertain. Partial withdrawal and reward-recipient
+messages, optional profile dependencies, backend initialization recovery,
+legacy completion observations, claim-phase reminders, numeric wrapping and
+toast geometry are repaired. Review/storage disclosures, legal pages and current
+blue/white store images agree with implementation. Actual Android cold-start,
+login, ended Home and both asset screens were reviewed without a transaction.
+Chromium and WebKit lost-ID deposit recovery and final WebKit exit **15/15** pass.
+Portal draft uploads and description are committed/read back, KR only and
+unverified; **no submission**. iOS 18.5 native retry/recovery passed; its diagnostic-only geometry stability failure is repaired and the combined final harness is being rerun.
+[Per-finding evidence and limits](AUDIT_REMEDIATION_2026-11-04.md) retains original
+failures and distinguishes the test-host retry fix from real iOS World App.
+
 ## November 4, 2026 — clear state after ending inheritance
 
 Runtime `be5eca9e813b7e1281ce60050d9551f39bb5d5b8` is deployed at

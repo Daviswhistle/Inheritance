@@ -9,7 +9,14 @@ partial withdrawals, settled reward descriptions, name lookup dependencies,
 backend retry/alerts, narrow-screen amounts and toast geometry are corrected.
 Store images and batched-approval terms were regenerated/aligned.
 The iOS retry cause is directly reproduced in the test host, with a fixed native
-regression pass; matching 18.5 CI and production/device readback are pending.
+regression pass. Runtime **f4cba93** is deployed at
+https://2d7e96b3.inheritance.pages.dev; deployment **41810159425** and full general
+CI **41810159434** passed. All 15 checked public files match production, root SHA256
+`15f0671ae1c9e38610c6e1e34ed32b9658dba18d278dcdce2193dce872d97db3`.
+Actual Android cold-start/login, ended Home and WLD/USDC assets were reviewed.
+Both Chromium/WebKit top-up recovery and final WebKit exit **15/15** passed.
+All seven Portal draft images and description are updated; readback stays KR only,
+en/ko and unverified. Native 18.5 run **41808903884** passed retry/recovery but exposed unrelated diagnostic logs in its geometry signature. The strict geometry-signature fix and native-accessory regression are being verified in the final harness; see the iOS root-cause record.
 Do not submit. No extra funds, contract deployment, asset migration or external
 message was performed. Existing funding runner is complete; do not run it again.
 

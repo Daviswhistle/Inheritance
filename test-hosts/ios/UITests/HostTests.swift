@@ -49,6 +49,52 @@ final class HostTests: XCTestCase {
         XCTAssertTrue(web.textFields["USDC"].firstMatch.waitForExistence(timeout: 60), "A fresh approved retry must establish the session")
     }
 
+    func testNativeAccessoryDoneDismissesLandscapeKeyboard() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                               "-testURL", "http://localhost:7777/?platform=ios&approval=auto&trace=1&residence=KR"]
+        app.launch()
+        let web = app.webViews.firstMatch
+        let plan = web.buttons["Plan"].firstMatch
+        XCTAssertTrue(plan.waitForExistence(timeout: 120))
+        plan.tap()
+        let login = web.buttons["Agree and sign in"].firstMatch
+        XCTAssertTrue(login.waitForExistence(timeout: 20))
+        login.tap()
+        let recipient = web.textFields.matching(NSPredicate(format: "label CONTAINS %@ OR placeholderValue == %@", "Who should receive", "@username or wallet address")).firstMatch
+        XCTAssertTrue(recipient.waitForExistence(timeout: 60))
+        scrollInputAboveFixedFooter(recipient, in: web, app: app)
+        recipient.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        dismissQuickPathOnboardingIfPresent(app)
+        waitForStableControl(recipient, app: app)
+        recipient.typeText("@test_heir")
+        XCTAssertTrue(web.staticTexts["@test_heir"].firstMatch.waitForExistence(timeout: 30))
+        let fullInputHeight = max(44, recipient.frame.height.rounded(.down))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let landscape = NSPredicate { _, _ in app.frame.width > app.frame.height }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
+        assertVisibleInput(recipient, in: web, app: app, height: fullInputHeight,
+                           text: "@test_heir", screenshot: "native-accessory-before-done")
+        XCTAssertFalse(web.buttons["Done"].firstMatch.exists, "This test must exercise the native accessory, not the app toolbar")
+        let done = app.buttons["Done"].firstMatch
+        XCTAssertTrue(done.isHittable)
+        done.tap()
+        let dismissed = NSPredicate { _, _ in
+            guard !app.keyboards.firstMatch.exists,
+                  let raw = app.staticTexts["test-host-status"].value as? String,
+                  let data = raw.data(using: .utf8),
+                  let metrics = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+            return metrics["input"] is NSNull
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed,
+                       "One native Done tap must dismiss the keyboard and end editing")
+        XCTAssertEqual(recipient.value as? String, "@test_heir")
+        capture("native-accessory-done-dismissed", app)
+    }
+
     func testRealSDKLoginAndNativeLifecycle() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -646,7 +692,8 @@ final class HostTests: XCTestCase {
                 let candidates = app.buttons.matching(NSPredicate(format: "label == %@", "Done"))
                     .allElementsBoundByIndex.filter {
                         let frame = $0.frame
-                        return frame.height >= 44 && frame.width >= 44
+                        return frame.height > 0 && frame.width > 0
+                            && [frame.minX, frame.minY, frame.width, frame.height].allSatisfy({ $0.isFinite })
                             && frame.minY >= webFrame.maxY && frame.maxY <= keyboardFrame.minY
                             && frame.minX >= webFrame.minX && frame.maxX <= webFrame.maxX
                     }
@@ -656,8 +703,12 @@ final class HostTests: XCTestCase {
                     reset("native_accessory_done_missing_ambiguous_or_not_hittable"); return false
                 }
                 doneFrame = nativeDone.frame
+                // OS-owned accessory controls do not use the app's 44px
+                // target-size rule. Require finite positive geometry inside
+                // the visible accessory region, and real native hittability.
                 // Recheck the sampled frame after hittability's AX query.
-                guard doneFrame.height >= 44 && doneFrame.width >= 44,
+                guard doneFrame.height > 0 && doneFrame.width > 0,
+                      [doneFrame.minX, doneFrame.minY, doneFrame.width, doneFrame.height].allSatisfy({ $0.isFinite }),
                       doneFrame.minY >= webFrame.maxY && doneFrame.maxY <= keyboardFrame.minY,
                       doneFrame.minX >= webFrame.minX && doneFrame.maxX <= webFrame.maxX else {
                     reset("native_accessory_done_moved"); return false
