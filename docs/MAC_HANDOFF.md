@@ -17,7 +17,20 @@ the duplicate completion-box consolidation; the final WebKit exit suite passed
 all 15 scenarios with actual local-chain withdrawals/recipient changes/restart,
 including receipt and rollback checks. Screenshots reviewed at
 `evidence/cancelled-ux-nov04/webkit-final/`. The Android before captures are private.
-Deployment and post-deployment Android readback are pending at this checkpoint.
+Runtime `be5eca9e813b7e1281ce60050d9551f39bb5d5b8` is deployed at
+https://2240fa43.inheritance.pages.dev. Deployment run **41756895746** and general
+CI **41756895869** succeeded. Production root and all four referenced JS/CSS files
+match the immutable deployment; root SHA256 is
+`1b28d0154d99b6be4e3322817a2ee6891c7cee4f4ed18bc4e4d424eef4828483`.
+After force-closing and reopening actual Android World App, login completed and
+the connected account showed the ended card on both Home and Plan. Restart opened
+setup without a wallet request; Back restored the ended card. Reviewed private
+captures: `ended-home-live.png`, `ended-plan-live.png`, `restart-live.png`,
+`back-live.png` in `evidence/cancelled-ux-nov04/`. No production transaction,
+additional spending, customer-asset migration or Mini App submission occurred.
+The automatically triggered native iOS host run **41756895853** is still running;
+this checkpoint does not claim a fresh native-host pass or actual iOS World App
+validation.
 
 ## Production cutover — 2026-11-04
 

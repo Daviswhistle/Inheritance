@@ -1,5 +1,27 @@
 # Release evidence
 
+## November 4, 2026 — clear state after ending inheritance
+
+Runtime `be5eca9e813b7e1281ce60050d9551f39bb5d5b8` is deployed at
+https://2240fa43.inheritance.pages.dev. Deployment **41756895746** and general
+CI **41756895869** passed. Production root and its four referenced JS/CSS assets
+match that immutable deployment; root SHA256:
+`1b28d0154d99b6be4e3322817a2ee6891c7cee4f4ed18bc4e4d424eef4828483`.
+
+Home and Plan now show one completion card and one restart action when all
+unsettled owned plans have self recipients and complete reads show no remaining
+assets. Verified exits display the wallet-return result once. Reloaded or empty
+exits do not claim a payment. Retained assets and uncertain reads retain their
+recovery paths. Restart explicitly opens setup and Back restores completion.
+
+Final WebKit local-chain exit tests passed **15/15**, including actual test-chain
+withdrawals, atomic rollback, interrupted recovery, receipt validation and
+restart. TypeScript and error-copy checks passed. Actual Android World App was
+force-closed/reopened and reviewed on Home, Plan, restart and Back with no wallet
+request or real-fund transaction. Evidence is private under
+`evidence/cancelled-ux-nov04/`. Native iOS host **41756895853** is still running at
+this checkpoint; actual iOS World App is not claimed. Mini App remains unsubmitted.
+
 ## November 4, 2026 — repaired yield factories and production cutover
 
 Runtime `1e4715d6425c3b369fd3519e1a905dfaa47f11f4` is deployed at
