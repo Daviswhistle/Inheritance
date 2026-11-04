@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {createRequire} from 'node:module';
-import {readFileSync} from 'node:fs';
+import {readFileSync,mkdirSync} from 'node:fs';
 import {setTimeout as sleep} from 'node:timers/promises';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {Contract,JsonRpcProvider}=createRequire(new URL('../../app/package.json',import.meta.url))('ethers');
@@ -49,6 +49,10 @@ try {
  if(!await amount.isVisible())await details.locator('summary').click();
  await amount.fill('1');assert.equal(await page.locator('.deposit-primary').isDisabled(),true);
  const recovery=page.locator('section[aria-labelledby="deposit-recovery-title"]');
+ const out=process.env.DEPOSIT_UX_OUT || '/tmp/inheritance-additional-deposit';mkdirSync(out,{recursive:true});
+ await page.locator('#inheritance-test-controls').evaluate(e=>e.style.display='none');
+ for(const width of [320,390]){await page.setViewportSize({width,height:844});await recovery.scrollIntoViewIfNeeded();await page.screenshot({path:`${out}/pending-${width}.png`});}
+
  await recovery.locator('input').fill(initialReceipt.hash);await recovery.getByRole('button',{name:'Check previous deposit'}).click();
  await until(()=>recovery.getByRole('button').isEnabled(),'unknown ID check completed');
  assert.equal(await page.locator('#deposit-recovery-title').count(),1);assert.equal(await page.locator('.deposit-primary').isDisabled(),true);
