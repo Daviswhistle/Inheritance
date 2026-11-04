@@ -177,6 +177,43 @@ while fees were being reviewed again, and sent exactly one USDC deposit only
 after the new consent; WLD shares stayed unchanged. Both checks exited 0.
 The PR records its subsequent CI result separately from the `4e2cacef` runs.
 
+### Native test-host telemetry failure
+
+Both [PR CI](https://github.com/Daviswhistle/Inheritance/actions/runs/41839577657)
+and [push CI](https://github.com/Daviswhistle/Inheritance/actions/runs/41839565621)
+passed all four jobs on `63b4cc45`, including the corrected asset selection.
+Its repeated [native run](https://github.com/Daviswhistle/Inheritance/actions/runs/41839577613)
+finished with three tests passed and one failed. The failure occurred while
+checking input geometry, before the native Done button was tapped. It must
+not be described as a failed Done dismissal or counted as a successful run.
+
+At the failure screenshot, the complete focused `@test_heir` input was visible.
+The accessibility tree measured its frame as `(239,75,396,49)`, with its bottom
+at 124 and the native accessory starting at 139. In contrast, DOM telemetry
+reported no focused input and the old portrait viewport `402 × 708`, while
+the native WebView was already `874 × 112.7`. Seventeen DOM fields were
+identical in three samples while native command counts advanced from 6 to 8.
+This establishes stale test-host measurements at failure capture; the exact
+remote exception that stopped the reporter was not recorded.
+
+The reporter could include an SVG `className` wrapper in its original message
+and scheduled its next animation frame only after message delivery. A local
+probe using real SVG DOM targets and a serialization-checking mock bridge
+reproduced permanent sampling loss. An independent one-shot bridge exception
+also stopped the original reporter. This is a local mechanism reproduction,
+not execution of Apple's native bridge or proof of the unrecorded remote
+exception. Apple's [message body documentation](https://developer.apple.com/documentation/webkit/wkscriptmessage/body)
+defines the native value types accepted by the message boundary.
+
+The test host now uses string identifiers and a plain JSON payload, records
+reporting errors, invalidates geometry when reporting fails, and schedules
+the next sample even after an exception. The local probe confirmed recovery
+to fresh focused-input geometry with the error history preserved. Native
+test assertions, their 30-second bound, three-sample stability requirement,
+hit testing and same-origin/main-frame checks are unchanged. Product app,
+contract and backend sources are unchanged by this host-only correction.
+The PR links the corrected host's subsequent native execution separately.
+
 The positive-fee fixture uses the same local address for the heir and fee
 recipient. Its wallet balance increase includes both net proceeds and fees.
 Assertions check the two events separately; they do not call that total the

@@ -14,7 +14,8 @@
     "app/src/launch.css": "47f1b219baccd96e0ac5e8ec10aca38359bd6f34dfac0a253f9abbd0aad4180c",
     "scripts/verify/money-safety.mjs": "4505fa46818ea60cf13ce474c5a354950e18e30d4b1edefcb897c4d14d62dc21",
     "scripts/verify/product-ui.mjs": "3e5ba73e92c49a5f7cf3398b78c70b560f34264db152ce4897b56464fe8f317a",
-    "scripts/verify/drv.mjs": "c037f267dc4f7e8964faae02d1b52f47896c317a247af45b713e0469c20c8c62"
+    "scripts/verify/drv.mjs": "c037f267dc4f7e8964faae02d1b52f47896c317a247af45b713e0469c20c8c62",
+    "test-hosts/ios/Sources/AppDelegate.swift": "993db7ea2ed12d1d1a8f8a77cac19c8d6f7b9bc7233a3ec657f5e67003978abd"
   },
   "local_environment": {
     "node": "24.22.1",
@@ -795,5 +796,400 @@
       },
       "runtime_unchanged_from": "4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba"
     }
+  },
+  "native_telemetry_follow_up": {
+    "failed_run": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839577613",
+    "head_sha": "63b4cc450831940c7d89c6e5ea2b1f4508a711d6",
+    "tested_merge_sha": "cdc1c2f686976e4d4fb92644df77f1237b6c4e61",
+    "tests": {
+      "passed": 3,
+      "failed": 1,
+      "failed_test": "testNativeAccessoryDoneDismissesLandscapeKeyboard",
+      "failure": "Entire input must remain visible after native and DOM geometry settle",
+      "native_done_reached": false
+    },
+    "failure_artifact_observation": {
+      "artifact": {
+        "id": 13329082635,
+        "name": "ios-native-review",
+        "bytes": 4090761,
+        "sha256": "bed52b2a14694fc8754b633dcfaa931c1bcc16839a381701928092a4f1046328",
+        "digest_verified": true
+      },
+      "inspected_screenshot": "ios-attachments/D979E10B-E10A-49D7-BCB3-4D811BFB4267.png",
+      "visual_observation": "At failure capture, the entire focused recipient field with @test_heir, caret and focus ring is visible above the native landscape keyboard and accessory. No missing or occluded input is observed in this failure screenshot.",
+      "accessibility_tree": {
+        "timestamp": "2026-11-04T13:46:41.4892200Z",
+        "input": {
+          "label": "Who should receive it?",
+          "value": "@test_heir",
+          "frame": [
+            239,
+            75,
+            396,
+            49
+          ],
+          "focused": true,
+          "keyboard_focused": true
+        },
+        "webview_frame": [
+          0,
+          26.3,
+          874,
+          112.7
+        ],
+        "accessory_top": 139,
+        "input_bottom": 124,
+        "input_accessory_gap": 15,
+        "input_fully_inside_webview": true
+      },
+      "telemetry_comparison": {
+        "captured_dom_samples": 3,
+        "dom_fields_identical": true,
+        "native_command_counts": [
+          6,
+          7,
+          8
+        ],
+        "discrepancy": "DOM reports input:null, portrait 402x708 and an account-entry-title focus event while the screenshot and AX tree show an authenticated owner with the recipient input focused in landscape. Native command history includes wallet-auth and later get-permissions calls absent from the DOM hostState history."
+      },
+      "assessment": "The evidence establishes stale/inconsistent test-host DOM telemetry relative to the actual rendered UI at failure capture. The screenshot and AX geometry do not support an actual missing/occluded recipient input at that moment. The exact reason the DOM reporter stopped updating remains unresolved; infrastructure or product regression is not established by this inspection.",
+      "limitations": "Only the failure screenshot and original logs/metrics were inspected from this new run. This is not a continuous-frame proof of every moment during the polling interval. The Done-dismissal assertion was not reached because the pre-Done geometry predicate timed out. No rerun or source edit was performed."
+    },
+    "local_reproduction": {
+      "environment": "Chromium with real SVG DOM/event targets and a manually advanced animation frame queue; native telemetry scripts extracted unchanged from old HEAD and working Swift source",
+      "boundary": "The throwing/structuredClone bridge is a local mock. This proves the reporter failure mechanism and recovery, not the exact unrecorded exception in the failed iOS CI run.",
+      "checks": [
+        "Old original-object payload contains SVGAnimatedString and stops after a serialization-rejecting mock throws",
+        "Old reporter also stops after an independent one-shot bridge error",
+        "Corrected reporter sends string target/hit identifiers and JSON-safe payload",
+        "Corrected reporter publishes error state without geometry, keeps sampling and reports fresh focused-input geometry with retained error history"
+      ],
+      "oldSVG": {
+        "targetClassType": "[object SVGAnimatedString]",
+        "initialMessages": 1,
+        "afterTrigger": {
+          "queuedFrames": 0,
+          "messages": 1,
+          "last": {
+            "innerHeight": 844,
+            "innerWidth": 390,
+            "scrollY": 0,
+            "interactionTrace": [],
+            "authTrace": [],
+            "hostState": null,
+            "doneRect": null,
+            "intervalRect": null,
+            "actionsHidden": true,
+            "navigationHidden": true,
+            "inputUnobscured": false,
+            "inputHitTargets": [],
+            "viewport": {
+              "height": 844,
+              "width": 390,
+              "offsetTop": 0,
+              "pageTop": 0,
+              "scale": 1
+            },
+            "input": null,
+            "keyboard": null
+          }
+        },
+        "errorSample": null,
+        "queuedAfterFailure": 0,
+        "resumed": false,
+        "escapedErrors": [
+          {
+            "name": "DataCloneError",
+            "message": "Failed to execute 'structuredClone' on 'Window': SVGAnimatedString object could not be cloned."
+          }
+        ],
+        "finalQueuedFrames": 0,
+        "final": {
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "scrollY": 0,
+          "interactionTrace": [],
+          "authTrace": [],
+          "hostState": null,
+          "doneRect": null,
+          "intervalRect": null,
+          "actionsHidden": true,
+          "navigationHidden": true,
+          "inputUnobscured": false,
+          "inputHitTargets": [],
+          "viewport": {
+            "height": 844,
+            "width": 390,
+            "offsetTop": 0,
+            "pageTop": 0,
+            "scale": 1
+          },
+          "input": null,
+          "keyboard": null
+        }
+      },
+      "oldTransient": {
+        "targetClassType": "[object SVGAnimatedString]",
+        "initialMessages": 1,
+        "afterTrigger": {
+          "queuedFrames": 0,
+          "messages": 1,
+          "last": {
+            "innerHeight": 844,
+            "innerWidth": 390,
+            "scrollY": 0,
+            "interactionTrace": [],
+            "authTrace": [],
+            "hostState": null,
+            "doneRect": null,
+            "intervalRect": null,
+            "actionsHidden": true,
+            "navigationHidden": true,
+            "inputUnobscured": false,
+            "inputHitTargets": [],
+            "viewport": {
+              "height": 844,
+              "width": 390,
+              "offsetTop": 0,
+              "pageTop": 0,
+              "scale": 1
+            },
+            "input": null,
+            "keyboard": null
+          }
+        },
+        "errorSample": null,
+        "queuedAfterFailure": 0,
+        "resumed": false,
+        "escapedErrors": [
+          {
+            "name": "Error",
+            "message": "injected one-shot bridge failure"
+          }
+        ],
+        "finalQueuedFrames": 0,
+        "final": {
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "scrollY": 0,
+          "interactionTrace": [],
+          "authTrace": [],
+          "hostState": null,
+          "doneRect": null,
+          "intervalRect": null,
+          "actionsHidden": true,
+          "navigationHidden": true,
+          "inputUnobscured": false,
+          "inputHitTargets": [],
+          "viewport": {
+            "height": 844,
+            "width": 390,
+            "offsetTop": 0,
+            "pageTop": 0,
+            "scale": 1
+          },
+          "input": null,
+          "keyboard": null
+        }
+      },
+      "corrected": {
+        "targetClassType": "[object SVGAnimatedString]",
+        "initialMessages": 1,
+        "afterTrigger": {
+          "queuedFrames": 1,
+          "messages": 2,
+          "last": {
+            "innerHeight": 844,
+            "innerWidth": 390,
+            "scrollY": 0,
+            "interactionTrace": [
+              {
+                "type": "pointerdown",
+                "buttonText": "Plan",
+                "trusted": false,
+                "target": "icon-path",
+                "hit": "icon-path",
+                "active": "account-entry-title",
+                "x": 36,
+                "y": 103.875,
+                "done": null,
+                "at": 16
+              }
+            ],
+            "authTrace": [],
+            "hostState": null,
+            "telemetryState": "ok",
+            "telemetryErrors": [],
+            "doneRect": null,
+            "intervalRect": null,
+            "actionsHidden": true,
+            "navigationHidden": true,
+            "inputUnobscured": false,
+            "inputHitTargets": [],
+            "viewport": {
+              "height": 844,
+              "width": 390,
+              "offsetTop": 0,
+              "pageTop": 0,
+              "scale": 1
+            },
+            "input": null,
+            "keyboard": null
+          }
+        },
+        "errorSample": {
+          "telemetryState": "error",
+          "telemetryErrors": [
+            {
+              "message": "injected one-shot bridge failure",
+              "at": 17
+            }
+          ]
+        },
+        "queuedAfterFailure": 1,
+        "resumed": true,
+        "escapedErrors": [],
+        "finalQueuedFrames": 1,
+        "final": {
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "scrollY": 0,
+          "interactionTrace": [
+            {
+              "type": "pointerdown",
+              "buttonText": "Plan",
+              "trusted": false,
+              "target": "icon-path",
+              "hit": "icon-path",
+              "active": "account-entry-title",
+              "x": 36,
+              "y": 103.875,
+              "done": null,
+              "at": 16
+            },
+            {
+              "type": "focusout",
+              "trusted": true,
+              "target": "account-entry-title",
+              "hit": null,
+              "active": "",
+              "done": null,
+              "at": 17
+            },
+            {
+              "type": "focusin",
+              "trusted": true,
+              "target": "heir-input",
+              "hit": null,
+              "active": "heir-input",
+              "done": null,
+              "at": 17
+            }
+          ],
+          "authTrace": [],
+          "hostState": null,
+          "telemetryState": "ok",
+          "telemetryErrors": [
+            {
+              "message": "injected one-shot bridge failure",
+              "at": 17
+            }
+          ],
+          "doneRect": null,
+          "intervalRect": null,
+          "actionsHidden": true,
+          "navigationHidden": true,
+          "inputUnobscured": true,
+          "inputHitTargets": [
+            {
+              "x": 20,
+              "y": 135.125,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 97.5,
+              "y": 135.125,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 175,
+              "y": 135.125,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 20,
+              "y": 140.375,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 97.5,
+              "y": 140.375,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 175,
+              "y": 140.375,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 20,
+              "y": 145.625,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 97.5,
+              "y": 145.625,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 175,
+              "y": 145.625,
+              "input": true,
+              "target": "INPUT#heir-input."
+            }
+          ],
+          "viewport": {
+            "height": 844,
+            "width": 390,
+            "offsetTop": 0,
+            "pageTop": 0,
+            "scale": 1
+          },
+          "input": {
+            "top": 129.875,
+            "bottom": 150.875,
+            "left": 8,
+            "right": 187,
+            "height": 21,
+            "width": 179,
+            "id": "heir-input"
+          },
+          "keyboard": null
+        }
+      }
+    },
+    "correction": "Host-only plain JSON payload and string identifiers; report errors, invalidate geometry on error and continue the sampler. Native assertions and timeouts unchanged.",
+    "remote_final_result": "See PR #4 for the subsequent corrected-host run; the failed run above is retained as a failure."
+  },
+  "verified_test_follow_up_ci": {
+    "head_sha": "63b4cc450831940c7d89c6e5ea2b1f4508a711d6",
+    "pr_ci": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839577657",
+    "push_ci": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839565621",
+    "both_all_four_jobs_passed": true,
+    "browser_artifact": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839577657/artifacts/13328711085",
+    "money_scenarios": 12,
+    "layouts": 72,
+    "axe_checks": 38,
+    "axe_violations": 0,
+    "product_ui_screenshots": 45
   }
 }
