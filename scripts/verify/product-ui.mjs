@@ -203,6 +203,20 @@ try{
  await until(async()=>await token.balanceOf(config.owner)===before+1_000000n,'verified USDC principal withdrawal');
  await until(()=>page.ev("return document.body.innerText.includes('출금을 완료했습니다')"),'localized withdrawal receipt');
  console.log('PASS invalid and zero addresses, precision, zero and excess amounts cannot submit; valid USDC withdrawal pays exactly one token');
+ await click(page,'WLD');
+ await until(()=>page.ev("return document.querySelector('.asset-money-card .card-title').textContent.includes('WLD')&&document.getElementById('withdraw-amount-help')?.textContent.includes('10.0 WLD')"),'WLD partial withdrawal');
+ const wldToken=new Contract(config.wld,['function balanceOf(address) view returns(uint256)'],provider);
+ const wldBefore=await wldToken.balanceOf(config.owner);
+ await page.ev(`__q.reveal('#withdraw-to');await __q.setInput('withdraw-to',${JSON.stringify(config.owner)});await __q.setInput('withdraw-amount','1');`);
+ try { await click(page,'내 지갑으로 출금'); } catch(error) {
+  console.error('WLD withdrawal diagnostic',await page.ev("return {amount:document.getElementById('withdraw-amount')?.value,to:document.getElementById('withdraw-to')?.value,disabled:document.querySelector('.principal-submit')?.disabled,body:document.querySelector('.asset-money-card')?.innerText}"));throw error;
+ }
+ await click(page,'거래 승인 화면 열기');
+ await until(async()=>await wldToken.balanceOf(config.owner)===wldBefore+10n**18n,'verified WLD partial withdrawal');
+ await until(()=>page.ev("return document.body.innerText.includes('출금을 완료했습니다')"),'WLD partial withdrawal receipt');
+ assert.equal(await page.ev("return document.body.innerText.includes('회수를 마쳐 주세요')"),false,'normal partial withdrawal must not prompt a full exit');
+ console.log('PASS WLD partial withdrawal pays exactly one token and reports completion with remaining assets retained');
+
  const checkinStartBlock=await provider.getBlockNumber();
  await tab(page,0);await click(page,'기한 연장하기');
  await until(()=>page.ev("return document.querySelector('.toast-success')?.textContent.includes('기한을 연장했습니다')"),'combined check-in');

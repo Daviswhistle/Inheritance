@@ -29,7 +29,7 @@ Read-only diagnostics expose stage names/timestamps, native command names and or
 - TypeScript build check, login lifecycle tests and six bridge unit tests passed locally. Production build passed and contains none of `inheritance-test-controls`, `inheritance:auth-stage`, `__INHERITANCE_TEST_HOST__` or `host-reject-next-auth` in its generated assets; the diagnostics are gated by Vite DEV.
 - The existing full native lifecycle test passed its reject/retry and process-death sign-in checks on iOS 27.0, then failed later at the existing keyboard Done lookup. That failure is separate and is not counted as a full native pass.
 - The fixed focused native test passed on iOS 27.0: 1 test, 0 failures, 30.092 seconds. All four auth attempts opened a fresh approval; no `host-reject-next-auth` stage occurred. Baseline and fixed sanitized command/stage snapshots are in `docs/evidence/ios-login-retry-2026-11-04.json`.
-- Matching iOS 18.5 CI and real World App validation remain separate gates.
+- Matching iOS 18.5 validation subsequently passed as recorded below; real iOS World App remains a separate gate.
 
 Local root-cause artifacts: `/tmp/inheritance-retry-root-cause.log` and `/tmp/inheritance-retry-root-cause.xcresult`. These are disposable local evidence paths, not portable repository attachments.
 
@@ -50,3 +50,11 @@ The next landscape check exposed an OS-specific accessibility rectangle: iOS 27'
 With the final e6e28dc app source copied into an isolated snapshot, these native-accessory changes passed both the targeted test (33.875 seconds) and the entire existing lifecycle test (226.289 seconds), including all three repeated rotation/foreground/dismissal cycles, on iPhone 16 Pro / iOS 27.0 / arm64. The later combined run also includes the strict geometry projection; its result must be recorded separately. No timeout, skipped test, geometry-validity predicate or app DOM target-size requirement was relaxed.
 
 Local evidence: `/tmp/inheritance-final27-native-accessory.log` and `/tmp/inheritance-final27-native-accessory.xcresult`; the earlier environment/AX comparison is `/tmp/inheritance-final27-environment-triage.md`.
+
+## Final validation
+
+Native CI **41810931516** on **3421c0e** passed **4 tests, 0 failures, 0 skips** on iPhone 16 Pro / iOS 18.5 (22F77) / arm64. All four flows ran: native landscape accessory Done, full lifecycle, repeated rejected-login retry, and pending deposit after process death. Reviewed screenshots show Done actually dismissing the keyboard, preserved input in final landscape/foreground cycles and recovered USDC 1.000001 without resubmission.
+
+Combined local iOS 27.0 validation passed the executed full lifecycle and native Done methods: **2 tests, 0 failures, 0 skips**, 258.778 seconds. Local initial failures and the hardware-keyboard/OS accessory causes remain above as evidence; they are not counted as successful executions.
+
+[Portable final summary](evidence/ios-audit-remediation-final-2026-11-04.json). The runtime/backend/public sources in this native run are identical to deployed f4cba93. These tests use a native host with modelled approval, not physical iOS World App.

@@ -16,7 +16,7 @@ CI **41810159434** passed. All 15 checked public files match production, root SH
 Actual Android cold-start/login, ended Home and WLD/USDC assets were reviewed.
 Both Chromium/WebKit top-up recovery and final WebKit exit **15/15** passed.
 All seven Portal draft images and description are updated; readback stays KR only,
-en/ko and unverified. Native 18.5 run **41808903884** passed retry/recovery but exposed unrelated diagnostic logs in its geometry signature. The strict geometry-signature fix and native-accessory regression are being verified in the final harness; see the iOS root-cause record.
+en/ko and unverified. Native 18.5 run **41808903884** passed retry/recovery but exposed unrelated diagnostic logs in its geometry signature. Final native **41810931516** on **3421c0e** passed **4/4, zero failures/skips**, with screenshots reviewed. Combined local iOS 27 full lifecycle/native Done passed **2/2**. The real iOS World App and new-factory production round trip remain unverified; TFH agreement is not asserted. See the iOS root-cause record and final sanitized summary.
 Do not submit. No extra funds, contract deployment, asset migration or external
 message was performed. Existing funding runner is complete; do not run it again.
 

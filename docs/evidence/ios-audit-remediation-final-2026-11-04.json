@@ -1,0 +1,39 @@
+{
+  "source": "3421c0eecff0b8f9ae2bdca4d230506bcfd90c75",
+  "run": 41810931516,
+  "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41810931516",
+  "conclusion": "success",
+  "environment": {
+    "device": "iPhone 16 Pro",
+    "os": "iOS 18.5 (22F77)",
+    "architecture": "arm64",
+    "kind": "native WKWebView test host with real MiniKit SDK"
+  },
+  "tests": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "reviewedScreens": [
+    "native-accessory-done-dismissed",
+    "repeat-landscape-3",
+    "repeat-foreground-3",
+    "pending-deposit-recovered-without-resubmission"
+  ],
+  "localIOS27Combined": {
+    "device": "iPhone 16 Pro",
+    "architecture": "arm64",
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "durationSeconds": 258.778
+  },
+  "realIOSWorldAppValidated": false,
+  "realFundsUsed": false,
+  "miniAppSubmitted": false,
+  "limits": [
+    "Native test approvals are modelled by the test host, not real iOS World App.",
+    "No new-factory production deposit or withdrawal was performed in this remediation.",
+    "No TFH contract or fee agreement is asserted."
+  ]
+}

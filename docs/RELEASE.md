@@ -17,7 +17,7 @@ blue/white store images agree with implementation. Actual Android cold-start,
 login, ended Home and both asset screens were reviewed without a transaction.
 Chromium and WebKit lost-ID deposit recovery and final WebKit exit **15/15** pass.
 Portal draft uploads and description are committed/read back, KR only and
-unverified; **no submission**. iOS 18.5 native retry/recovery passed; its diagnostic-only geometry stability failure is repaired and the combined final harness is being rerun.
+unverified; **no submission**. Final iOS 18.5 native **41810931516** / **3421c0e** passed **4 tests, 0 failures, 0 skips**, with Done/rotation/foreground/recovery screenshots reviewed. Combined local iOS 27 tests passed **2/2**.
 [Per-finding evidence and limits](AUDIT_REMEDIATION_2026-11-04.md) retains original
 failures and distinguishes the test-host retry fix from real iOS World App.
 
