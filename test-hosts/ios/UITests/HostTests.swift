@@ -686,7 +686,16 @@ final class HostTests: XCTestCase {
                 && field.maxY <= occlusion && fullTop >= webFrame.minY
                 && fullBottom <= occlusion && cssTop >= offset
                 && cssBottom <= offset + visibleHeight
-            let geometry = "\(field)|\(webFrame)|\(keyboardFrame)|\(doneSource)|\(doneFrame)|\(raw)"
+            // Authentication/native-command telemetry can change while every
+            // geometry and hit-test value stays identical. It is diagnostic,
+            // not evidence that this input moved or became occluded.
+            let geometryKeys = ["innerHeight", "innerWidth", "scrollY", "viewport", "input", "doneRect",
+                                "keyboard", "actionsHidden", "navigationHidden", "inputUnobscured", "inputHitTargets",
+                                "nativeWebView", "keyboardGuide", "accessoryFrame", "accessoryClearance"]
+            let geometryMetrics = metrics.filter { geometryKeys.contains($0.key) }
+            let geometryData = try? JSONSerialization.data(withJSONObject: geometryMetrics, options: [.sortedKeys])
+            let geometryJSON = geometryData.flatMap { String(data: $0, encoding: .utf8) } ?? "invalid"
+            let geometry = "\(field)|\(webFrame)|\(keyboardFrame)|\(doneSource)|\(doneFrame)|\(geometryJSON)"
             guard valid else {
                 if geometry != lastInvalidGeometry { print("INPUT GEOMETRY INVALID \(name): \(geometry)"); lastInvalidGeometry = geometry }
                 reset("invalid_geometry"); return false

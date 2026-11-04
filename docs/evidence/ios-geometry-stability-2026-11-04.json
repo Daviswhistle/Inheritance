@@ -1,0 +1,137 @@
+{
+  "run": 41808903884,
+  "source": "e6e28dc5abfcbf0c07eced6eff2fbe5b952b1da5",
+  "runtime": "18.5",
+  "architecture": "arm64",
+  "counts": {
+    "passed": 2,
+    "failed": 1,
+    "skipped": 0
+  },
+  "changedTopLevelKeys": [
+    "hostState",
+    "nativeCommands"
+  ],
+  "geometryProjectionEqual": true,
+  "geometryBeforeAndAfter": {
+    "innerHeight": 113,
+    "innerWidth": 874,
+    "scrollY": 816,
+    "viewport": {
+      "height": 112.65625,
+      "offsetTop": 0.34375,
+      "pageTop": 816,
+      "scale": 1,
+      "width": 874
+    },
+    "input": {
+      "bottom": 97,
+      "height": 48,
+      "id": "heir-input",
+      "left": 239,
+      "right": 635,
+      "top": 49,
+      "width": 396
+    },
+    "doneRect": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "keyboard": "",
+    "actionsHidden": true,
+    "navigationHidden": true,
+    "inputUnobscured": true,
+    "inputHitTargets": [
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 251,
+        "y": 61
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 437,
+        "y": 61
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 623,
+        "y": 61
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 251,
+        "y": 73
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 437,
+        "y": 73
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 623,
+        "y": 73
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 251,
+        "y": 85
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 437,
+        "y": 85
+      },
+      {
+        "input": true,
+        "target": "INPUT#heir-input.input-control w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-soft ",
+        "x": 623,
+        "y": 85
+      }
+    ],
+    "nativeWebView": [
+      0,
+      26.333333333333336,
+      874,
+      112.66666666666666
+    ],
+    "keyboardGuide": [
+      0,
+      183,
+      874,
+      219
+    ],
+    "accessoryFrame": [
+      0,
+      139,
+      874,
+      44
+    ],
+    "accessoryClearance": 44
+  },
+  "nativeCommandCount": {
+    "before": 7,
+    "after": 8
+  },
+  "addedNativeCommand": {
+    "at": 657.625483875,
+    "command": "get-permissions",
+    "mainFrame": true,
+    "originAccepted": true
+  },
+  "addedHostHistory": {
+    "command": "get-permissions",
+    "id": 8,
+    "state": "success"
+  }
+}

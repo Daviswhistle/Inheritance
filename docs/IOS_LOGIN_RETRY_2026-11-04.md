@@ -32,3 +32,11 @@ Read-only diagnostics expose stage names/timestamps, native command names and or
 - Matching iOS 18.5 CI and real World App validation remain separate gates.
 
 Local root-cause artifacts: `/tmp/inheritance-retry-root-cause.log` and `/tmp/inheritance-retry-root-cause.xcresult`. These are disposable local evidence paths, not portable repository attachments.
+
+## Final-source iOS 18.5 follow-up
+
+Run `41808903884`, source `e6e28dc5abfcbf0c07eced6eff2fbe5b952b1da5`, ran on iPhone 16 Pro / iOS 18.5 (22F77) / arm64: 2 passed, 1 failed, 0 skipped. The repeated reject/retry regression and pending-deposit process-death recovery passed. The full lifecycle failed at the post-screenshot landscape stability assertion, rather than authentication.
+
+Comparing the accepted landscape metrics with the failure metrics shows **all geometry and hit-test fields unchanged**. Only native command telemetry and host history gained a successful `get-permissions` entry. The helper had included the entire diagnostic JSON in its stability signature; that background permission read reset the sample count even though the input remained valid, so the immediate post-capture assertion returned false.
+
+The stability signature now includes a strict allowlist of viewport, input, hit-test, keyboard/accessory, native view and visibility metrics with sorted JSON keys. Every original visibility predicate, three-sample requirement, stability interval, timeout and post-capture assertion remains. No pixel quantization or tolerance was added. This preserves the failed run and fixes the specific diagnostic/geometry coupling; a subsequent final-source native run must establish the result.
