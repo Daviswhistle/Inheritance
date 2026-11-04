@@ -22,7 +22,7 @@ Production remains the previously deployed `f4cba93` until an approved rollout.
 | --- | --- | --- | --- |
 | R1 | P1 | A 1 USDC partial withdrawal executed on the local chain. After the wallet response lost its operation identifier, the input and retry button remained active. Another explicit wallet approval sent a second 1 USDC. | Save an account-scoped withdrawal record before wallet handoff. Block further withdrawals until the original receipt, definite rejection or original identifier's confirmed failure is verified. Recovery never sends a withdrawal. |
 | R2 | P2 | The strategy fee changed from 10% to 20%; the additional-deposit flow neither read the current fee nor required new fee consent. | Show live strategy and service fees with unchecked consent. Recheck the canonical vault, exact raw strategy fee, service fee and fee recipient immediately before wallet handoff. A change reopens review with consent cleared and sends no wallet request. |
-| R3 | P2 | At 390px, balances of 12,345.123456 WLD and 123,456.123456 USDC exceeded their 123px value containers. Their numeric widths were 161px and 175px, so important digits required internal scrolling. | Asset cards wrap based on content width. Long values remain complete without reducing precision or shrinking the type. Short values retain the two-column layout. |
+| R3 | P2 | At 390px, balances of 12,345.123456 WLD and 123,456.123456 USDC exceeded their 123px value containers. Their numeric widths were 161px and 175px, so important digits required internal scrolling. Follow-up CI also flagged the value areas as scrollable without keyboard access. | Asset cards wrap based on content width and stay inside the viewport. Typical long values remain complete without reducing precision or shrinking the type; short values retain two columns. Extreme values have a focused, currency-described horizontal scroll fallback, with no unintended vertical scrolling. |
 | R4 | P2 | After rejecting a close-plan request, an enabled primary button briefly showed white text on an intermediate background with 3.56:1 contrast. The final accessibility run caught this during the 140ms color transition. | Apply primary-button color changes immediately; retain the press transform. Frame sampling and the full accessibility suite cover the corrected state. |
 | R5 | P3 | The Korean income explanation said principal was maintained unchanged, which could imply protection stronger than the disclosed investment behavior. | Explain that available income is withdrawn while remaining assets continue to be invested. Keep the loss and liquidity explanations. |
 
@@ -105,6 +105,17 @@ The final local UI evidence and execution result are recorded in
 Automated accessibility checks cover the exercised states; they do not replace
 screen-reader evaluation on actual phones.
 
+The first remote [browser run](https://github.com/Daviswhistle/Inheritance/actions/runs/41831487526)
+on `b93cfbad` passed all 12 money scenarios but failed the numeric area's
+`scrollable-region-focusable` check. Its artifact did not record the scroll
+direction. A separate font-metrics stress probe reproduced a 4px vertical
+overflow. The follow-up constrains card width, uses the font's normal line box,
+disables unintended vertical scrolling, and gives the numeric region keyboard
+focus with its currency description. Thirty-six width/value/font combinations
+cover complete ordinary amounts and actual Tab/ArrowRight scrolling of an
+extreme amount without page overflow. The accessibility assertion remains
+enabled; the complete UI suite is rerun after the fix.
+
 ## Verification
 
 | Area | Evidence |
@@ -116,7 +127,7 @@ screen-reader evaluation on actual phones.
 | Focused regressions | Withdrawal 10, additional deposit 7, storage 14, transaction confirmation 15; also login, eligibility, profile resolution, errors, mobile flows, income history and legacy routes. |
 | Production dependencies | Root npm and app pnpm audits: zero known advisories after the ws-only update. Actual ethers/viem resolutions use ws 8.21.0 in both installations; typecheck, build and affected auth/backend checks were rerun. |
 | Real SDK/browser/local chain | 12 money-safety scenarios passed, including two-window contention, fee changes, missing identifiers, reload/account switching, legacy journals, and positive-yield partial/full withdrawals for WLD and USDC. |
-| UI and accessibility | 72 layouts, 38 axe checks with zero violations, 45 screenshots; exit 0 in 43.07 seconds. The new CI job is configured to run the same product UI and money-safety scripts and upload their evidence. Its remote result must be checked on the review commit. |
+| UI and accessibility | 72 layouts, 38 axe checks with zero violations, 45 screenshots; exit 0 in 43.14 seconds. The new CI job is configured to run the same product UI and money-safety scripts and upload their evidence. Its remote result must be checked on the review commit. |
 | Backend | Auth, notification decisions/database writes, scheduling, runtime and monitoring regressions passed. The backend implementation is unchanged. |
 
 The positive-fee fixture uses the same local address for the heir and fee

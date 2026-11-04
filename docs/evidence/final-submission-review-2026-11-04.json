@@ -4,16 +4,16 @@
   "review_baseline": "27344c23bc9c1c345971fe65a5e4c2feb9994ab1",
   "scope": "Local review-branch results. No production deployment, real-fund transaction or Mini App submission.",
   "runtime_source_sha256": {
-    "app/src/App.tsx": "3bcc01120d58d5176dc20ee20d91fad23147029d846921dc5fd8179f302b7106",
+    "app/src/App.tsx": "4908b6ae3af93466665da34b220e1d44962efc2b52141bec55a7e9dcccb8c476",
     "app/src/withdrawal.ts": "e7827a64b1659c39b43a873677b86b341fa93d8280de3a18f3f1d880593ad4a4",
     "app/src/additional-deposit.ts": "a0a207cdc7ef20d556546a311f9dfc678ecb026eb2c374e5cdb86180d87a2211",
     "app/src/plan-storage.ts": "871746109cc35e2c49c088627e4570ebc82a8839c397ae273d64a937ff43dc41",
     "app/src/wallet-action-lock.ts": "9ef6773285c8bb629ef413c473669d0e5b9fcb0b80082ce3971962aa25321691",
     "app/src/minikit.ts": "d3b66d128b876d54c7672e946e8212e5602a1f3f95e6fc90db78793b2c25b714",
-    "app/src/index.css": "3dd86e07f043bfc72ec25c19aec528583b5e6fae4d078810ce2f926e15c7c420",
+    "app/src/index.css": "1c72ec7f0d953c922d23fddc9e24d745ae390968a5f01f75d19b59f75f269c09",
     "app/src/launch.css": "47f1b219baccd96e0ac5e8ec10aca38359bd6f34dfac0a253f9abbd0aad4180c",
     "scripts/verify/money-safety.mjs": "e9b370f702fb74aec7e3d72af06ee91ff26762f0b3979380bdf90d750fc6cbbd",
-    "scripts/verify/product-ui.mjs": "8f0f32cdafd199b05a41f32987f6aeb23eb71421e1d6f3d4a82a56ff9115d391",
+    "scripts/verify/product-ui.mjs": "3e5ba73e92c49a5f7cf3398b78c70b560f34264db152ce4897b56464fe8f317a",
     "scripts/verify/drv.mjs": "c037f267dc4f7e8964faae02d1b52f47896c317a247af45b713e0469c20c8c62"
   },
   "local_environment": {
@@ -26,7 +26,7 @@
   "product_ui": {
     "command": "node scripts/verify/product-ui.mjs",
     "process_exit_code": 0,
-    "elapsed_seconds": 43.07,
+    "elapsed_seconds": 43.14,
     "layouts_passed": 72,
     "accessibility_checks": 38,
     "accessibility_violations": 0,
@@ -307,6 +307,38 @@
         "previous": 1.0955171955711072,
         "fixed": 8.722410784954462
       }
+    },
+    "keyboard_overflow": {
+      "pageWidth": 320,
+      "width": 226,
+      "scrollWidth": 475,
+      "height": 22,
+      "scrollHeight": 22,
+      "left": 31,
+      "top": 0,
+      "focused": true
+    },
+    "overflow_stress": {
+      "browser": "138.0.7204.0",
+      "combinations": 36,
+      "axe_violations": [],
+      "actual_app_keyboard": {
+        "client": [
+          226,
+          22
+        ],
+        "scroll": [
+          475,
+          22
+        ],
+        "left": 249,
+        "top": 0,
+        "focused": true,
+        "description": "WLD",
+        "outline": "solid",
+        "pageWidth": 320
+      },
+      "actual_app_axe_violations": []
     }
   },
   "money_safety": {
@@ -555,7 +587,24 @@
       "app/pnpm-lock.yaml": "5ca9595d619f5f3a3b9d652f6bec2b7364090db9f9881d992528d6fcaf43f585"
     },
     "app_lock_validation": "pnpm 10.34.9 install --lockfile-only --frozen-lockfile --offline",
-    "local_ui_before_dependency_update": true,
+    "local_ui_before_dependency_update": false,
     "complete_revision_gate": "The new GitHub CI browser job installs the final frozen lock and reruns money safety and product UI."
+  },
+  "first_remote_verification": {
+    "head": "b93cfbad5c9879b9c2ea078345a56b27c7e65f3d",
+    "ci_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41831487526",
+    "contracts": "success",
+    "mini_app": "success",
+    "notification_backend": "success",
+    "money_scenarios_passed": 12,
+    "product_ui": "Failed scrollable-region-focusable at copy-feedback-ko-390; corrected by the subsequent balance keyboard/overflow change",
+    "native_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41831487601",
+    "native_source_checkout": "6cbfd134c8aed32936d06da0a797099ff45b8816",
+    "native_device": "iPhone 16 Pro / iOS 18.5 (22F77) / arm64",
+    "native_passed": 4,
+    "native_failed": 0,
+    "native_skipped": 0,
+    "native_pngs_reviewed": 20,
+    "scope": "Prior revision evidence; the current balance CSS/keyboard change requires its own remote run."
   }
 }

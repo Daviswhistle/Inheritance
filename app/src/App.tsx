@@ -4741,7 +4741,8 @@ export default function App() {
                 const value = ownedPlanLoading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
                   : formatYieldAmount(total.amount, decimals);
                 return <div className="plan-overview-asset" key={symbol}>
-                  <span>{symbol}</span><strong>{value}</strong>
+                  <span id={`overview-asset-${symbol}`}>{symbol}</span>
+                  <strong tabIndex={0} aria-describedby={`overview-asset-${symbol}`}>{value}</strong>
                   <small>{ownedPlanLoading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
                     : total.amount === 0n ? t("home.empty.label") : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
                 </div>;

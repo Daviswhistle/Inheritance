@@ -192,6 +192,26 @@ try{
       assert.ok(sample.every(n=>n.scrollWidth<=n.width+1&&n.left>=0&&n.right<=width),`complete amounts are visible without horizontal scrolling at ${width}px`);
      }
      if(width===390)assert.ok(Math.abs(money.actual[0].top-money.actual[1].top)<1,'short balances retain the two-column overview');
+     if(width===320&&lang==='ko'){
+      // A synthetic rendered value exercises the horizontal fallback, not a
+      // chain balance. Restore its text, scroll offsets and reading focus.
+      try{
+       await page.ev("const el=document.querySelector('.plan-overview-asset strong');window.__overviewOverflowProbe={el,text:el.textContent,focus:document.activeElement,left:el.scrollLeft,top:el.scrollTop,x:scrollX,y:scrollY};el.textContent='123456789012345678901234567890.123456';document.querySelector('.account-row button').focus({preventScroll:true});");
+       await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+       await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+       assert.ok(await page.ev("return document.activeElement===window.__overviewOverflowProbe.el"),'Tab reaches the overflowing amount');
+       await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+       await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+       await until(()=>page.ev("return window.__overviewOverflowProbe.el.scrollLeft>0"),'keyboard scrolls the overflowing amount',3000);
+       money.keyboardOverflow=await page.ev("const el=window.__overviewOverflowProbe.el;return {pageWidth:document.documentElement.scrollWidth,width:el.clientWidth,scrollWidth:el.scrollWidth,height:el.clientHeight,scrollHeight:el.scrollHeight,left:el.scrollLeft,top:el.scrollTop,focused:document.activeElement===el};");
+       assert.ok(money.keyboardOverflow.pageWidth<=width,'an oversized amount stays inside the page');
+       assert.ok(money.keyboardOverflow.scrollWidth>money.keyboardOverflow.width&&money.keyboardOverflow.left>0&&money.keyboardOverflow.focused,'the real horizontal fallback responds to keyboard input');
+       assert.ok(money.keyboardOverflow.scrollHeight<=money.keyboardOverflow.height&&money.keyboardOverflow.top===0,'the amount needs no vertical scrolling');
+      }finally{
+       await page.ev("const saved=window.__overviewOverflowProbe;if(saved){saved.el.textContent=saved.text;saved.el.scrollLeft=saved.left;saved.el.scrollTop=saved.top;if(saved.focus?.isConnected)saved.focus.focus({preventScroll:true});window.scrollTo(saved.x,saved.y);delete window.__overviewOverflowProbe;}");
+      }
+      console.log('PASS Tab and ArrowRight reach an oversized overview amount without page or vertical overflow');
+     }
     }
     if(i===1){assert.ok(await page.ev("return document.querySelector('.asset-money-card').getBoundingClientRect().top<document.querySelector('.income-card').getBoundingClientRect().top"),'balance precedes income');}
     if(width===390&&i===3)await help(page,`help-expanded-owner-${lang}`);
