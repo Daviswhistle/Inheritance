@@ -37,6 +37,8 @@ import { buildPlanRoutes, findUniquePlanReceipt, formatPlanInterval, parseAssetA
 import type { PlanAssetSymbol, PlanRoute } from "@/plan";
 import { readAdditionalDeposit, saveAdditionalDeposit, clearAdditionalDeposit, submitAdditionalDeposit, confirmAdditionalDeposit } from "./additional-deposit";
 import type { AdditionalDeposit } from "./additional-deposit";
+import { readOwnerWithdrawal, saveOwnerWithdrawal, clearOwnerWithdrawal, submitOwnerWithdrawal, confirmOwnerWithdrawal, WITHDRAWAL_UNRESOLVED } from "./withdrawal";
+import type { OwnerWithdrawal } from "./withdrawal";
 import { readPlanJournal, writePlanJournal, clearPlanJournal } from "@/plan-storage";
 import { ConfirmedTransactionFailure, confirmTransaction, verifyIncomeWithdrawalReceipt } from "@/transactions";
 import type { ReactElement } from "react";
@@ -62,6 +64,7 @@ import { walletAuth, sendWorldChainTx, sendNewPlanWorldChainTx, getNotifyPermiss
 import { LanguagePicker } from "@/i18n";
 import { useLocale } from "@/locale-context";
 import { localizeAppMessage } from "@/locale";
+import { withWalletActionLock } from "./wallet-action-lock";
 import { contactPickerCoordinator } from "@/contact-picker";
 import type { ContactPickerSnapshot } from "@/contact-picker";
 import { notificationHealth, requestAndReadNotificationPermission } from "@/notification-state";
@@ -427,6 +430,10 @@ export default function App() {
   const [depositRecoveryReady, setDepositRecoveryReady] = useState("");
   const [depositRecoveryError, setDepositRecoveryError] = useState("");
   const [depositRecoveryId, setDepositRecoveryId] = useState("");
+  const [ownerWithdrawal, setOwnerWithdrawal] = useState<OwnerWithdrawal | null>(null);
+  const [withdrawalRecoveryReady, setWithdrawalRecoveryReady] = useState("");
+  const [withdrawalRecoveryError, setWithdrawalRecoveryError] = useState("");
+  const [withdrawalRecoveryId, setWithdrawalRecoveryId] = useState("");
   const [pendingPlan, setPendingPlan] = useState<StoredPlan | null>(null);
   const planAccountRef = useRef(account.toLowerCase());
   planAccountRef.current = account.toLowerCase();
@@ -754,18 +761,28 @@ export default function App() {
   const loginInFlight = useRef(false);
   const [loginRequiresReload, setLoginRequiresReload] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [moneyReview, setMoneyReview] = useState<{ kind: "deposit" | "withdraw" | "income"; scope: string; amount: string; to: string } | null>(null);
+  const [moneyReview, setMoneyReview] = useState<{
+    kind: "deposit" | "withdraw" | "income"; scope: string; amount: string; to: string;
+    depositTerms?: YieldTerms; consent?: boolean; feeChanged?: boolean;
+  } | null>(null);
+  const [depositReviewLoading, setDepositReviewLoading] = useState(false);
+  const depositReviewInFlight = useRef(false);
   const [pendingAction, setPendingAction] = useState(false);
   const statusLocation = useRef({ tab, vault });
   useEffect(() => {
-    if (!pendingAction && (statusLocation.current.tab !== tab || statusLocation.current.vault !== vault)) setStatus("");
+    const moved = statusLocation.current.tab !== tab || statusLocation.current.vault !== vault;
+    if (!pendingAction && moved) setStatus("");
     statusLocation.current = { tab, vault };
-    setMoneyReview(null);
+    if (moved) setMoneyReview(null);
   }, [tab, vault, pendingAction]);
   const actionInFlight = useRef(false);
   const runWalletAction = async (action: () => Promise<void>, needsResolvedSettings = false) => {
     if (actionInFlight.current) return;
-    try {
+    const owner = account.toLowerCase();
+    actionInFlight.current = true;
+    setPendingAction(true);
+    try { await withWalletActionLock(owner, async () => {
+      if (planAccountRef.current !== owner) return;
       // An unresolved recipient/timer request must not be overwritten by another
       // plan mutation. It does not lock withdrawals, income, or wallet shares.
       if (needsResolvedSettings && account && readSettingsRequest(account)) {
@@ -773,11 +790,9 @@ export default function App() {
         setStatus(t("journey.owner.pending"));
         return;
       }
-    } catch (error) { setSettingsPending(true); setStatus(errorText(error)); return; }
-    actionInFlight.current = true;
-    setPendingAction(true);
-    try { await action(); }
-    catch (error) { setStatus(errorText(error)); }
+      await action();
+    }); }
+    catch (error) { if (planAccountRef.current === owner) setStatus(errorText(error)); }
     finally { actionInFlight.current = false; setPendingAction(false); }
   };
   const savePendingPlan = async (next: StoredPlan) => {
@@ -819,19 +834,24 @@ export default function App() {
     }).catch(error => { if (!cancelled) setDepositRecoveryError(errorText(error)); });
     return () => { cancelled = true; };
   }, [account]);
-  const persistAdditionalDeposit = async (request: AdditionalDeposit) => {
-    await saveAdditionalDeposit(request);
+  const persistAdditionalDeposit = async (request: AdditionalDeposit, previous: AdditionalDeposit | null) => {
+    await saveAdditionalDeposit(request, previous);
     if (planAccountRef.current === request.account.toLowerCase()) setAdditionalDeposit(request);
   };
-  const finishAdditionalDeposit = async (owner: string) => {
-    await clearAdditionalDeposit(owner);
-    if (planAccountRef.current === owner.toLowerCase()) { setAdditionalDeposit(null); setDepositRecoveryId(""); }
+  const finishAdditionalDeposit = async (request: AdditionalDeposit) => {
+    await clearAdditionalDeposit(request);
+    if (planAccountRef.current === request.account.toLowerCase()) { setAdditionalDeposit(null); setDepositRecoveryId(""); }
   };
   const resumeAdditionalDeposit = async () => {
+    const owner = account;
     let request: AdditionalDeposit | null = null;
     try {
-      request = await readAdditionalDeposit(account);
-      if (!request) return;
+      request = await readAdditionalDeposit(owner);
+      if (!request) {
+        if (planAccountRef.current === owner.toLowerCase()) { setAdditionalDeposit(null); setDepositRecoveryError(""); }
+        return;
+      }
+      const saved = request;
       const route = trustedPlanRoute(request.factory);
       if (!route || route.asset.toLowerCase() !== request.asset.toLowerCase() || route.symbol !== request.symbol
         || route.mode !== request.mode || route.decimals !== request.decimals) throw new Error("Saved deposit route is unavailable.");
@@ -841,16 +861,72 @@ export default function App() {
         // a mismatched receipt, nor infer success from another deposit's balance.
       }
       await confirmAdditionalDeposit(getRwProvider(), request);
-      await finishAdditionalDeposit(request.account);
+      await finishAdditionalDeposit(saved);
       if (planAccountRef.current === request.account.toLowerCase()) {
         setDepositRecoveryError(""); setAmountStr(""); setStatus("Deposit complete"); void refreshBalances();
       }
     } catch (error) {
       // Only the wallet-returned ID may prove terminal failure automatically.
-      const saved = await readAdditionalDeposit(account);
+      const saved = await readAdditionalDeposit(owner);
       if (error instanceof ConfirmedTransactionFailure && saved?.txHash
-        && error.txHash.toLowerCase() === saved.txHash.toLowerCase()) await finishAdditionalDeposit(saved.account);
-      setDepositRecoveryError(errorText(error));
+        && request?.requestId === saved.requestId
+        && error.txHash.toLowerCase() === saved.txHash.toLowerCase()) await finishAdditionalDeposit(saved);
+      if (planAccountRef.current === owner.toLowerCase()) setDepositRecoveryError(errorText(error));
+    }
+  };
+  useEffect(() => {
+    let cancelled = false;
+    setOwnerWithdrawal(null); setWithdrawalRecoveryReady(""); setWithdrawalRecoveryError(""); setWithdrawalRecoveryId("");
+    if (!account) return;
+    void readOwnerWithdrawal(account).then(request => {
+      if (!cancelled) { setOwnerWithdrawal(request); setWithdrawalRecoveryReady(account.toLowerCase()); }
+    }).catch(error => { if (!cancelled) setWithdrawalRecoveryError(errorText(error)); });
+    return () => { cancelled = true; };
+  }, [account]);
+  const persistOwnerWithdrawal = async (request: OwnerWithdrawal, previous: OwnerWithdrawal | null) => {
+    await saveOwnerWithdrawal(request, previous);
+    if (planAccountRef.current === request.account.toLowerCase()) setOwnerWithdrawal(request);
+  };
+  const finishOwnerWithdrawal = async (request: OwnerWithdrawal) => {
+    await clearOwnerWithdrawal(request);
+    if (planAccountRef.current === request.account.toLowerCase()) { setOwnerWithdrawal(null); setWithdrawalRecoveryId(""); }
+  };
+  const requireResolvedWithdrawal = async () => {
+    if (!account || withdrawalRecoveryReady !== account.toLowerCase()) throw new Error(WITHDRAWAL_UNRESOLVED);
+    const request = await readOwnerWithdrawal(account);
+    if (planAccountRef.current === account.toLowerCase()) setOwnerWithdrawal(request);
+    if (request) throw new Error(WITHDRAWAL_UNRESOLVED);
+  };
+  const resumeOwnerWithdrawal = async () => {
+    const owner = account;
+    let original: OwnerWithdrawal | null = null;
+    try {
+      let request = await readOwnerWithdrawal(owner);
+      if (!request) {
+        if (planAccountRef.current === owner.toLowerCase()) { setOwnerWithdrawal(null); setWithdrawalRecoveryError(""); }
+        return;
+      }
+      original = request;
+      const route = trustedPlanRoute(request.factory);
+      if (!route || route.asset.toLowerCase() !== request.asset.toLowerCase() || route.symbol !== request.symbol
+        || route.mode !== request.mode || route.decimals !== request.decimals) throw new Error("Saved withdrawal route is unavailable.");
+      if (!request.txHash && /^0x[0-9a-fA-F]{64}$/.test(withdrawalRecoveryId.trim())) {
+        request = { ...request, txHash: withdrawalRecoveryId.trim(), hashType: "transaction" };
+      }
+      await confirmOwnerWithdrawal(getRwProvider(), request);
+      await finishOwnerWithdrawal(original);
+      if (planAccountRef.current === owner.toLowerCase()) {
+        setWithdrawalRecoveryError(""); setWithdrawAmountStr(""); setWithdrawAllScope(""); setStatus("Withdraw complete");
+        void refreshVaultDetails(); void refreshBalances();
+      }
+    } catch (error) {
+      // A manually entered receipt is only a candidate. Its failure cannot
+      // establish that the wallet's original, unidentified request failed.
+      const saved = await readOwnerWithdrawal(owner);
+      if (error instanceof ConfirmedTransactionFailure && saved?.txHash
+        && original?.requestId === saved.requestId
+        && error.txHash.toLowerCase() === saved.txHash.toLowerCase()) await finishOwnerWithdrawal(saved);
+      if (planAccountRef.current === owner.toLowerCase()) setWithdrawalRecoveryError(errorText(error));
     }
   };
   const runVaultAction = async (action: () => Promise<void>, needsResolvedSettings = false) => {
@@ -1750,7 +1826,7 @@ export default function App() {
             || String(strategy).toLowerCase() !== route.strategy.toLowerCase() || String(reward).toLowerCase() !== WLD_ADDRESS.toLowerCase()
             || Number(decimals) !== route.decimals || recipient === ethers.ZeroAddress || fee !== 1000n) throw new Error("Invalid yield configuration");
           if (active) setYieldTermsByFactory(current => ({ ...current, [route.factory]: {
-            feeBps: Number(fee), recipient: String(recipient), underlyingFeePercent: Number(underlyingFee) / 1e16,
+            feeBps: Number(fee), recipient: String(recipient), underlyingFee: underlyingFee.toString(), underlyingFeePercent: Number(underlyingFee) / 1e16,
           } }));
         } catch { if (active) setYieldTermsByFactory(current => ({ ...current, [route.factory]: null })); }
       }));
@@ -2580,11 +2656,11 @@ export default function App() {
       || String(underlyingAsset).toLowerCase() !== route.asset.toLowerCase()
       || String(strategy).toLowerCase() !== details.strategy.toLowerCase()
       || String(reward).toLowerCase() !== WLD_ADDRESS.toLowerCase()
-      || Number(decimals) !== route.decimals || fee !== 1000n
+      || Number(decimals) !== route.decimals || fee !== 1000n || underlyingFee < 0n || underlyingFee > 10n ** 18n
       || !ethers.isAddress(String(recipient)) || String(recipient) === ethers.ZeroAddress) {
       throw new Error(`${route.symbol} Morpho fee recipient, asset or strategy could not be verified.`);
     }
-    return { feeBps: Number(fee), recipient: String(recipient), underlyingFeePercent: Number(underlyingFee) / 1e16 };
+    return { feeBps: Number(fee), recipient: String(recipient), underlyingFee: underlyingFee.toString(), underlyingFeePercent: Number(underlyingFee) / 1e16 };
   };
 
   const readPlanVaultIdentity = async (route: AppPlanRoute, ownerAddress: string, originalVault?: string, registeredAtBlock?: number): Promise<PlanVaultIdentity | null> => {
@@ -3571,8 +3647,24 @@ export default function App() {
     return () => controller.abort();
   }, [openedHeirTargets, serverVerified, notifyPermission]);
 
-  // ---- deposit WLD
-  const deposit = async () => {
+  const openDepositReview = async () => {
+    if (depositReviewInFlight.current || pendingAction || !depositEntryValid || !identityMatchesVault) return;
+    depositReviewInFlight.current = true;
+    setDepositReviewLoading(true);
+    const scope = balanceScope;
+    try {
+      const route = trustedPlanRoute(vaultFactory);
+      if (!route) throw new Error("Saved deposit route is unavailable.");
+      const terms = route.mode === "morpho" ? await verifyPlanYieldRoute(route) : undefined;
+      if (scope !== balanceScopeRef.current) return;
+      setMoneyReview({ kind: "deposit", scope, amount: amountStr, to: vault, depositTerms: terms, consent: false });
+    } catch (error) {
+      if (scope === balanceScopeRef.current) { setStatus(errorText(error)); pushToast("error", errorText(error)); }
+    } finally { depositReviewInFlight.current = false; setDepositReviewLoading(false); }
+  };
+
+  // ---- add funds to the reviewed asset
+  const deposit = async (reviewedTerms?: YieldTerms) => {
     if (!vault) return;
     if (hasPendingPlanDeposit(await readStoredPlan(account) ?? pendingPlan, account, vaultFactory, vault)) {
       setStatus("Resume your saved setup in Plan before adding more to this asset.");
@@ -3586,9 +3678,30 @@ export default function App() {
     if (amt > walletWld) { setStatus("Amount exceeds wallet balance"); return; }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
-      if (depositRecoveryReady !== account.toLowerCase() || await readAdditionalDeposit(account)) {
+      const existingDeposit = await readAdditionalDeposit(account);
+      if (planAccountRef.current === account.toLowerCase()) setAdditionalDeposit(existingDeposit);
+      if (depositRecoveryReady !== account.toLowerCase() || existingDeposit) {
         setStatus(t("deposit.pending")); return;
       }
+      const depositScope = balanceScope;
+      const route = trustedPlanRoute(vaultFactory);
+      if (!route || isYieldVault && !reviewedTerms) throw new Error(t("plan.validation.consent"));
+      const verifyReviewedTerms = async () => {
+        if (depositScope !== balanceScopeRef.current) throw new Error(t("assets.reviewChanged"));
+        const identity = await readPlanVaultIdentity(route, account);
+        if (!identity || identity.address.toLowerCase() !== vault.toLowerCase()
+          || depositScope !== balanceScopeRef.current) throw new Error(t("assets.reviewVaultChanged"));
+        if (route.mode !== "morpho") return;
+        const fresh = await verifyPlanYieldRoute(route);
+        if (depositScope !== balanceScopeRef.current) throw new Error(t("assets.reviewChanged"));
+        if (fresh.underlyingFee !== reviewedTerms?.underlyingFee || fresh.feeBps !== reviewedTerms?.feeBps
+          || fresh.recipient.toLowerCase() !== reviewedTerms?.recipient.toLowerCase()) {
+          setYieldTermsByFactory(current => ({ ...current, [route.factory]: fresh }));
+          setMoneyReview({ kind: "deposit", scope: depositScope, amount: amountStr, to: vault,
+            depositTerms: fresh, consent: false, feeChanged: true });
+          throw new Error(`${route.symbol} strategy fee changed. Review the current fees and accept them again before continuing. No new wallet request was sent.`);
+        }
+      };
       const receipt = isYieldVault ? new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider) : null;
       const minShares = receipt ? minimumOutput(await receipt.previewDeposit(amt)) : 0n;
       if ((await getRwProvider().getNetwork()).chainId !== 480n) throw new Error("Deposit requires World Chain.");
@@ -3598,13 +3711,14 @@ export default function App() {
         vault, asset: selectedAssetAddress, symbol: wldSymbol as "WLD" | "USDC", decimals: wldDecimals,
         amount: amt.toString(), mode: isYieldVault ? "morpho" : "plain", beforeBlock };
       await submitAdditionalDeposit(request, {
-        read: () => readAdditionalDeposit(request.account), save: persistAdditionalDeposit, clear: () => finishAdditionalDeposit(request.account),
+        read: () => readAdditionalDeposit(request.account), save: persistAdditionalDeposit, clear: finishAdditionalDeposit,
         send: () => sendNewPlanWorldChainTx([
           { address: request.asset, abi: ERC20_ABI, functionName: "approve", args: [request.factory, request.amount] },
           { address: request.factory, abi: selectedFactoryAbi,
             functionName: isYieldVault ? "depositWithMinShares" : "deposit",
             args: isYieldVault ? [request.amount, minShares.toString()] : [request.amount] },
-        ], request.account, () => planAccountRef.current === request.account.toLowerCase()),
+        ], request.account, () => planAccountRef.current === request.account.toLowerCase()
+          && depositScope === balanceScopeRef.current, verifyReviewedTerms),
         confirm: submitted => confirmAdditionalDeposit(getRwProvider(), submitted),
       });
       if (planAccountRef.current !== account.toLowerCase()) return;
@@ -3618,8 +3732,13 @@ export default function App() {
         });
       }
     } catch (e: unknown) {
-      setStatus("Deposit error: " + errorText(e));
-      pushToast('error', errorText(e));
+      if (planAccountRef.current === account.toLowerCase()) {
+        setStatus("Deposit error: " + errorText(e)); pushToast('error', errorText(e));
+        try {
+          const saved = await readAdditionalDeposit(account);
+          if (planAccountRef.current === account.toLowerCase()) setAdditionalDeposit(saved);
+        } catch { /* Preserve the storage error. */ }
+      }
     }
   };
   const setMax = () => setAmountStr(fmtUnits(walletWld, wldDecimals));
@@ -3764,6 +3883,7 @@ export default function App() {
   const cancelInheritance = async () => { await reviewPlanSettings("cancel", account); };
   const reviewExit = async () => {
     setExitError(""); setExitComplete(null);
+    await requireResolvedWithdrawal();
     if (pendingPlan || await readStoredPlan(account)) { setExitError(t("journey.owner.finishSetup")); return; }
     try {
       const targets = await readExitTargets(getRwProvider() as ethers.JsonRpcProvider, account);
@@ -3837,6 +3957,7 @@ export default function App() {
     setExitError("");
     let saved = false;
     try {
+      if (settingsReview.kind === "exit") await requireResolvedWithdrawal();
       if (pendingPlan || await readStoredPlan(account)) throw new Error(t("journey.owner.finishSetup"));
       if (planAccountRef.current !== account.toLowerCase()) return;
       const targets = await readSettingsTargets(settingsReview.kind, settingsReview.value);
@@ -4024,6 +4145,7 @@ export default function App() {
     }
     try {
       if (!miniInstalled) { setStatus("Open in World App to continue"); pushToast('error', 'Open in World App'); return; }
+      await requireResolvedWithdrawal();
       if (!scopeIsCurrent()) return;
       let fullExit = false;
       const sendAmount = amt;
@@ -4062,30 +4184,33 @@ export default function App() {
       }
       const asset = new ethers.Contract(submission.isYieldVault ? submission.strategy : submission.asset, ERC20_ABI, provider);
       const token = new ethers.Contract(submission.asset, ERC20_ABI, provider);
-      const [before, beforeIdle]: [bigint, bigint] = await Promise.all([
-        asset.balanceOf(submission.vault), submission.isYieldVault ? token.balanceOf(submission.vault) : Promise.resolve(0n),
-      ]);
+      const route = trustedPlanRoute(submission.factory);
+      if (!route) throw new Error("Saved withdrawal route is unavailable.");
+      const verifyTarget = async () => {
+        if (!scopeIsCurrent()) throw new Error(t("assets.reviewChanged"));
+        const identity = await readPlanVaultIdentity(route, submission.account);
+        if (!identity || identity.address.toLowerCase() !== submission.vault.toLowerCase()
+          || !scopeIsCurrent()) throw new Error(t("assets.reviewVaultChanged"));
+      };
+      if ((await getRwProvider().getNetwork()).chainId !== 480n) throw new Error("Withdrawal confirmation requires World Chain.");
+      const beforeBlock = await getRwProvider().getBlockNumber();
       if (!scopeIsCurrent()) return;
-      const sent = await sendWorldChainTx([{ address: submission.factory, abi: submission.factoryAbi,
-        functionName: fullExit ? "withdrawAllFromMyVault" : "withdrawFromMyVault",
-        args: [recipient, (fullExit ? minNet : sendAmount).toString()] }]);
-      if (!sent.ok) {
-        setStatus(sent.error);
-        if (sent.userFacing) pushToast("error", sent.error);
-        return;
-      }
-      setStatus("Pending… awaiting confirmation");
-      const prov = getRwProvider();
-      const txh = sent.tx.hash;
-      await waitForTxOrEvent(prov, {
-        txHash: txh,
-        hashType: sent.tx.hashType,
-        check: async () => {
-          const held: bigint = await asset.balanceOf(submission.vault);
-          // Idle-only yield withdrawals do not burn receipt shares.
-          return held < before || submission.isYieldVault && await token.balanceOf(submission.vault) < beforeIdle;
+      const request: OwnerWithdrawal = { version: 1, requestId: crypto.randomUUID(), chainId: 480, account: submission.account,
+        factory: submission.factory, vault: submission.vault, asset: submission.asset, symbol: route.symbol,
+        decimals: route.decimals, recipient, mode: route.mode, kind: fullExit ? "all" : "partial",
+        amount: amt.toString(), minNetAssets: minNet.toString(), beforeBlock };
+      await submitOwnerWithdrawal(request, {
+        read: () => readOwnerWithdrawal(request.account), save: persistOwnerWithdrawal,
+        clear: finishOwnerWithdrawal,
+        send: () => sendWorldChainTx([{ address: submission.factory, abi: submission.factoryAbi,
+          functionName: fullExit ? "withdrawAllFromMyVault" : "withdrawFromMyVault",
+          args: [recipient, (fullExit ? minNet : sendAmount).toString()] }], verifyTarget),
+        confirm: async submitted => {
+          if (scopeIsCurrent()) setStatus("Pending… awaiting confirmation");
+          await confirmOwnerWithdrawal(getRwProvider(), submitted);
         },
       });
+      if (!scopeIsCurrent()) return;
       const remaining = submission.isYieldVault && (await token.balanceOf(submission.vault) > 0n
         || await asset.balanceOf(submission.vault) > 0n
         || submission.isUsdcVault && await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(submission.vault) > 0n);
@@ -4097,13 +4222,19 @@ export default function App() {
       setWithdrawAllScope("");
       await refreshBalances();
     } catch (e: unknown) {
-      setStatus("Withdraw error: " + errorText(e));
-      pushToast('error', errorText(e));
+      if (scopeIsCurrent()) {
+        setStatus("Withdraw error: " + errorText(e)); pushToast('error', errorText(e));
+        try {
+          const saved = await readOwnerWithdrawal(submission.account);
+          if (scopeIsCurrent()) setOwnerWithdrawal(saved);
+        } catch { /* Preserve the storage error. */ }
+      }
     }
   };
 
   const ownerWithdrawIncome = async () => {
     if (!provider || !account || !vault || !isMyVault || !identityMatchesVault) return;
+    await requireResolvedWithdrawal();
     const selected = selectedIncome;
     if (!selected || selected.state !== "available" || !selected.valued || selected.withdrawableNet <= 0n) {
       setStatus("Separate income is unavailable for this vault. Refresh the income position before trying again.");
@@ -4266,6 +4397,7 @@ export default function App() {
   };
 
   const exitYieldShares = async () => {
+    await requireResolvedWithdrawal();
     if (!isYieldVault || !provider || !isMyVault) return;
     try {
       const receipt = new ethers.Contract(selectedStrategyAddress, MORPHO_ABI, provider);
@@ -4282,6 +4414,7 @@ export default function App() {
   };
   const withdrawUsdcRewards = async () => {
     if (!isUsdcVault || !provider || !isMyVault || !miniInstalled) return;
+    await requireResolvedWithdrawal();
     const scope = balanceScopeRef.current;
     try {
       const token = new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider);
@@ -4299,6 +4432,7 @@ export default function App() {
   };
   const redeemYieldShares = async (route: YieldRoute, reviewedShares: bigint, reviewedMinimum: bigint) => {
     if (!provider || !HAS_YIELD_ROUTES || !account || !miniInstalled) return;
+    await requireResolvedWithdrawal();
     try {
       const receipt = new ethers.Contract(route.strategy, MORPHO_ABI, provider);
       const [held, available, cash] = await Promise.all([receipt.balanceOf(account), receipt.maxRedeem(account), receipt.maxWithdraw(account)]);
@@ -4326,6 +4460,7 @@ export default function App() {
 
   const releaseSlot = async () => {
     if (!factory) return;
+    await requireResolvedWithdrawal();
     const report = (message: string) => { setStatus(message); setReleaseMessage(message); };
     setReleasing(true);
     let ok = false;
@@ -4492,22 +4627,38 @@ export default function App() {
       </MoneyReview>}
       {moneyReview && moneyReview.scope === balanceScope && <MoneyReview
         title={t(moneyReview.kind === "deposit" ? "assets.action.deposit" : moneyReview.kind === "income" ? "income.title" : "assets.action.withdrawPrincipal")}
+        confirmDisabled={moneyReview.kind === "deposit" && isYieldVault && (!moneyReview.depositTerms || !moneyReview.consent)
+          || moneyReview.kind !== "deposit" && (Boolean(ownerWithdrawal) || withdrawalRecoveryReady !== account.toLowerCase())}
         busy={pendingAction} onClose={() => setMoneyReview(null)} onConfirm={() => {
           const review = moneyReview;
-          const unchanged = review.kind === "deposit" ? review.amount === amountStr
+          const unchanged = review.kind === "deposit" ? review.amount === amountStr && (!isYieldVault || Boolean(review.depositTerms && review.consent))
             : review.kind === "withdraw" ? review.amount === withdrawAmountInput && review.to === withdrawTo
             : review.to === incomeTo && selectedIncome && review.amount === fmtUnits(selectedIncome.withdrawableNet, wldDecimals);
           setMoneyReview(null);
           if (!unchanged) { pushToast("info", t("assets.reviewChanged")); return; }
-          void runVaultAction(review.kind === "deposit" ? deposit : review.kind === "withdraw" ? ownerWithdraw : ownerWithdrawIncome);
+          void runVaultAction(review.kind === "deposit" ? () => deposit(review.depositTerms) : review.kind === "withdraw" ? ownerWithdraw : ownerWithdrawIncome);
         }}>
         {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <div className="review-receive-amount"><span>{t("assets.reviewNet")}</span><strong>{formatYieldAmount(selectedYieldPosition.net, wldDecimals)} {wldSymbol}</strong></div>}
         <dl className="yield-values">
           <div><dt>{t(moneyReview.kind === "deposit" ? "plan.review.depositTotal" : moneyReview.kind === "income" ? "income.net" : "assets.reviewGross")}</dt><dd>{moneyReview.amount} {wldSymbol}</dd></div>
           {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <div><dt>{t("income.fee")}</dt><dd>{formatYieldAmount(selectedYieldPosition.fee, wldDecimals)} {wldSymbol}</dd></div>}
-          <div><dt>{t("assets.reviewDestination")}</dt><dd>{moneyReview.kind === "deposit" ? t("home.overview.title") : moneyReview.to.toLowerCase() === account.toLowerCase() ? t("assets.reviewMyWallet") : moneyReview.to}</dd></div>
+          <div><dt>{t(moneyReview.kind === "deposit" ? "assets.reviewDepositDestination" : "assets.reviewDestination")}</dt><dd>{moneyReview.kind === "deposit" ? t("home.overview.title") : moneyReview.to.toLowerCase() === account.toLowerCase() ? t("assets.reviewMyWallet") : moneyReview.to}</dd></div>
         </dl>
         {moneyReview.kind === "deposit" && <><p>{t("assets.reviewDeposit", { amount: moneyReview.amount, symbol: wldSymbol })}</p><p className="text-sm">{t("deposit.recoveryDisclosure")}</p></>}
+        {moneyReview.kind === "deposit" && isYieldVault && moneyReview.depositTerms && <section className="plan-review-terms" aria-labelledby="additional-deposit-fees">
+          <h3 id="additional-deposit-fees">{t("plan.review.feeRisk")}</h3>
+          {moneyReview.feeChanged && <p role="alert">{t("status.strategyFeeChanged", { symbol: wldSymbol })}</p>}
+          <dl className="yield-values">
+            <div><dt>{t("plan.review.strategyFee")}</dt><dd>{t("plan.risk.strategyFee", { symbol: wldSymbol,
+              percent: ethers.formatUnits(moneyReview.depositTerms.underlyingFee, 16).replace(/\.0$/, "") })}</dd></div>
+            <div><dt>{t("plan.review.serviceFee")}</dt><dd>{t("plan.review.yieldFee")}</dd></div>
+          </dl>
+          <p>{t("plan.risk.value")}</p><p>{t("plan.risk.audit")}</p>
+          <a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
+          <label className="yield-consent"><input id="additional-deposit-consent" type="checkbox" checked={Boolean(moneyReview.consent)} disabled={pendingAction}
+            onChange={event => setMoneyReview(current => current ? { ...current, consent: event.target.checked } : null)} /><span>{t("plan.risk.consent")}</span></label>
+        </section>}
+        {moneyReview.kind === "withdraw" && <p className="text-sm">{t("withdrawal.recoveryDisclosure")}</p>}
         {moneyReview.kind === "withdraw" && isYieldVault && !withdrawAllSelected && <p>{t("assets.withdrawBeforeFee")}</p>}
         {moneyReview.kind === "withdraw" && isYieldVault && withdrawAllSelected && selectedYieldPosition?.valued && <p>{t("assets.reviewVariable")}</p>}
         {moneyReview.kind === "income" && <p>{t("income.explainer")}</p>}
@@ -4548,7 +4699,7 @@ export default function App() {
             {!pendingAction && <Button variant="ghost" onClick={() => setStatus("")}>{t("common.close")}</Button>}
           </div>
         )}
-        {account && (additionalDeposit || depositRecoveryError) && <section className="app-empty-state" aria-labelledby="deposit-recovery-title">
+        {account && (additionalDeposit?.account.toLowerCase() === account.toLowerCase() || depositRecoveryError) && <section className="app-empty-state" aria-labelledby="deposit-recovery-title">
           <h2 id="deposit-recovery-title">{t("deposit.pendingTitle")}</h2>
           {additionalDeposit && <p>{ethers.formatUnits(additionalDeposit.amount, additionalDeposit.decimals)} {additionalDeposit.symbol}</p>}
           <p>{t("deposit.pending")}</p>
@@ -4558,6 +4709,18 @@ export default function App() {
           {depositRecoveryError && <p role="alert">{localizeAppMessage(locale, depositRecoveryError)}</p>}
           <Button disabled={pendingAction || !additionalDeposit || !additionalDeposit.txHash && !/^0x[0-9a-fA-F]{64}$/.test(depositRecoveryId.trim())}
             onClick={() => void runWalletAction(resumeAdditionalDeposit)}>{t("deposit.check")}</Button>
+        </section>}
+        {account && (ownerWithdrawal?.account.toLowerCase() === account.toLowerCase() || withdrawalRecoveryError) && <section className="app-empty-state" aria-labelledby="withdrawal-recovery-title">
+          <h2 id="withdrawal-recovery-title">{t("withdrawal.pendingTitle")}</h2>
+          {ownerWithdrawal && <><p>{t("withdrawal.requestedAmount", { amount: ethers.formatUnits(ownerWithdrawal.amount, ownerWithdrawal.decimals), symbol: ownerWithdrawal.symbol })}</p>
+            <p className="break-all">{t("withdrawal.destination", { address: ownerWithdrawal.recipient })}</p></>}
+          <p>{t("status.withdrawalUnresolved")}</p>
+          {ownerWithdrawal && !ownerWithdrawal.txHash && <label>{t("withdrawal.transactionId")}
+            <Input id="withdrawal-recovery-id" value={withdrawalRecoveryId} onChange={e => setWithdrawalRecoveryId(e.target.value)} placeholder="0x…" />
+          </label>}
+          {withdrawalRecoveryError && <p role="alert">{localizeAppMessage(locale, withdrawalRecoveryError)}</p>}
+          <Button disabled={pendingAction || !ownerWithdrawal || !ownerWithdrawal.txHash && !/^0x[0-9a-fA-F]{64}$/.test(withdrawalRecoveryId.trim())}
+            onClick={() => void runWalletAction(resumeOwnerWithdrawal)}>{t("withdrawal.check")}</Button>
         </section>}
         {account && pendingPlan && (tab === "vault" || tab === "money") && <section className="app-empty-state" aria-labelledby="pending-setup-title">
           <h2 id="pending-setup-title">{t("entry.pending.title")}</h2><p>{t("entry.pending.body")}</p>
@@ -4578,7 +4741,8 @@ export default function App() {
                 const value = ownedPlanLoading ? t("home.value.updating") : total.amount === null ? t("home.value.unavailable")
                   : formatYieldAmount(total.amount, decimals);
                 return <div className="plan-overview-asset" key={symbol}>
-                  <span>{symbol}</span><strong>{value}</strong>
+                  <span id={`overview-asset-${symbol}`}>{symbol}</span>
+                  <strong tabIndex={0} aria-describedby={`overview-asset-${symbol}`}>{value}</strong>
                   <small>{ownedPlanLoading ? t("home.state.checking") : total.unavailable ? t("home.state.unavailable")
                     : total.amount === 0n ? t("home.empty.label") : total.rows.length ? t(total.rows.some(row => yieldRouteFor(row.factory)) ? "home.amount.yieldBeforeFee" : "home.amount.forHeir") : t("home.amount.notAdded")}</small>
                 </div>;
@@ -4797,10 +4961,11 @@ export default function App() {
                     <Button
                       variant="primary"
                       className="deposit-primary"
-                      onClick={() => setMoneyReview({ kind: "deposit", scope: balanceScope, amount: amountStr, to: vault })}
-                      disabled={pendingAction || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || Boolean(additionalDeposit) || depositRecoveryReady !== account.toLowerCase() || !depositEntryValid || !newPlanAccessAllowed}
+                      onClick={() => void openDepositReview()}
+                      disabled={pendingAction || depositReviewLoading || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || Boolean(additionalDeposit) || depositRecoveryReady !== account.toLowerCase() || !depositEntryValid || !newPlanAccessAllowed}
+                      aria-busy={depositReviewLoading}
                     >
-                      {t("assets.action.deposit")}
+                      {t(depositReviewLoading ? "assets.checkingFees" : "assets.action.deposit")}
                     </Button>
                     <Button variant="ghost" onClick={refreshBalances}>{t("assets.action.refresh")}</Button>
                   </div>
@@ -4889,7 +5054,7 @@ export default function App() {
                           고정이었는데, 수금처 필드에 다른 주소를 넣으면 **그 주소로** 나간다.
                           라벨과 동작이 다르면 돈이 엉뚱한 곳으로 간다. (파일 복원 과정에서
                           이 수정이 되돌아간 적이 있다 — 되살려 둔다.) */}
-                      <Button className="principal-submit" onClick={() => setMoneyReview({ kind: "withdraw", scope: balanceScope, amount: withdrawAmountInput, to: withdrawTo })} disabled={pendingAction || !withdrawEntryValid || isExpiredOrLater && !inheritanceCancelled}>
+                      <Button className="principal-submit" onClick={() => setMoneyReview({ kind: "withdraw", scope: balanceScope, amount: withdrawAmountInput, to: withdrawTo })} disabled={pendingAction || Boolean(ownerWithdrawal) || withdrawalRecoveryReady !== account.toLowerCase() || !withdrawEntryValid || isExpiredOrLater && !inheritanceCancelled}>
                         {withdrawTo && account && withdrawTo.toLowerCase() === account.toLowerCase()
                           ? t("assets.action.withdrawMyself")
                           : withdrawTo

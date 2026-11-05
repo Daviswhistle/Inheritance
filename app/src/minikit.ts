@@ -74,17 +74,21 @@ function isUserRejection(msg: string): boolean {
  * 호출은 순서대로 실행된다. 입금은 approve → deposit 두 건이므로 반드시 이
  * 순서를 지켜야 한다 — 먼저 꺼내낼 승인이 없으면 transferFrom 이 revert 된다.
  */
-export async function sendWorldChainTx(calls: ContractCall[]): Promise<TxResult> {
-  return sendWorldChainTxInternal(calls);
+export async function sendWorldChainTx(calls: ContractCall[], beforeSend?: () => Promise<void>): Promise<TxResult> {
+  return sendWorldChainTxInternal(calls, beforeSend ? async () => { await beforeSend(); return null; } : undefined);
 }
 
 /** New vault creation and new deposits share one required, just-in-time gate. */
 export async function sendNewPlanWorldChainTx(calls: ContractCall[], account: string,
-  isAccountCurrent: () => boolean): Promise<TxResult> {
+  isAccountCurrent: () => boolean, beforeSend?: () => Promise<void>): Promise<TxResult> {
   return sendWorldChainTxInternal(calls, async () => {
     if (!isAccountCurrent()) return accessBlockMessage("account-changed");
     const access = await checkNewPlanAccess(account);
     if (!access.allowed) return accessBlockMessage(access.reason);
+    if (!isAccountCurrent()) return accessBlockMessage("account-changed");
+    // The caller can bind its reviewed strategy fees to the final handoff,
+    // after the asynchronous access check but before any native wallet request.
+    await beforeSend?.();
     return isAccountCurrent() ? null : accessBlockMessage("account-changed");
   });
 }

@@ -133,7 +133,27 @@ try{
  await setEligibilityCountry('US');
  await tab(page,1);await page.ev("document.querySelector('.deposit-controls').open=true;await __q.setInput('deposit-amount','0.01');");
  const beforeBlockedTopUp=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
- await click(page,'금액 추가하기');await click(page,'거래 승인 화면 열기');
+ await click(page,'금액 추가하기');
+ await until(()=>page.ev("return !!document.getElementById('additional-deposit-consent')"),'additional deposit terms review');
+ assert.equal(await page.ev("return document.getElementById('additional-deposit-consent').checked"),false,'additional deposit risk consent starts unchecked');
+ assert.equal(await page.ev("return document.querySelector('.money-review .btn-primary').disabled"),true,'additional deposit requires explicit risk consent');
+ for(const width of [320,390]){
+  await page.send('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:true});
+  await page.ev("document.querySelector('.money-review').scrollTop=0");
+  const termsLayout=await page.ev("const d=document.querySelector('.money-review'),values=d.querySelector('.plan-review-terms .yield-values'),width=values.getBoundingClientRect().width;return {width:d.clientWidth,scrollWidth:d.scrollWidth,descriptions:[...values.querySelectorAll('dd')].map(el=>({width:el.getBoundingClientRect().width,available:width,alignment:getComputedStyle(el).textAlign})),consent:d.querySelector('.yield-consent').getBoundingClientRect().height,termsLink:d.querySelector('.plan-review-terms > a').getBoundingClientRect().height}");
+  assert.ok(termsLayout.scrollWidth<=termsLayout.width+1,'additional deposit review has no horizontal scroll');
+  assert.ok(termsLayout.descriptions.every(row=>row.width>=row.available-1&&row.alignment==='left'),'fee explanations use the full reading width');
+  assert.ok(termsLayout.consent>=44&&termsLayout.termsLink>=44,'review consent and terms link have touch targets');
+  await shot(page,`ui-additional-deposit-review-ko-${width}`,false);
+  await page.ev("const d=document.querySelector('.money-review');d.scrollTop=d.scrollHeight");
+  assert.ok(await page.ev("const d=document.querySelector('.money-review').getBoundingClientRect();return [...document.querySelectorAll('.money-review .release-actions .btn')].every(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.top>=d.top&&r.bottom<=d.bottom})"),'scrolled review actions are reachable');
+  await shot(page,`ui-additional-deposit-review-bottom-ko-${width}`,false);
+ }
+ if(axeSource){
+  const violations=await page.ev("const r=await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}});return r.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))}));");
+  evidence.accessibility.push({label:'additional-deposit-review-ko',violations});assert.deepEqual(violations,[],'additional deposit review accessibility');
+ }
+ await page.ev("document.getElementById('additional-deposit-consent').click()");await click(page,'거래 승인 화면 열기');
  await until(()=>page.ev("return document.body.innerText.includes('현재 접속 지역에서는 새 플랜을 만들거나 자산을 추가할 수 없습니다.')"),'fresh location check before existing-vault top-up');
  assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeBlockedTopUp,'an unsupported-location top-up made no wallet request');
  await tab(page,2);await click(page,'내 플랜에 자산 추가');
@@ -161,10 +181,37 @@ try{
    await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
    for(let i=0;i<4;i++){
     await tab(page,i);await sleep(100);await layout(page,`owner-${lang}-${width}-${i}`,width);if(width===390)await shot(page,`ui-owner-${lang}-${i}`);
-    if(i===0&&width===320){
-     const numbers=await page.ev("return [...document.querySelectorAll('.plan-overview-asset strong')].map(el=>{const node=el.firstChild,match=node?.textContent.match(/^[0-9,.]+/);if(!match)return null;const range=document.createRange();range.setStart(node,0);range.setEnd(node,match[0].length);return {text:match[0],lines:new Set([...range.getClientRects()].map(r=>r.top)).size}}).filter(Boolean)");
-     assert.ok(numbers.length>=2,'both asset numbers are visible');
-     assert.ok(numbers.every(n=>n.lines===1),'each complete amount stays on one line at 320px');
+    if(i===0){
+     // Typography probes change only rendered text and restore it immediately;
+     // the chain balances and transaction inputs remain the real SDK fixture.
+     const money=await page.ev("const elements=[...document.querySelectorAll('.plan-overview-asset strong')],original=elements.map(el=>el.textContent);const measure=()=>elements.map(el=>{const node=el.firstChild,match=node?.textContent.match(/^[0-9,.]+/);if(!match)return null;const range=document.createRange();range.setStart(node,0);range.setEnd(node,match[0].length);const r=el.getBoundingClientRect();return {text:match[0],lines:new Set([...range.getClientRects()].map(r=>r.top)).size,width:el.clientWidth,scrollWidth:el.scrollWidth,left:r.left,right:r.right,top:r.top}}).filter(Boolean);try{const actual=measure();elements.forEach((el,i)=>el.textContent=['12345.123456','123456.123456'][i]);return {actual,long:measure()}}finally{elements.forEach((el,i)=>el.textContent=original[i])}");
+     evidence.layouts.push({label:`owner-money-${lang}-${width}`,money});
+     assert.ok(money.actual.length>=2,'both asset numbers are visible');
+     for(const sample of [money.actual,money.long]){
+      assert.ok(sample.every(n=>n.lines===1),`complete amounts stay on one line at ${width}px`);
+      assert.ok(sample.every(n=>n.scrollWidth<=n.width+1&&n.left>=0&&n.right<=width),`complete amounts are visible without horizontal scrolling at ${width}px`);
+     }
+     if(width===390)assert.ok(Math.abs(money.actual[0].top-money.actual[1].top)<1,'short balances retain the two-column overview');
+     if(width===320&&lang==='ko'){
+      // A synthetic rendered value exercises the horizontal fallback, not a
+      // chain balance. Restore its text, scroll offsets and reading focus.
+      try{
+       await page.ev("const el=document.querySelector('.plan-overview-asset strong');window.__overviewOverflowProbe={el,text:el.textContent,focus:document.activeElement,left:el.scrollLeft,top:el.scrollTop,x:scrollX,y:scrollY};el.textContent='123456789012345678901234567890.123456';document.querySelector('.account-row button').focus({preventScroll:true});");
+       await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+       await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+       assert.ok(await page.ev("return document.activeElement===window.__overviewOverflowProbe.el"),'Tab reaches the overflowing amount');
+       await page.send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+       await page.send('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+       await until(()=>page.ev("return window.__overviewOverflowProbe.el.scrollLeft>0"),'keyboard scrolls the overflowing amount',3000);
+       money.keyboardOverflow=await page.ev("const el=window.__overviewOverflowProbe.el;return {pageWidth:document.documentElement.scrollWidth,width:el.clientWidth,scrollWidth:el.scrollWidth,height:el.clientHeight,scrollHeight:el.scrollHeight,left:el.scrollLeft,top:el.scrollTop,focused:document.activeElement===el};");
+       assert.ok(money.keyboardOverflow.pageWidth<=width,'an oversized amount stays inside the page');
+       assert.ok(money.keyboardOverflow.scrollWidth>money.keyboardOverflow.width&&money.keyboardOverflow.left>0&&money.keyboardOverflow.focused,'the real horizontal fallback responds to keyboard input');
+       assert.ok(money.keyboardOverflow.scrollHeight<=money.keyboardOverflow.height&&money.keyboardOverflow.top===0,'the amount needs no vertical scrolling');
+      }finally{
+       await page.ev("const saved=window.__overviewOverflowProbe;if(saved){saved.el.textContent=saved.text;saved.el.scrollLeft=saved.left;saved.el.scrollTop=saved.top;if(saved.focus?.isConnected)saved.focus.focus({preventScroll:true});window.scrollTo(saved.x,saved.y);delete window.__overviewOverflowProbe;}");
+      }
+      console.log('PASS Tab and ArrowRight reach an oversized overview amount without page or vertical overflow');
+     }
     }
     if(i===1){assert.ok(await page.ev("return document.querySelector('.asset-money-card').getBoundingClientRect().top<document.querySelector('.income-card').getBoundingClientRect().top"),'balance precedes income');}
     if(width===390&&i===3)await help(page,`help-expanded-owner-${lang}`);

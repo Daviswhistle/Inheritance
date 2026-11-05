@@ -81,7 +81,7 @@ export type YieldPosition = {
   vault: string; idle: bigint; shares: bigint; gross: bigint; net: bigint;
   fee: bigint; liquid: bigint; valued: boolean;
 };
-export type YieldTerms = { feeBps: number; recipient: string; underlyingFeePercent: number };
+export type YieldTerms = { feeBps: number; recipient: string; underlyingFee: string; underlyingFeePercent: number };
 export const MERKL_DISTRIBUTOR = "0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae";
 
 /** Display only: transaction amounts and minimum-output quotes retain all wei. */

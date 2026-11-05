@@ -53,6 +53,14 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
               let previous = '';
               const interactionTrace = [];
               const authTrace = [];
+              const telemetryErrors = [];
+              const identify = element => {
+                if (!element) return null;
+                if (typeof element.id === 'string' && element.id) return element.id;
+                // SVG className is an SVGAnimatedString, not a bridge-safe string.
+                const className = element.getAttribute?.('class');
+                return className || (typeof element.tagName === 'string' ? element.tagName : null);
+              };
               window.addEventListener('inheritance:auth-stage', event => {
                 const {stage, at} = event.detail || {};
                 if (typeof stage === 'string' && /^[a-z-]+$/.test(stage)) {
@@ -69,8 +77,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                   const done = document.querySelector('.plan-keyboard-done');
                   const doneRect = done?.getBoundingClientRect();
                   const record = {type, buttonText: button?.textContent?.trim(), trusted: event.isTrusted,
-                    target: target?.id || target?.className || target?.tagName,
-                    hit: hit?.id || hit?.className || hit?.tagName,
+                    target: identify(target), hit: identify(hit),
                     active: document.activeElement?.id, x: point.clientX, y: point.clientY,
                     done: doneRect ? [doneRect.x, doneRect.y, doneRect.width, doneRect.height] : null,
                     at: Math.round(performance.now())};
@@ -80,7 +87,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                   if (interactionTrace.length > 24) interactionTrace.shift();
                 }, true);
               }
-              const report = () => {
+              const sample = () => {
                 const element = document.activeElement;
                 const rect = element?.getBoundingClientRect();
                 const doneRect = document.querySelector('.plan-keyboard-done')?.getBoundingClientRect();
@@ -108,6 +115,7 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                   dialogOpen: document.querySelector('#inheritance-test-controls')?.shadowRoot?.querySelector('dialog')?.open,
                 } : null;
                 const metrics = {innerHeight, innerWidth, scrollY, interactionTrace, authTrace, hostState,
+                  telemetryState: 'ok', telemetryErrors,
                   doneRect: doneRect ? [doneRect.x, doneRect.y, doneRect.width, doneRect.height] : null,
                   intervalRect: intervalRect ? [intervalRect.x, intervalRect.y, intervalRect.width, intervalRect.height] : null,
                   actionsHidden: hidden('.plan-primary-actions'),
@@ -122,10 +130,27 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
                   keyboard: document.documentElement.dataset.planKeyboard ?? null};
                 const serialized = JSON.stringify(metrics);
                 if (serialized !== previous) {
+                  // Send only the plain values we serialized, never DOM wrappers.
+                  window.webkit.messageHandlers.viewportMetrics.postMessage(JSON.parse(serialized));
                   previous = serialized;
-                  window.webkit.messageHandlers.viewportMetrics.postMessage(metrics);
                 }
-                requestAnimationFrame(report);
+              };
+              const report = () => {
+                try {
+                  sample();
+                } catch (error) {
+                  telemetryErrors.push({message: String(error?.message || error), at: Math.round(performance.now())});
+                  if (telemetryErrors.length > 8) telemetryErrors.shift();
+                  try {
+                    // Invalidate geometry rather than passing a stale sample as current.
+                    window.webkit.messageHandlers.viewportMetrics.postMessage({telemetryState: 'error', telemetryErrors});
+                  } catch {
+                    console.error('TEST HOST viewport telemetry unavailable', telemetryErrors.at(-1));
+                  }
+                } finally {
+                  // A transient reporter/bridge error must not stop all future samples.
+                  requestAnimationFrame(report);
+                }
               };
               requestAnimationFrame(report);
             })();

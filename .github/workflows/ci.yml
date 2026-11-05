@@ -132,6 +132,7 @@ jobs:
         run: |
           node ../scripts/test-transaction-confirmation.mjs
           node ../scripts/test-additional-deposit.mjs
+          node ../scripts/test-withdrawal.mjs
           node ../scripts/test-profile-resolution.mjs
           node ../scripts/test-plan-storage.mjs
 
@@ -232,6 +233,63 @@ jobs:
       - name: Test notification DB writes
         run: node ../scripts/test-notify-db.mjs
 
-  # 브라우저 하네스는 여기서 돌리지 않는다 — Chrome 이 필요하고 anvil/vite 를 띄워야
-  # 해서 CI 와 로컬의 결과가 어긋난다. 로컬에서 scripts/verify/run.sh 로 돌린다.
-  # (주키esten 은 알림 payload 검사까지 CI 에서 돈다)
+  browser:
+    name: Money safety and product UI
+    # Keep browser/font rendering stable while ubuntu-latest changes images.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.3.2
+
+      - name: Install app and isolated browser test dependencies
+        run: |
+          pnpm --dir app install --frozen-lockfile
+          npm ci --no-audit --no-fund
+          npm install --prefix "$RUNNER_TEMP/inheritance-browser-tools" --no-save --no-package-lock --no-audit --no-fund playwright@1.64.1 axe-core@4.10.3
+          command -v google-chrome
+          sudo apt-get update -qq
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Build disposable local-chain fixtures
+        run: forge build
+
+      # Real SDK + browser IndexedDB + private Anvil. The host supplies mock
+      # assets and approvals; it never loads production credentials or funds.
+      - name: Verify ambiguous withdrawals, live fees and two-window recovery
+        run: |
+          export CHROME_BIN="$(command -v google-chrome)"
+          export PLAYWRIGHT_MODULE="$RUNNER_TEMP/inheritance-browser-tools/node_modules/playwright/index.mjs"
+          export MONEY_SAFETY_OUT="$RUNNER_TEMP/inheritance-money-safety"
+          node scripts/verify/money-safety.mjs
+
+      - name: Verify localized layouts, consent, focus and accessibility
+        run: |
+          export CHROME_BIN="$(command -v google-chrome)"
+          export AXE_CORE_PATH="$RUNNER_TEMP/inheritance-browser-tools/node_modules/axe-core/axe.min.js"
+          export VERIFY_TMP="$RUNNER_TEMP/inheritance-product-ui"
+          node scripts/verify/product-ui.mjs
+
+      - name: Save browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-money-safety-and-ui
+          path: |
+            ${{ runner.temp }}/inheritance-money-safety
+            ${{ runner.temp }}/inheritance-product-ui/shots

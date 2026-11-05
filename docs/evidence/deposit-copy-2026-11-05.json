@@ -1,0 +1,41 @@
+{
+  "baselineHead": "64a48a0248d05458fbadaf1c660507a2d39ce71d",
+  "testedChange": "Uncommitted app/src/locale.ts: assets.reviewDeposit in English and Korean; duplicate network-fee sentence removed. No other product or test edits by UI reviewer.",
+  "cwd": "/workspace/scratch/c859690697ed/Inheritance",
+  "i18n": {
+    "command": "node scripts/test-i18n.mjs",
+    "passed": 10,
+    "failed": 0,
+    "exitCode": 0
+  },
+  "productUI": {
+    "command": "CHROME_BIN=/workspace/scratch/c859690697ed/audit-tools/chrome-wrapper AXE_CORE_PATH=/workspace/scratch/c859690697ed/audit-tools/node_modules/axe-core/axe.min.js VERIFY_TMP=/workspace/scratch/c859690697ed/audit-evidence/deposit-copy-2026-11-05 node scripts/verify/product-ui.mjs",
+    "runs": 1,
+    "layouts": 72,
+    "accessibilityChecks": 38,
+    "accessibilityViolations": 0,
+    "screenshots": 45,
+    "exitCode": 0,
+    "elapsedSeconds": 42.55
+  },
+  "visualReview": {
+    "screenshots": [
+      "shots/ui-additional-deposit-review-ko-320.png",
+      "shots/ui-additional-deposit-review-bottom-ko-320.png"
+    ],
+    "networkFeeNoticeVisible": true,
+    "networkFeeNotice": "네트워크 비용이 발생하면 WLD로 별도 청구됩니다. 다음 World App 화면에서 금액을 확인한 뒤 승인해 주세요.",
+    "consentStartsUnchecked": true,
+    "approvalStartsDisabled": true,
+    "notes": "320px modal keeps full-width readable fee descriptions, risk disclosure, storage disclosure, explicit consent, and reachable actions. The repeated network-fee sentence is removed only from the introductory deposit paragraph. iOS keyboard Done behavior and styling are unchanged; the previously observed repeat-foreground helper overlap remains a real-device follow-up."
+  },
+  "localeFileSha256": "0a24d23abae8942c1f53f1dca74736d1b3e3e7084cab508cccd1cc3394954526",
+  "productSourceDelta": {
+    "path": "app/src/locale.ts",
+    "keys": [
+      "en.assets.reviewDeposit",
+      "ko.assets.reviewDeposit"
+    ],
+    "behaviorChanges": false
+  }
+}

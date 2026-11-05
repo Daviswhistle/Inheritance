@@ -45,6 +45,14 @@ and checks its receipt before allowing another deposit. The repaired **All** wit
 position at execution; actual Android WLD and USDC round trips finished with
 zero remaining shares, assets and cost basis.
 
+Additional deposits show the current strategy fee before approval and require
+a new review and consent if that fee changes. Withdrawals with an uncertain
+outcome preserve the original request and block another withdrawal until it is
+reconciled; recovery checks the original receipt without resending, and a missing
+wallet transaction ID keeps recovery pending until the transaction is identified.
+The [final submission review](FINAL_SUBMISSION_REVIEW_2026-11-04.md)
+records these fixes and the tested recovery boundaries.
+
 **End inheritance and withdraw all** reviews the net assets, destination and
 fees, then combines full recovery and recipient removal in one transaction.
 **Remove recipient only** is a secondary choice that explicitly keeps assets

@@ -351,6 +351,13 @@ select:focus-visible { outline: 3px solid #3b82f6; outline-offset: 2px; }
 .settings-interval, .withdraw-destination { margin: 0; font-size: 14px; line-height: 1.6; }
 .money-review .yield-values { font-size: 14px; line-height: 1.6; margin: 18px 0; }
 .money-review .yield-values dd { overflow-wrap: anywhere; }
+/* Fee explanations are sentences, so give them the dialog's full reading width. */
+.money-review .plan-review-terms .yield-values > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.money-review .plan-review-terms .yield-values dd { text-align: left; font-weight: 500; word-break: keep-all; }
+.money-review .plan-review-terms > p + p { margin-top: 8px; }
+.money-review .plan-review-terms > a { display: inline-flex; align-items: center; min-height: 44px; }
+.money-review .yield-consent { min-height: 44px; }
+.money-review .yield-consent input { width: 20px; height: 20px; }
 .money-review > p { font-size: 13px; line-height: 1.7; word-break: keep-all; }
 .review-receive-amount { display: grid; gap: 8px; padding: 16px 0 4px; }
 .review-receive-amount > span { font-size: 13px; color: var(--muted); }

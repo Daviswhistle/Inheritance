@@ -72,6 +72,13 @@ export async function launch({ pk, url, profile, preload = "", residence = "KR" 
 
   let id = 1; const pend = new Map();
   const logs = [];
+  ws.addEventListener("close", () => {
+    for (const request of pend.values()) {
+      clearTimeout(request.timer);
+      request.reject(new Error("CDP connection closed"));
+    }
+    pend.clear();
+  });
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.id && pend.has(m.id)) {
@@ -88,11 +95,13 @@ export async function launch({ pk, url, profile, preload = "", residence = "KR" 
       logs.push(`[EXC] ${m.params.exceptionDetails?.exception?.description ?? m.params.exceptionDetails?.text}`);
     }
   };
-  const send = (m, p = {}) => new Promise((res, rej) => {
+  const send = (m, p = {}, timeout = 120000) => new Promise((res, rej) => {
+    if (ws.readyState !== WebSocket.OPEN) { rej(new Error("CDP connection is not open")); return; }
     const k = id++;
-    const timer = setTimeout(() => { if (pend.has(k)) { pend.delete(k); rej(new Error("timeout " + m)); } }, 120000);
+    const timer = setTimeout(() => { if (pend.has(k)) { pend.delete(k); rej(new Error("timeout " + m)); } }, timeout);
     pend.set(k, { resolve: res, reject: rej, timer });
-    ws.send(JSON.stringify({ id: k, method: m, params: p }));
+    try { ws.send(JSON.stringify({ id: k, method: m, params: p })); }
+    catch (error) { clearTimeout(timer); pend.delete(k); rej(error); }
   });
   const ev = async (code) => {
     const r = await send("Runtime.evaluate", { expression: `(async()=>{${code}})()`, returnByValue: true, awaitPromise: true });
@@ -134,6 +143,34 @@ export async function launch({ pk, url, profile, preload = "", residence = "KR" 
   await send("Page.navigate", { url: url || APP });
   await sleep(2500);
 
+  let closing;
+  const waitForExit = (ms) => new Promise(resolve => {
+    if (chrome.exitCode !== null || chrome.signalCode !== null) { resolve(true); return; }
+    const exited = () => { clearTimeout(timer); resolve(true); };
+    const timer = setTimeout(() => { chrome.off("exit", exited); resolve(false); }, ms);
+    chrome.once("exit", exited);
+  });
+  const close = () => closing ??= (async () => {
+    // SIGTERM alone can leave a headless Chromium child alive after all checks pass.
+    // Ask the browser to exit first, then verify both its process and CDP socket close.
+    try { if (ws.readyState === WebSocket.OPEN) await send("Browser.close", {}, 1500); } catch {}
+    try { ws.close(); } catch {}
+    if (!await waitForExit(2000)) {
+      chrome.kill("SIGTERM");
+      if (!await waitForExit(2000)) {
+        chrome.kill("SIGKILL");
+        if (!await waitForExit(2000)) throw new Error("Chromium did not exit during test cleanup");
+      }
+    }
+    if (ws.readyState !== WebSocket.CLOSED) {
+      await new Promise((resolve, reject) => {
+        const closed = () => { clearTimeout(timer); resolve(); };
+        const timer = setTimeout(() => { ws.removeEventListener("close", closed); reject(new Error("CDP socket did not close during test cleanup")); }, 2000);
+        ws.addEventListener("close", closed, { once: true });
+      });
+    }
+  })();
+
   const page = {
     /**
      * 요소를 **나타날 때까지** 기다린다 (기본 12초).
@@ -160,7 +197,7 @@ export async function launch({ pk, url, profile, preload = "", residence = "KR" 
       }
     },
     send, ev, shot, logs, chrome, ws, profile: PROFILE,
-    close: async () => { try { ws.close(); } catch {} chrome.kill(); },
+    close,
   };
   return page;
 }

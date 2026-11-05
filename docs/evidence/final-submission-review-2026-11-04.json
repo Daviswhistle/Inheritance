@@ -1,0 +1,1195 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-11-04",
+  "review_baseline": "27344c23bc9c1c345971fe65a5e4c2feb9994ab1",
+  "scope": "Local review-branch results and identified GitHub CI/native runs. No production deployment, real-fund transaction or Mini App submission.",
+  "runtime_source_sha256": {
+    "app/src/App.tsx": "4908b6ae3af93466665da34b220e1d44962efc2b52141bec55a7e9dcccb8c476",
+    "app/src/withdrawal.ts": "e7827a64b1659c39b43a873677b86b341fa93d8280de3a18f3f1d880593ad4a4",
+    "app/src/additional-deposit.ts": "a0a207cdc7ef20d556546a311f9dfc678ecb026eb2c374e5cdb86180d87a2211",
+    "app/src/plan-storage.ts": "871746109cc35e2c49c088627e4570ebc82a8839c397ae273d64a937ff43dc41",
+    "app/src/wallet-action-lock.ts": "9ef6773285c8bb629ef413c473669d0e5b9fcb0b80082ce3971962aa25321691",
+    "app/src/minikit.ts": "d3b66d128b876d54c7672e946e8212e5602a1f3f95e6fc90db78793b2c25b714",
+    "app/src/index.css": "1c72ec7f0d953c922d23fddc9e24d745ae390968a5f01f75d19b59f75f269c09",
+    "app/src/launch.css": "47f1b219baccd96e0ac5e8ec10aca38359bd6f34dfac0a253f9abbd0aad4180c",
+    "scripts/verify/money-safety.mjs": "4505fa46818ea60cf13ce474c5a354950e18e30d4b1edefcb897c4d14d62dc21",
+    "scripts/verify/product-ui.mjs": "3e5ba73e92c49a5f7cf3398b78c70b560f34264db152ce4897b56464fe8f317a",
+    "scripts/verify/drv.mjs": "c037f267dc4f7e8964faae02d1b52f47896c317a247af45b713e0469c20c8c62",
+    "test-hosts/ios/Sources/AppDelegate.swift": "993db7ea2ed12d1d1a8f8a77cac19c8d6f7b9bc7233a3ec657f5e67003978abd"
+  },
+  "local_environment": {
+    "node": "24.22.1",
+    "chromium": "138.0.7204.0",
+    "axe_core": "4.10.3",
+    "foundry": "1.7.1",
+    "ci_foundry_pin": "1.3.2"
+  },
+  "product_ui": {
+    "command": "node scripts/verify/product-ui.mjs",
+    "process_exit_code": 0,
+    "elapsed_seconds": 43.14,
+    "layouts_passed": 72,
+    "accessibility_checks": 38,
+    "accessibility_violations": 0,
+    "screenshots": 45,
+    "layout_states": [
+      "guest-en-320-0",
+      "guest-en-320-1",
+      "guest-en-320-2",
+      "guest-en-320-3",
+      "guest-en-390-0",
+      "guest-en-390-1",
+      "guest-en-390-2",
+      "guest-en-390-3",
+      "help-expanded-guest-en",
+      "guest-en-1280-0",
+      "guest-en-1280-1",
+      "guest-en-1280-2",
+      "guest-en-1280-3",
+      "guest-ko-320-0",
+      "guest-ko-320-1",
+      "guest-ko-320-2",
+      "guest-ko-320-3",
+      "guest-ko-390-0",
+      "guest-ko-390-1",
+      "guest-ko-390-2",
+      "guest-ko-390-3",
+      "help-expanded-guest-ko",
+      "guest-ko-1280-0",
+      "guest-ko-1280-1",
+      "guest-ko-1280-2",
+      "guest-ko-1280-3",
+      "setup-en-320",
+      "setup-en-390",
+      "review-en-320",
+      "review-en-390",
+      "setup-ko-320",
+      "setup-ko-390",
+      "review-ko-320",
+      "review-ko-390",
+      "copy-feedback-ko-320",
+      "copy-feedback-ko-390",
+      "owner-en-320-0",
+      "owner-money-en-320",
+      "owner-en-320-1",
+      "owner-en-320-2",
+      "owner-en-320-3",
+      "owner-en-390-0",
+      "owner-money-en-390",
+      "owner-en-390-1",
+      "owner-expanded-en-1",
+      "withdraw-en",
+      "owner-en-390-2",
+      "owner-expanded-en-2",
+      "owner-en-390-3",
+      "help-expanded-owner-en",
+      "owner-ko-320-0",
+      "owner-money-ko-320",
+      "owner-ko-320-1",
+      "owner-ko-320-2",
+      "owner-ko-320-3",
+      "owner-ko-390-0",
+      "owner-money-ko-390",
+      "owner-ko-390-1",
+      "owner-expanded-ko-1",
+      "withdraw-ko",
+      "owner-ko-390-2",
+      "owner-expanded-ko-2",
+      "owner-ko-390-3",
+      "help-expanded-owner-ko",
+      "heir-active-en",
+      "heir-active-ko",
+      "heir-mixed",
+      "close-plan-en-320",
+      "close-plan-en-390",
+      "close-plan-ko-320",
+      "close-plan-ko-390",
+      "close-plan-rejected-ko"
+    ],
+    "accessibility_states": [
+      "guest-en-390-0",
+      "guest-en-390-1",
+      "guest-en-390-2",
+      "guest-en-390-3",
+      "help-expanded-guest-en",
+      "guest-ko-390-0",
+      "guest-ko-390-1",
+      "guest-ko-390-2",
+      "guest-ko-390-3",
+      "help-expanded-guest-ko",
+      "setup-en-390",
+      "review-en-390",
+      "setup-ko-390",
+      "review-ko-390",
+      "copy-feedback-ko-390",
+      "additional-deposit-review-ko",
+      "owner-en-390-0",
+      "owner-en-390-1",
+      "owner-expanded-en-1",
+      "withdraw-en",
+      "owner-en-390-2",
+      "owner-expanded-en-2",
+      "owner-en-390-3",
+      "help-expanded-owner-en",
+      "owner-ko-390-0",
+      "owner-ko-390-1",
+      "owner-expanded-ko-1",
+      "withdraw-ko",
+      "owner-ko-390-2",
+      "owner-expanded-ko-2",
+      "owner-ko-390-3",
+      "help-expanded-owner-ko",
+      "heir-active-en",
+      "heir-active-ko",
+      "heir-mixed",
+      "close-plan-en-390",
+      "close-plan-ko-390",
+      "close-plan-rejected-ko"
+    ],
+    "primary_button_transition": {
+      "source": "isolated button using real index.css and launch.css; disabled-to-enabled frame sampling",
+      "samples": {
+        "previous": [
+          {
+            "ms": 0.7,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(241, 245, 249)",
+            "contrast": 1.0955171955711072
+          },
+          {
+            "ms": 14.1,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(241, 245, 249)",
+            "contrast": 1.0955171955711072
+          },
+          {
+            "ms": 31.4,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(214, 222, 240)",
+            "contrast": 1.3490947993288052
+          },
+          {
+            "ms": 47.6,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(160, 176, 221)",
+            "contrast": 2.1540799364547607
+          },
+          {
+            "ms": 64.2,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(111, 133, 203)",
+            "contrast": 3.563385271343166
+          },
+          {
+            "ms": 80.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(77, 104, 191)",
+            "contrast": 5.1877476483070275
+          },
+          {
+            "ms": 97.5,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(55, 85, 184)",
+            "contrast": 6.658247325207942
+          },
+          {
+            "ms": 114.3,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(41, 74, 179)",
+            "contrast": 7.707186316641862
+          },
+          {
+            "ms": 130.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(33, 67, 176)",
+            "contrast": 8.418701722813756
+          },
+          {
+            "ms": 147.9,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 164.3,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 180.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          }
+        ],
+        "fixed": [
+          {
+            "ms": 0.4,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 12.5,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 29.1,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 45.9,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 62.5,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 79.3,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 95.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 112.4,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 129.2,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 145.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 162.7,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 179,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          },
+          {
+            "ms": 195.8,
+            "color": "rgb(255, 255, 255)",
+            "background": "rgb(30, 64, 175)",
+            "contrast": 8.722410784954462
+          }
+        ]
+      },
+      "minima": {
+        "previous": 1.0955171955711072,
+        "fixed": 8.722410784954462
+      }
+    },
+    "keyboard_overflow": {
+      "pageWidth": 320,
+      "width": 226,
+      "scrollWidth": 475,
+      "height": 22,
+      "scrollHeight": 22,
+      "left": 31,
+      "top": 0,
+      "focused": true
+    },
+    "overflow_stress": {
+      "browser": "138.0.7204.0",
+      "combinations": 36,
+      "axe_violations": [],
+      "actual_app_keyboard": {
+        "client": [
+          226,
+          22
+        ],
+        "scroll": [
+          475,
+          22
+        ],
+        "left": 249,
+        "top": 0,
+        "focused": true,
+        "description": "WLD",
+        "outline": "solid",
+        "pageWidth": 320
+      },
+      "actual_app_axe_violations": []
+    }
+  },
+  "money_safety": {
+    "command": "node scripts/verify/money-safety.mjs",
+    "process_exit_code": 0,
+    "environment": "Real MiniKit SDK, Chromium and IndexedDB, private Anvil with mock tokens; no external funds",
+    "checks": [
+      {
+        "name": "withdrawal: two windows permit exactly one same-account send; another account remains independent"
+      },
+      {
+        "name": "additional-deposit: two windows permit exactly one same-account send; another account remains independent"
+      },
+      {
+        "name": "late confirmation/update cannot clear or replace a newer withdrawal"
+      },
+      {
+        "name": "concurrent wallet actions reject immediately without queued automatic approvals"
+      },
+      {
+        "name": "10%→20% fee change requires a new explicit review and consent before exactly one deposit",
+        "feeReads": 3,
+        "sends": 1
+      },
+      {
+        "name": "account switch hides another wallet’s request and restores it only for its owner"
+      },
+      {
+        "name": "USDC: lost identifier survives reload, blocks a second withdrawal, rejects unrelated/failed IDs, and recovers exactly once",
+        "sends": 1,
+        "recipientIncrease": "1000000",
+        "net": "990910",
+        "fee": "9090",
+        "originalHash": "0xf5a173a59f4f8659ab1044fa6327b1e8cce8e601a6ef3e1860ceb53a7db806c4"
+      },
+      {
+        "name": "WLD: lost identifier survives reload, blocks a second withdrawal, rejects unrelated/failed IDs, and recovers exactly once",
+        "sends": 1,
+        "recipientIncrease": "1000000000000000000",
+        "net": "990909090909090910",
+        "fee": "9090909090909090",
+        "originalHash": "0xf7f84cfa1ad9442f16b7b4151a0b70f8f06bc454a424b24079f1840130cc0b3d"
+      },
+      {
+        "name": "definite native rejection clears only its own request and makes no payout"
+      },
+      {
+        "name": "USDC: All withdrawal with real gains and a positive fee preserves its minimum and recovers without resending",
+        "net": "10999090",
+        "fee": "100909",
+        "minimum": "10944094",
+        "originalHash": "0x0a2d8e093158c0a3492c87f4e9bc1bc1d070cab81fb82ecb1d82306fe2948517"
+      },
+      {
+        "name": "WLD: All withdrawal with real gains and a positive fee preserves its minimum and recovers without resending",
+        "net": "9909090909090909090",
+        "fee": "90909090909090909",
+        "minimum": "9859545454545454544",
+        "originalHash": "0x95a70bb84be5f5936643f347ed48a5deb20030642b1b117d97b6b6e33e5edd8c"
+      },
+      {
+        "name": "deployed no-requestId additional-deposit journals recover with known or manually supplied original IDs"
+      }
+    ]
+  },
+  "focused_local_regressions": [
+    {
+      "script": "scripts/test-withdrawal.mjs",
+      "exit_code": 0,
+      "seconds": 0.63
+    },
+    {
+      "script": "scripts/test-additional-deposit.mjs",
+      "exit_code": 0,
+      "seconds": 0.59
+    },
+    {
+      "script": "scripts/test-plan-storage.mjs",
+      "exit_code": 0,
+      "seconds": 0.44
+    },
+    {
+      "script": "scripts/test-transaction-confirmation.mjs",
+      "exit_code": 0,
+      "seconds": 0.52
+    },
+    {
+      "script": "scripts/test-profile-resolution.mjs",
+      "exit_code": 0,
+      "seconds": 0.19
+    },
+    {
+      "script": "scripts/test-error-text.mjs",
+      "exit_code": 0,
+      "seconds": 0.61
+    },
+    {
+      "script": "scripts/test-mobile-fixes.mjs",
+      "exit_code": 0,
+      "seconds": 0.51
+    },
+    {
+      "script": "scripts/test-income-history.mjs",
+      "exit_code": 0,
+      "seconds": 0.59
+    },
+    {
+      "script": "scripts/verify/unified-plan.mjs",
+      "exit_code": 0,
+      "seconds": 0.33
+    },
+    {
+      "script": "scripts/test-legacy-yield-routes.mjs",
+      "exit_code": 0,
+      "seconds": 2.55
+    }
+  ],
+  "contracts": {
+    "passed": 476,
+    "failed": 0,
+    "skipped": 7,
+    "skip_scope": "Opt-in live fork tests; no live RPC supplied"
+  },
+  "baseline_ci": {
+    "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41813035636",
+    "source": "27344c23bc9c1c345971fe65a5e4c2feb9994ab1",
+    "critical_custody_line_coverage": {
+      "covered": 1258,
+      "total": 1325,
+      "reported_percent": 94.94
+    },
+    "natspec_functions": 207
+  },
+  "published_baseline_lab": {
+    "environment": "Published static assets replayed over localhost with gzip; Chromium 138. This is a repeatable laboratory scenario, not actual handset, production network or World App latency.",
+    "results": [
+      {
+        "profile": {
+          "name": "local-unthrottled",
+          "latency": 0,
+          "mbps": 100,
+          "cpu": 1
+        },
+        "fcp": 164,
+        "lcp": 164,
+        "cls": 0,
+        "dcl": 72.90000000223517,
+        "headline": "Leave digital assets\nfor someone you care about.",
+        "errors": [],
+        "failed": []
+      },
+      {
+        "profile": {
+          "name": "simulated-mobile",
+          "latency": 150,
+          "mbps": 1.6,
+          "cpu": 4
+        },
+        "fcp": 2256,
+        "lcp": 2256,
+        "cls": 0,
+        "dcl": 1869.5,
+        "headline": "Leave digital assets\nfor someone you care about.",
+        "errors": [],
+        "failed": []
+      }
+    ]
+  },
+  "boundaries": [
+    "Native host approvals are simulated; no actual iOS World App certification.",
+    "Positive-fee fixture has the same heir and fee-recipient address; recipientIncrease includes net plus fee.",
+    "Recovery guards are scoped to one device and origin storage, not a cross-device lock.",
+    "No TFH contract/fee agreement or current Portal state independently established here."
+  ],
+  "dependency_security": {
+    "change": "Override only transitive ws to 8.21.0; SDK/ethers/viem and other direct versions retained",
+    "before_unique_advisories": 2,
+    "advisories": [
+      {
+        "id": "GHSA-58qx-3vcg-4xpx",
+        "cve": "CVE-2026-45736",
+        "severity": "moderate",
+        "condition": "The Node ws implementation is asked to close with a TypedArray as its reason, potentially leaking uninitialized memory.",
+        "fixedIn8x": "8.20.1",
+        "source": "https://github.com/websockets/ws/security/advisories/GHSA-58qx-3vcg-4xpx"
+      },
+      {
+        "id": "GHSA-96hv-2xvq-fx4p",
+        "cve": "CVE-2026-48779",
+        "severity": "high",
+        "condition": "A connected WebSocket peer sends large numbers of tiny fragments or chunks, exhausting memory in the vulnerable Node ws receiver.",
+        "fixedIn8x": "8.21.0",
+        "source": "https://github.com/websockets/ws/security/advisories/GHSA-96hv-2xvq-fx4p"
+      }
+    ],
+    "runtime_reachability_review": [
+      "The production front end uses ethers browser mappings to native WebSocket (lib.esm/providers/ws-browser.js). isows browser/workerd export also resolves to _esm/native.js.",
+      "The six existing production JS bundles contain none of the searched Node ws receiver/server markers (WS_ERR_UNSUPPORTED_MESSAGE_LENGTH, maxFragments, skipUTF8Validation, Invalid WebSocket frame, WS_ERR_UNEXPECTED_RSV_1, WebSocketServer). This corroborates, but is not itself a reachability proof.",
+      "backend/src/finalizer.mjs lines 114-125 rejects non-HTTPS RPC except local HTTP. Lines 180-187 construct FetchRequest and JsonRpcProvider, not WebSocketProvider.",
+      "app/functions/api/auth/verify.ts invokes MiniKit 2.0.3 verifySiweMessage using its default client. Installed chunk-YPZEODWL.js line 233 creates a viem client with http() transport.",
+      "No Node ws/WebSocket server/provider invocation was found in app/src, app/functions, backend or scripts/operator-deploy."
+    ],
+    "after_production_audit_counts": {
+      "root_npm": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "app_pnpm": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      }
+    },
+    "installed_resolution": [
+      {
+        "scope": ".",
+        "parent": "ethers",
+        "version": "8.21.0"
+      },
+      {
+        "scope": ".",
+        "parent": "viem",
+        "version": "8.21.0"
+      },
+      {
+        "scope": "app",
+        "parent": "ethers",
+        "version": "8.21.0"
+      },
+      {
+        "scope": "app",
+        "parent": "viem",
+        "version": "8.21.0"
+      }
+    ],
+    "file_sha256": {
+      "package.json": "18a35bf6fda8b765058cbedd1151830bee0aa9632ebeeb244b3f979cb2ca3c0b",
+      "package-lock.json": "19d4d28f29762eaf91cc940178e6deebc71709940c5bc971bc0b3352e2561238",
+      "app/pnpm-workspace.yaml": "7d22ee8379469a6ad36cf3b74b62943d0873811d38768a0a4b48dc94d8b93ae6",
+      "app/pnpm-lock.yaml": "5ca9595d619f5f3a3b9d652f6bec2b7364090db9f9881d992528d6fcaf43f585"
+    },
+    "app_lock_validation": "pnpm 10.34.9 install --lockfile-only --frozen-lockfile --offline",
+    "local_ui_before_dependency_update": false,
+    "complete_revision_gate": "The new GitHub CI browser job installs the final frozen lock and reruns money safety and product UI."
+  },
+  "first_remote_verification": {
+    "head": "b93cfbad5c9879b9c2ea078345a56b27c7e65f3d",
+    "ci_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41831487526",
+    "contracts": "success",
+    "mini_app": "success",
+    "notification_backend": "success",
+    "money_scenarios_passed": 12,
+    "product_ui": "Failed scrollable-region-focusable at copy-feedback-ko-390; corrected by the subsequent balance keyboard/overflow change",
+    "native_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41831487601",
+    "native_source_checkout": "6cbfd134c8aed32936d06da0a797099ff45b8816",
+    "native_device": "iPhone 16 Pro / iOS 18.5 (22F77) / arm64",
+    "native_passed": 4,
+    "native_failed": 0,
+    "native_skipped": 0,
+    "native_pngs_reviewed": 20,
+    "scope": "Prior revision evidence; the current balance CSS/keyboard change requires its own remote run."
+  },
+  "remote_verified_product": {
+    "head_sha": "4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba",
+    "tested_merge_sha": "b41618e7c05f1f43dcd7a3720a3769cbf94970ed",
+    "identical_git_tree_sha": "fc0a386efc1532b9f49f4d22467dba95e57c2086",
+    "ci_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061672",
+    "ci_jobs": {
+      "Mini App": "success",
+      "Contracts (Foundry)": "success",
+      "Notification backend": "success",
+      "Money safety and product UI": "success"
+    },
+    "contracts": {
+      "passed": 476,
+      "failed": 0,
+      "skipped": 7,
+      "critical_custody_covered_lines": 1258,
+      "critical_custody_total_lines": 1325,
+      "critical_custody_percent": 94.94
+    },
+    "browser": {
+      "artifact_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061672/artifacts/13324428883",
+      "layouts": 72,
+      "axe_checks": 38,
+      "axe_violations": 0,
+      "screenshots": 45,
+      "money_checks": 12,
+      "keyboard_overflow": {
+        "pageWidth": 320,
+        "width": 226,
+        "scrollWidth": 410,
+        "height": 27,
+        "scrollHeight": 27,
+        "left": 27,
+        "top": 0,
+        "focused": true
+      },
+      "images_visually_reviewed": [
+        "ui-owner-ko-0.png",
+        "ui-additional-deposit-review-ko-320.png",
+        "ui-additional-deposit-review-bottom-ko-320.png",
+        "ui-close-rejected-ko.png"
+      ],
+      "evidence_limits": [
+        "Synthetic long amounts are recorded in geometry evidence; no screenshot of those temporary long values is included in the artifact.",
+        "Browser CI uses the real MiniKit SDK and private Anvil mock assets; native iOS evidence is a separate workflow."
+      ]
+    },
+    "native": {
+      "run_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061693",
+      "job_url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835061693/job/126591708452",
+      "conclusion": "success",
+      "artifact": {
+        "id": 13326960851,
+        "name": "ios-native-review",
+        "sha256": "0e53788d54f48f39dc0f8b8b4012e01d0e63c90428c104cd2d04a6c4a7f2b1c5",
+        "bytes": 4247505,
+        "digest_verified": true
+      },
+      "device": "iPhone 16 Pro / iOS 18.5 (22F77) / arm64",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "screenshots_reviewed": 20,
+      "tests": [
+        {
+          "name": "testNativeAccessoryDoneDismissesLandscapeKeyboard",
+          "passed": true,
+          "seconds": 46.132
+        },
+        {
+          "name": "testRealSDKLoginAndNativeLifecycle",
+          "passed": true,
+          "seconds": 196.666
+        },
+        {
+          "name": "testRejectedLoginCanBeRetriedRepeatedly",
+          "passed": true,
+          "seconds": 24.017
+        },
+        {
+          "name": "testZPendingDepositSurvivesProcessTermination",
+          "passed": true,
+          "seconds": 64.223
+        }
+      ],
+      "observations": [
+        "USDC decimal input 12.345678 remains visible above the native portrait decimal keyboard.",
+        "Recipient @test_heir remains visible in landscape and through three repeated landscape/foreground cycles.",
+        "Native accessory Done dismisses the landscape keyboard, and the review action/footer navigation are restored.",
+        "Pending transaction screen explicitly shows verification in progress and the saved 1.000001 USDC deposit.",
+        "Recovered home screen displays 1.000001 USDC and a 30-day check-in interval; the corresponding XCTest passed without resubmission.",
+        "The yellow TEST HOST banner, TEST owner/heir buttons and approval controls belong to the test fixture, not the released product UI.",
+        "The previously observed floating app Done button and native accessory Done are both present in portrait. The floating button can cover the right edge of helper text while the keyboard is open; it does not cover the focused input in these screenshots. This observation is unchanged from the preceding b93 artifact and is not a new blocker from this UI change."
+      ],
+      "scope": "Native WKWebView simulator/test-host evidence with the real MiniKit SDK and simulated approvals/local test funds. This is not evidence of actual World App execution or production-fund transactions. The four native cases do not independently certify the new owner-withdrawal ID-loss or strategy-fee-change paths; those belong to the separate browser/Anvil money-safety suite. Applies only to the listed PR head and tested merge snapshot."
+    }
+  },
+  "browser_test_selection_race": {
+    "failed_run": "https://github.com/Daviswhistle/Inheritance/actions/runs/41835052903",
+    "failed_job": 126591677757,
+    "source_head": "4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba",
+    "original_observation": "Timed out waiting for the changed-fee dialog; original artifact has only host startup log and does not establish the selected asset.",
+    "reproduction": "Hold initial vaultOf response until the optional USDC-button count check has returned zero; release the response and exercise the original fee scenario.",
+    "reproduced_selection": [
+      {
+        "symbol": "USDC",
+        "count": 0,
+        "heldRegistryCalls": 1,
+        "at": 1793798920167
+      }
+    ],
+    "review_asset": "WLD",
+    "fees": {
+      "WLD": "100000000000000000",
+      "USDC": "200000000000000000"
+    },
+    "send_count": 1,
+    "submitted_factory": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
+    "factories": {
+      "WLD": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
+      "USDC": "0x0165878A594ca255338adfa4d48449f69242Eb8F"
+    },
+    "shares_before": {
+      "WLD": "10000000000000000000",
+      "USDC": "10000000000000000000"
+    },
+    "shares_after": {
+      "WLD": "11000000000000000000",
+      "USDC": "10000000000000000000"
+    },
+    "final_modal_count": 0,
+    "follow_up": "Require requested asset availability/selection and reviewed currency; capture failure diagnostics without weakening financial assertions. Product runtime unchanged.",
+    "fixed_regression": {
+      "process_exit_code": 0,
+      "full_money_scenarios_passed": 12,
+      "forced_initial_registry_delay": {
+        "environment": "Real MiniKit SDK, Chromium and IndexedDB, private Anvil with mock tokens; no external funds",
+        "checks": [
+          {
+            "name": "withdrawal: two windows permit exactly one same-account send; another account remains independent"
+          },
+          {
+            "name": "additional-deposit: two windows permit exactly one same-account send; another account remains independent"
+          },
+          {
+            "name": "late confirmation/update cannot clear or replace a newer withdrawal"
+          },
+          {
+            "name": "concurrent wallet actions reject immediately without queued automatic approvals"
+          },
+          {
+            "name": "requested asset waits through initial registry load and selects USDC after release",
+            "heldRegistryCalls": 1,
+            "absentAtWait": true,
+            "selected": "USDC"
+          },
+          {
+            "name": "10%→20% fee change requires a new explicit review and consent before exactly one deposit",
+            "feeReads": 3,
+            "sends": 1
+          },
+          {
+            "name": "forced registry delay preserves USDC review, fresh fee reconsent and exact USDC factory target",
+            "finalShares": {
+              "WLD": "10000000000000000000",
+              "USDC": "11000000000000000000"
+            },
+            "walletRequests": [
+              {
+                "at": 1793799268301,
+                "kind": "wallet-request",
+                "calls": [
+                  {
+                    "target": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+                    "selector": "0x095ea7b3"
+                  },
+                  {
+                    "target": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
+                    "selector": "0xda674c58"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "runtime_unchanged_from": "4e2cacef5f1bbbe62ba06c30fdf35a0c4ea9b4ba"
+    }
+  },
+  "native_telemetry_follow_up": {
+    "failed_run": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839577613",
+    "head_sha": "63b4cc450831940c7d89c6e5ea2b1f4508a711d6",
+    "tested_merge_sha": "cdc1c2f686976e4d4fb92644df77f1237b6c4e61",
+    "tests": {
+      "passed": 3,
+      "failed": 1,
+      "failed_test": "testNativeAccessoryDoneDismissesLandscapeKeyboard",
+      "failure": "Entire input must remain visible after native and DOM geometry settle",
+      "native_done_reached": false
+    },
+    "failure_artifact_observation": {
+      "artifact": {
+        "id": 13329082635,
+        "name": "ios-native-review",
+        "bytes": 4090761,
+        "sha256": "bed52b2a14694fc8754b633dcfaa931c1bcc16839a381701928092a4f1046328",
+        "digest_verified": true
+      },
+      "inspected_screenshot": "ios-attachments/D979E10B-E10A-49D7-BCB3-4D811BFB4267.png",
+      "visual_observation": "At failure capture, the entire focused recipient field with @test_heir, caret and focus ring is visible above the native landscape keyboard and accessory. No missing or occluded input is observed in this failure screenshot.",
+      "accessibility_tree": {
+        "timestamp": "2026-11-04T13:46:41.4892200Z",
+        "input": {
+          "label": "Who should receive it?",
+          "value": "@test_heir",
+          "frame": [
+            239,
+            75,
+            396,
+            49
+          ],
+          "focused": true,
+          "keyboard_focused": true
+        },
+        "webview_frame": [
+          0,
+          26.3,
+          874,
+          112.7
+        ],
+        "accessory_top": 139,
+        "input_bottom": 124,
+        "input_accessory_gap": 15,
+        "input_fully_inside_webview": true
+      },
+      "telemetry_comparison": {
+        "captured_dom_samples": 3,
+        "dom_fields_identical": true,
+        "native_command_counts": [
+          6,
+          7,
+          8
+        ],
+        "discrepancy": "DOM reports input:null, portrait 402x708 and an account-entry-title focus event while the screenshot and AX tree show an authenticated owner with the recipient input focused in landscape. Native command history includes wallet-auth and later get-permissions calls absent from the DOM hostState history."
+      },
+      "assessment": "The evidence establishes stale/inconsistent test-host DOM telemetry relative to the actual rendered UI at failure capture. The screenshot and AX geometry do not support an actual missing/occluded recipient input at that moment. The exact reason the DOM reporter stopped updating remains unresolved; infrastructure or product regression is not established by this inspection.",
+      "limitations": "Only the failure screenshot and original logs/metrics were inspected from this new run. This is not a continuous-frame proof of every moment during the polling interval. The Done-dismissal assertion was not reached because the pre-Done geometry predicate timed out. No rerun or source edit was performed."
+    },
+    "local_reproduction": {
+      "environment": "Chromium with real SVG DOM/event targets and a manually advanced animation frame queue; native telemetry scripts extracted unchanged from old HEAD and working Swift source",
+      "boundary": "The throwing/structuredClone bridge is a local mock. This proves the reporter failure mechanism and recovery, not the exact unrecorded exception in the failed iOS CI run.",
+      "checks": [
+        "Old original-object payload contains SVGAnimatedString and stops after a serialization-rejecting mock throws",
+        "Old reporter also stops after an independent one-shot bridge error",
+        "Corrected reporter sends string target/hit identifiers and JSON-safe payload",
+        "Corrected reporter publishes error state without geometry, keeps sampling and reports fresh focused-input geometry with retained error history"
+      ],
+      "oldSVG": {
+        "targetClassType": "[object SVGAnimatedString]",
+        "initialMessages": 1,
+        "afterTrigger": {
+          "queuedFrames": 0,
+          "messages": 1,
+          "last": {
+            "innerHeight": 844,
+            "innerWidth": 390,
+            "scrollY": 0,
+            "interactionTrace": [],
+            "authTrace": [],
+            "hostState": null,
+            "doneRect": null,
+            "intervalRect": null,
+            "actionsHidden": true,
+            "navigationHidden": true,
+            "inputUnobscured": false,
+            "inputHitTargets": [],
+            "viewport": {
+              "height": 844,
+              "width": 390,
+              "offsetTop": 0,
+              "pageTop": 0,
+              "scale": 1
+            },
+            "input": null,
+            "keyboard": null
+          }
+        },
+        "errorSample": null,
+        "queuedAfterFailure": 0,
+        "resumed": false,
+        "escapedErrors": [
+          {
+            "name": "DataCloneError",
+            "message": "Failed to execute 'structuredClone' on 'Window': SVGAnimatedString object could not be cloned."
+          }
+        ],
+        "finalQueuedFrames": 0,
+        "final": {
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "scrollY": 0,
+          "interactionTrace": [],
+          "authTrace": [],
+          "hostState": null,
+          "doneRect": null,
+          "intervalRect": null,
+          "actionsHidden": true,
+          "navigationHidden": true,
+          "inputUnobscured": false,
+          "inputHitTargets": [],
+          "viewport": {
+            "height": 844,
+            "width": 390,
+            "offsetTop": 0,
+            "pageTop": 0,
+            "scale": 1
+          },
+          "input": null,
+          "keyboard": null
+        }
+      },
+      "oldTransient": {
+        "targetClassType": "[object SVGAnimatedString]",
+        "initialMessages": 1,
+        "afterTrigger": {
+          "queuedFrames": 0,
+          "messages": 1,
+          "last": {
+            "innerHeight": 844,
+            "innerWidth": 390,
+            "scrollY": 0,
+            "interactionTrace": [],
+            "authTrace": [],
+            "hostState": null,
+            "doneRect": null,
+            "intervalRect": null,
+            "actionsHidden": true,
+            "navigationHidden": true,
+            "inputUnobscured": false,
+            "inputHitTargets": [],
+            "viewport": {
+              "height": 844,
+              "width": 390,
+              "offsetTop": 0,
+              "pageTop": 0,
+              "scale": 1
+            },
+            "input": null,
+            "keyboard": null
+          }
+        },
+        "errorSample": null,
+        "queuedAfterFailure": 0,
+        "resumed": false,
+        "escapedErrors": [
+          {
+            "name": "Error",
+            "message": "injected one-shot bridge failure"
+          }
+        ],
+        "finalQueuedFrames": 0,
+        "final": {
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "scrollY": 0,
+          "interactionTrace": [],
+          "authTrace": [],
+          "hostState": null,
+          "doneRect": null,
+          "intervalRect": null,
+          "actionsHidden": true,
+          "navigationHidden": true,
+          "inputUnobscured": false,
+          "inputHitTargets": [],
+          "viewport": {
+            "height": 844,
+            "width": 390,
+            "offsetTop": 0,
+            "pageTop": 0,
+            "scale": 1
+          },
+          "input": null,
+          "keyboard": null
+        }
+      },
+      "corrected": {
+        "targetClassType": "[object SVGAnimatedString]",
+        "initialMessages": 1,
+        "afterTrigger": {
+          "queuedFrames": 1,
+          "messages": 2,
+          "last": {
+            "innerHeight": 844,
+            "innerWidth": 390,
+            "scrollY": 0,
+            "interactionTrace": [
+              {
+                "type": "pointerdown",
+                "buttonText": "Plan",
+                "trusted": false,
+                "target": "icon-path",
+                "hit": "icon-path",
+                "active": "account-entry-title",
+                "x": 36,
+                "y": 103.875,
+                "done": null,
+                "at": 16
+              }
+            ],
+            "authTrace": [],
+            "hostState": null,
+            "telemetryState": "ok",
+            "telemetryErrors": [],
+            "doneRect": null,
+            "intervalRect": null,
+            "actionsHidden": true,
+            "navigationHidden": true,
+            "inputUnobscured": false,
+            "inputHitTargets": [],
+            "viewport": {
+              "height": 844,
+              "width": 390,
+              "offsetTop": 0,
+              "pageTop": 0,
+              "scale": 1
+            },
+            "input": null,
+            "keyboard": null
+          }
+        },
+        "errorSample": {
+          "telemetryState": "error",
+          "telemetryErrors": [
+            {
+              "message": "injected one-shot bridge failure",
+              "at": 17
+            }
+          ]
+        },
+        "queuedAfterFailure": 1,
+        "resumed": true,
+        "escapedErrors": [],
+        "finalQueuedFrames": 1,
+        "final": {
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "scrollY": 0,
+          "interactionTrace": [
+            {
+              "type": "pointerdown",
+              "buttonText": "Plan",
+              "trusted": false,
+              "target": "icon-path",
+              "hit": "icon-path",
+              "active": "account-entry-title",
+              "x": 36,
+              "y": 103.875,
+              "done": null,
+              "at": 16
+            },
+            {
+              "type": "focusout",
+              "trusted": true,
+              "target": "account-entry-title",
+              "hit": null,
+              "active": "",
+              "done": null,
+              "at": 17
+            },
+            {
+              "type": "focusin",
+              "trusted": true,
+              "target": "heir-input",
+              "hit": null,
+              "active": "heir-input",
+              "done": null,
+              "at": 17
+            }
+          ],
+          "authTrace": [],
+          "hostState": null,
+          "telemetryState": "ok",
+          "telemetryErrors": [
+            {
+              "message": "injected one-shot bridge failure",
+              "at": 17
+            }
+          ],
+          "doneRect": null,
+          "intervalRect": null,
+          "actionsHidden": true,
+          "navigationHidden": true,
+          "inputUnobscured": true,
+          "inputHitTargets": [
+            {
+              "x": 20,
+              "y": 135.125,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 97.5,
+              "y": 135.125,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 175,
+              "y": 135.125,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 20,
+              "y": 140.375,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 97.5,
+              "y": 140.375,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 175,
+              "y": 140.375,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 20,
+              "y": 145.625,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 97.5,
+              "y": 145.625,
+              "input": true,
+              "target": "INPUT#heir-input."
+            },
+            {
+              "x": 175,
+              "y": 145.625,
+              "input": true,
+              "target": "INPUT#heir-input."
+            }
+          ],
+          "viewport": {
+            "height": 844,
+            "width": 390,
+            "offsetTop": 0,
+            "pageTop": 0,
+            "scale": 1
+          },
+          "input": {
+            "top": 129.875,
+            "bottom": 150.875,
+            "left": 8,
+            "right": 187,
+            "height": 21,
+            "width": 179,
+            "id": "heir-input"
+          },
+          "keyboard": null
+        }
+      }
+    },
+    "correction": "Host-only plain JSON payload and string identifiers; report errors, invalidate geometry on error and continue the sampler. Native assertions and timeouts unchanged.",
+    "remote_final_result": "See PR #4 for the subsequent corrected-host run; the failed run above is retained as a failure."
+  },
+  "verified_test_follow_up_ci": {
+    "head_sha": "63b4cc450831940c7d89c6e5ea2b1f4508a711d6",
+    "pr_ci": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839577657",
+    "push_ci": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839565621",
+    "both_all_four_jobs_passed": true,
+    "browser_artifact": "https://github.com/Daviswhistle/Inheritance/actions/runs/41839577657/artifacts/13328711085",
+    "money_scenarios": 12,
+    "layouts": 72,
+    "axe_checks": 38,
+    "axe_violations": 0,
+    "product_ui_screenshots": 45
+  }
+}
