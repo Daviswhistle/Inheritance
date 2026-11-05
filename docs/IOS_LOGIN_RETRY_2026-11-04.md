@@ -73,6 +73,15 @@ request or native `wallet-auth`. The archive records XCTest's intended event
 sequence, not the phases delivered to the UIKit window. Neither it nor the
 original WebKit log identifies what cancelled the touch upstream.
 
+The full XCResult also contains the simulator system log. At 16:25:01 KST,
+BackBoard repeatedly skipped events for the retry's touch path because it could
+not match them to a prior down or range-in event. When XCTest's virtual touch
+device closed at 16:25:01.376, that path was still marked touching and BackBoard
+issued one `soft cancel`. At the same point in the successful first tap, the
+device closed with no active contacts and no soft cancel. This establishes the
+failure at simulated input delivery, before the application's click or signing
+logic. The archive does not explain why BackBoard lost that path association.
+
 The debug host can now record the phases UIKit received before dispatch to
 WebKit, with relative coordinates, uptime and recognizer states. Only the
 focused retry test enables it. The trace captures phases even when the native
@@ -81,3 +90,14 @@ touch no longer has a target view. A local native run verified `began` and
 input without changing delivery. The test keeps one tap per attempt and all
 existing approval deadlines and assertions. No production sign-in code was
 changed on the evidence from this failure.
+
+Two complete hosted iOS 18.5 reruns on iPhone 16 Pro (22F77) each finished
+with four passes, zero failures and zero skips. The original app and host
+revision passed in [41988184982](https://github.com/Daviswhistle/Inheritance/actions/runs/41988184982).
+The trace-only host revision `718387f` passed in
+[41988887223](https://github.com/Daviswhistle/Inheritance/actions/runs/41988887223).
+In that run each of the four login taps has `began` and `ended` at the same
+coordinates, followed by a new `wallet-auth` in `awaiting-approval`. The first
+three approvals were deliberately rejected and the last established a session.
+General CI [41988887253](https://github.com/Daviswhistle/Inheritance/actions/runs/41988887253)
+also passed. Actual iOS World App verification remains separate.
