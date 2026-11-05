@@ -1,5 +1,75 @@
 # Release evidence
 
+## November 5, 2026 — final audit fixes deployed, submission pending
+
+PR [#4](https://github.com/Daviswhistle/Inheritance/pull/4) was squash-merged as
+runtime `e6f715d90a506ea319f58e8e30f3a028f5ab4826`. Its tree
+`6e47127489393095dd7e4030fc469d99bbbe8349` is identical to verified head
+`40cda7582c1b8d0ac536394d2cb003f0cc165140`. Deployment
+[41972545438](https://github.com/Daviswhistle/Inheritance/actions/runs/41972545438)
+completed from that runtime at https://94c0b269.inheritance.pages.dev.
+
+Production https://inheritance.pages.dev and the immutable deployment match
+byte-for-byte across 20 files: root HTML, four initially referenced JS/CSS files,
+two SDK chunks discovered from literal JavaScript imports, the icon, five legal
+files and seven store PNGs. All final responses were HTTP 200; the three legal
+HTML routes use normal same-origin 308 redirects to their extensionless URLs.
+All 13 public static files also match the runtime commit's source, including the
+new withdrawal-recovery privacy disclosure. Root SHA256:
+`a63c2cd6833fbc90ece81238f863dd26bf738ba407687a8b82a784466a5c958b`.
+
+Owner withdrawals now persist the original request before approval, verify its
+receipt and block another send while the outcome is uncertain. Account-scoped
+atomic storage prevents competing tabs and late recovery callbacks from
+replacing a newer request. Additional deposits show the current strategy fee
+and require fresh review and consent when it changes. The release also improves
+fee-review readability, numeric overflow and keyboard access, and updates the
+affected dependency. The [final audit](FINAL_SUBMISSION_REVIEW_2026-11-04.md)
+retains the original reproductions, repairs and test-harness failure diagnoses.
+
+- General CI on head `40cda758` passed all four jobs in PR run
+  [41970942947](https://github.com/Daviswhistle/Inheritance/actions/runs/41970942947)
+  and push run [41970938920](https://github.com/Daviswhistle/Inheritance/actions/runs/41970938920).
+  Main run [41972545330](https://github.com/Daviswhistle/Inheritance/actions/runs/41972545330)
+  also passed all four jobs, including 12 financial SDK/local-chain scenarios,
+  72 UI layouts and the actual Tab/ArrowRight overflow interaction.
+- Native iOS PR run [41970943026](https://github.com/Daviswhistle/Inheritance/actions/runs/41970943026)
+  and push run [41970938876](https://github.com/Daviswhistle/Inheritance/actions/runs/41970938876)
+  each passed four XCTest cases with zero failures. The PR checked out merge
+  `693b5a7d967dc207279a57485bbd67b984f0718f`; push checked out `40cda758`.
+  Both used iPhone 16 Pro / iOS 18.5 / arm64 on macOS 15.8.2. Each original log
+  contains 31 telemetry samples, all `ok` with empty error history. These are
+  native test-host results with simulated approvals. The additional automatic
+  same-tree main run [41972545494](https://github.com/Daviswhistle/Inheritance/actions/runs/41972545494)
+  was still running at this checkpoint.
+- Seven World Chain fork suites passed 25 tests with zero failures or skips at
+  block `37259369` on `64a48a02`; contract source is unchanged in this release.
+  The [fork receipt](evidence/worldchain-fork-2026-11-05.json) records local Forge
+  1.7.1, separate from CI's pinned 1.3.2. These are local executions against
+  chain state with test funds and fixtures, without production transactions.
+- A [public-browser check](evidence/production-ui-2026-11-05.json) confirmed the
+  new loaded assets, English Home and Help, Korean language/FAQ, the published
+  privacy disclosure and return to Home. It did not exercise wallet approval.
+
+Notification Worker version `7c7320c8-7802-4f4a-86d3-9310c73bdc7a` passed its
+pre-Pages rollout gate. A separate post-deployment public health read confirmed
+chain 480 and all seven supported automatic factories: basic WLD, both current
+yield factories and all four retained yield generations. Backend, gas-refill
+and contract source are unchanged. The root lockfile also triggered existing
+gas-refill deployment [41972545363](https://github.com/Daviswhistle/Inheritance/actions/runs/41972545363),
+which passed local Anvil checks, deployment and read-only health. Its existing
+enable setting read back as `true`, with reason `awaiting_fees`. No manual cron,
+funding command, outbound notification or wallet approval was invoked in this
+release verification.
+
+The authenticated Portal draft was not read in this session; the last verified
+draft was Korea-only and unverified. No submission was made. Actual World App
+approval/permission checks for this release, production round trips through the
+remediated factories, the beneficiary's complete production payout and TFH
+contract/fee acceptance remain outside the observed evidence.
+The [production receipt](evidence/production-release-2026-11-05.json) retains
+exact run IDs, public-file hashes, health readbacks and validation boundaries.
+
 ## November 4, 2026 — independent audit remediation
 
 Runtime `f4cba93453337f36f8f423dd3e09fcb3b5ac8ce3` is deployed at

@@ -1,0 +1,39 @@
+{
+  "checkedAtUtc": "2026-11-05 05:17:41 UTC",
+  "runtimeCommit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+  "url": "https://inheritance.pages.dev/",
+  "surface": "Cloud Chromium browser, unauthenticated public app",
+  "observedDomAssets": [
+    "/assets/index-DjIDuLxW.js",
+    "/assets/index-BDbGk4rX.css"
+  ],
+  "checks": [
+    {
+      "name": "English guest Home renders with the canonical World App entry link",
+      "passed": true
+    },
+    {
+      "name": "Help navigation and English-to-Korean language selection",
+      "passed": true
+    },
+    {
+      "name": "Korean income FAQ opens and explains service fee, liquidity and check-in behavior",
+      "passed": true
+    },
+    {
+      "name": "Privacy link opens canonical https://inheritance.pages.dev/privacy with Korean content",
+      "passed": true
+    },
+    {
+      "name": "Published privacy notice includes withdrawal journal fields, pre-approval local persistence, receipt/rejection/failure-based resolution, no automatic resend and deletion limits",
+      "passed": true
+    },
+    {
+      "name": "Return to Korean Home restores the guest page and navigation",
+      "passed": true
+    }
+  ],
+  "consoleObservation": "The returned error-log sample contained browser-extension metadata errors from chrome-extension:// content-script.bundle.js. No application-origin error appeared in that returned sample; this is not a claim of a completely error-free browser or a full network trace.",
+  "scope": "No sign-in, native World App, wallet approval, financial transaction, notification, message or Portal submission was exercised. Authenticated and financial states are covered separately by the SDK/local-chain suites.",
+  "portalAccess": "The developer portal was opened separately and reached its Auth0 sign-in screen. No current signed-in draft state was read."
+}

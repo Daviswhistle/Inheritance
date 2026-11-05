@@ -1,0 +1,920 @@
+{
+  "schema_version": 1,
+  "checked_at_utc": "2026-11-05T05:20:49.953Z",
+  "repository": "Daviswhistle/Inheritance",
+  "pull_request": 4,
+  "source": {
+    "runtime_commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+    "verified_head": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+    "shared_tree": "6e47127489393095dd7e4030fc469d99bbbe8349",
+    "base_before_merge": "27344c23bc9c1c345971fe65a5e4c2feb9994ab1",
+    "merge_method": "squash",
+    "tree_identity_evidence": "Release coordinator checked both commit trees through the GitHub API.",
+    "contract_backend_and_gas_refill_source_changed": false
+  },
+  "deployment": {
+    "pages": {
+      "run_id": 41972545438,
+      "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41972545438",
+      "source_checkout": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+      "status": "completed",
+      "conclusion": "success",
+      "immutable_url": "https://94c0b269.inheritance.pages.dev",
+      "production_url": "https://inheritance.pages.dev",
+      "pages_functions_compiled": true,
+      "jobs": [
+        {
+          "id": 127063871601,
+          "name": "Validate auth and prepare shared D1",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 127063873357,
+          "name": "Publish isolated operator page without changing product runtime",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 127064069387,
+          "name": "Deploy notification backend",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 127064229305,
+          "name": "Build & deploy to Pages",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "notification_worker_version": "7c7320c8-7802-4f4a-86d3-9310c73bdc7a"
+    },
+    "gas_refill": {
+      "run_id": 41972545363,
+      "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41972545363",
+      "job_id": 127063870774,
+      "source_checkout": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+      "status": "completed",
+      "conclusion": "success",
+      "trigger": "Existing main-push workflow also matches the changed root dependency lockfile.",
+      "wrangler_deploy_reported_version": "1fa94ab1-c3f0-4593-bc4c-668dd8cd815d",
+      "version_scope": "The deploy command reported this version before the subsequent existing-secret reapplication; the final post-secret Cloudflare version ID was not queried.",
+      "workflow_actions": [
+        "Local Anvil regression tests",
+        "Worker deployment",
+        "Reapplication of the existing secret",
+        "Read-only GET /api/health"
+      ],
+      "enable_setting": "Existing repository variable, default false; no manual enabled input was supplied.",
+      "financial_execution_scope": "No manual cron invocation, mainnet funding command, notification request or wallet approval was performed in this release verification. Existing scheduled service behavior is not a zero-transaction assertion."
+    }
+  },
+  "native_premerge": [
+    {
+      "event": "pull_request",
+      "run_id": 41970943026,
+      "job_id": 127058791466,
+      "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41970943026",
+      "head_sha": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+      "tested_checkout": "693b5a7d967dc207279a57485bbd67b984f0718f",
+      "conclusion": "success",
+      "runner_os": "macOS 15.8.2 (24H232)",
+      "runner_image": "macos-15-arm64 20261028.0489.1",
+      "simulator": {
+        "name": "iPhone 16 Pro",
+        "os": "iOS 18.5",
+        "architecture": "arm64"
+      },
+      "tests": [
+        {
+          "name": "testNativeAccessoryDoneDismissesLandscapeKeyboard",
+          "conclusion": "passed",
+          "seconds": 79.928
+        },
+        {
+          "name": "testRealSDKLoginAndNativeLifecycle",
+          "conclusion": "passed",
+          "seconds": 236.887
+        },
+        {
+          "name": "testRejectedLoginCanBeRetriedRepeatedly",
+          "conclusion": "passed",
+          "seconds": 50.027
+        },
+        {
+          "name": "testZPendingDepositSurvivesProcessTermination",
+          "conclusion": "passed",
+          "seconds": 80.454
+        }
+      ],
+      "counts": {
+        "executed": 4,
+        "passed": 4,
+        "failed": 0,
+        "unexpected": 0
+      },
+      "telemetry": {
+        "parsed_logged_samples": 31,
+        "non_ok_samples": 0,
+        "samples_with_nonempty_error_history": 0,
+        "parse_errors": [],
+        "unavailable_console_marker_found": false,
+        "error_state_marker_found": false,
+        "scope": "Only telemetry samples recorded in the completed original job log were counted; not every animation frame is logged."
+      },
+      "artifacts": [
+        {
+          "id": 13390970073,
+          "name": "ios-native-evidence",
+          "bytes": 11665587,
+          "digest": "sha256:2845e35bad5d2a98d749e90b0f36271a331fb927145975a1998846f9bd065de8",
+          "head_sha": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+          "downloaded_in_this_review": false
+        },
+        {
+          "id": 13390242062,
+          "name": "ios-native-review",
+          "bytes": 4286995,
+          "digest": "sha256:594224d445c6345c5aaf1ec8f6cf4429dca9a7d3214e060eda9aebbe8fa766ba",
+          "head_sha": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+          "downloaded_in_this_review": false
+        }
+      ],
+      "scope": "Native WKWebView/MiniKit SDK test host using local contracts, disposable funds and simulated approvals; not actual World App or production transfers.",
+      "screenshot_review": "No repeat artifact download or full screenshot review for the two-label change."
+    },
+    {
+      "event": "push",
+      "run_id": 41970938876,
+      "job_id": 127058777776,
+      "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41970938876",
+      "head_sha": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+      "tested_checkout": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+      "conclusion": "success",
+      "runner_os": "macOS 15.8.2 (24H232)",
+      "runner_image": "macos-15-arm64 20261028.0489.1",
+      "simulator": {
+        "name": "iPhone 16 Pro",
+        "os": "iOS 18.5",
+        "architecture": "arm64"
+      },
+      "tests": [
+        {
+          "name": "testNativeAccessoryDoneDismissesLandscapeKeyboard",
+          "conclusion": "passed",
+          "seconds": 55.192
+        },
+        {
+          "name": "testRealSDKLoginAndNativeLifecycle",
+          "conclusion": "passed",
+          "seconds": 258.955
+        },
+        {
+          "name": "testRejectedLoginCanBeRetriedRepeatedly",
+          "conclusion": "passed",
+          "seconds": 69.054
+        },
+        {
+          "name": "testZPendingDepositSurvivesProcessTermination",
+          "conclusion": "passed",
+          "seconds": 76.426
+        }
+      ],
+      "counts": {
+        "executed": 4,
+        "passed": 4,
+        "failed": 0,
+        "unexpected": 0
+      },
+      "telemetry": {
+        "parsed_logged_samples": 31,
+        "non_ok_samples": 0,
+        "samples_with_nonempty_error_history": 0,
+        "parse_errors": [],
+        "unavailable_console_marker_found": false,
+        "error_state_marker_found": false,
+        "scope": "Only telemetry samples recorded in the completed original job log were counted; not every animation frame is logged."
+      },
+      "artifacts": [
+        {
+          "id": 13390141659,
+          "name": "ios-native-evidence",
+          "bytes": 11865117,
+          "digest": "sha256:e12703cd5f692eccb2d0f51945377c56c2c2006bfc7f78522880eff27f03a629",
+          "head_sha": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+          "downloaded_in_this_review": false
+        },
+        {
+          "id": 13389872489,
+          "name": "ios-native-review",
+          "bytes": 4271645,
+          "digest": "sha256:03c3299e7d82a75ed92ba5489cb68ece13e9be264528c08f3ca7490e61328ef6",
+          "head_sha": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+          "downloaded_in_this_review": false
+        }
+      ],
+      "scope": "Native WKWebView/MiniKit SDK test host using local contracts, disposable funds and simulated approvals; not actual World App or production transfers.",
+      "screenshot_review": "No repeat artifact download or full screenshot review for the two-label change."
+    }
+  ],
+  "native_main_checkpoint": {
+    "run_id": 41972545494,
+    "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41972545494",
+    "head_sha": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+    "observed_at_utc": "2026-11-05T05:20:49.953Z",
+    "jobs": [
+      {
+        "id": 127063871163,
+        "status": "in_progress",
+        "conclusion": null,
+        "active_step": "Build and exercise iPhone simulator"
+      }
+    ],
+    "scope": "Additional automatic same-tree run; no completed test result was claimed at this checkpoint."
+  },
+  "additional_evidence": {
+    "audit": "../FINAL_SUBMISSION_REVIEW_2026-11-04.md",
+    "worldchain_fork": "worldchain-fork-2026-11-05.json",
+    "public_ui": "production-ui-2026-11-05.json",
+    "final_copy": "deposit-copy-2026-11-05.json"
+  },
+  "verification_boundaries": [
+    "Static public files were compared by exact bytes; deployed Worker binary equivalence was not independently measured.",
+    "Native checks use a WKWebView test host, real MiniKit transport and local contracts with simulated approvals.",
+    "No actual World App sign-in, physical-device approval, real-fund round trip, beneficiary payout or notification was performed in this release check.",
+    "The authenticated Developer Portal draft was not read in this session. The previously verified draft was Korea-only and unverified; no submission was made.",
+    "TFH acceptance of the existing immutable contracts and service fee, historical pre-deployment repository sharing, and independent security-audit completion are not established by these checks."
+  ],
+  "public_files": {
+    "checkedAtStart": "2026-11-05T05:16:14.343848+00:00",
+    "checkedAtEnd": "2026-11-05T05:19:17.070879+00:00",
+    "source_sha": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+    "deploy_run_id": 41972545438,
+    "immutable_url": "https://94c0b269.inheritance.pages.dev",
+    "production_url": "https://inheritance.pages.dev",
+    "transport": "Default curl over configured network; no alternate endpoints or request-header workaround.",
+    "file_count": 20,
+    "all_http_200": true,
+    "all_byte_identical": true,
+    "all_static_source_matches": true,
+    "checks": [
+      {
+        "path": "/",
+        "production": {
+          "url": "https://inheritance.pages.dev/",
+          "http_status": 200,
+          "bytes": 1487,
+          "sha256": "a63c2cd6833fbc90ece81238f863dd26bf738ba407687a8b82a784466a5c958b"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/",
+          "http_status": 200,
+          "bytes": 1487,
+          "sha256": "a63c2cd6833fbc90ece81238f863dd26bf738ba407687a8b82a784466a5c958b"
+        },
+        "byte_identical": true
+      },
+      {
+        "path": "/assets/chain-D05g7zTw.js",
+        "production": {
+          "url": "https://inheritance.pages.dev/assets/chain-D05g7zTw.js",
+          "http_status": 200,
+          "bytes": 258414,
+          "sha256": "3646dde9875ac3ac992e0169a614a19abbf5e48c3c2bfd4ce250812f2bd566cb"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/assets/chain-D05g7zTw.js",
+          "http_status": 200,
+          "bytes": 258414,
+          "sha256": "3646dde9875ac3ac992e0169a614a19abbf5e48c3c2bfd4ce250812f2bd566cb"
+        },
+        "byte_identical": true
+      },
+      {
+        "path": "/assets/command-exports-CoDEu2-c.js",
+        "production": {
+          "url": "https://inheritance.pages.dev/assets/command-exports-CoDEu2-c.js",
+          "http_status": 200,
+          "bytes": 22675,
+          "sha256": "b844d628f5ec5c39c9eeb9085c95a669634c5790e2cfd3f8825ad889e3574c02"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/assets/command-exports-CoDEu2-c.js",
+          "http_status": 200,
+          "bytes": 22675,
+          "sha256": "b844d628f5ec5c39c9eeb9085c95a669634c5790e2cfd3f8825ad889e3574c02"
+        },
+        "byte_identical": true,
+        "discovered_by": "literal module import in already retrieved JavaScript"
+      },
+      {
+        "path": "/assets/index-BDbGk4rX.css",
+        "production": {
+          "url": "https://inheritance.pages.dev/assets/index-BDbGk4rX.css",
+          "http_status": 200,
+          "bytes": 76304,
+          "sha256": "357f92566c73b8840abae1f4839c64e845b365ae0cf38ffef1650eb336b32779"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/assets/index-BDbGk4rX.css",
+          "http_status": 200,
+          "bytes": 76304,
+          "sha256": "357f92566c73b8840abae1f4839c64e845b365ae0cf38ffef1650eb336b32779"
+        },
+        "byte_identical": true
+      },
+      {
+        "path": "/assets/index-DjIDuLxW.js",
+        "production": {
+          "url": "https://inheritance.pages.dev/assets/index-DjIDuLxW.js",
+          "http_status": 200,
+          "bytes": 443767,
+          "sha256": "011e13dd0a234c0a6d5b760709b066a530e166ba8041fd1aaae3624c4ab08d1d"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/assets/index-DjIDuLxW.js",
+          "http_status": 200,
+          "bytes": 443767,
+          "sha256": "011e13dd0a234c0a6d5b760709b066a530e166ba8041fd1aaae3624c4ab08d1d"
+        },
+        "byte_identical": true
+      },
+      {
+        "path": "/assets/index-sxjugSUt.js",
+        "production": {
+          "url": "https://inheritance.pages.dev/assets/index-sxjugSUt.js",
+          "http_status": 200,
+          "bytes": 18248,
+          "sha256": "87c91c07599f85f6dc4465fdd25202eca6a454e647da63962d6e3d953ca21f89"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/assets/index-sxjugSUt.js",
+          "http_status": 200,
+          "bytes": 18248,
+          "sha256": "87c91c07599f85f6dc4465fdd25202eca6a454e647da63962d6e3d953ca21f89"
+        },
+        "byte_identical": true,
+        "discovered_by": "literal module import in already retrieved JavaScript"
+      },
+      {
+        "path": "/assets/react-8xLAL1SS.js",
+        "production": {
+          "url": "https://inheritance.pages.dev/assets/react-8xLAL1SS.js",
+          "http_status": 200,
+          "bytes": 186494,
+          "sha256": "ac85c0eba424e86b1bc42a08fdfca1832c467d233d0c0586d9835a48207d7744"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/assets/react-8xLAL1SS.js",
+          "http_status": 200,
+          "bytes": 186494,
+          "sha256": "ac85c0eba424e86b1bc42a08fdfca1832c467d233d0c0586d9835a48207d7744"
+        },
+        "byte_identical": true
+      },
+      {
+        "path": "/icon.svg",
+        "production": {
+          "url": "https://inheritance.pages.dev/icon.svg",
+          "http_status": 200,
+          "bytes": 417,
+          "sha256": "e7e1057964f3cbd60e683b66eab2c64260c0879250239b4c29a652af1e1d7c33"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/icon.svg",
+          "http_status": 200,
+          "bytes": 417,
+          "sha256": "e7e1057964f3cbd60e683b66eab2c64260c0879250239b4c29a652af1e1d7c33"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/icon.svg",
+          "sha256": "e7e1057964f3cbd60e683b66eab2c64260c0879250239b4c29a652af1e1d7c33",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/legal-language.js",
+        "production": {
+          "url": "https://inheritance.pages.dev/legal-language.js",
+          "http_status": 200,
+          "bytes": 1249,
+          "sha256": "3dd440f93c129f61bea2d803632c2e2fa8c43452ce204587e0db166acd90bde5"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/legal-language.js",
+          "http_status": 200,
+          "bytes": 1249,
+          "sha256": "3dd440f93c129f61bea2d803632c2e2fa8c43452ce204587e0db166acd90bde5"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/legal-language.js",
+          "sha256": "3dd440f93c129f61bea2d803632c2e2fa8c43452ce204587e0db166acd90bde5",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/legal.css",
+        "production": {
+          "url": "https://inheritance.pages.dev/legal.css",
+          "http_status": 200,
+          "bytes": 1535,
+          "sha256": "07d84758615aa5269594046d3b64b3160eb317f056265f5d9a1ac9c59777e8a1"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/legal.css",
+          "http_status": 200,
+          "bytes": 1535,
+          "sha256": "07d84758615aa5269594046d3b64b3160eb317f056265f5d9a1ac9c59777e8a1"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/legal.css",
+          "sha256": "07d84758615aa5269594046d3b64b3160eb317f056265f5d9a1ac9c59777e8a1",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/privacy.html",
+        "production": {
+          "url": "https://inheritance.pages.dev/privacy.html",
+          "initial_http_status": 308,
+          "http_status": 200,
+          "effective_url": "https://inheritance.pages.dev/privacy",
+          "redirect_count": 1,
+          "bytes": 17379,
+          "sha256": "5cabd825bc0ae550a9817bef0457d92ff58794327783ef7e32ee2a38fa6aa5d3"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/privacy.html",
+          "initial_http_status": 308,
+          "http_status": 200,
+          "effective_url": "https://94c0b269.inheritance.pages.dev/privacy",
+          "redirect_count": 1,
+          "bytes": 17379,
+          "sha256": "5cabd825bc0ae550a9817bef0457d92ff58794327783ef7e32ee2a38fa6aa5d3"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/privacy.html",
+          "sha256": "5cabd825bc0ae550a9817bef0457d92ff58794327783ef7e32ee2a38fa6aa5d3",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/store/content_card.png",
+        "production": {
+          "url": "https://inheritance.pages.dev/store/content_card.png",
+          "http_status": 200,
+          "bytes": 93250,
+          "sha256": "c501314ade3c007b2575b5d365c6b1814653591e40b1f6413d12b9af2aabae03"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/store/content_card.png",
+          "http_status": 200,
+          "bytes": 93250,
+          "sha256": "c501314ade3c007b2575b5d365c6b1814653591e40b1f6413d12b9af2aabae03"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/store/content_card.png",
+          "sha256": "c501314ade3c007b2575b5d365c6b1814653591e40b1f6413d12b9af2aabae03",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/store/hero.png",
+        "production": {
+          "url": "https://inheritance.pages.dev/store/hero.png",
+          "http_status": 200,
+          "bytes": 129069,
+          "sha256": "d908563c51543090f21f3cc55dc2bfbaba637a8e94d05d7a6eccb75e87a16b7a"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/store/hero.png",
+          "http_status": 200,
+          "bytes": 129069,
+          "sha256": "d908563c51543090f21f3cc55dc2bfbaba637a8e94d05d7a6eccb75e87a16b7a"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/store/hero.png",
+          "sha256": "d908563c51543090f21f3cc55dc2bfbaba637a8e94d05d7a6eccb75e87a16b7a",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/store/logo.png",
+        "production": {
+          "url": "https://inheritance.pages.dev/store/logo.png",
+          "http_status": 200,
+          "bytes": 13459,
+          "sha256": "3c88fc1f7c5812ea7a807d8be773013d47d6f8001ca19f60ed92bea5728d19c0"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/store/logo.png",
+          "http_status": 200,
+          "bytes": 13459,
+          "sha256": "3c88fc1f7c5812ea7a807d8be773013d47d6f8001ca19f60ed92bea5728d19c0"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/store/logo.png",
+          "sha256": "3c88fc1f7c5812ea7a807d8be773013d47d6f8001ca19f60ed92bea5728d19c0",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/store/meta_tag.png",
+        "production": {
+          "url": "https://inheritance.pages.dev/store/meta_tag.png",
+          "http_status": 200,
+          "bytes": 99615,
+          "sha256": "4cb626b07d163c7c9d687e239faeef81664e3f16950883ec8394736aa5b7fbcb"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/store/meta_tag.png",
+          "http_status": 200,
+          "bytes": 99615,
+          "sha256": "4cb626b07d163c7c9d687e239faeef81664e3f16950883ec8394736aa5b7fbcb"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/store/meta_tag.png",
+          "sha256": "4cb626b07d163c7c9d687e239faeef81664e3f16950883ec8394736aa5b7fbcb",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/store/showcase_1.png",
+        "production": {
+          "url": "https://inheritance.pages.dev/store/showcase_1.png",
+          "http_status": 200,
+          "bytes": 136017,
+          "sha256": "9fd0aea99c5aa10fe23b71c8af2a0fc3937a45ec48c1c827ffb2fc2643a929b5"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/store/showcase_1.png",
+          "http_status": 200,
+          "bytes": 136017,
+          "sha256": "9fd0aea99c5aa10fe23b71c8af2a0fc3937a45ec48c1c827ffb2fc2643a929b5"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/store/showcase_1.png",
+          "sha256": "9fd0aea99c5aa10fe23b71c8af2a0fc3937a45ec48c1c827ffb2fc2643a929b5",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/store/showcase_2.png",
+        "production": {
+          "url": "https://inheritance.pages.dev/store/showcase_2.png",
+          "http_status": 200,
+          "bytes": 130590,
+          "sha256": "806a8fe7f40b80d0f6b0ff3d077905e4609050fac82d1b537cb0bbe8a944ad7d"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/store/showcase_2.png",
+          "http_status": 200,
+          "bytes": 130590,
+          "sha256": "806a8fe7f40b80d0f6b0ff3d077905e4609050fac82d1b537cb0bbe8a944ad7d"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/store/showcase_2.png",
+          "sha256": "806a8fe7f40b80d0f6b0ff3d077905e4609050fac82d1b537cb0bbe8a944ad7d",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/store/showcase_3.png",
+        "production": {
+          "url": "https://inheritance.pages.dev/store/showcase_3.png",
+          "http_status": 200,
+          "bytes": 149053,
+          "sha256": "c88bd472ed70ab441ca945d373cc63451763da83647508ef76df12daa279c6ce"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/store/showcase_3.png",
+          "http_status": 200,
+          "bytes": 149053,
+          "sha256": "c88bd472ed70ab441ca945d373cc63451763da83647508ef76df12daa279c6ce"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/store/showcase_3.png",
+          "sha256": "c88bd472ed70ab441ca945d373cc63451763da83647508ef76df12daa279c6ce",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/terms.html",
+        "production": {
+          "url": "https://inheritance.pages.dev/terms.html",
+          "initial_http_status": 308,
+          "http_status": 200,
+          "effective_url": "https://inheritance.pages.dev/terms",
+          "redirect_count": 1,
+          "bytes": 12348,
+          "sha256": "12b5f2362c65eeaa8075698e811b5baa05d28d52433b16a8b458c620ba3220a7"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/terms.html",
+          "initial_http_status": 308,
+          "http_status": 200,
+          "effective_url": "https://94c0b269.inheritance.pages.dev/terms",
+          "redirect_count": 1,
+          "bytes": 12348,
+          "sha256": "12b5f2362c65eeaa8075698e811b5baa05d28d52433b16a8b458c620ba3220a7"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/terms.html",
+          "sha256": "12b5f2362c65eeaa8075698e811b5baa05d28d52433b16a8b458c620ba3220a7",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      },
+      {
+        "path": "/yield-terms.html",
+        "production": {
+          "url": "https://inheritance.pages.dev/yield-terms.html",
+          "initial_http_status": 308,
+          "http_status": 200,
+          "effective_url": "https://inheritance.pages.dev/yield-terms",
+          "redirect_count": 1,
+          "bytes": 17538,
+          "sha256": "b1da3d83e03e61c0522a7f31fc59ee17b168dbe5613f7828904cccf9f166aa91"
+        },
+        "immutable": {
+          "url": "https://94c0b269.inheritance.pages.dev/yield-terms.html",
+          "initial_http_status": 308,
+          "http_status": 200,
+          "effective_url": "https://94c0b269.inheritance.pages.dev/yield-terms",
+          "redirect_count": 1,
+          "bytes": 17538,
+          "sha256": "b1da3d83e03e61c0522a7f31fc59ee17b168dbe5613f7828904cccf9f166aa91"
+        },
+        "byte_identical": true,
+        "source": {
+          "commit": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+          "path": "app/public/yield-terms.html",
+          "sha256": "b1da3d83e03e61c0522a7f31fc59ee17b168dbe5613f7828904cccf9f166aa91",
+          "exists": true,
+          "production_byte_identical": true,
+          "immutable_byte_identical": true
+        }
+      }
+    ],
+    "http_note": "Three legal .html routes returned same-origin HTTP 308 redirects; their canonical HTTP 200 bodies were compared after normal redirect following. The other 17 files returned HTTP 200 directly.",
+    "javascript_import_references": [
+      {
+        "from": "/assets/index-DjIDuLxW.js",
+        "kind": "dynamic-import",
+        "specifier": "./index-sxjugSUt.js",
+        "to": "/assets/index-sxjugSUt.js"
+      },
+      {
+        "from": "/assets/index-DjIDuLxW.js",
+        "kind": "dynamic-import",
+        "specifier": "./command-exports-CoDEu2-c.js",
+        "to": "/assets/command-exports-CoDEu2-c.js"
+      },
+      {
+        "from": "/assets/index-DjIDuLxW.js",
+        "kind": "static-import",
+        "specifier": "./react-8xLAL1SS.js",
+        "to": "/assets/react-8xLAL1SS.js"
+      },
+      {
+        "from": "/assets/index-DjIDuLxW.js",
+        "kind": "static-import",
+        "specifier": "./chain-D05g7zTw.js",
+        "to": "/assets/chain-D05g7zTw.js"
+      },
+      {
+        "from": "/assets/index-sxjugSUt.js",
+        "kind": "static-import",
+        "specifier": "./command-exports-CoDEu2-c.js",
+        "to": "/assets/command-exports-CoDEu2-c.js"
+      },
+      {
+        "from": "/assets/index-sxjugSUt.js",
+        "kind": "static-import",
+        "specifier": "./chain-D05g7zTw.js",
+        "to": "/assets/chain-D05g7zTw.js"
+      }
+    ]
+  },
+  "public_health": {
+    "source_sha": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+    "checkedAt": "2026-11-05T05:16:56.949327+00:00",
+    "automation": {
+      "url": "https://world-inheritance-notify.rkddkwl725.workers.dev/api/automation/health",
+      "http_status": 200,
+      "sha256": "51be80e57807fea7acc58f674310179fbf65b3e95038d0e47a17cca643dbeb1a",
+      "observed_at": "2026-11-05T05:16:56.297142+00:00",
+      "status": "success",
+      "enabled": true,
+      "supported": true,
+      "chainId": 480,
+      "factoryAddresses": [
+        "0xb74342fc15c504108cfd91366493590a9d570d26",
+        "0xac23bd1af03ce3a178ac9dc54e0159005422f0ff",
+        "0xb3d5ead33a91287c2d39b345041d5a44dc381c5e",
+        "0x1a856ae8c3abd8a3746f542688a1846bc6208435",
+        "0xfc3f6f0b2234923b3f3adbaac797e920c8fda248",
+        "0x87813f596e4ab2ed29182bd8a632d21ae2a78db2",
+        "0x67c8de756fcd04dc5976960533931984d0348758"
+      ],
+      "all_seven_expected_factories_verified": true
+    },
+    "gas_refill": {
+      "url": "https://world-inheritance-gas-refill.rkddkwl725.workers.dev/api/health",
+      "http_status": 200,
+      "sha256": "dbb82a37b1f479096c6550e89c545b4792abdc80f3b149972c976300a456eae3",
+      "observed_at": "2026-11-05T05:16:56.948670+00:00",
+      "status": "ok",
+      "version": "gas-funding-atomic-2",
+      "enabled": true,
+      "reason": "awaiting_fees",
+      "request_type": "GET /api/health only; scheduled runCycle was not invoked."
+    }
+  },
+  "general_ci": {
+    "premerge": [
+      {
+        "event": "pr",
+        "run_id": 41970942947,
+        "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41970942947",
+        "head": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+        "tree": "6e47127489393095dd7e4030fc469d99bbbe8349",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "id": 127058790848,
+            "name": "Notification backend",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 127058791155,
+            "name": "Contracts (Foundry)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 127058791197,
+            "name": "Mini App",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 127058791230,
+            "name": "Money safety and product UI",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ],
+        "browser_job_id": 127058791230,
+        "money_scenarios_passed": 12,
+        "layout_pass_line": "2026-11-05T05:00:45.9891465Z PASS 72 layouts; screenshots and evidence in /home/runner/work/_temp/inheritance-product-ui/shots",
+        "keyboard_pass_line": "2026-11-05T05:00:27.8612501Z PASS Tab and ArrowRight reach an oversized overview amount without page or vertical overflow",
+        "failure_markers": []
+      },
+      {
+        "event": "push",
+        "run_id": 41970938920,
+        "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41970938920",
+        "head": "40cda7582c1b8d0ac536394d2cb003f0cc165140",
+        "tree": "6e47127489393095dd7e4030fc469d99bbbe8349",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "id": 127058777997,
+            "name": "Money safety and product UI",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 127058778115,
+            "name": "Notification backend",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 127058778268,
+            "name": "Mini App",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "id": 127058778317,
+            "name": "Contracts (Foundry)",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ],
+        "browser_job_id": 127058777997,
+        "money_scenarios_passed": 12,
+        "layout_pass_line": "2026-11-05T04:59:42.5860811Z PASS 72 layouts; screenshots and evidence in /home/runner/work/_temp/inheritance-product-ui/shots",
+        "keyboard_pass_line": "2026-11-05T04:59:27.5783258Z PASS Tab and ArrowRight reach an oversized overview amount without page or vertical overflow",
+        "failure_markers": []
+      }
+    ],
+    "main": {
+      "run": {
+        "id": 41972545330,
+        "url": "https://github.com/Daviswhistle/Inheritance/actions/runs/41972545330",
+        "head": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+        "tree": "6e47127489393095dd7e4030fc469d99bbbe8349",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      "jobs": [
+        {
+          "id": 127063870636,
+          "name": "Mini App",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 127063870802,
+          "name": "Contracts (Foundry)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 127063870803,
+          "name": "Money safety and product UI",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 127063870849,
+          "name": "Notification backend",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "browser_job_id": 127063870803,
+      "money_scenarios_passed": 12,
+      "layout_pass_line": "2026-11-05T05:15:43.7441224Z PASS 72 layouts; screenshots and evidence in /home/runner/work/_temp/inheritance-product-ui/shots",
+      "keyboard_pass_line": "2026-11-05T05:15:28.2322039Z PASS Tab and ArrowRight reach an oversized overview amount without page or vertical overflow",
+      "failure_markers": []
+    }
+  },
+  "local_worldchain_fork": {
+    "commit": "64a48a0248d05458fbadaf1c660507a2d39ce71d",
+    "chainId": 480,
+    "block": "37259369",
+    "blockHash": "0x58640896411c7487647d1e56140e18e8da20c9a35d587271113aeb11d086d5c9",
+    "passed": true,
+    "tests": 25,
+    "failures": 0,
+    "skipped": 0,
+    "scope": "Local fork execution; funded test accounts and reward-root fixtures. No native World App acceptance or mainnet transaction submission.",
+    "forge_version": "1.7.1 (local installed toolchain; CI pins 1.3.2)",
+    "source_scope": "Fork ran on 64a48a02; subsequent changes before the deployed source were locale copy and documentation/evidence, with contract source unchanged."
+  }
+}
