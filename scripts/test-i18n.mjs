@@ -85,7 +85,7 @@ await test("wallet debit review and network fee copy keep deposits and fees sepa
     assert.match(i18n.translate("en", "fees.network.body"), /Vault creation.*additional deposits.*withdrawals.*can each incur a fee.*existing vaults are not guaranteed free/);
     assert.match(i18n.translate("ko", "fees.network.body"), /플랜 생성.*자산 추가.*출금.*네트워크 수수료.*기존 플랜도 마찬가지/);
     assert.match(i18n.translate("en", "fees.network.body"), /Inheritance’s service fee.*Re7’s strategy performance fee/);
-    assert.match(i18n.translate("ko", "fees.network.body"), /Inheritance 서비스 수수료.*Re7 운용 수수료.*별도/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /앱 서비스 수수료.*Re7 운용 수수료.*별도/);
 });
 
 await test("Korean fee disclosures keep the 10 percent fee off principal", () => {
@@ -117,7 +117,7 @@ await test("completed transaction messages reproject when language changes witho
     const strategyFeeKo = i18n.translate("ko", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 });
     assert.match(strategyFeeEn, /USDC.*12%.*lending profits.*Re7.*Morpho.*rate can change/);
     assert.match(strategyFeeKo, /USDC.*대출 수익의 12%.*Morpho.*운용하는 Re7.*요율은 바뀔/);
-    assert.match(i18n.translate("ko", "plan.review.serviceFee"), /Inheritance/);
+    assert.equal(i18n.translate("ko", "plan.review.serviceFee"), "앱 서비스 수수료");
     assert.doesNotMatch(strategyFeeEn, /external investment vault/i);
     assert.match(i18n.translate("en", "plan.review.feeExampleLine", {
       symbol: "WLD", gross: "10 WLD", strategyFee: "1 WLD", strategyPercent: 10,
@@ -126,7 +126,7 @@ await test("completed transaction messages reproject when language changes witho
     assert.match(i18n.translate("ko", "plan.review.feeExampleLine", {
       symbol: "USDC", gross: "10 USDC", strategyFee: "1 USDC", strategyPercent: 10,
       remaining: "9 USDC", serviceFee: "0.9 USDC", net: "8.1 USDC",
-    }), /USDC별 예시: 대출 수익 10 USDC → Re7 전략 성과 수수료 1 USDC \(10%\) → 남은 금액 9 USDC → Inheritance 서비스 수수료 0\.9 USDC/);
+    }), /USDC별 예시: 대출 수익 10 USDC → Re7 전략 성과 수수료 1 USDC \(10%\) → 남은 금액 9 USDC → 앱 서비스 수수료 0\.9 USDC/);
 });
 
 await test("known contract failures and unresolved transactions give Korean next steps", () => {

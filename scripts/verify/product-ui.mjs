@@ -51,6 +51,8 @@ try{
  if(axeSource)await page.send('Runtime.evaluate',{expression:axeSource});
  for(const lang of ['en','ko']){
   await locale(page,lang);
+  const brand = lang === 'ko' ? '상속' : 'Inheritance';
+  assert.deepEqual(await page.ev("return {name:document.querySelector('.brand-name')?.textContent,title:document.title}"),{name:brand,title:brand});
   for(const [width,height]of [[320,640],[390,844],[1280,900]]){
    await page.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600});
    for(let i=0;i<4;i++){

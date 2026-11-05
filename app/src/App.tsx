@@ -322,6 +322,8 @@ function createProvider(): ethers.JsonRpcProvider {
 
 export default function App() {
   const { t, locale } = useLocale();
+  const brandName = t("brand.name");
+  useEffect(() => { document.title = brandName; }, [brandName]);
   // ---- state
   const [provider, setProvider] = useState<ethers.JsonRpcProvider | null>(null);
   const navigationChosenFor = useRef("");
@@ -4778,7 +4780,7 @@ export default function App() {
             </section>}
 
             {inheritanceEmpty && <section className="savings-empty">
-              <span className="eyebrow">Inheritance</span><h2>{t("home.empty.title")}</h2>
+              <span className="eyebrow">{brandName}</span><h2>{t("home.empty.title")}</h2>
               <p>{t(activeOwnedPlans.length ? "home.empty.body" : "home.empty.noPlan")}</p>
               {nextCheckIn !== null && chainNow >= nextCheckIn && <p>{t("home.empty.deadline")}</p>}
               <Button variant="primary" onClick={() => { navigationChosenFor.current = account.toLowerCase(); setVault(ownVault); setLinkedVault(""); setShowPlanSetup(activeOwnedPlans.length === 0); setTab(activeOwnedPlans.length ? "money" : "inherit"); }}>{t(activeOwnedPlans.length ? "home.empty.action" : "journey.owner.restart")}</Button>

@@ -12,7 +12,7 @@
   const show = language => {
     main.innerHTML = language === 'ko' ? korean : english;
     document.documentElement.lang = language;
-    document.title = main.querySelector('h1').textContent + ' · Inheritance';
+    document.title = main.querySelector('h1').textContent + (language === 'ko' ? ' · 상속' : ' · Inheritance');
     document.querySelectorAll('[data-language]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.language === language));
     });

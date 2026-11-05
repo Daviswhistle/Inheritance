@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useLocale } from "@/locale-context";
 
 export type IconName = "vault" | "send" | "inherit" | "help" | "arrow" | "check" | "bell" | "heart" | "world" | "home" | "assets";
 
@@ -23,5 +24,6 @@ export function Icon({ name, size = 22, className = "", style }: { name: IconNam
 }
 
 export function Brand() {
-  return <div className="brand"><span className="brand-mark"><Icon name="inherit" size={23} /></span><span className="brand-name">Inheritance</span></div>;
+  const { t } = useLocale();
+  return <div className="brand"><span className="brand-mark"><Icon name="inherit" size={23} /></span><span className="brand-name">{t("brand.name")}</span></div>;
 }
