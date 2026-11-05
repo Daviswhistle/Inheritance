@@ -1,5 +1,6 @@
 // Current UI captures from real SDK/local contracts, for make-store-images.mjs.
 // Only fixture usernames and mock strategy yield are changed; product DOM is not.
+// STORE_LOCALE selects en (default) or ko; STORE_RAW_DIR keeps captures separate.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -10,6 +11,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE
   ? pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href : 'playwright');
 const out = process.env.STORE_RAW_DIR || '/tmp/inheritance-store';
+const locale = process.env.STORE_LOCALE || 'en';
+if (!['en', 'ko'].includes(locale)) throw new Error('STORE_LOCALE must be en or ko');
+const labels = {
+  en: { signIn: 'Agree and sign in', residence: 'Confirm residence', review: 'Review plan', approve: 'Open approval screen', overview: 'Your inheritance savings', close: 'Close', collect: 'Collect 9.0 USDC' },
+  ko: { signIn: '동의하고 로그인', residence: '거주지 확인', review: '설정 내용 확인하기', approve: '동의하고 예치하기', overview: '예치 중인 상속 자산', close: '닫기', collect: '9.0 USDC 수익 받기' },
+}[locale];
 mkdirSync(out, { recursive: true });
 const socket = createServer();
 await new Promise(done => socket.listen(0, '127.0.0.1', done));
@@ -19,7 +26,7 @@ const origin = `http://localhost:${port}`;
 const host = spawn(process.execPath, [new URL('../test-host/start.mjs', import.meta.url).pathname, `--port=${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
 let output = '', browser, page;
 host.stdout.on('data', data => output += data); host.stderr.on('data', data => output += data);
-const evidence = { capturedAt: new Date().toISOString(), fixture: 'Disposable local chain; illustrative balances; mock +10% strategy exchange rate; synthetic usernames @test_owner/@test_heir', screenshots: [], errors: [] };
+const evidence = { capturedAt: new Date().toISOString(), locale, fixture: 'Disposable local chain; illustrative balances; mock +10% strategy exchange rate; synthetic usernames @test_owner/@test_heir', screenshots: [], layouts: [], errors: [] };
 async function until(fn, label, ms = 60000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -33,7 +40,7 @@ try {
   await until(async () => { try { return (await fetch(origin + '/__host/config')).ok; } catch { return false; } }, 'host');
   browser = await chromium.launch({ headless: true, ...(process.env.CHROME_BIN ? { executablePath: process.env.CHROME_BIN } : {}), args: ['--no-sandbox'] });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await context.addInitScript(() => localStorage.setItem('inheritance:locale', 'en'));
+  await context.addInitScript(value => localStorage.setItem('inheritance:locale', value), locale);
   page = await context.newPage();
   page.on('pageerror', error => evidence.errors.push(error.message));
   const ready = async () => {
@@ -44,33 +51,37 @@ try {
     if (atTop) await page.evaluate(() => scrollTo(0, 0));
     await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); return document.fonts.ready; });
     await sleep(100);
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const geometry = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
+    assert.ok(geometry.scrollWidth <= geometry.width);
+    const expected = { welcome: labels.signIn, create: labels.review, overview: labels.overview, income: labels.collect }[name];
+    assert.ok((await page.locator('body').innerText()).includes(expected), name + ' uses the selected locale');
+    evidence.layouts.push({ name, ...geometry });
     const path = `${out}/unified-store-${name}.png`;
     await page.screenshot({ path }); evidence.screenshots.push(path);
   };
   await page.goto(origin + '/?approval=auto'); await ready();
   await capture('welcome');
   await page.locator('.tab-item').nth(2).tap();
-  await page.getByRole('button', { name: 'Agree and sign in', exact: true }).tap();
+  await page.getByRole('button', { name: labels.signIn, exact: true }).tap();
   await page.locator('#plan-residence-country').selectOption('KR');
   await page.locator('#plan-residence-attestation').check();
-  await page.getByRole('button', { name: 'Confirm residence', exact: true }).tap();
+  await page.getByRole('button', { name: labels.residence, exact: true }).tap();
   await page.locator('#heir-input').fill('@test_heir');
   await page.locator('#plan-wld').fill('10'); await page.locator('#plan-usdc').fill('100');
-  await until(() => page.getByRole('button', { name: 'Review plan', exact: true }).isEnabled(), 'valid plan');
+  await until(() => page.getByRole('button', { name: labels.review, exact: true }).isEnabled(), 'valid plan');
   await capture('create');
-  await page.getByRole('button', { name: 'Review plan', exact: true }).tap();
+  await page.getByRole('button', { name: labels.review, exact: true }).tap();
   await page.locator('#yield-consent').check();
-  await page.getByRole('button', { name: 'Open approval screen', exact: true }).tap();
-  await until(async () => (await page.locator('.tab-item').nth(0).isVisible()) && /Your inheritance savings/.test(await page.locator('body').innerText()), 'completed plan', 20000);
-  const close = page.getByRole('button', { name: 'Close', exact: true });
+  await page.getByRole('button', { name: labels.approve, exact: true }).tap();
+  await until(async () => (await page.locator('.tab-item').nth(0).isVisible()) && (await page.locator('body').innerText()).includes(labels.overview), 'completed plan', 20000);
+  const close = page.getByRole('button', { name: labels.close, exact: true });
   if (await close.isVisible()) await close.tap();
   await page.locator('.tab-item').nth(0).tap(); await capture('overview');
   assert.equal((await fetch(origin + '/__host/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'yield' }) })).status, 200);
   await page.reload(); await ready(); await page.locator('.tab-item').nth(1).tap();
   await page.getByRole('button', { name: 'USDC', exact: true }).tap();
   await page.locator('.income-collect').waitFor();
-  assert.equal(await page.locator('.income-collect').textContent(), 'Collect 9.0 USDC');
+  assert.equal(await page.locator('.income-collect').textContent(), labels.collect);
   assert.deepEqual(await page.locator('.income-card .yield-values dd').allTextContents(), ['10.0 USDC', '1.0 USDC', '9.0 USDC']);
   await page.locator('.income-card').evaluate(e => e.scrollIntoView({ block: 'start' }));
   await capture('income', false);

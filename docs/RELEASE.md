@@ -1,5 +1,59 @@
 # Release evidence
 
+## November 5, 2026 — authenticated Portal draft localized and verified
+
+The current Developer Portal was inspected after the owner signed in. App
+`app_28c40a2a42b7f6c95789c2d5231b1314` is Inheritance by Alphagoras, with the
+production URL, Finance category, published support email, Korea-only
+availability and English/Korean languages. Its Korean listing fields and
+localized images were empty. The English listing exposed only the previous
+132-character overview; the current wizard does not expose the older long
+how-it-works/connect fields or separate legal-link fields.
+
+The draft now has a 704-character Korean description and a 1,348-character
+English description explaining wallet-approved check-ins, claim plus seven-day
+waiting, renewal until transfer, income collection, the realized-gain fee,
+separate strategy/network costs, liquidity and loss risks, Korea availability
+and the distinction from a legal will. Independent-audit status is explicit.
+Korean name, short name and tagline are populated. Both descriptions were read
+back from the reloaded Portal; no review submission was performed.
+
+Three Korean showcases and a Korean sharing image were generated from the
+current Korean UI running against disposable local contracts, uploaded, and
+verified after reload. Each image is below 500 KB and labels balances/rates as
+examples. The income image discloses the fee, loss and liquidity conditions.
+The capture had no page errors or horizontal overflow; composition checks and
+visual review found no text/phone/footer overlap. Existing English Portal
+images remain English, and all seven public English PNGs are unchanged.
+The image scripts now support a separate Korean output directory and reject
+the English public directory for Korean output.
+
+The existing 12 contract entrypoints, four Permit2 tokens, additional domain,
+two-per-day notification limit and country settings were read and preserved.
+All five pre-review wizard sections validated as complete. A fresh project
+list still showed `Not verified`. [Readback, copy, image hashes and scope](evidence/portal-review-2026-11-05.json)
+include [the saved Korean form](evidence/portal-korean-listing-2026-11-05.png)
+and [its four images](evidence/portal-korean-images-2026-11-05.png).
+
+The legacy metadata source now says immutable fee recipient, distinct from
+the owner's editable heir. That legacy field is not exposed by the current
+Portal wizard, so this source clarification is not claimed as a Portal write.
+Official domain descriptions also differ in scope; no broad permission
+expansion was made. Current World App read paths and final wallet/recovery
+flows remain physical-device checks, and the inspected screens do not establish
+TFH contract/fee acceptance. This change affects store assets, their generation
+tools and review records; the deployed application, contracts and services
+remain runtime `e6f715d90a506ea319f58e8e30f3a028f5ab4826`.
+
+The previously pending main native run
+[41972545494](https://github.com/Daviswhistle/Inheritance/actions/runs/41972545494)
+finished successfully: four XCTest cases, zero failures, and 31 logged viewport
+samples with `telemetryState=ok` and no telemetry errors. The release-record
+commit `28b2de22` also passed all four CI jobs in
+[41973672899](https://github.com/Daviswhistle/Inheritance/actions/runs/41973672899),
+including 12 money scenarios and 72 layouts. These native tests use a simulator
+host with simulated approvals, not a physical World App.
+
 ## November 5, 2026 — final audit fixes deployed, submission pending
 
 PR [#4](https://github.com/Daviswhistle/Inheritance/pull/4) was squash-merged as
@@ -62,8 +116,8 @@ enable setting read back as `true`, with reason `awaiting_fees`. No manual cron,
 funding command, outbound notification or wallet approval was invoked in this
 release verification.
 
-The authenticated Portal draft was not read in this session; the last verified
-draft was Korea-only and unverified. No submission was made. Actual World App
+At this deployment checkpoint the authenticated Portal draft had not yet been
+read; the later authenticated review is recorded above. No submission was made. Actual World App
 approval/permission checks for this release, production round trips through the
 remediated factories, the beneficiary's complete production payout and TFH
 contract/fee acceptance remain outside the observed evidence.

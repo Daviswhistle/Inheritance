@@ -1,0 +1,275 @@
+{
+  "checkedAt": "2026-11-05T05:57:26.591Z",
+  "checkedAtAsiaSeoul": "2026-11-05T14:57:26.591000+09:00",
+  "baselineHead": "28b2de22c8772aaf5c4e53d5c2a9abe39b5af78a",
+  "deployedRuntime": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+  "scope": "Authenticated Portal draft review and localization. No Mini App submission, permission expansion, notification, wallet approval or production transaction. Product runtime sources and seven existing English public PNGs are unchanged.",
+  "portal": {
+    "appId": "app_28c40a2a42b7f6c95789c2d5231b1314",
+    "name": "Inheritance",
+    "publisher": "Alphagoras",
+    "appType": "Mini App",
+    "appUrl": "https://inheritance.pages.dev/",
+    "officialWebsite": "https://inheritance.pages.dev/",
+    "category": "Finance",
+    "supportEmail": "daviswhistle@naver.com",
+    "countries": [
+      "KR"
+    ],
+    "languages": [
+      "en",
+      "ko"
+    ],
+    "verifiedHumansOnly": false,
+    "gamblingOrDigitalGameItems": false,
+    "status": "Not verified"
+  },
+  "foundBeforeChanges": {
+    "koreanNameShortNameTaglineDescriptionShowcasesAndMeta": "All empty in the authenticated Korean localization tab, confirmed by the accessibility tree and screenshot.",
+    "englishDescription": "A 132-character overview; older long how-it-works/connect fields are not exposed by the current wizard."
+  },
+  "listing": {
+    "app_id": "app_28c40a2a42b7f6c95789c2d5231b1314",
+    "en": {
+      "name": "Inheritance",
+      "short_name": "Inheritance",
+      "tagline": "Prepare assets for someone you trust.",
+      "description": "Inheritance helps you set aside WLD and USDC for someone you choose, while you manage the funds in World App.\n\nChoose one recipient and a check-in interval from 1 to 365 days. Approve a check-in transaction in World App to extend your deadline; opening the app does not extend it. Missing a deadline does not transfer funds immediately: your recipient must file a claim and wait seven days. You can renew until the assets are transferred, cancelling the claim.\n\nManage your assets, withdraw funds or collect available income. Income collection does not renew your plan. New deposits use Re7 strategies on Morpho after your consent. Redeeming invested assets for WLD or USDC depends on liquidity.\n\nInheritance charges 10% only on realized positive net gains after strategy fees and loss recovery, never on principal. Re7 strategy fees are separate. World App may also charge a WLD network fee for transactions. Review the current fees before approval.\n\nPrincipal and returns are not guaranteed. Strategy risks, losses and network delays can affect your assets and transfers. This is a smart-contract transfer plan, not a legal will. No independent security audit has been completed.\n\nNew plans and deposits are available only to South Korean residents connecting from South Korea. Existing assets, withdrawals, renewals and claims remain accessible."
+    },
+    "ko": {
+      "name": "Inheritance",
+      "short_name": "Inheritance",
+      "tagline": "믿는 사람에게 전할 자산을 준비하세요.",
+      "description": "Inheritance는 WLD와 USDC를 원하는 사람에게 전달할 조건을 정하고, 그동안 자산을 직접 관리하는 World App 미니앱입니다.\n\n받을 사람 한 명과 1–365일의 갱신 주기를 정하세요. 기한을 연장하려면 World App에서 갱신 거래를 승인해야 합니다. 앱을 열기만 해서는 연장되지 않습니다. 기한이 지나도 바로 지급되지 않습니다. 지정한 사람이 청구한 뒤 7일을 기다려야 하며, 실제 지급 전까지 갱신해 청구를 취소할 수 있습니다.\n\n자산을 추가하거나 출금하고, 인출 가능한 수익을 따로 받을 수 있습니다. 수익 출금은 기한을 연장하지 않습니다. 새 예치는 동의 후 Morpho의 Re7 전략을 이용합니다. 출금 가능 여부는 운용처의 유동성에 따라 달라질 수 있습니다.\n\nInheritance 수수료는 전략 수수료를 반영하고 기존 손실을 회복한 뒤 실현된 순이익의 10%입니다. 원금에는 부과하지 않습니다. Re7 전략 수수료는 별도이며, World App 거래에는 WLD 네트워크 비용이 추가될 수 있습니다. 승인 전에 현재 비용을 확인하세요.\n\n원금과 수익은 보장되지 않습니다. 투자 손실과 네트워크 지연 등의 위험이 있습니다. 법적 유언을 대신하지 않으며 독립 보안감사는 받지 않았습니다.\n\n새 플랜과 추가 예치는 한국에 거주하며 한국에서 접속하는 사용자에게만 제공됩니다. 기존 자산 확인·출금·갱신·청구는 계속 이용할 수 있습니다."
+    }
+  },
+  "descriptionCharacterCounts": {
+    "en": 1348,
+    "ko": 704
+  },
+  "verification": {
+    "checkedAt": "2026-11-05T05:57:26.591Z",
+    "appId": "app_28c40a2a42b7f6c95789c2d5231b1314",
+    "portalUrl": "https://developer.world.org/teams/team_d30215d932064d80c3f43cdf37389432/apps/app_28c40a2a42b7f6c95789c2d5231b1314/configuration",
+    "status": "Not verified",
+    "submitted": false,
+    "englishDescriptionSavedExactly": true,
+    "koreanDescriptionSavedExactly": true,
+    "koreanTaglineSavedExactly": true,
+    "koreanImagesAfterReload": 4,
+    "englishImagesVisuallyPreserved": true,
+    "firstFiveWizardSectionsValidatedComplete": true,
+    "screenshots": [
+      {
+        "path": "docs/evidence/portal-korean-listing-2026-11-05.png",
+        "bytes": 79917,
+        "sha256": "e92088b664b90bd9e780a6ed121bca66b0108ecb9ba04aedb2ff30dc5fec25db"
+      },
+      {
+        "path": "docs/evidence/portal-korean-images-2026-11-05.png",
+        "bytes": 77871,
+        "sha256": "ad6fca14280bbd4c7a45b6e5b23b35e28719439616e1b3f164a76d38bbd57ba3"
+      }
+    ],
+    "notes": [
+      "A batch file chooser selection uploaded only the first showcase; the remaining two were uploaded individually and all three plus the meta image were verified after reload.",
+      "The initial Korean description contained ASCII tilde, which the Portal validator rejects. It was replaced with en dash, and the corrected saved description was verified after reload.",
+      "A transient Couldn’t save message disappeared after correction; the corrected text was subsequently read back exactly from the reloaded Portal.",
+      "No Submit for review or Submit app action was used. No permissions, regions or notification limits were changed."
+    ]
+  },
+  "permissionsObservedAndPreserved": {
+    "additionalDomains": [
+      "https://inheritance.pages.dev"
+    ],
+    "whitelistedPaymentAddresses": [],
+    "permit2Tokens": [
+      "0x2cfc85d8e48f8eab294be644d9e25c3030863003",
+      "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f",
+      "0x79a02482a880bce3f13e09da970dc34db4cd24d1",
+      "0xb1e80387ebe53ff75a89736097d34dc8d9e9045b"
+    ],
+    "contractEntrypoints": [
+      "0x2cfc85d8e48f8eab294be644d9e25c3030863003",
+      "0xb74342FC15C504108cFD91366493590A9d570D26",
+      "0xF7BeEDDeB8bE1DbC4Bd8768fC3f1e513DD6C1d88",
+      "0xfC3F6f0B2234923b3F3aDBAaC797e920C8FdA248",
+      "0x348831b46876d3dF2Db98BdEc5E3B4083329Ab9f",
+      "0x79a02482a880bce3f13e09da970dc34db4cd24d1",
+      "0x67c8de756fcd04dc5976960533931984d0348758",
+      "0xb1e80387ebe53ff75a89736097d34dc8d9e9045b",
+      "0x1a856aE8c3abd8a3746F542688a1846Bc6208435",
+      "0x87813F596E4ab2Ed29182Bd8A632d21Ae2A78DB2",
+      "0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff",
+      "0xB3d5ead33a91287C2D39b345041D5a44dC381c5e"
+    ],
+    "notificationsPerUserPerDay": 2,
+    "counts": {
+      "permit2Tokens": 4,
+      "contractEntrypoints": 12
+    }
+  },
+  "localizedImageProduction": {
+    "baselineHead": "28b2de22c8772aaf5c4e53d5c2a9abe39b5af78a",
+    "runtimeSource": "e6f715d90a506ea319f58e8e30f3a028f5ab4826",
+    "scope": "Localized store compositions only. Product code and all seven existing English public PNGs unchanged. No commit, push or Portal action by the UI reviewer.",
+    "files": [
+      {
+        "path": "docs/store/ko/meta_tag.png",
+        "width": 1200,
+        "height": 600,
+        "bytes": 90609,
+        "sha256": "d203f41998592a40688909857010fe19b587c1cd29a0d91b4544d62d35377a46",
+        "pngInfoKeys": [
+          "srgb"
+        ]
+      },
+      {
+        "path": "docs/store/ko/showcase_1.png",
+        "width": 1080,
+        "height": 1080,
+        "bytes": 134864,
+        "sha256": "19bbdd39ab7a8763d5625aefeb0863c55d62888b6b78413259d602fd033f0deb",
+        "pngInfoKeys": [
+          "srgb"
+        ]
+      },
+      {
+        "path": "docs/store/ko/showcase_2.png",
+        "width": 1080,
+        "height": 1080,
+        "bytes": 119765,
+        "sha256": "0ed525529565dac964c98b8f25132ba3964ec1ff3bba0244c61b13cebf660bc0",
+        "pngInfoKeys": [
+          "srgb"
+        ]
+      },
+      {
+        "path": "docs/store/ko/showcase_3.png",
+        "width": 1080,
+        "height": 1080,
+        "bytes": 133831,
+        "sha256": "904d4519b29b0ba3a480861d2cf0dcdcd16b56290d50fef270cc9bd64589df66",
+        "pngInfoKeys": [
+          "srgb"
+        ]
+      }
+    ],
+    "capture": {
+      "locale": "ko",
+      "rawDirectory": "scratch evidence: store-ko-2026-11-05/raw",
+      "exitCode": 0,
+      "elapsedSeconds": 11.35,
+      "screenshots": [
+        "unified-store-welcome.png",
+        "unified-store-create.png",
+        "unified-store-overview.png",
+        "unified-store-income.png"
+      ],
+      "layouts": [
+        {
+          "name": "welcome",
+          "width": 390,
+          "scrollWidth": 390
+        },
+        {
+          "name": "create",
+          "width": 390,
+          "scrollWidth": 390
+        },
+        {
+          "name": "overview",
+          "width": 390,
+          "scrollWidth": 390
+        },
+        {
+          "name": "income",
+          "width": 390,
+          "scrollWidth": 390
+        }
+      ],
+      "pageErrors": [],
+      "incomeFixture": "10.0 USDC realized strategy income, 1.0 USDC Inheritance fee, 9.0 USDC net; local mock assets only"
+    },
+    "render": {
+      "exitCode": 0,
+      "elapsedSeconds": 11.58,
+      "images": 4,
+      "minCopyFooterClearancePx": 25.25,
+      "allTextWithinCanvasAndBeforePhone": true,
+      "finalPNGsVisuallyInspected": true,
+      "disclosures": [
+        "Illustrative balances and rates",
+        "10 percent of realized net gains",
+        "Separate strategy fees",
+        "Principal loss possible",
+        "Withdrawals depend on liquidity"
+      ]
+    },
+    "englishPublicPNGsUnchanged": true,
+    "commands": {
+      "capture": "STORE_LOCALE=ko STORE_RAW_DIR=/tmp/inheritance-store-ko node scripts/verify/store-host-shots.mjs",
+      "render": "STORE_LOCALE=ko STORE_RAW_DIR=/tmp/inheritance-store-ko STORE_DEST_DIR=docs/store/ko STORE_ONLY=showcase_1,showcase_2,showcase_3,meta_tag node scripts/make-store-images.mjs",
+      "environment": "The recorded run used existing Playwright and Chrome paths shown in the scratch receipt; set PLAYWRIGHT_MODULE and CHROME_BIN if required by the local runtime."
+    },
+    "notes": [
+      "Initial capture used the generic Korean transaction-review label instead of the creation-specific 동의하고 예치하기; the capture selector was corrected to the actual product label. Failure evidence is preserved in raw-attempt-1 and capture-attempt-1.log. No product change was needed.",
+      "Final two short marketing-copy refinements re-rendered the same four Korean captures. First-render log is preserved.",
+      "PNG ancillary data contains only the sRGB color-space flag; no text, EXIF or user metadata."
+    ],
+    "destinationGuard": {
+      "normalizedEnglishDestinationRejected": true,
+      "attemptedDestination": "/workspace/scratch/c859690697ed/Inheritance/app/public/store/../store",
+      "log": "destination-guard.log"
+    },
+    "finalReviewChanges": [
+      "showcase_3: 현금 출금은 → 출금은; all four compositions re-rendered from unchanged Korean UI captures.",
+      "Reject Korean output when the resolved destination equals app/public/store, including normalized equivalent paths.",
+      "Only showcase_3 hash changed; showcase_1, showcase_2, meta_tag and all seven English public PNG hashes remain unchanged."
+    ]
+  },
+  "legacyMetadataSource": {
+    "path": "docs/MORPHO_STORE_METADATA.json",
+    "overview": "Updated to the English description saved and read back in the current Portal.",
+    "connect": "Clarified immutable fee recipient, distinct from the owner-editable heir. This legacy field is not exposed in the current Portal wizard; no claim is made that this source-only wording change was written to that hidden field."
+  },
+  "notExposedInCurrentPortalWizard": [
+    "Legacy description_how_it_works and description_connect fields",
+    "Separate Terms/Privacy/Yield Terms URL fields",
+    "The earlier contact/developer-allowlisting fields",
+    "A TFH contract/fee acceptance decision"
+  ],
+  "legalLinks": {
+    "location": "The published app; no separate Portal legal-link field was visible.",
+    "urls": [
+      "https://inheritance.pages.dev/terms",
+      "https://inheritance.pages.dev/privacy",
+      "https://inheritance.pages.dev/yield-terms"
+    ],
+    "evidence": "docs/evidence/production-release-2026-11-05.json"
+  },
+  "domainInterpretation": {
+    "changed": false,
+    "finding": "The current Portal tooltip describes broad request restrictions, but the same official source calls associated_domains universal-link domains and documents exact-host matching for a specific native redirect. This is not proof that all external fetches are blocked.",
+    "officialSourceCommit": "ac44581f8ea68384e1a4ad7847ef29c6bd535ab5",
+    "sources": [
+      "https://github.com/worldcoin/developer-portal/blob/ac44581f8ea68384e1a4ad7847ef29c6bd535ab5/web/api/mcp/SKILL.md",
+      "https://github.com/worldcoin/developer-portal/blob/ac44581f8ea68384e1a4ad7847ef29c6bd535ab5/web/api/helpers/app-store.ts",
+      "https://docs.world.org/mini-apps/more/webview-spec"
+    ],
+    "readOnlyPhysicalCheck": "On the current World App version, check sign-in, balances/vault state, rates, username lookup, automation status and existing operation status. No new transaction or notification is needed to check those read paths.",
+    "observedFrontendHosts": [
+      "worldchain-mainnet.g.alchemy.com",
+      "api.merkl.xyz",
+      "usernames.worldcoin.org",
+      "developer.world.org",
+      "world-inheritance-notify.rkddkwl725.workers.dev"
+    ]
+  },
+  "remainingEvidenceLimits": [
+    "Latest production World App physical-device approval and recovery flow was not executed here.",
+    "Production round trips through the remediated factories and the beneficiary full production payout remain unverified in this continuation.",
+    "TFH contract/source-sharing/fee acceptance was not established by the inspected Portal screens.",
+    "The existing native helper-text/Done overlap remains a physical-device follow-up; input visibility and keyboard dismissal tests pass."
+  ]
+}
