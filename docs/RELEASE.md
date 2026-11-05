@@ -1,5 +1,27 @@
 # Release evidence
 
+## November 5, 2026 — Korean name and store copy
+
+The Korean app name and short name are **상속**. The Korean store tagline is
+“WLD·USDC를 전할 사람과 조건을 정하세요”. The owner's opening sentence was
+kept verbatim. The remaining Korean description follows deposit, renewal and
+claim order and explains the seven-day wait, fees, risks and Korean eligibility.
+The complete description and all four rebranded images were verified after
+reloading the Korean Portal draft. The English listing still displays
+Inheritance. The draft remains unverified and was not submitted.
+
+Runtime `56ea0d3` is live at https://inheritance.pages.dev. The production root,
+its four referenced bundles and the four legal files match the
+[immutable build](https://2c082a24.inheritance.pages.dev). Android World App
+shows 상속 inside the mini app before and after wallet sign-in. The outer World
+App header currently shows the default project name Inheritance. Both languages
+and all three legal pages were also verified on the production URL. The
+[deployment](https://github.com/Daviswhistle/Inheritance/actions/runs/41993656953)
+and [general CI](https://github.com/Daviswhistle/Inheritance/actions/runs/41993656980)
+passed. The [native iOS 18.5 host run](https://github.com/Daviswhistle/Inheritance/actions/runs/41993657027)
+passed four tests with zero failures or skips. No production transaction was
+performed.
+
 ## November 5, 2026 — authenticated Portal draft localized and verified
 
 The current Developer Portal was inspected after the owner signed in. App
