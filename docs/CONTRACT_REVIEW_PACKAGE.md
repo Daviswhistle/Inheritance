@@ -63,7 +63,8 @@ and USDC `0xb1E80387EbE53Ff75a89736097D34dC8D9E9045B`.
 Current source links are for navigation. Earlier deployments must be compared
 with their deployment revisions and verified explorer source, not recompiled
 from current comments and assumed byte-identical. Deployment/verification
-receipts are retained in [RELEASE.md](RELEASE.md).
+receipts and the latest app release and production checks are recorded in
+[RELEASE.md](RELEASE.md).
 
 ## Review boundaries
 

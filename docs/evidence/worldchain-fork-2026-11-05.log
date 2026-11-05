@@ -1,0 +1,96 @@
+No files changed, compilation skipped
+
+Ran 1 test for test/GasRefillWorldChainFork.t.sol:GasRefillWorldChainForkTest
+[PASS] testWorldChainRealUSDCSwapUnwrapAndFixedKeeperFunding() (gas: 379143)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 16.48s (16.48s CPU time)
+
+Ran 2 tests for test/OwnerIncomeWorldChainFork.t.sol:OwnerIncomeWorldChainForkTest
+[PASS] testColdRe7USDCQuoteAndIncomePreserveCapital() (gas: 1734394)
+[PASS] testColdRe7WLDQuoteAndIncomePreserveCapital() (gas: 1069180)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 20.67s (184.10ms CPU time)
+
+Ran 1 test for test/SecurityRemediationFork.t.sol:WLDSecurityRemediationForkTest
+[PASS] testRealWLDMerklOutageExitsPrincipalThenReconcilesLateRewards() (gas: 920502)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 32.71s (13.88s CPU time)
+
+Ran 5 tests for test/OperatorGasFunding.t.sol:OperatorGasFundingForkTest
+[PASS] testWorldChainAtomicUSDC() (gas: 524418)
+Logs:
+  real funding route: 0
+  gas used: 383783
+  actual input raw: 2670628
+  actual input microUSDC value: 2670628
+
+[PASS] testWorldChainAtomicWLDDirect() (gas: 550032)
+Logs:
+  real funding route: 2
+  gas used: 429667
+  actual input raw: 7126653630386216046
+  actual input microUSDC value: 2672712
+
+[PASS] testWorldChainAtomicWLDViaUSDC() (gas: 697184)
+Logs:
+  real funding route: 1
+  gas used: 578967
+  actual input raw: 7127075175269117622
+  actual input microUSDC value: 2672870
+
+[PASS] testWorldChainUSDCReceiptFeeFunding() (gas: 960356)
+Logs:
+  real funding route: 0
+  gas used: 581057
+  actual input raw: 2670628
+  actual input microUSDC value: 2670628
+
+[PASS] testWorldChainWLDReceiptFeeFunding() (gas: 1065762)
+Logs:
+  real funding route: 1
+  gas used: 745668
+  actual input raw: 7127075175269117622
+  actual input microUSDC value: 2672870
+
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 32.72s (18.02s CPU time)
+
+Ran 6 tests for test/MorphoWorldChainFork.t.sol:MorphoWorldChainForkTest
+[PASS] testExternalCanonicalRewardAfterInheritanceCannotBeSweptByOwner() (gas: 688013)
+[PASS] testRealDistributorAndMorphoWithInjectedRewardRoot() (gas: 696065)
+Logs:
+  canonical reward claim and compounding gas (injected local root): 416565
+
+[PASS] testRealMorphoCashInheritanceAfterReview() (gas: 387262)
+Logs:
+  cash inheritance gas (local fork): 369038
+
+[PASS] testRealMorphoDepositAndFullOwnerRedemption() (gas: 298046)
+[PASS] testRealReceiptTransferAndWalletRedemption() (gas: 326752)
+[PASS] testSimulatedRedemptionFailureTransfersRealReceiptToken() (gas: 318654)
+Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 32.92s (28.89s CPU time)
+
+Ran 3 tests for test/SecurityRemediationFork.t.sol:USDCSecurityRemediationForkTest
+[PASS] testRealColdPositiveYieldNormalCashStillSucceeds() (gas: 438895)
+[PASS] testRealColdPositiveYieldRejectedFeeRollsBackToExactReceiptPayout() (gas: 557033)
+[PASS] testRealMerklOutagePreservesIdleAndRecoversLateCanonicalWithGifts() (gas: 1023360)
+Suite result: ok. 3 passed; 0 failed; 0 skipped; finished in 33.02s (13.49s CPU time)
+
+Ran 7 tests for test/USDCWorldChainFork.t.sol:USDCWorldChainForkTest
+[PASS] testColdRealTokensExhaustedStrategyWithIdleUSDCAndWLDGift() (gas: 1454103)
+Logs:
+  cold real-token failure body gas: 696497
+  cold real-token failure conservative padded tx gas: 861716
+
+[PASS] testExternalRealDistributorLateWLDCannotBeRecoveredByOwner() (gas: 5757174)
+[PASS] testRealDistributorInjectedWLDStaysSeparateUntilFullExit() (gas: 796446)
+Logs:
+  USDC-vault WLD claim gas (injected local root): 123716
+
+[PASS] testRealRe7CashInheritanceAfterReview() (gas: 455668)
+Logs:
+  USDC cash inheritance gas (local fork): 432555
+
+[PASS] testRealRe7USDCDepositAndFullOwnerRedemption() (gas: 363893)
+[PASS] testRealWalletReceiptRedemptionNoSecondServiceFee() (gas: 476887)
+[PASS] testSimulatedIlliquidityTransfersRealReceiptIdleUSDCAndWLD() (gas: 893137)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 33.02s (51.90s CPU time)
+
+Ran 7 test suites in 33.02s (201.53s CPU time): 25 tests passed, 0 failed, 0 skipped (25 total tests)
+

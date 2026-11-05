@@ -290,3 +290,34 @@ Official references: [design](https://docs.world.org/mini-apps/guidelines/design
 [smart-contract guidance](https://docs.world.org/mini-apps/guidelines/smart-contract-development-guidelines).
 The latter strongly recommends independent audits; that recommendation is not
 rewritten here as a universal prerequisite certificate for all submissions.
+
+## November 5 continuation
+
+The opt-in World Chain fork suite was run separately on reviewed commit
+`64a48a0248d05458fbadaf1c660507a2d39ce71d`, using the unchanged existing runner.
+All 25 tests in seven suites passed, with zero failures or skips, at pinned
+World Chain block `37259369` and block hash
+`0x58640896411c7487647d1e56140e18e8da20c9a35d587271113aeb11d086d5c9`.
+The [receipt](evidence/worldchain-fork-2026-11-05.json) and
+[test log](evidence/worldchain-fork-2026-11-05.log) retain the exact result.
+This local run used Forge/Cast 1.7.1; the CI workflow remains pinned to 1.3.2.
+External contract state came from the public RPC, while balances, reward roots,
+failures and elapsed-time fixtures were applied only inside the local fork.
+No production transaction or native wallet approval was sent. The earlier
+general-CI skipped-test count remains its historical result.
+
+The English and Korean additional-deposit introductions now omit a duplicated
+network-fee sentence. MoneyReview's common WLD network-fee and next-approval
+notice stays visible, together with fee/risk/storage disclosures and unchecked
+consent. The existing i18n checks passed 10/10; one full product-UI run passed
+72 layouts and 38 axe checks with zero violations and produced 45 screenshots.
+The 320px Korean top and bottom screenshots were reviewed after the edit.
+[Copy follow-up evidence](evidence/deposit-copy-2026-11-05.json) records this
+working-tree verification without claiming an actual World App transaction.
+
+The previously observed iOS helper-text overlap after repeated foregrounding
+remains a real-device follow-up. Input visibility and keyboard dismissal passed
+in the native host; no speculative keyboard-layout change is included here.
+The latest merge/deployment receipt is recorded in [RELEASE.md](RELEASE.md)
+once verified, and the PR retains the latest CI status. This continuation does
+not establish a new Portal inspection, physical-device run or TFH acceptance.
