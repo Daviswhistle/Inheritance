@@ -442,13 +442,12 @@ export function PlanSetup({
   const hasYieldRoute = disclosedYieldRows.length > 0;
   const riskDisclosure = <section className="plan-risk" aria-labelledby="plan-risk-title">
     <h3 id="plan-risk-title">{t("plan.risk.title")}</h3>
-    <ul className="plan-risk-points">
-      <li>{t("plan.risk.audit")}</li>
+    {(!showReview || hasYieldRoute) && <ul className="plan-risk-points">
       {!showReview && feeGroups(disclosedYieldRows).map(row => <li key={row.symbol}>{strategyFeeText(row)}</li>)}
       {!showReview && <li>{t(hasYieldRoute ? "plan.risk.yieldFee" : "plan.risk.basicFee")}</li>}
       {hasYieldRoute && <li>{t("plan.risk.value")}</li>}
       {!showReview && <li>{t("plan.risk.inheritance")}</li>}
-    </ul>
+    </ul>}
     {hasYieldRoute && <label className="yield-consent"><input id="yield-consent" type="checkbox" checked={yieldConsent} disabled={busy}
       onChange={event => onYieldConsent(event.target.checked)} />
       <span>{t("plan.risk.consent")}</span>

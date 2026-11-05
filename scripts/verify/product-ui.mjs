@@ -87,6 +87,7 @@ try{
   }
   await click(page,lang==='en'?'Review plan':'설정 내용 확인하기');
   assert.ok(await page.waitFor('#plan-review-title'));assert.equal(await page.ev("return document.getElementById('yield-consent').checked"),false);assert.equal(await page.ev("return document.querySelector('.plan-submit').disabled"),true);
+  assert.doesNotMatch(await page.ev("return document.querySelector('.plan-final-review').innerText"), /audit|보안 감사/i);
   assert.deepEqual(await page.ev("return [...document.querySelectorAll('.plan-review-amount')].map(x=>x.textContent.trim())"),['10 WLD','12.345678 USDC']);
   assert.equal(await page.ev("return document.querySelector('.plan-review-address').textContent"),config.heir);
   for(const[width,height]of [[320,640],[390,844]]){
@@ -121,6 +122,7 @@ try{
  await page.ev("document.querySelector('.deposit-controls').open=true;await __q.setInput('deposit-amount','0.01');");
  await click(page,'금액 추가하기');
  await until(()=>page.ev("return !!document.getElementById('additional-deposit-consent')"),'additional deposit terms review');
+ assert.doesNotMatch(await page.ev("return document.querySelector('.money-review').innerText"), /audit|보안 감사/i);
  assert.equal(await page.ev("return document.getElementById('additional-deposit-consent').checked"),false,'additional deposit risk consent starts unchecked');
  assert.equal(await page.ev("return document.querySelector('.money-review .btn-primary').disabled"),true,'additional deposit requires explicit risk consent');
  for(const width of [320,390]){

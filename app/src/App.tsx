@@ -4577,7 +4577,7 @@ export default function App() {
               percent: ethers.formatUnits(moneyReview.depositTerms.underlyingFee, 16).replace(/\.0$/, "") })}</dd></div>
             <div><dt>{t("plan.review.serviceFee")}</dt><dd>{t("plan.review.yieldFee")}</dd></div>
           </dl>
-          <p>{t("plan.risk.value")}</p><p>{t("plan.risk.audit")}</p>
+          <p>{t("plan.risk.value")}</p>
           <a href="/yield-terms.html" target="_blank" rel="noreferrer">{t("help.feeTerms")}</a>
           <label className="yield-consent"><input id="additional-deposit-consent" type="checkbox" checked={Boolean(moneyReview.consent)} disabled={pendingAction}
             onChange={event => setMoneyReview(current => current ? { ...current, consent: event.target.checked } : null)} /><span>{t("plan.risk.consent")}</span></label>

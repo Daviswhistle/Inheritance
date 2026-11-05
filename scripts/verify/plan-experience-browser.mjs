@@ -173,7 +173,7 @@ try{
  await empty.ev(`const moduleUrl=performance.getEntriesByType('resource').find(entry=>new URL(entry.name).pathname.endsWith('/ethers.js')).name;const {JsonRpcProvider}=await import(moduleUrl);JsonRpcProvider.prototype.send=window.__TOKEN_BALANCE_SEND__;return true;`);
  await click(empty,'Refresh balances');await until(()=>empty.ev(`return !document.querySelector('.plan-primary-actions .plan-submit').disabled`),'balance retry permits review');
  await click(empty,'Review plan');await until(()=>empty.ev(`return !!document.querySelector('.plan-final-review')`),'reviewed safe setup');
- assert.ok(await empty.ev(`return document.querySelector('.plan-risk').innerText.includes('independent security audit')`));
+ assert.ok(await empty.ev(`return document.querySelector('.plan-risk').innerText.includes('You can lose part or all of your deposit.')`));
  assert.ok(await empty.ev(`return document.querySelector('.plan-primary-actions .plan-submit').disabled`));
  for(const [width,height] of [[320,640],[390,844]]){
   await empty.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
