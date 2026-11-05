@@ -1,4 +1,20 @@
-# Mac continuation — 2026-11-03
+# Mac continuation — 2026-11-05
+
+## Android plan lookup warning — 2026-11-05
+
+After fast-forwarding to `4d840ea`, actual Android World App showed the old
+full-registry error above the restored ended-plan card. An injected outage on
+that baseline reproduced the exact warning after balances and check-in had
+already recovered. The first failure's transport cause was not captured; all
+eight production registries answered subsequent read-only probes.
+
+The app now displays plan lookup availability from the current registry
+result. During a full outage it withholds unverified balances and combined
+renewal. Manual retry and reconnect both clear the warning after a successful
+read. The Chromium product test covered both recovery paths with no wallet
+request and passed all 72 layouts. Production and submission are separate
+checks. The Korean Portal draft is recorded in [RELEASE.md](RELEASE.md), and
+the actual iOS World App and TFH contract/fee acceptance remain open.
 
 ## Independent audit remediation — 2026-11-04
 

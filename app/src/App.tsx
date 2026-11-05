@@ -496,6 +496,7 @@ export default function App() {
   }>({ account: "", items: [], incomplete: false, unavailableFactories: [] });
   const ownedVaults = ownedVaultRead.account === account.toLowerCase() ? ownedVaultRead.items : [];
   const vaultLookupIncomplete = ownedVaultRead.account === account.toLowerCase() && ownedVaultRead.incomplete;
+  const vaultLookupUnavailable = vaultLookupIncomplete && ownedVaultRead.unavailableFactories.length === TRUSTED_FACTORIES.length;
   const ownedVaultCache = useRef<{ account: string; items: OwnedVault[] }>({ account: "", items: [] });
   const vaultLookupRequest = useRef(0);
   const vaultLookupAccount = useRef(account.toLowerCase());
@@ -1145,7 +1146,9 @@ export default function App() {
   const isVaultOwner = Boolean(vaultOwner) && account.toLowerCase() === vaultOwner.toLowerCase();
   const isMyVault = isVaultOwner && !vaultIdentity?.released;
   const planRouteFor = (symbol: PlanAssetSymbol) => APP_PLAN_ROUTES.find(route => route.symbol === symbol) ?? null;
-  const ownedPlanLoading = ownedPlanRead.loading || ownedPlanRead.account !== account.toLowerCase();
+  const ownedPlanLoading = ownedPlanRead.loading || ownedPlanRead.account !== account.toLowerCase()
+    || ownedVaultRead.account !== account.toLowerCase();
+  const ownedPlanIncomplete = vaultLookupIncomplete || ownedPlanRead.incomplete;
   const activeOwnedPlans = ownedPlanRead.account === account.toLowerCase()
     ? ownedPlanRead.items.filter(item => item.active === true) : [];
   const unsettledOwnedPlans = ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items.filter(item => item.settled === false) : [];
@@ -1153,13 +1156,13 @@ export default function App() {
     const rows = (ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items : []).filter(item => item.settled === false || item.hasAssets === true).filter(item => item.symbol === symbol
       || symbol === "WLD" && item.symbol === "USDC" && item.additionalWld !== 0n);
     const valueOf = (item: typeof rows[number]) => item.symbol === symbol ? item.balance : item.additionalWld;
-    const unavailable = ownedPlanRead.account === account.toLowerCase()
+    const unavailable = vaultLookupUnavailable || ownedPlanRead.account === account.toLowerCase()
       && ownedPlanRead.unavailableSymbols.includes(symbol);
     return { rows, unavailable,
       amount: !unavailable && rows.every(item => valueOf(item) !== null)
         ? rows.reduce((sum, item) => sum + (valueOf(item) ?? 0n), 0n) : null };
   };
-  const inheritanceEmpty = !ownedPlanLoading && !ownedPlanRead.incomplete
+  const inheritanceEmpty = !ownedPlanLoading && !ownedPlanIncomplete
     && ownedPlanRead.items.every(item => item.hasAssets === false);
   // An empty balance alone is not cancellation: keep active, unknown and paid
   // inheritance states separate. Only a complete self-recipient read can end it.
@@ -1209,7 +1212,7 @@ export default function App() {
     symbol: yieldRouteFor(item.factory)?.symbol ?? "WLD" as AssetSymbol,
     current: APP_PLAN_ROUTES.some(route => route.factory.toLowerCase() === item.factory.toLowerCase()),
   }));
-  const nextCheckIn = activeOwnedPlans.length && !ownedPlanRead.incomplete
+  const nextCheckIn = activeOwnedPlans.length && !ownedPlanIncomplete
     ? Math.min(...activeOwnedPlans.map(item => Number(item.lastPing + item.periodSeconds))) : null;
   const draftPlanRoutes = APP_PLAN_ROUTES.map(route => {
     const saved = pendingPlan?.assets.find(asset => asset.symbol === route.symbol);
@@ -1839,58 +1842,32 @@ export default function App() {
   const loadVault = useCallback(async () => {
     if (!factory || !account) return;
     const key = account.toLowerCase(), request = ++vaultLookupRequest.current;
-    try {
-      const sources = TRUSTED_FACTORIES;
-      const results = await Promise.allSettled(sources.map(async address => ({
-        factory: address,
-        address: String(await new ethers.Contract(address, FACTORY_ABI, provider).vaultOf(account)),
-      })));
-      if (key !== vaultLookupAccount.current || request !== vaultLookupRequest.current) return;
-      const previous = ownedVaultCache.current.account === key ? ownedVaultCache.current.items : [];
-      const found = results.flatMap((result, index) => result.status === "fulfilled"
-        ? result.value.address !== ethers.ZeroAddress ? [result.value] : []
-        : previous.filter(item => item.factory.toLowerCase() === sources[index].toLowerCase()));
-      ownedVaultCache.current = { account: key, items: found };
-      const unavailableFactories = results.flatMap((result, index) => result.status === "rejected" ? [sources[index]] : []);
-      setOwnedVaultRead({ account: key, items: found, incomplete: unavailableFactories.length > 0, unavailableFactories });
-      // A failed optional registry must not hide successfully read basic vaults.
-      // All creation paths still recheck their own registry before sending.
-      if (results.every(result => result.status === "rejected")) throw new Error("Vault registries unavailable");
-      const v = found.find(v => v.address.toLowerCase() === ownVault.toLowerCase())?.address ?? found[0]?.address;
-      if (v && v !== ethers.ZeroAddress) {
-        setOwnVault(v);
-        // 링크 금고가 우선이다. 상속인에게 보낸 링크를 열었는데 자기 금고로 되돌아가면
-        // 링크가 준 정보가 사라진다. 어느 쪽을 보는지는 화면에 알려준다.
-        if (!linkedVault) {
-          setVault(v);
-          if (!ownVault && navigationChosenFor.current !== key) setTab(current => current === "inherit" ? "vault" : current);
-        }
-        setStale(true);
-        return;
-      }
-      // A partial read does not prove the absence of a previously known vault.
-      if (results.every(result => result.status === "fulfilled")) setOwnVault("");
-      // 금고가 없는 경우에도 읽기는 성공했다. 배너를 여기서 지워야 연결이 복구됐을 때
-      // 금고가 없는 사람에게도 배너가 영구히 남지 않는다 (refreshVaultDetails 는
-      // `!vaultCtr` 이면 즉시 반환하므로 이 경로가 그 일을 대신한다).
-      setStale(true);
-    } catch (e: unknown) {
-      if (key !== vaultLookupAccount.current || request !== vaultLookupRequest.current) return;
-      // RPC 실패를 삼키지 않는다 — 예외가 바깥으로 새면 unhandled rejection 이 된다.
-      setStatus("Vault lookup failed: " + errorText(e));
-      // 여기서가 "연결 배너" 가 실제로 필요해지는 지점이다. RPC 가 죽으면
-      // `vault` 가 채워지지 않아 `vaultCtr` 이 null 이 되고, 그러면 아래
-      // `refreshVaultDetails` 는 `if (!vaultCtr) return` 로 즉시 빠져나간다.
-      // 즉 상태 플래그를 그쪽에만 두면, 배너가 정확히 필요한 순간에 표시되지 않는다.
-      setStale(false);
-      return;
-    }
+    const results = await Promise.allSettled(TRUSTED_FACTORIES.map(async address => ({
+      factory: address,
+      address: String(await new ethers.Contract(address, FACTORY_ABI, provider).vaultOf(account)),
+    })));
+    if (key !== vaultLookupAccount.current || request !== vaultLookupRequest.current) return;
+    const previous = ownedVaultCache.current.account === key ? ownedVaultCache.current.items : [];
+    const found = results.flatMap((result, index) => result.status === "fulfilled"
+      ? result.value.address !== ethers.ZeroAddress ? [result.value] : []
+      : previous.filter(item => item.factory.toLowerCase() === TRUSTED_FACTORIES[index].toLowerCase()));
+    const unavailableFactories = results.flatMap((result, index) => result.status === "rejected" ? [TRUSTED_FACTORIES[index]] : []);
+    ownedVaultCache.current = { account: key, items: found };
+    setOwnedVaultRead({ account: key, items: found, incomplete: unavailableFactories.length > 0, unavailableFactories });
 
-    // 내 소유 금고가 없다. 여기서 "상속인인 금고"를 `vault` 에 넣으면 안 된다.
-    // `vault` 는 "내가 소유한 금고" 를 뜻하고, 이를 상속인 금고로 오염시키면
-    // (1) Create 버튼이 영구히 비활성화되고 (2) "이미 금고가 있습니다" 라고 표시된다.
-    // 결과적으로 남의 상속인이 된 사용자는 자기 금고를 만들 수 없게 된다.
-    // 상속인 금고는 아래 "Find vaults where I am heir" 액션으로 별도로 조회한다.
+    // Keep lookup availability separate from wallet action results. On a full
+    // outage, retain the selected vault until a successful lookup can verify it.
+    if (unavailableFactories.length === TRUSTED_FACTORIES.length) return;
+    const selected = found.find(item => item.address.toLowerCase() === ownVault.toLowerCase()) ?? found[0];
+    if (selected) {
+      setOwnVault(selected.address);
+      if (!linkedVault) {
+        setVault(selected.address);
+        if (!ownVault && navigationChosenFor.current !== key) setTab(current => current === "inherit" ? "vault" : current);
+      }
+    } else if (unavailableFactories.length === 0) {
+      setOwnVault("");
+    }
   }, [factory, account, linkedVault, provider, ownVault]);
 
   // Username/address resolution helpers — accept @username or 0x… in inputs
@@ -1962,11 +1939,15 @@ export default function App() {
   useEffect(() => {
     if (!factory || !account) return;
     void loadVault();
-    if (!HAS_YIELD_ROUTES) return;
     const refresh = () => { if (document.visibilityState === "visible" && !actionInFlight.current) void loadVault(); };
     const timer = setInterval(refresh, 30_000);
     document.addEventListener("visibilitychange", refresh);
-    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+    window.addEventListener("online", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("online", refresh);
+    };
   }, [factory, account, loadVault]);
 
   useEffect(() => {
@@ -3750,7 +3731,7 @@ export default function App() {
   // ---- life signals
   const checkInAllPlans = async (confirmClaimCancellation = false) => {
     if (!provider || !account || !miniInstalled) { setStatus("Open in World App and connect before checking in."); return; }
-    if (ownedPlanRead.loading || ownedPlanRead.incomplete) { setStatus("Refresh every owned vault before checking in. No check-in was sent."); return; }
+    if (ownedPlanLoading || ownedPlanIncomplete) { setStatus("Refresh every owned vault before checking in. No check-in was sent."); return; }
     if (activeOwnedPlans.length === 0) { setStatus("There are no active inheritance vaults to check in to."); return; }
     try {
       const targets = await Promise.all(activeOwnedPlans.map(async item => {
@@ -4583,6 +4564,8 @@ export default function App() {
     }
   };
   const isArchivedOwner = isYieldVault && vaultIdentity?.released && isVaultOwner;
+  const showAccountEmptyState = account && !pendingPlan && (tab === "vault" && !ownVault && !isArchivedOwner || tab === "money" && !vault && walletShareRoutes.length === 0);
+
   return (
     <div className="app-shell" lang={locale}>
       {/* 환경변수가 잘못되면 흰 화면 대신 복구 방법을 안내한다.
@@ -4730,6 +4713,10 @@ export default function App() {
         </section>}
         {account && <>
         {tab === "inherit" && account && (notifyHeirWorthShowing || inheritedPositions.length > 0) && heirStatusCard}
+        {vaultLookupIncomplete && !showAccountEmptyState && tab !== "support" && <section className="plan-settings-differ">
+          <p role="status">{t(vaultLookupUnavailable ? "assets.registryAllUnavailable" : "assets.registryUnavailable")}</p>
+          <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>{t("assets.retryLookup")}</Button>
+        </section>}
         {showEndedOverview && <EndedPlan busy={pendingAction} returned={exitComplete === "funds"} onRestart={restartEndedPlan} />}
         {account && tab === "vault" && ownVault && !endedOwnedPlan && <Card className="plan-overview-card">
           <CardContent className="grid gap-3">
@@ -4749,7 +4736,7 @@ export default function App() {
               })}
             </div>
             </>}
-            {!inheritanceEmpty && !ownedPlanLoading && !ownedPlanRead.incomplete && activeOwnedPlans.length === 0 && !unsettledOwnedPlans.some(p => p.heir.toLowerCase() === account.toLowerCase() && p.hasAssets) && <p className="text-sm text-gray-600">{t("home.savingsWithoutPlan")}</p>}
+            {!inheritanceEmpty && !ownedPlanLoading && !ownedPlanIncomplete && activeOwnedPlans.length === 0 && !unsettledOwnedPlans.some(p => p.heir.toLowerCase() === account.toLowerCase() && p.hasAssets) && <p className="text-sm text-gray-600">{t("home.savingsWithoutPlan")}</p>}
             {!inheritanceEmpty && nextCheckIn !== null && <div className="home-checkin-date">
               <span>{chainNow > 0 && nextCheckIn <= chainNow ? t("home.checkin.overdue") : t("home.checkin.next")}</span>
               {locale === "ko" ? <>
@@ -4762,16 +4749,16 @@ export default function App() {
               {chainNow > 0 && nextCheckIn <= chainNow && <small>{t("home.checkin.hint")}</small>}
             </div>}
             {!inheritanceEmpty && activeOwnedPlans.length > 0 && !checkinReview && <div className="home-checkin-action">
-              <Button variant="primary" aria-describedby="home-checkin-help" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
+              <Button variant="primary" aria-describedby="home-checkin-help" disabled={pendingAction || !miniInstalled || ownedPlanLoading || ownedPlanIncomplete}
                 onClick={() => void runWalletAction(() => checkInAllPlans(), true)}>{t("home.checkin.direct")}</Button>
               <p id="home-checkin-help">{t(!miniInstalled ? "home.checkin.openApp" : ownedPlanRead.loading ? "home.checkin.loading"
-                : ownedPlanRead.incomplete ? "home.checkin.unavailable" : "home.checkin.explainer")}</p>
-              {miniInstalled && ownedPlanRead.incomplete && !ownedPlanRead.loading && <Button disabled={pendingAction}
+                : ownedPlanIncomplete ? "home.checkin.unavailable" : "home.checkin.explainer")}</p>
+              {miniInstalled && ownedPlanIncomplete && !ownedPlanRead.loading && !vaultLookupIncomplete && <Button disabled={pendingAction}
                 onClick={() => void loadVault()}>{t("entry.unavailable.action")}</Button>}
             </div>}
             {unsettledOwnedPlans.some(p => p.heir.toLowerCase() === account.toLowerCase() && p.hasAssets) && <section className="retained-assets">
               <h2>{t("exit.retainedTitle")}</h2><p>{t("exit.retainedBody")}</p>
-              <Button variant="primary" disabled={pendingAction || settingsPending || ownedPlanRead.incomplete} onClick={() => void runWalletAction(reviewExit, true)}>{t("exit.action")}</Button>
+              <Button variant="primary" disabled={pendingAction || settingsPending || ownedPlanIncomplete} onClick={() => void runWalletAction(reviewExit, true)}>{t("exit.action")}</Button>
             </section>}
             {checkinReview && <section className="checkin-review" aria-labelledby="checkin-review-title">
               <h3 id="checkin-review-title">{t("home.checkin.title")}</h3>
@@ -4784,7 +4771,7 @@ export default function App() {
                 {activeOwnedPlans.map(item => <p key={item.address}>{item.symbol} · {short(item.address)}</p>)}
               </details>
               <div className="flex gap-2 flex-wrap">
-                <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanRead.loading || ownedPlanRead.incomplete}
+                <Button variant="primary" disabled={pendingAction || !miniInstalled || ownedPlanLoading || ownedPlanIncomplete}
                   onClick={() => void runWalletAction(() => checkInAllPlans(true), true)}>{t("home.checkin.cancelClaims")}</Button>
                 <Button disabled={pendingAction} onClick={() => setCheckinReview(null)}>{t("home.checkin.cancel")}</Button>
               </div>
@@ -4800,8 +4787,8 @@ export default function App() {
               && <p className="text-xs text-gray-600">{t("home.additionalWld")}</p>}
             {ownedPlanLoading
               ? <p className="text-sm text-gray-600" role="status">{t("entry.loading")}</p>
-              : ownedPlanRead.incomplete
-              ? <p className="plan-settings-differ" role="status">{t("home.incomplete")}</p>
+              : ownedPlanIncomplete
+              ? !vaultLookupIncomplete && <p className="plan-settings-differ" role="status">{t("home.incomplete")}</p>
               : activeOwnedPlans.length > 0 ? commonPlanSettings
                 ? <p className="plan-common-settings">{t("home.heir")} <strong title={activeOwnedPlans[0].heir}>{homeHeirUsername ? `@${homeHeirUsername}` : short(activeOwnedPlans[0].heir)}</strong><span>·</span> {t("home.checkin.every")} <strong>{activeOwnedPlans[0].period} {t("home.days")}</strong></p>
                 : <p className="plan-settings-differ">{t("home.settingsDiffer")}</p>
@@ -4829,10 +4816,6 @@ export default function App() {
           </CardContent>
         </Card>}
         {account && tab === "vault" && justCreatedPlan && inviteCard}
-        {HAS_YIELD_ROUTES && account && vaultLookupIncomplete && <div role="status" className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3">
-          {t("assets.registryUnavailable")}
-          <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void loadVault()}>{t("assets.retryLookup")}</Button>
-        </div>}
         {account && ownedVaults.length > 0 && tab === "money" && <AssetNavigation
           accounts={assetAccounts} selected={vault} busy={pendingAction}
           onSelect={item => { setOwnVault(item.address); setVault(item.address); setLinkedVault(""); }} />}
@@ -4851,7 +4834,7 @@ export default function App() {
           {t("assets.yieldUnavailable")}
           <Button size="sm" variant="ghost" disabled={pendingAction} onClick={() => void refreshBalances()}>{t("assets.refreshYield")}</Button>
         </div>}
-        {isMyVault && tab === "money" && !isSettledClaim && (vaultLookupIncomplete || ownedPlanRead.incomplete) && <Card>
+        {isMyVault && tab === "money" && !isSettledClaim && ownedPlanIncomplete && <Card>
           <CardHeader><CardTitle>{t("journey.owner.recoveryTitle", { symbol: wldSymbol })}</CardTitle></CardHeader><CardContent className="grid gap-2">
             <p>{t("journey.owner.recoveryBody", { symbol: wldSymbol })}</p>
             {singleCheckinReview && <p>{t("journey.owner.singleCancel", { symbol: wldSymbol })}</p>}
@@ -4871,7 +4854,7 @@ export default function App() {
         {/* 연결이 끊기면 화면이 멈춘다. 예전에는 여기에 아무 표시가 없어서 사용자가
             "내 갱신이 반영되지 않았다", 혹은 더 나쁘게 "내 돈이 사라졌다" 고 읽었다.
             온체인 상태는 그대로인데 화면만 멈춘 것임을 분명히 해야 한다. */}
-        {!stale && account && (
+        {!stale && account && !vaultLookupIncomplete && (
           <div
             className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded py-2 px-3"
             role="status"
@@ -5270,9 +5253,9 @@ export default function App() {
           heirLabel={commonManagedSettings ? unsettledOwnedPlans[0].heir.toLowerCase() === account.toLowerCase() ? t("journey.stage.cancelled") : homeHeirUsername ? `@${homeHeirUsername}` : unsettledOwnedPlans[0].heir : ""}
           period={ownerSettingsPeriod} onPeriod={onPeriodChange} heir={newHeir} onHeir={onNewHeirInput}
           resolvedHeir={newHeirResolved?.address ?? ""} resolving={resolvingNewHeir}
-          busy={pendingAction} disabled={ownedPlanRead.loading || ownedPlanRead.incomplete || unsettledOwnedPlans.some(p => BigInt(chainNow || Math.floor(Date.now() / 1000)) >= p.lastPing + p.periodSeconds)}
+          busy={pendingAction} disabled={ownedPlanLoading || ownedPlanIncomplete || unsettledOwnedPlans.some(p => BigInt(chainNow || Math.floor(Date.now() / 1000)) >= p.lastPing + p.periodSeconds)}
           onPeriodReview={() => void runWalletAction(changePeriod, true)} onHeirReview={() => void runWalletAction(updateHeir, true)}
-          onExit={() => void runWalletAction(reviewExit, true)} hasExitAssets={unsettledOwnedPlans.some(p => p.hasAssets)} exitDisabled={ownedPlanRead.loading || ownedPlanRead.incomplete} onCancel={() => void runWalletAction(cancelInheritance, true)} review={settingsReview?.kind === "exit" ? null : settingsReview?.targets ?? null} cancelReview={settingsReview?.kind === "cancel"}
+          onExit={() => void runWalletAction(reviewExit, true)} hasExitAssets={unsettledOwnedPlans.some(p => p.hasAssets)} exitDisabled={ownedPlanLoading || ownedPlanIncomplete} onCancel={() => void runWalletAction(cancelInheritance, true)} review={settingsReview?.kind === "exit" ? null : settingsReview?.targets ?? null} cancelReview={settingsReview?.kind === "cancel"}
           onConfirm={() => void runWalletAction(confirmPlanSettings, true)} onDismiss={() => setSettingsReview(null)}
           pending={settingsPending} onResume={() => void runWalletAction(resumePlanSettings)}
           onCheckIn={() => { navigationChosenFor.current = account.toLowerCase(); setTab("vault"); void runWalletAction(() => checkInAllPlans(), true); }} inconsistent={!commonManagedSettings} />}
@@ -5300,7 +5283,7 @@ export default function App() {
           }}>{t(ownVault ? "journey.owner.addAssets" : "journey.owner.createOwn")}</Button>}
 
         {tab === "inherit" && showPlanSetup && !pendingPlan && ownVault && <Button variant="ghost" onClick={() => setShowPlanSetup(false)}>{t(endedOwnedPlan ? "common.back" : "journey.owner.return")}</Button>}
-        {tab === "inherit" && account && (pendingPlan || showPlanSetup || !ownVault && !linkedVault && inheritedPositions.length === 0 && !findingHeirVaults && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded) && gate2(
+        {tab === "inherit" && account && (pendingPlan || showPlanSetup || !ownVault && !linkedVault && !vaultLookupIncomplete && ownedVaultRead.account === account.toLowerCase() && inheritedPositions.length === 0 && !findingHeirVaults && inheritedRead.account === account.toLowerCase() && inheritedRead.loaded) && gate2(
           <PlanSetup
             focusOnOpen={showPlanSetup}
             account={account}
@@ -5356,16 +5339,18 @@ export default function App() {
 
 
         </>}
-        {account && !pendingPlan && (tab === "vault" && !ownVault && !isArchivedOwner || tab === "money" && !vault && walletShareRoutes.length === 0) && <section className="app-empty-state" aria-live="polite">
-          {findingHeirVaults || ownedVaultRead.account !== account.toLowerCase() || inheritedRead.account !== account.toLowerCase() || !inheritedRead.loaded
-            || tab === "money" && HAS_YIELD_ROUTES && (walletSharesRead.scope !== balanceScope || walletSharesRead.state === "loading")
+        {showAccountEmptyState && <section className="app-empty-state" aria-live="polite">
+          {!vaultLookupUnavailable && (findingHeirVaults || ownedVaultRead.account !== account.toLowerCase() || inheritedRead.account !== account.toLowerCase() || !inheritedRead.loaded
+            || tab === "money" && HAS_YIELD_ROUTES && (walletSharesRead.scope !== balanceScope || walletSharesRead.state === "loading"))
             ? <><span className="spinner" /><p>{t("entry.loading")}</p></>
-            : ownedVaultRead.incomplete || inheritedRead.incomplete || heirScanIncomplete || tab === "money" && HAS_YIELD_ROUTES && walletSharesRead.state === "unavailable" ? <>
+            : vaultLookupIncomplete || inheritedRead.incomplete || heirScanIncomplete || tab === "money" && HAS_YIELD_ROUTES && walletSharesRead.state === "unavailable" ? <>
               <Icon name="help" size={28} />
-              <h2>{t(tab === "money" && walletSharesRead.state === "unavailable" ? "entry.money.unavailableTitle" : "entry.unavailable.title")}</h2>
-              <p>{t(tab === "money" && walletSharesRead.state === "unavailable" ? "entry.money.unavailableBody" : "entry.unavailable.body")}</p>
-              <Button disabled={pendingAction || findingHeirVaults} onClick={() => {
-                void loadVault(); void findHeirVaults(); void refreshBalances();
+              <h2>{t(!vaultLookupUnavailable && tab === "money" && walletSharesRead.state === "unavailable" ? "entry.money.unavailableTitle" : "entry.unavailable.title")}</h2>
+              <p>{t(!vaultLookupUnavailable && tab === "money" && walletSharesRead.state === "unavailable" ? "entry.money.unavailableBody" : "entry.unavailable.body")}</p>
+              <Button disabled={pendingAction || !vaultLookupUnavailable && findingHeirVaults} onClick={() => {
+                void loadVault();
+                if (!findingHeirVaults) void findHeirVaults();
+                void refreshBalances();
               }}>{t("entry.unavailable.action")}</Button>
             </>
             : <>

@@ -187,7 +187,8 @@ const en = {
   "assets.recoverActive": "This renews the archived timer and cancels any pending inheritance claim. It works without Morpho cash liquidity; you can redeem wallet-held shares as liquidity permits.",
   "assets.withdrawTo": "Send withdrawn {symbol} to",
   "assets.tokenLabel": "Token ({symbol}):",
-  "assets.registryUnavailable": "Some vault registries could not be refreshed. Previously found vaults stay visible; their availability may be out of date. We will retry automatically.",
+  "assets.registryUnavailable": "Some plans could not be checked. Balances and deadlines may be incomplete.",
+  "assets.registryAllUnavailable": "We could not check your inheritance plans. Try again to see your latest balance and deadline.",
   "assets.yieldUnavailable": "Some Morpho balances could not be refreshed. The last available values may be out of date.",
   "assets.releaseBody": "You can close this plan after its deadline or completed inheritance, once all assets, invested shares and WLD rewards are removed. Its contract and records stay on-chain. You can then create a new plan for this asset. Closing cannot be undone.",
   "assets.recoverBody": "Return this archived vault’s idle {symbol}, receipt shares{rewards} to your wallet. Your current vault stays separate. Any positive net gain pays the same 10% service fee.",
@@ -524,7 +525,7 @@ const en = {
   "entry.pending.body": "Continue from your saved progress in Plan.",
   "entry.pending.action": "Resume setup",
   "entry.unavailable.title": "Plan lookup unavailable",
-  "entry.unavailable.body": "Some plans could not be checked. Try again to see your balances.",
+  "entry.unavailable.body": "Try again to see your latest balances and deadlines.",
   "entry.unavailable.action": "Try again",
   "entry.empty.title": "No plan yet",
   "entry.empty.body": "Set the amount to set aside, your recipient, and your renewal interval to get started.",
@@ -901,7 +902,6 @@ const en = {
   "status.error.release": "Release error: {reason}",
   "status.error.sweep": "Sweep error: {reason}",
   "status.error.continue": "Continue error: {reason}",
-  "status.error.lookup": "Vault lookup failed: {reason}",
   "status.strategyFeeChanged": "{symbol} strategy fee changed. Review the current fees and accept them again before continuing. No new wallet request was sent.",
 } as const;
 
@@ -1090,7 +1090,8 @@ const ko: Record<LocaleKey, string> = {
   "assets.recoverActive": "이전 플랜의 기한을 연장하고 수령 신청을 취소한 뒤 자산을 회수합니다. Morpho 유동성이 부족한 경우 투자 지분 토큰을 지갑으로 옮겨 나중에 출금할 수 있습니다.",
   "assets.withdrawTo": "출금할 {symbol}를 받을 지갑 주소",
   "assets.tokenLabel": "토큰 ({symbol}):",
-  "assets.registryUnavailable": "일부 플랜을 새로 조회하지 못했습니다. 이전에 확인한 플랜을 표시하며, 정보가 최신이 아닐 수 있습니다. 자동으로 다시 확인합니다.",
+  "assets.registryUnavailable": "일부 상속 플랜의 잔액과 기한을 확인하지 못했습니다.",
+  "assets.registryAllUnavailable": "상속 플랜을 확인하지 못했습니다. 잔액과 기한을 보려면 다시 조회해 주세요.",
   "assets.yieldUnavailable": "일부 운용 잔액을 새로 조회하지 못했습니다. 마지막 확인 값이 최신이 아닐 수 있습니다.",
   "assets.releaseBody": "확인 기한이 지났거나 상속이 완료된 플랜을 닫습니다. 예치 자산과 Morpho 투자 자산, WLD 보상이 모두 비어 있어야 합니다. 닫은 뒤 같은 통화로 새 플랜을 만들 수 있습니다. 기록은 블록체인에 남으며, 닫기는 되돌릴 수 없습니다.",
   "assets.recoverBody": "이전 플랜에 남은 {symbol}와 Morpho 투자 자산{rewards}을 내 지갑으로 가져옵니다. 현재 플랜은 유지됩니다. 이전 손실을 회복한 뒤 실현된 수익에는 10% 서비스 수수료가 적용됩니다.",
@@ -1427,7 +1428,7 @@ const ko: Record<LocaleKey, string> = {
   "entry.pending.body": "설정이 일부만 완료되었습니다. 플랜 탭에서 남은 단계를 이어서 진행해 주세요.",
   "entry.pending.action": "설정 이어가기",
   "entry.unavailable.title": "플랜을 불러올 수 없습니다",
-  "entry.unavailable.body": "일부 플랜을 확인하지 못했습니다. 다시 시도해 잔액을 확인하세요.",
+  "entry.unavailable.body": "다시 시도해 최신 잔액과 기한을 확인하세요.",
   "entry.unavailable.action": "다시 시도",
   "entry.empty.title": "아직 설정된 플랜이 없습니다",
   "entry.empty.body": "예치 금액과 수령인, 연장 주기를 설정해 디지털 자산 상속 플랜을 시작해 보세요.",
@@ -1808,7 +1809,6 @@ const ko: Record<LocaleKey, string> = {
   "status.error.release": "플랜 닫기를 완료하지 못했습니다: {reason}",
   "status.error.sweep": "잔액 회수 오류: {reason}",
   "status.error.continue": "연결 오류: {reason}",
-  "status.error.lookup": "플랜을 불러오지 못했습니다: {reason}",
   "status.strategyFeeChanged": "{symbol} 운용 수수료가 변경되었습니다. 현재 수수료를 확인하고 다시 동의한 뒤 계속하세요. 새로운 지갑 요청은 전송되지 않았습니다.",
 
 };

@@ -12,7 +12,7 @@ await new Promise(resolve=>socket.listen(0,'127.0.0.1',resolve));
 const port=socket.address().port;
 await new Promise(resolve=>socket.close(resolve));
 const origin=`http://localhost:${port}`;
-const {Contract,JsonRpcProvider}=createRequire(new URL('../../app/package.json',import.meta.url))('ethers');
+const {Contract,JsonRpcProvider,id}=createRequire(new URL('../../app/package.json',import.meta.url))('ethers');
 let provider;
 const server=spawn(process.execPath,[new URL('../test-host/start.mjs',import.meta.url).pathname,`--port=${port}`],{stdio:['ignore','pipe','pipe']});
 let output='';server.stdout.on('data',d=>output+=d);server.stderr.on('data',d=>output+=d);
@@ -264,8 +264,41 @@ try{
  assert.equal(await page.ev("return document.body.innerText.includes('회수를 마쳐 주세요')"),false,'normal partial withdrawal must not prompt a full exit');
  console.log('PASS WLD partial withdrawal pays exactly one token and reports completion with remaining assets retained');
 
+ await tab(page,0);
+ await until(()=>page.ev("return !!document.querySelector('.home-checkin-action .btn-primary:not(:disabled)')"),'verified plans before lookup outage');
+ const approvalsBeforeOutage=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
+ for(const recovery of ['manual','online']){
+  await page.ev(`
+   const fetchHealthy = window.fetch;
+   window.fetch = async (input, init) => {
+    const response = await fetchHealthy(input, init);
+    const url = typeof input === 'string' ? input : input.url;
+    if (!url?.endsWith('/__host/rpc') || !init?.body) return response;
+    const payload = JSON.parse(typeof init.body === 'string' ? init.body : new TextDecoder().decode(init.body));
+    const failed = (Array.isArray(payload) ? payload : [payload]).filter(call =>
+     call.method === 'eth_call' && call.params[0].data.startsWith(${JSON.stringify(id('vaultOf(address)').slice(0,10))}));
+    if (!failed.length) return response;
+    const fail = result => failed.some(call => call.id === result.id)
+     ? {jsonrpc:'2.0',id:result.id,error:{code:-32005,message:'Fixture registry read unavailable'}} : result;
+    const data = await response.json();
+    return Response.json(Array.isArray(data) ? data.map(fail) : fail(data));
+   };
+   window.restoreRegistryReads = () => { window.fetch = fetchHealthy; delete window.restoreRegistryReads; };
+   document.dispatchEvent(new Event('visibilitychange'));
+  `);
+  await until(()=>page.ev("return !document.querySelector('.home-checkin-action .btn-primary:not(:disabled)')&&/상속 플랜을 확인하지 못했습니다/.test(document.body.innerText)"),'full registry outage');
+  assert.equal(await page.ev("return !!document.querySelector('.savings-empty,.ended-plan-card')"),false,'failed reads do not mean the plan ended or has no assets');
+  await page.ev('window.restoreRegistryReads()');
+  if(recovery==='manual') await click(page,'플랜 다시 조회');
+  else await page.ev("window.dispatchEvent(new Event('online'))");
+  await until(()=>page.ev("return !!document.querySelector('.home-checkin-action .btn-primary:not(:disabled)')"),`${recovery} retry restores combined renewal`);
+  assert.doesNotMatch(await page.ev('return document.body.innerText'),/플랜을 불러오지 못했습니다|Vault registries unavailable|상속 플랜을 확인하지 못했습니다/,'lookup error clears after recovery');
+ }
+ assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),approvalsBeforeOutage,'retry is read-only');
+ console.log('PASS full plan lookup outage blocks combined renewal and the warning clears on manual retry and network reconnection');
+
  const checkinStartBlock=await provider.getBlockNumber();
- await tab(page,0);await click(page,'기한 연장하기');
+ await click(page,'기한 연장하기');
  await until(()=>page.ev("return document.querySelector('.toast-success')?.textContent.includes('기한을 연장했습니다')"),'combined check-in');
  const factory=new Contract(config.wldFactory,['function vaultOf(address) view returns(address)'],provider);
  const vault=await factory.vaultOf(config.owner);
