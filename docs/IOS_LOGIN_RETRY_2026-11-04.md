@@ -58,3 +58,26 @@ Native CI **41810931516** on **3421c0e** passed **4 tests, 0 failures, 0 skips**
 Combined local iOS 27.0 validation passed the executed full lifecycle and native Done methods: **2 tests, 0 failures, 0 skips**, 258.778 seconds. Local initial failures and the hardware-keyboard/OS accessory causes remain above as evidence; they are not counted as successful executions.
 
 [Portable final summary](evidence/ios-audit-remediation-final-2026-11-04.json). The runtime/backend/public sources in this native run are identical to deployed f4cba93. These tests use a native host with modelled approval, not physical iOS World App.
+
+## November 5: a separate cancelled touch before the login handler
+
+[Run 41985625647](https://github.com/Daviswhistle/Inheritance/actions/runs/41985625647)
+passed three of four tests on iOS 18.5. In the repeated-rejection test, the
+first and second XCTest `Synthesized Event` records have identical SHA-256
+(`76f31bd6f0ecbab81be1bd0c2c1d73593557cadab28e254a1c94d64626cc13b2`).
+Both requested a stationary 50 ms tap at native coordinates `(201, 733)`.
+The second tap began at 9,283 ms with the button under the finger, then
+WebKit reported `pointercancel` and `touchcancel` at 9,464 ms. The modal had
+closed at 6,764 ms. The second tap produced no click, app auth stage, nonce
+request or native `wallet-auth`. The archive records XCTest's intended event
+sequence, not the phases delivered to the UIKit window. Neither it nor the
+original WebKit log identifies what cancelled the touch upstream.
+
+The debug host can now record the phases UIKit received before dispatch to
+WebKit, with relative coordinates, uptime and recognizer states. Only the
+focused retry test enables it. The trace captures phases even when the native
+touch no longer has a target view. A local native run verified `began` and
+`ended` for the actual retry taps and passed the test. The trace observes
+input without changing delivery. The test keeps one tap per attempt and all
+existing approval deadlines and assertions. No production sign-in code was
+changed on the evidence from this failure.

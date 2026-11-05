@@ -19,10 +19,18 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        let window = UIWindow(windowScene: windowScene)
+        let window = TestHostWindow(windowScene: windowScene)
         window.rootViewController = TestHostViewController()
         window.makeKeyAndVisible()
         self.window = window
+    }
+}
+
+private final class TestHostWindow: UIWindow {
+    override func sendEvent(_ event: UIEvent) {
+        // Sample before UIKit dispatches the event to WebKit and its recognizers.
+        (rootViewController as? TestHostViewController)?.recordWindowTouches(event)
+        super.sendEvent(event)
     }
 }
 
@@ -38,6 +46,8 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
     private var keyboardScreenFrame: CGRect?
     private var lastViewportMetrics: [String: Any]?
     private var commandTrace: [[String: Any]] = []
+    private var traceWindowTouches = false
+    private var windowTouchTrace: [[String: Any]] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -285,10 +295,40 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
         }
     }
 
+    func recordWindowTouches(_ event: UIEvent) {
+        guard traceWindowTouches, event.type == .touches, let webView = webView,
+              let touches = event.allTouches else { return }
+        for touch in touches {
+            let point = touch.location(in: webView)
+            guard webView.bounds.contains(point) else { continue }
+            let phase: String
+            switch touch.phase {
+            case .began: phase = "began"
+            case .moved: phase = "moved"
+            case .ended: phase = "ended"
+            case .cancelled: phase = "cancelled"
+            default: continue
+            }
+            windowTouchTrace.append([
+                "phase": phase, "at": touch.timestamp,
+                "x": point.x, "y": point.y,
+                "recognizers": (touch.gestureRecognizers ?? []).map {
+                    ["type": String(describing: type(of: $0)), "state": $0.state.rawValue] as [String: Any]
+                }
+            ])
+            if windowTouchTrace.count > 32 { windowTouchTrace.removeFirst() }
+            if touch.phase == .ended || touch.phase == .cancelled {
+                // Publish even when WebKit emits no DOM event for this touch.
+                DispatchQueue.main.async { [weak self] in self?.updateViewportTrace() }
+            }
+        }
+    }
+
     private func updateViewportTrace() {
         guard var metrics = lastViewportMetrics, let webView = webView else { return }
         let frame = webView.convert(webView.bounds, to: view.window)
         metrics["nativeCommands"] = commandTrace
+        if traceWindowTouches { metrics["windowTouches"] = windowTouchTrace }
         metrics["nativeWebView"] = [frame.minX, frame.minY, frame.width, frame.height]
         let keyboardFrame = view.keyboardLayoutGuide.layoutFrame
         metrics["keyboardGuide"] = [keyboardFrame.minX, keyboardFrame.minY, keyboardFrame.width, keyboardFrame.height]
@@ -309,6 +349,9 @@ final class TestHostViewController: UIViewController, WKNavigationDelegate, WKUI
             return
         }
         allowedURL = url
+        traceWindowTouches = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .contains { $0.name == "touchTrace" && $0.value == "1" } == true
+        windowTouchTrace.removeAll()
         UserDefaults.standard.set(url.absoluteString, forKey: "testURL")
         address.resignFirstResponder()
         webView.load(URLRequest(url: url))
