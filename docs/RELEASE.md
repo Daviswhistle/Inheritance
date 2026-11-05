@@ -1,5 +1,14 @@
 # Release evidence
 
+## November 5, 2026 — store availability and plan count
+
+The World App store remains configured for South Korea only. The app no longer
+asks for a country of residence or queries the connection country for setup
+and additional deposits. Both public legal documents reflect the change. The
+Korean and English Portal descriptions now explain that one wallet manages one
+plan with both WLD and USDC supported. The operator's first four Korean
+paragraphs were preserved and both language drafts were verified after reload.
+
 ## November 5, 2026 — Korean name and store copy
 
 The Korean app name and short name are **상속**. The Korean store tagline is

@@ -23,7 +23,7 @@ final class HostTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1&residence=KR&touchTrace=1"]
+                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1&touchTrace=1"]
         app.launch()
         let web = app.webViews.firstMatch
         let plan = web.buttons["Plan"].firstMatch
@@ -53,7 +53,7 @@ final class HostTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&approval=auto&trace=1&residence=KR"]
+                               "-testURL", "http://localhost:7777/?platform=ios&approval=auto&trace=1"]
         app.launch()
         let web = app.webViews.firstMatch
         let plan = web.buttons["Plan"].firstMatch
@@ -99,7 +99,7 @@ final class HostTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1&residence=KR"]
+                               "-testURL", "http://localhost:7777/?platform=ios&approval=manual&trace=1"]
         app.launch()
         let initialPortrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initialPortrait, object: nil)], timeout: 20), .completed)
@@ -227,7 +227,7 @@ final class HostTests: XCTestCase {
         let factory = try XCTUnwrap(config["usdcFactory"] as? String)
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-testURL", "http://localhost:7777/?platform=ios&account=heir&approval=auto&trace=1&residence=KR"]
+                               "-testURL", "http://localhost:7777/?platform=ios&account=heir&approval=auto&trace=1"]
         app.launch()
         let initialPortrait = NSPredicate { _, _ in app.frame.height > app.frame.width }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initialPortrait, object: nil)], timeout: 20), .completed)

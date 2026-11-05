@@ -595,8 +595,8 @@ try {
       const [busy, setBusy] = React.useState(false);
       window.__FINISH_PLAN_RETRY__ = () => setBusy(false);
       return React.createElement(PlanSetup, {
-        account: '${ACCOUNTS.a0.a}', accessLocation: { state: 'supported', country: 'KR' }, accessResidence: 'KR',
-        onRetryEligibility: () => {}, onConfirmResidence: () => true, onRefreshBalances: () => {},
+        account: '${ACCOUNTS.a0.a}',
+        onRefreshBalances: () => {},
         rows: [{ symbol: 'WLD', decimals: 18, mode: 'plain', amount: '1', walletBalance: 10000000000000000000n }],
         yieldRateInfoByAsset: { WLD: { rates: { lendingApr: 99, rewardApr: 99, reportedAt: Math.floor(Date.now()/1000), campaignEndsAt: Math.floor(Date.now()/1000)+3600 }, loading: false, strategy: '0x0000000000000000000000000000000000000001' } },
         heir: '${ACCOUNTS.a1.a}', heirResolved: '${ACCOUNTS.a1.a}', heirUsername: '',

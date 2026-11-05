@@ -27,7 +27,6 @@ const legalDocuments: Record<string, string> = {
   "/yield-terms": "yield-terms.html",
 };
 const legalAliases = new Map(Object.entries(legalDocuments).map(([pathname, filename]) => ["/" + filename, pathname]));
-const eligibilityFixture = { country: "KR" as string | undefined };
 
 function hostServer(): Plugin {
   return {
@@ -138,11 +137,8 @@ function hostServer(): Plugin {
                   const rate = await strategy.rate();
                   await (await strategy.setRate(rate * 110n / 100n)).wait();
                 }
-              } else if (body.action === "eligibility-country") {
-                if (typeof body.country !== "string" || !/^[A-Z]{2}$/.test(body.country)) throw new Error("Use a two-letter test country code");
-                eligibilityFixture.country = body.country;
               } else throw new Error("Unknown test control");
-              return { ok: true, automine: executor.automine, eligibilityCountry: eligibilityFixture.country,
+              return { ok: true, automine: executor.automine,
                 timestamp: Number((await provider.getBlock("latest")).timestamp) };
             }));
           }
@@ -172,7 +168,7 @@ export default defineConfig(({ command }) => {
     // disposable host's cache. The launcher removes this directory on shutdown.
     cacheDir: path.join(path.dirname(fixtureFile), "vite-cache"),
     plugins: [react(), tsconfigPaths({ projects: [path.resolve(__dirname, "tsconfig.app.json")] }),
-      localAuth({ getCountry: () => eligibilityFixture.country }), hostServer()],
+      localAuth(), hostServer()],
     resolve: { alias: { "@": path.resolve(__dirname, "src") } },
     server: { host: "127.0.0.1", port: 7777, strictPort: true, allowedHosts: ["localhost"], cors: false,
       warmup: { clientFiles: ["./src/main.tsx"] } },

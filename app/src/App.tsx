@@ -11,8 +11,6 @@ import { AccountEntry } from "@/components/AccountEntry";
 import { TransferGuide } from "@/components/TransferGuide";
 import { AutomationNotice } from "@/components/AutomationNotice";
 import { PlanSetup } from "@/components/PlanSetup";
-import { NewPlanAccessNotice } from "@/components/NewPlanAccessNotice";
-import type { PlanAccessLocation } from "@/components/NewPlanAccessNotice";
 import { ReleasePlanDialog } from "@/components/ReleasePlanDialog";
 import { readExitTargets, exitQuoteStillValid, verifyExitTransfers, verifyExitEmpty, PlanExitError } from "@/plan-exit";
 import { HeirPlans, OwnerPlanSettings, EndedPlan, InviteHeir } from "@/components/PlanExperience";
@@ -68,8 +66,6 @@ import { withWalletActionLock } from "./wallet-action-lock";
 import { contactPickerCoordinator } from "@/contact-picker";
 import type { ContactPickerSnapshot } from "@/contact-picker";
 import { notificationHealth, requestAndReadNotificationPermission } from "@/notification-state";
-import { clearResidenceAttestation, fetchEdgeEligibility, readResidenceAttestation, saveResidenceAttestation } from "./new-plan-eligibility";
-import type { SupportedResidenceCountry } from "../shared/new-plan-policy.ts";
 
 type AppPlanRoute = PlanRoute<YieldRoute | null>;
 const APP_PLAN_ROUTES: AppPlanRoute[] = buildPlanRoutes(
@@ -440,48 +436,6 @@ export default function App() {
   const planAccountRef = useRef(account.toLowerCase());
   planAccountRef.current = account.toLowerCase();
   const [planHydratedAccount, setPlanHydratedAccount] = useState("");
-  const [newPlanEligibility, setNewPlanEligibility] = useState<{
-    account: string; location: PlanAccessLocation; residence: SupportedResidenceCountry | null;
-  }>({ account: "", location: { state: "checking" }, residence: null });
-  const planEligibilityRequest = useRef(0);
-  const refreshNewPlanEligibility = useCallback(async () => {
-    const key = account.toLowerCase();
-    const request = ++planEligibilityRequest.current;
-    if (!key) {
-      setNewPlanEligibility({ account: "", location: { state: "checking" }, residence: null });
-      return;
-    }
-    // Keep an already rendered form mounted during a focus refresh (including
-    // returning from its legal dialog). Every new wallet request still performs
-    // its own fresh check, so this display snapshot never authorizes a send.
-    setNewPlanEligibility(current => ({ account: key,
-      location: current.account === key && current.location.state === "supported"
-        ? current.location : { state: "checking" }, residence: readResidenceAttestation(account) }));
-    const location = await fetchEdgeEligibility();
-    if (planEligibilityRequest.current !== request || planAccountRef.current !== key) return;
-    setNewPlanEligibility({ account: key, location, residence: readResidenceAttestation(account) });
-  }, [account]);
-  useEffect(() => {
-    if (!account) {
-      void refreshNewPlanEligibility();
-      return;
-    }
-    const refresh = () => {
-      if (document.visibilityState !== "hidden") void refreshNewPlanEligibility();
-    };
-    refresh();
-    const connection = (navigator as Navigator & { connection?: EventTarget }).connection;
-    window.addEventListener("focus", refresh);
-    window.addEventListener("online", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    connection?.addEventListener("change", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("online", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-      connection?.removeEventListener("change", refresh);
-    };
-  }, [account, refreshNewPlanEligibility]);
   const pendingDeposit = hasPendingPlanDeposit(pendingPlan, account, vaultFactory, vault);
   const [alignmentReview, setAlignmentReview] = useState<string>("");
   const [alignmentConflicts, setAlignmentConflicts] = useState<PlanAlignmentConflict[]>([]);
@@ -1178,7 +1132,6 @@ export default function App() {
     navigationChosenFor.current = account.toLowerCase();
     setVault(ownVault); setLinkedVault(""); setExitComplete(null); setStatus("");
     setShowPlanSetup(true); setTab("inherit");
-    void refreshNewPlanEligibility();
   };
 
   const selectedBalanceKnown = isYieldVault ? Boolean(selectedYieldPosition?.valued) : vaultBalanceRead.scope === balanceScope;
@@ -1226,17 +1179,6 @@ export default function App() {
     walletBalance: planWalletBalances[route.symbol] ?? null,
     underlyingFeePercent: yieldTermsByFactory[route.factory]?.underlyingFeePercent,
   }));
-  const currentPlanEligibility = newPlanEligibility.account === account.toLowerCase() ? newPlanEligibility : {
-    account: account.toLowerCase(), location: { state: "checking" } as const, residence: null,
-  };
-  const newPlanAccessAllowed = currentPlanEligibility.location.state === "supported" && Boolean(currentPlanEligibility.residence);
-  const confirmNewPlanResidence = (country: SupportedResidenceCountry) => {
-    const key = account.toLowerCase();
-    if (!key || currentPlanEligibility.account !== key || currentPlanEligibility.location.state !== "supported"
-      || !saveResidenceAttestation(account, country)) return false;
-    setNewPlanEligibility(current => current.account === key ? { ...current, residence: country } : current);
-    return true;
-  };
   const parsedDraftAmounts = draftPlanRows.map(row => ({
     row,
     amount: row.amount.trim() ? parseAssetAmount(row.amount, row.decimals) : 0n,
@@ -1253,7 +1195,6 @@ export default function App() {
   const createPlanDisabled = !provider || !miniInstalled || !account || !periodValid || !heirResolved?.address
     || heirResolved.address === ethers.ZeroAddress || !draftAmountsValid || selectedDraftRows.length === 0
     || !draftBalancesReady
-    || !newPlanAccessAllowed
     || (selectedDraftRows.some(item => item.row.mode === "morpho") && !draftTermsReady);
   const resumePlanNeedsYieldConsent = Boolean(pendingPlan?.assets.some(asset => asset.mode === "morpho" && asset.depositState === "ready"));
   const resumePlanTermsReady = Boolean(pendingPlan?.assets.filter(asset => asset.mode === "morpho" && asset.depositState === "ready").every(asset => {
@@ -1264,9 +1205,8 @@ export default function App() {
   const resumePlanHasOutstandingRequest = Boolean(pendingPlan && (pendingPlan.alignment || pendingPlan.setupRequest
     || pendingPlan.createState === "submitting" || pendingPlan.createState === "submitted"
     || pendingPlan.assets.some(asset => asset.depositState === "submitting" || asset.depositState === "submitted")));
-  const resumePlanNeedsNewDeposit = Boolean(pendingPlan?.assets.some(asset => asset.depositState === "ready"));
-  const resumePlanDisabled = !resumePlanHasOutstandingRequest && (resumePlanNeedsNewDeposit && !newPlanAccessAllowed
-    || Boolean(resumePlanNeedsYieldConsent && (!yieldConsent || !resumePlanTermsReady)));
+  const resumePlanDisabled = !resumePlanHasOutstandingRequest && resumePlanNeedsYieldConsent
+    && (!yieldConsent || !resumePlanTermsReady);
   /**
    * 내가 상속인으로 지정됐는가.
    *
@@ -3255,10 +3195,9 @@ export default function App() {
           createBeforeBlock: request.beforeBlock,
           assets: current.assets.map(asset => symbols.has(asset.symbol)
             ? { ...asset, vault: request.assets.find(target => target.symbol === asset.symbol)!.vault, depositState: "submitting" } : asset),
-        }), () => sendNewPlanWorldChainTx(calls, account, () => planAccountRef.current === account.toLowerCase()));
+        }), () => sendNewPlanWorldChainTx(calls, () => planAccountRef.current === account.toLowerCase()));
         if (!sent.ok) {
           if (sent.definitelyNotSubmitted) await persist(resetRequest);
-          void refreshNewPlanEligibility();
           setStatus(sent.error);
           if (sent.userFacing) pushToast("error", sent.error);
           return;
@@ -3700,7 +3639,7 @@ export default function App() {
           { address: request.factory, abi: selectedFactoryAbi,
             functionName: isYieldVault ? "depositWithMinShares" : "deposit",
             args: isYieldVault ? [request.amount, minShares.toString()] : [request.amount] },
-        ], request.account, () => planAccountRef.current === request.account.toLowerCase()
+        ], () => planAccountRef.current === request.account.toLowerCase()
           && depositScope === balanceScopeRef.current, verifyReviewedTerms),
         confirm: submitted => confirmAdditionalDeposit(getRwProvider(), submitted),
       });
@@ -4925,9 +4864,6 @@ export default function App() {
                 <div className="wallet-balance-line"><span>{t("assets.wallet")}</span><strong>{walletBalanceKnown ? `${formatYieldAmount(walletWld, wldDecimals)} ${wldSymbol}` : t("home.value.updating")}</strong></div>
               {isMyVault && (
                 <details className="deposit-controls"><summary>{t("assets.action.deposit")}</summary><div className="deposit-controls-content">
-                  {!newPlanAccessAllowed && <NewPlanAccessNotice account={account} location={currentPlanEligibility.location}
-                    residence={currentPlanEligibility.residence} onRetry={() => void refreshNewPlanEligibility()}
-                    onConfirmResidence={confirmNewPlanResidence} compact />}
                   <div className="field-row">
                     <label className="field-row-label" htmlFor="deposit-amount">{t("assets.depositAmount", { symbol: wldSymbol })}</label>
                     <div className="field-row-controls">
@@ -4947,7 +4883,7 @@ export default function App() {
                       variant="primary"
                       className="deposit-primary"
                       onClick={() => void openDepositReview()}
-                      disabled={pendingAction || depositReviewLoading || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || Boolean(additionalDeposit) || depositRecoveryReady !== account.toLowerCase() || !depositEntryValid || !newPlanAccessAllowed}
+                      disabled={pendingAction || depositReviewLoading || !miniInstalled || !account || isExpiredOrLater || pendingDeposit || Boolean(additionalDeposit) || depositRecoveryReady !== account.toLowerCase() || !depositEntryValid}
                       aria-busy={depositReviewLoading}
                     >
                       {t(depositReviewLoading ? "assets.checkingFees" : "assets.action.deposit")}
@@ -5280,7 +5216,6 @@ export default function App() {
         {tab === "inherit" && account && !pendingPlan && (ownVault || inheritedPositions.length > 0 || linkedVault) && !showPlanSetup && !endedOwnedPlan && !(showOwnerPlanSettings && inheritanceEmpty && activeOwnedPlans.length === 0) && <Button variant="ghost" disabled={pendingAction}
           onClick={() => {
             setShowPlanSetup(true);
-            void refreshNewPlanEligibility();
             if (commonPlanSettings) { setHeir(homeHeirAddress); void onHeirInput(homeHeirAddress); setPeriodInput(String(activeOwnedPlans[0].period)); }
           }}>{t(ownVault ? "journey.owner.addAssets" : "journey.owner.createOwn")}</Button>}
 
@@ -5289,10 +5224,6 @@ export default function App() {
           <PlanSetup
             focusOnOpen={showPlanSetup}
             account={account}
-            accessLocation={currentPlanEligibility.location}
-            accessResidence={currentPlanEligibility.residence}
-            onRetryEligibility={() => void refreshNewPlanEligibility()}
-            onConfirmResidence={confirmNewPlanResidence}
             rows={draftPlanRows.map(row => ({ ...row, walletBalance: planWalletBalances[row.symbol] ?? null,
               balanceUnavailable: walletBalances.account.toLowerCase() === account.toLowerCase() && walletBalances.unavailable.includes(row.symbol) }))}
             yieldRateInfoByAsset={Object.fromEntries(draftPlanRoutes.filter(route => route.mode === "morpho").map(route => [route.symbol, {
@@ -5379,14 +5310,6 @@ export default function App() {
               <Button disabled={pendingAction} onClick={signOut}>{t("account.signOut")}</Button>
             </CardContent>
           </Card>}
-          {account && <section className="help-region">
-            {currentPlanEligibility.residence ? <Button variant="ghost" disabled={pendingAction} onClick={() => {
-              if (clearResidenceAttestation(account)) void refreshNewPlanEligibility();
-              else pushToast("error", t("plan.access.saveFailed"));
-            }}>{t("plan.access.changeResidence")}</Button> :
-              <NewPlanAccessNotice account={account} location={currentPlanEligibility.location} residence={null}
-                onRetry={() => void refreshNewPlanEligibility()} onConfirmResidence={confirmNewPlanResidence} compact />}
-          </section>}
           <section className="help-topics" aria-labelledby="help-topics-title">
             <h2 id="help-topics-title">{t("help.questions")}</h2>
             <div className="help-topic-list">

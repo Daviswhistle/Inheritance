@@ -243,7 +243,6 @@ main h1[tabindex="-1"]:focus, .plan-steps[tabindex="-1"]:focus { outline: none; 
 .plan-overview-asset small { font-size: 12px; line-height: 1.45; }
 .plan-common-settings { font-size: 13px; line-height: 1.55; }
 .help-language { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; background: #fff; border: 1px solid var(--line); border-radius: 16px; font-size: 14px; font-weight: 600; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03); }
-.help-region > .btn { width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
 #main-content > .card-surface p { line-height: 1.65; }
 #main-content > .card-surface details > summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
 #main-content a:not(:where(p a)) { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }

@@ -51,9 +51,7 @@ try{
  shell('settings','put','system','accelerometer_rotation','0');shell('settings','put','system','user_rotation','0');shell('settings','put','system','font_scale','1.0');
  run('install','-r',apk);run('reverse',`tcp:${port}`,`tcp:${port}`);await launch();
  evidence.android=shell('getprop','ro.build.version.release');evidence.webview=shell('dumpsys','webviewupdate').match(/Current WebView package \(name, version\): (.*)/)?.[1];evidence.userAgent=await page.ev('return navigator.userAgent');assert.equal(await page.ev('return window.__INHERITANCE_TEST_HOST__.native'),true);assert.equal(await page.ev('return window.__INHERITANCE_TEST_HOST__.platform'),'android');
- for(let i=0;i<4;i++){await tab(i);await layout('guest-tab-'+i)}await tab(2);await signIn();await until(()=>page.ev("return !!document.getElementById('plan-residence-country')"),'residence confirmation');
- await page.ev("const select=document.getElementById('plan-residence-country');select.value='KR';select.dispatchEvent(new Event('change',{bubbles:true}));");
- await tap("document.getElementById('plan-residence-attestation')");await click('Confirm residence');
+ for(let i=0;i<4;i++){await tab(i);await layout('guest-tab-'+i)}await tab(2);await signIn();
  await until(()=>page.ev("return !!document.getElementById('plan-usdc')"),'setup');
  const before=await layout('setup');await tap("document.getElementById('plan-usdc')");shell('input','text','12.345678');await sleep(250);const ime=shell('dumpsys','input_method');assert.match(ime,/mInputShown=true/);assert.match(ime,/mIsInputViewShown=true/);const keyboard=await layout('native-keyboard');assert.ok(keyboard.visualHeight<before.visualHeight-100);assert.equal(await page.ev("return getComputedStyle(document.querySelector('.plan-primary-actions')).display"),'none');await shot('keyboard');shell('input','keyevent','4');await until(()=>page.ev(`return innerHeight===${before.height}`),'keyboard dismissed');assert.equal(await page.ev("return document.getElementById('plan-usdc').value"),'12.345678');
  evidence.checks.push('Actual Android IME entered six-decimal USDC; OS Back dismissed IME and retained exact value');

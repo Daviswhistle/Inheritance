@@ -1,5 +1,12 @@
 # Mac continuation — 2026-11-05
 
+## Store availability — 2026-11-05
+
+South Korea remains the sole World App store country. The app's residence form,
+device attestation and connection-country lookup were removed from setup and
+additional deposits. The November 2 eligibility instructions below are historical.
+See [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
+
 ## Android plan lookup warning — 2026-11-05
 
 After fast-forwarding to `4d840ea`, actual Android World App showed the old

@@ -14,8 +14,8 @@ const out = process.env.STORE_RAW_DIR || '/tmp/inheritance-store';
 const locale = process.env.STORE_LOCALE || 'en';
 if (!['en', 'ko'].includes(locale)) throw new Error('STORE_LOCALE must be en or ko');
 const labels = {
-  en: { signIn: 'Agree and sign in', residence: 'Confirm residence', review: 'Review plan', approve: 'Open approval screen', overview: 'Your inheritance savings', close: 'Close', collect: 'Collect 9.0 USDC' },
-  ko: { signIn: '동의하고 로그인', residence: '거주지 확인', review: '설정 내용 확인하기', approve: '동의하고 예치하기', overview: '예치 중인 상속 자산', close: '닫기', collect: '9.0 USDC 수익 받기' },
+  en: { signIn: 'Agree and sign in', review: 'Review plan', approve: 'Open approval screen', overview: 'Your inheritance savings', close: 'Close', collect: 'Collect 9.0 USDC' },
+  ko: { signIn: '동의하고 로그인', review: '설정 내용 확인하기', approve: '동의하고 예치하기', overview: '예치 중인 상속 자산', close: '닫기', collect: '9.0 USDC 수익 받기' },
 }[locale];
 mkdirSync(out, { recursive: true });
 const socket = createServer();
@@ -63,9 +63,6 @@ try {
   await capture('welcome');
   await page.locator('.tab-item').nth(2).tap();
   await page.getByRole('button', { name: labels.signIn, exact: true }).tap();
-  await page.locator('#plan-residence-country').selectOption('KR');
-  await page.locator('#plan-residence-attestation').check();
-  await page.getByRole('button', { name: labels.residence, exact: true }).tap();
   await page.locator('#heir-input').fill('@test_heir');
   await page.locator('#plan-wld').fill('10'); await page.locator('#plan-usdc').fill('100');
   await until(() => page.getByRole('button', { name: labels.review, exact: true }).isEnabled(), 'valid plan');

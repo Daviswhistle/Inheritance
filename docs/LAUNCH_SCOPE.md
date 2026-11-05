@@ -1,6 +1,12 @@
 # Launch scope — November 2, 2026
 
-## Current release — Korea-only; withdrawn and unverified
+## Current release scope — South Korean store only
+
+The World App store remains set to South Korea. The app no longer asks for
+residence or checks the connection country before setup or deposit. This
+supersedes the earlier interface restrictions recorded below.
+
+## November 2 release — Korea-only; withdrawn and unverified
 
 The intended release scope remains **South Korea (KR) only**. The November 2
 Korea-only submission and its `awaiting_review` receipt are historical: the
@@ -36,8 +42,8 @@ the prior country assessment or declare the product prohibited there. The
 country-specific analysis below is retained for future decisions, not permission
 to re-enable those markets without authorization.
 
-The latest recorded Portal request is withdrawn and unverified; the intended availability remains exactly KR. Runtime `afd5bab` applies the
-same scope to new vault/deposit requests. Production and Android verification
+The latest recorded Portal request is withdrawn and unverified; the intended availability remains exactly KR. Runtime `afd5bab` applied the
+same scope to new vault/deposit requests at that time. Production and Android verification
 passed; exact receipts are recorded in [RELEASE.md](RELEASE.md). Earlier KR/AR/CO submissions are withdrawn.
 
 This completes the release-selection assessment of the candidates named below,
@@ -302,7 +308,7 @@ choice. Re-enabling previously assessed AR/CO requires a new operator decision;
 other broader access needs a separately evaluated product or licensed route,
 not repeated speculative searches or a universal government letter.
 
-## Store selection, access and remaining release work
+## November 2 access rules and review record
 
 The Portal setting controls store availability. The official interface now
 checks Cloudflare's request-country metadata plus a separately confirmed,

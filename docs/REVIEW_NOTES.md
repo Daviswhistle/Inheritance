@@ -76,16 +76,14 @@ interval field without opening details. These changes apply in English and
 Korean. A first-use walkthrough reached review with WLD alone and USDC alone,
 verified exact amounts and preserved drafts, and requested zero transactions.
 Opening **Add to my plan** now brings the newly opened setup into view and
-moves reading focus to its steps without opening the keyboard. The same behavior
-applies after a location check allows entry.
+moves reading focus to its steps without opening the keyboard.
 This is an engineering walkthrough, not a study with recruited first-time users.
 
 ## Suggested review walkthrough
 
 1. Browse Home, Assets, Plan and Help before signing in. Open Terms and Privacy;
    closing them returns to the app without requesting approval.
-2. Sign in from Plan. Enter a supported residence when prompted, select WLD or
-   USDC, enter an amount, choose a World App contact or type a username/address,
+2. Sign in from Plan. Enter an amount for WLD, USDC or both, choose a World App contact or type a username/address,
    and select a 1–365-day check-in interval.
 3. Open the keyboard, rotate the device, return from the background and tap
    Done. Confirm that the draft remains and the review action returns.
@@ -143,18 +141,10 @@ verification or a legal will. Current contracts support one heir.
 
 ## Availability
 
-The initial release is limited to South Korea. New plans and deposits require
-both a KR network location and explicit South Korea residence confirmation.
-Earlier AR/CO confirmations do not authorize new requests. A fresh
-location check runs before each new wallet request. Help allows residence
-changes. Unknown location and lookup failures block new requests while keeping
-sign-in, existing withdrawals, renewals, claims and submitted-request recovery
-accessible.
-
-Reviewers outside this scope can browse the app and manage existing assets.
-The isolated hosts in `scripts/test-host` provide disposable funds and explicit
-country fixtures for testing; production has no reviewer bypass. The country
-assessment and interface boundaries are in [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md).
+The World App store release is limited to South Korea. The app does not ask
+where users live or use their network location to decide whether they can create
+a plan or deposit. The isolated test hosts provide disposable funds for reviewers.
+See [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) for the country assessment.
 
 ## Verification and contract review
 

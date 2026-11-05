@@ -22,7 +22,6 @@ async function until(fn,label,ms=45000){const end=Date.now()+ms;while(Date.now()
 async function tab(page,index){await page.ev(`document.querySelectorAll('.tab-item')[${index}].click();`);await sleep(60);}
 async function locale(page,value){await tab(page,3);await page.ev(`const s=document.querySelector('.locale-picker select');s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));`);await sleep(60);}
 async function click(page,label){await until(()=>page.ev(`__q.revealButton(${JSON.stringify(label)});return __q.btns().some(b=>b.t===${JSON.stringify(label)}&&!b.d)`),label);assert.match(await page.ev(`return __q.click(${JSON.stringify(label)})`),/^clicked/);}
-async function setEligibilityCountry(country){const response=await fetch(origin+'/__host/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'eligibility-country',country})});assert.equal(response.status,200,`eligibility fixture ${country}`);}
 async function shot(page,label,top=true){if(top)await page.ev('window.scrollTo(0,0)');await sleep(80);const result=await page.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});const path=`${OUT}/${label}.png`;writeFileSync(path,Buffer.from(result.data,'base64'));evidence.screenshots.push(path);}
 async function help(page,label){
  assert.equal(await page.ev("return document.querySelectorAll('.help-topic-list > details').length"),8);
@@ -69,16 +68,8 @@ try{
  console.log('PASS localized guest navigation, one heading, 44px tabs, action hit testing and scroll clearance across 24 layouts');
  await locale(page,'en');await tab(page,2);
  await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
- await click(page,'Agree and sign in');assert.ok(await page.waitFor('#plan-residence-country',30000));
- assert.equal(await page.ev("return document.getElementById('plan-residence-country').value"),'','residence must not be preselected');
- assert.equal(await page.ev("return document.getElementById('plan-residence-attestation').checked"),false,'residence consent must not be prechecked');
- assert.equal(await page.ev("return [...document.querySelectorAll('.plan-residence-confirmation button')].some(button=>button.textContent.trim()==='Confirm residence'&&!button.disabled)"),false);
- await page.ev("const select=document.getElementById('plan-residence-country');select.value='other';select.dispatchEvent(new Event('change',{bubbles:true}));");
- await until(()=>page.ev("return document.getElementById('plan-residence-attestation').disabled"),'unsupported residence blocks confirmation');
- assert.equal(await page.ev("return !!document.getElementById('heir-input')"),false);
- assert.equal(await page.ev("return document.querySelector('.plan-residence-confirmation .btn-primary').disabled"),true);
- await page.ev("const select=document.getElementById('plan-residence-country');select.value='KR';select.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(r=>setTimeout(r,30));document.getElementById('plan-residence-attestation').click();");
- await click(page,'Confirm residence');assert.ok(await page.waitFor('#heir-input',30000));
+ await click(page,'Agree and sign in');assert.ok(await page.waitFor('#heir-input',30000));
+ assert.equal(await page.ev("return document.querySelector('#plan-residence-country')"),null,'first setup asks for no residence');
  await page.ev(`await __q.setInput('heir-input',${JSON.stringify(config.heir)});await __q.setInput('plan-wld','10');await __q.setInput('plan-usdc','12.345678');`);
  for (const invalid of ['1.5','-1','366']) {
   await page.ev(`await __q.setInput('period-input',${JSON.stringify(invalid)})`);
@@ -109,13 +100,7 @@ try{
   if(lang==='en')await click(page,'Edit plan');
  }
  await page.ev("document.getElementById('yield-consent').click();");
- const beforeLocationBlock=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
- await setEligibilityCountry('US');await click(page,'동의하고 예치하기');
- await until(()=>page.ev("return document.body.innerText.includes('현재 접속 지역에서는 새 플랜을 만들거나 자산을 추가할 수 없습니다.')"),'fresh location check before create');
- assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeLocationBlock,'a stale supported result must not reach the wallet');
- await setEligibilityCountry('KR');await click(page,'다시 확인');
- await until(()=>page.ev("return !!document.querySelector('.plan-resume')&&!document.querySelector('.plan-access-notice')"),'explicit retry restores supported setup');
- await click(page,'남은 설정 이어하기');
+ await click(page,'동의하고 예치하기');
  await until(()=>page.ev("return !!document.querySelector('.invite-disclosure')"),'created plan',60000);
  console.log('PASS real localized setup, exact six-decimal review, unchecked consent, safe editing and approved creation');
  await page.send('Browser.grantPermissions',{origin,permissions:['clipboardReadWrite','clipboardSanitizedWrite']});
@@ -132,9 +117,8 @@ try{
  }
  await page.ev("document.querySelector('.invite-disclosure').open=false");
  console.log('PASS copied recipient link and nonblocking feedback below the header at 320px and 390px');
- await setEligibilityCountry('US');
- await tab(page,1);await page.ev("document.querySelector('.deposit-controls').open=true;await __q.setInput('deposit-amount','0.01');");
- const beforeBlockedTopUp=await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length");
+ await tab(page,1);await click(page,'WLD');
+ await page.ev("document.querySelector('.deposit-controls').open=true;await __q.setInput('deposit-amount','0.01');");
  await click(page,'금액 추가하기');
  await until(()=>page.ev("return !!document.getElementById('additional-deposit-consent')"),'additional deposit terms review');
  assert.equal(await page.ev("return document.getElementById('additional-deposit-consent').checked"),false,'additional deposit risk consent starts unchecked');
@@ -156,23 +140,9 @@ try{
   evidence.accessibility.push({label:'additional-deposit-review-ko',violations});assert.deepEqual(violations,[],'additional deposit review accessibility');
  }
  await page.ev("document.getElementById('additional-deposit-consent').click()");await click(page,'거래 승인 화면 열기');
- await until(()=>page.ev("return document.body.innerText.includes('현재 접속 지역에서는 새 플랜을 만들거나 자산을 추가할 수 없습니다.')"),'fresh location check before existing-vault top-up');
- assert.equal(await page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length"),beforeBlockedTopUp,'an unsupported-location top-up made no wallet request');
+ await until(()=>page.ev("return window.__INHERITANCE_TEST_HOST__.history.filter(x=>x.command==='send-transaction').length===2"),'additional deposit reaches wallet');
+ await until(()=>page.ev("return document.body.innerText.includes('예치를 완료했습니다')"),'additional deposit receipt');
  await tab(page,2);await click(page,'내 플랜에 자산 추가');
- await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='이 지역에서는 새 플랜과 예치를 이용할 수 없습니다'"),'early plan restriction');
- assert.equal(await page.ev("return !!document.querySelector('#plan-wld,.plan-submit')"),false,'unsupported users do not see actionable plan promotions');
- await locale(page,'en');await tab(page,2);
- assert.equal(await page.ev("return document.querySelector('.plan-access-notice h3')?.textContent"),'New plans and deposits are unavailable here');
- assert.ok(await page.ev("return document.querySelector('.plan-access-notice').innerText.includes('withdraw')&&document.querySelector('.plan-access-notice').innerText.includes('claims')"));
- await setEligibilityCountry('ZZ');await click(page,'Check again');
- await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='Availability could not be confirmed'"),'unknown-location retry state');
- assert.equal(await page.ev("return !!document.querySelector('#plan-wld,.plan-submit')"),false);
- await locale(page,'ko');await tab(page,2);
- assert.equal(await page.ev("return document.querySelector('.plan-access-notice h3')?.textContent"),'이용 가능 지역을 확인하지 못했습니다');
- await setEligibilityCountry('US');await click(page,'다시 확인');
- await until(()=>page.ev("return document.querySelector('.plan-access-notice h3')?.textContent==='이 지역에서는 새 플랜과 예치를 이용할 수 없습니다'"),'unsupported retry state');
- console.log('PASS unsupported and unknown location panels are localized, retryable, and do not offer new-plan actions');
- await setEligibilityCountry('KR');await click(page,'다시 확인');
  await until(()=>page.ev("const steps=document.querySelector('.plan-steps');const rect=steps?.getBoundingClientRect();return !!steps&&document.activeElement===steps&&rect.top>=0&&rect.bottom<document.querySelector('.plan-primary-actions').getBoundingClientRect().top"),'opening additional funds reveals and focuses setup steps');
  assert.equal(await page.ev("return !!document.documentElement.dataset.planKeyboard"),false,'opening setup does not open a keyboard');
  console.log('PASS opening additional funds reveals the new form and moves reading focus without opening a keyboard');
@@ -253,7 +223,7 @@ try{
  await until(()=>page.ev("return document.body.innerText.includes('출금을 완료했습니다')"),'localized withdrawal receipt');
  console.log('PASS invalid and zero addresses, precision, zero and excess amounts cannot submit; valid USDC withdrawal pays exactly one token');
  await click(page,'WLD');
- await until(()=>page.ev("return document.querySelector('.asset-money-card .card-title').textContent.includes('WLD')&&document.getElementById('withdraw-amount-help')?.textContent.includes('10.0 WLD')"),'WLD partial withdrawal');
+ await until(()=>page.ev("return document.querySelector('.asset-money-card .card-title').textContent.includes('WLD')&&document.getElementById('withdraw-amount-help')?.textContent.includes('10.01 WLD')"),'WLD partial withdrawal');
  const wldToken=new Contract(config.wld,['function balanceOf(address) view returns(uint256)'],provider);
  const wldBefore=await wldToken.balanceOf(config.owner);
  await page.ev(`__q.reveal('#withdraw-to');await __q.setInput('withdraw-to',${JSON.stringify(config.owner)});await __q.setInput('withdraw-amount','1');`);

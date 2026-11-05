@@ -37,7 +37,7 @@ export const WLD = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 export const OUT = path.join(RUNDIR, "shots");
 mkdirSync(OUT, { recursive: true });
 
-export async function launch({ pk, url, profile, preload = "", residence = "KR" } = {}) {
+export async function launch({ pk, url, profile, preload = "" } = {}) {
   const walletArtifactPath = path.resolve(HERE, "../../out/MockWorldAppWallet.sol/MockWorldAppWallet.json");
   const atomicFixture = !preload.includes("__E2E_BATCH_WALLET__") && existsSync(walletArtifactPath)
     ? `window.__E2E_BATCH_WALLET__ = '0x0000000000000000000000000000000000e2e770';
@@ -117,11 +117,6 @@ export async function launch({ pk, url, profile, preload = "", residence = "KR" 
 
   await send("Runtime.enable"); await send("Page.enable"); await send("Network.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-  // Most chain scenarios focus on unrelated behavior. Give those isolated
-  // fixtures a valid per-account attestation; product-ui passes residence:null
-  // to exercise the real first-use selection and confirmation flow.
-  const signerAddress = Object.values(ACCOUNTS).find(account => account.pk?.toLowerCase() === pk?.toLowerCase())?.a;
-  const residenceFixture = residence && signerAddress ? `localStorage.setItem(${JSON.stringify(`inheritance:residence:${signerAddress.toLowerCase()}`)}, JSON.stringify({version:1,account:${JSON.stringify(signerAddress.toLowerCase())},country:${JSON.stringify(residence)},confirmed:true}));` : "";
   // IIFE 로 감싼다. 주입 스크립트가 한 문서에 두 번 실행되면 최상위 `const oe` 가
   // 재선언되어 SyntaxError 가 난다. 그게 `__E2E_SIGNER__` 설정 **이후**에 터지면 앱은
   // 엉뚱한 계정 세션으로 로그인한 것처럼 보이고, 하네스 결과가 조용히 틀어진다 —
@@ -136,7 +131,6 @@ export async function launch({ pk, url, profile, preload = "", residence = "KR" 
     addEventListener("error", e => window.__E2E_ERRS__.push("error: " + ((e.error && e.error.stack) || e.message)));
     addEventListener("unhandledrejection", e => window.__E2E_ERRS__.push("rejection: " + ((e.reason && e.reason.stack) || String(e.reason))));
     ${atomicFixture}
-    ${residenceFixture}
     ${preload}
   })();`;
   await send("Page.addScriptToEvaluateOnNewDocument", { source: src });

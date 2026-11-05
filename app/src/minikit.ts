@@ -3,7 +3,6 @@ import type { InterfaceAbi } from "ethers";
 import { CHAIN_ID } from "@/config";
 import { humanizeRevertText } from "./errors";
 import { isDefinitelyNotSubmittedCode, isDefinitelyNotSubmittedResponse } from "./transaction-safety";
-import { accessBlockMessage, checkNewPlanAccess } from "./new-plan-eligibility";
 
 /**
  * MiniKit 2.x 로 보내는 트랜잭션의 한 건.
@@ -78,18 +77,14 @@ export async function sendWorldChainTx(calls: ContractCall[], beforeSend?: () =>
   return sendWorldChainTxInternal(calls, beforeSend ? async () => { await beforeSend(); return null; } : undefined);
 }
 
-/** New vault creation and new deposits share one required, just-in-time gate. */
-export async function sendNewPlanWorldChainTx(calls: ContractCall[], account: string,
+/** Recheck the active wallet and deposit context before handing off to MiniKit. */
+export async function sendNewPlanWorldChainTx(calls: ContractCall[],
   isAccountCurrent: () => boolean, beforeSend?: () => Promise<void>): Promise<TxResult> {
   return sendWorldChainTxInternal(calls, async () => {
-    if (!isAccountCurrent()) return accessBlockMessage("account-changed");
-    const access = await checkNewPlanAccess(account);
-    if (!access.allowed) return accessBlockMessage(access.reason);
-    if (!isAccountCurrent()) return accessBlockMessage("account-changed");
-    // The caller can bind its reviewed strategy fees to the final handoff,
-    // after the asynchronous access check but before any native wallet request.
+    const accountChanged = "The active wallet changed. No new request was sent.";
+    if (!isAccountCurrent()) return accountChanged;
     await beforeSend?.();
-    return isAccountCurrent() ? null : accessBlockMessage("account-changed");
+    return isAccountCurrent() ? null : accountChanged;
   });
 }
 

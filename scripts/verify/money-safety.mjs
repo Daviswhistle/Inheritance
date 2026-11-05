@@ -39,10 +39,10 @@ try {
   await context.addInitScript(() => localStorage.setItem('inheritance:locale', 'en'));
   const page = await context.newPage();
   diagnosticPage = page;
-  await page.goto(origin + '/?approval=auto&residence=KR');
+  await page.goto(origin + '/?approval=auto');
 
   // Use the shipped modules and actual browser database, not an in-memory CAS mock.
-  const second = await context.newPage(); await second.goto(origin + '/?approval=auto&residence=KR');
+  const second = await context.newPage(); await second.goto(origin + '/?approval=auto');
   const base = { version: 1, requestId: '11111111-1111-4111-8111-111111111111', chainId: 480, account: '0x' + '1'.repeat(40), factory: c.usdcFactory, vault: routes.USDC.vault, asset: c.usdc, symbol: 'USDC', decimals: 6, recipient: c.heir, mode: 'morpho', kind: 'partial', amount: '1000000', minNetAssets: '0', beforeBlock: 0 };
   async function attempt(tab, request, module) {
     return tab.evaluate(async ({ request, module }) => {
@@ -120,7 +120,7 @@ try {
     await route.fulfill({ response });
   });
   async function signIn(role = 'owner') {
-    await page.goto(origin + `/?account=${role}&approval=auto&residence=KR`);
+    await page.goto(origin + `/?account=${role}&approval=auto`);
     await until(async () => await page.getByRole('button', { name: 'Agree and sign in', exact: true }).count() > 0 || await page.locator('.account-row').count() > 0, 'sign-in entry');
     if (await page.getByRole('button', { name: 'Agree and sign in', exact: true }).count()) await page.getByRole('button', { name: 'Agree and sign in', exact: true }).click();
     await page.locator('.account-row').waitFor();

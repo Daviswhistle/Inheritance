@@ -22,13 +22,10 @@ try {
  const vault=await f.vaultOf(c.owner), held=new Contract(c.usdcStrategy,['function balanceOf(address) view returns(uint256)','function previewDeposit(uint256) view returns(uint256)'],provider);
  browser=await (process.env.DEPOSIT_BROWSER==='webkit'?webkit:chromium).launch({headless:true,...(process.env.DEPOSIT_BROWSER==='webkit'?{}:{executablePath:process.env.CHROME_BIN||undefined})});const page=await browser.newPage({viewport:{width:390,height:844}});
  await page.addInitScript(()=>localStorage.setItem('inheritance:locale','en'));
- await page.goto(origin+'/?approval=auto&residence=KR'+(process.env.DEPOSIT_BROWSER==='webkit'?'&platform=ios':''));await page.getByRole('button',{name:'Agree and sign in',exact:true}).click();
+ await page.goto(origin+'/?approval=auto'+(process.env.DEPOSIT_BROWSER==='webkit'?'&platform=ios':''));await page.getByRole('button',{name:'Agree and sign in',exact:true}).click();
  await page.locator('.account-row').waitFor();await page.locator('.tab-item').nth(1).click();
  const selectUsdc=page.getByRole('button',{name:'USDC',exact:true});if(await selectUsdc.count())await selectUsdc.click();
  const details=page.locator('.deposit-controls');await details.locator('summary').click();
- if(await page.locator('#plan-residence-country').count()){
-  await page.locator('#plan-residence-country').selectOption('KR');await page.locator('#plan-residence-attestation').check();await page.getByRole('button',{name:'Confirm residence',exact:true}).click();
- }
  const amount=page.locator('#deposit-amount');await amount.fill('1');
  const expectedShares=await held.previewDeposit(1_000_000n);const before=await held.balanceOf(vault);let canonical='',sendCount=0;
  await page.route('**/__host/command',async route=>{
