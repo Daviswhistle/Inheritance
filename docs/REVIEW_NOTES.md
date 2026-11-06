@@ -165,5 +165,4 @@ Please include the existing immutable contracts and the 10% service fee on
 realized positive net gains in this code review. The contracts are already
 deployed; we have no pre-deployment TFH source-sharing record. Public source,
 deployed addresses, control boundaries, fee calculations and test coverage are
-indexed in [CONTRACT_REVIEW_PACKAGE.md](CONTRACT_REVIEW_PACKAGE.md). The linked
-yield terms disclose the absence of an independent security audit.
+indexed in [CONTRACT_REVIEW_PACKAGE.md](CONTRACT_REVIEW_PACKAGE.md).
