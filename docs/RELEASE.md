@@ -23,7 +23,7 @@ Local validation: TypeScript, lint and production build passed; error sanitizati
 safety passed 12 scenarios, WebKit passed 19 checks/31 layouts, and the focused
 asset-group suite passed 10 checks. An independent static review found no
 actionable asset-group recovery defect. These are local/test-host results;
-the completed Android steps and remaining round-trip checks are recorded below.
+the completed Android owner round trip is recorded below.
 
 Runtime `84a74a8` deployed successfully and its native iOS host run
 42609363854 passed four tests with no failures/skips; logs and
@@ -46,16 +46,24 @@ browser harness passed all 93 checks, including per-asset cancellation/rollback,
 receipt recovery, committed IndexedDB updates and legacy-route income/history.
 Its simulated bridge and approvals do not establish actual host acceptance.
 
-Actual current-factory financial verification is underway. Both initial 0.01
+Actual current-factory owner financial verification is complete. Both initial 0.01
 deposits have successful canonical receipts and exact cost basis/strategy shares.
 A force-stop and fresh sign-in restored both positions without a second deposit.
 The user approved 0.02 WLD + 0.02 USDC total test principal and at most 0.5 WLD
 network fees, capped at 0.15 WLD per transaction. One combined top-up of 0.01 each
-then succeeded with zero additional network cost; both vaults record 0.02 capital.
+then succeeded with zero additional network cost; both vaults recorded 0.02 capital.
 Actual network fees total 0.15827150695141555 WLD, reconciled from token transfers
-and wallet balances. Combined renewal awaits direct user approval; full exit
-and final returned-asset reconciliation remain pending. Raw account/contact
-receipts and screenshots stay outside Git. The Korean store's final paragraph
+and wallet balances. Combined renewal succeeded with matching deadlines and no
+asset movement. Reopened current runtime showed the intended common settings
+without a false warning. The user then approved atomic full exit, returning
+0.020000000000088383 WLD and 0.02 USDC, with zero further network cost. Both
+vaults now have zero assets, strategy/accounted shares and cost basis,
+`hasAssets=false`, and heir reset to owner. Wallet-held strategy shares remain
+unchanged. The test owner is the service-fee recipient, so its received WLD
+includes that tiny fee transfer. Both asset tabs and a fresh force-stop/sign-in
+showed the ended/empty state without a duplicate financial request.
+[Sanitized evidence](evidence/android-current-factories-2026-11-09.json) records
+the assertions; raw account/contact receipts and screenshots stay outside Git. The Korean store's final paragraph
 now describes a common recipient and renewal period; it was saved and read back
 after reload.
 

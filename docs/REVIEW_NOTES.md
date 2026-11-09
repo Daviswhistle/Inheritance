@@ -45,9 +45,12 @@ gestures in the final run dismissed the keyboard without an extra click. See
 Interrupted setup leads with completed deposits and the next unfinished action,
 then offers detailed network-fee information. It restores the original request
 and checks its receipt before allowing another deposit. The repaired **All** withdrawal reads the complete
-position at execution; the October 27 WLD and November 1 USDC Android checks finished with
-zero remaining shares, assets and cost basis on the older contract generation.
-Those receipts do not establish a round trip through the current factories.
+position at execution. On November 9, physical Android World App completed
+initial WLD/USDC deposits, top-up, renewal and full exit through both current
+factories. Both final positions had zero assets, strategy/accounted shares and
+cost basis, and both recipients were removed. Restart/sign-in restored the ended
+state without another transaction. The older October 27/November 1 round trips
+remain historical; [current evidence](SUBMISSION_READINESS.md) records the new run.
 
 Additional deposits show the current strategy fee before approval and require
 a new review and consent if that fee changes. Withdrawals with an uncertain
@@ -65,7 +68,8 @@ invested. A previously removed recipient does not hide retained funds: Home
 provides a recovery action. Empty plans have a short closure review without a
 payout claim. Failure in either asset rolls back the whole exit; interrupted
 requests recover from the original receipt. The dedicated local-chain tests
-cover this combined exit separately from the earlier real Android round trips.
+cover cancellation, failure and recovery; the November 9 physical Android run
+confirmed the approved two-asset full exit on the current factories.
 
 ## First-use clarity
 

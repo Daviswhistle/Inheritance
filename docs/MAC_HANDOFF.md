@@ -20,21 +20,32 @@ The review and operating terms disclose per-asset approvals and fees.
 
 The user approved 0.02 WLD + 0.02 USDC test principal and at most 0.5 WLD total
 network costs, at most 0.15 WLD per transaction. Both initial deposits of 0.01
-succeeded, followed by one combined additional deposit of 0.01 each. Each current
-vault holds strategy shares and records 0.02 principal. Actual combined network
-fees are 0.15827150695141555 WLD, entirely from initial creation; top-up cost is
-zero. Ordinary login after force-stop restored both initial balances without a
-duplicate deposit. The Korean completion message was observed after the top-up.
+succeeded, followed by one combined additional deposit of 0.01 each. Both
+vaults held strategy shares and recorded exactly 0.02 principal. Combined renewal
+then succeeded, aligning their check-in timestamp/deadline without moving assets.
+Reopening `80a2f18` confirmed that old empty cancelled vaults no longer cause a
+false common-settings mismatch.
 
-The combined renewal is now awaiting direct user approval in World App, with no
-additional fee displayed. After confirmation, verify both deadlines, reopen the
-latest runtime, and verify that old empty cancelled vaults no longer cause a
-false settings mismatch. Then stage full exit and hand final financial approval
-to the user; reconcile canonical receipts, returned assets, zero positions and
-untouched pre-existing wallet-held strategy shares. Do not make further deposits.
-Remaining network budget is 0.34172849304858445 WLD. Do not capture authentication.
-Private canonical receipts, state reader and screenshots remain in workspace
-outputs; account/contact-level evidence must stay outside public Git.
+The user directly approved full exit. A single successful canonical receipt
+returned 0.020000000000088383 WLD and 0.02 USDC. Both vaults have zero idle assets,
+strategy/accounted shares and cost basis, `hasAssets=false`, and heir reset to
+owner. Pre-existing wallet-held strategy shares are unchanged. Test owner equals
+service-fee recipient, so the WLD received includes that wallet's tiny fee return;
+this is not an independent-recipient fee allocation test. Both asset tabs show
+zero vault balance, and force-stop/sign-in restores the ended state without a
+new financial request. No blank screen was observed.
+
+Actual combined network fees are 0.15827150695141555 WLD, entirely from initial
+creation; top-up, renewal and exit each cost zero. The approved ceiling was
+0.5 WLD total, 0.15 per transaction. No further principal is needed and no further
+transaction is staged. Private canonical receipts, reconciliation, state reader
+and screenshots remain in workspace outputs/current-contracts-android-2026-11-09;
+account/contact-level evidence must stay outside public Git.
+
+Current-factory owner round-trip verification is complete. Remaining evidence
+boundaries are physical iPhone World App approvals, the recipient's real seven-day
+claim/payout, and unconfirmed TFH contract/fee acceptance. Preserve those scopes;
+do not mark simulated approvals as physical-iPhone results.
 
 Current evidence and reviewer materials are indexed by SUBMISSION_READINESS.md.
 The Korean Portal paragraph was saved/reloaded with “same recipient and renewal

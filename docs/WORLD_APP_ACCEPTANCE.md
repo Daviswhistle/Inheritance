@@ -5,7 +5,7 @@
 Actual Android World App on Samsung SM-N986N showed successful sign-in,
 ended-plan Home/Plan, separate WLD/USDC balances, restart/setup, numeric keyboard
 Done, back navigation and the guest/sign-in screen after World App force-stop.
-No blank screen was observed. These were navigation and read-only checks.
+No blank screen was observed. The owner financial round trip below was also completed.
 
 A fresh 0.01 WLD + 0.01 USDC request on the copy-review baseline failed native
 simulation before a fee quote. WLD alone reached a quote and was cancelled.
@@ -16,7 +16,15 @@ Actual network fees total 0.15827150695141555 WLD. After process termination and
 fresh sign-in, both balances returned without another deposit. Additional
 0.01 WLD + 0.01 USDC succeeded together with zero additional network cost; each
 vault now records 0.02 principal. The corrected Korean completion toast appeared.
-Combined renewal awaits the user's direct approval; full exit is still pending.
+Combined renewal succeeded in one canonical transaction with matching deadlines
+and zero fee. Reopened `80a2f18` showed common settings without the old false
+mismatch. The user then approved one atomic full exit: 0.020000000000088383 WLD
+and 0.02 USDC returned, with zero additional network fee. Both current vaults
+have zero idle assets, strategy/accounted shares and cost basis, `hasAssets=false`,
+and heir reset to owner. The owner also receives service fees, so the WLD return
+includes that tiny fee transfer. Pre-existing wallet-held strategy shares remain
+unchanged. Both asset tabs showed zero vault balance and wallet cash; a fresh
+force-stop/sign-in restored the ended screen without a financial request.
 Read [submission readiness](SUBMISSION_READINESS.md) for the latest financial
 result. Earlier-generation real transactions below are historical.
 

@@ -25,14 +25,14 @@ index and review package, not a submission receipt or TFH acceptance.
 | General CI | [`42613413249`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413249) succeeded for `80a2f18`. |
 | Deployment | [`42613413275`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413275) succeeded; [immutable release](https://05c5fe99.inheritance.pages.dev). Nineteen public files match production and the immutable build. |
 | iOS native host | [`42613413262`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413262): 4 passed, 0 failed, 0 skipped; iPhone 16 Pro, iOS 18.5, arm64 host. Approvals are simulated. |
-| Physical Android, November 9 | SM-N986N: sign-in, closed-plan Home/Plan state, separate WLD/USDC balances, reset → setup entry, keyboard Done, back navigation and World App force-stop → guest/sign-in recovery passed; no blank screen observed. This row covers navigation and recovery, not an approved financial transaction. |
+| Physical Android, November 9 | SM-N986N: current-factory WLD/USDC initial deposits, combined top-up, combined renewal, full Morpho exit and recipient removal completed. Funded and ended states survive force-stop/sign-in; both asset balances and Korean completion states checked. See the financial results below. |
 | Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (567 characters), without asserting identical creation timestamps; app, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
 | Supplemental local-chain browser | 93 checks passed, with canonical balance/receipt and durable IndexedDB recovery assertions. The bridge and approvals are simulated. |
 | Review materials | [Reviewer walkthrough](REVIEW_NOTES.md) and [current-contract review package](CONTRACT_REVIEW_PACKAGE.md) prepared. |
 
 ### Current-factory Android financial verification
 
-**In progress:** the initial two-asset native request failed simulation before
+**Completed owner round trip:** the initial two-asset native request failed simulation before
 a fee quote. WLD alone reached an approval screen quoting 0.01 WLD principal
 plus 0.12 WLD network fee; it was cancelled without approval or spending.
 [Preflight evidence](evidence/native-setup-preflight-2026-11-09.json) records the
@@ -48,15 +48,30 @@ balances were restored without a second deposit.
 
 Additional deposits of 0.01 WLD + 0.01 USDC succeeded in one existing-vault
 request. Its canonical receipt contains both exact transfers; wallet reconciliation
-shows zero additional network cost. Each vault now records 0.02 principal and
-holds strategy shares. The Korean completion notice was observed on the phone.
-The combined renewal is awaiting the user's direct native approval; no additional
-network fee is shown. Full-exit verification remains pending.
-[Sanitized current-factory results](evidence/android-current-factories-2026-11-09.json) record completed steps and pending exit separately.
-Canonical receipts, account-level snapshots and phone captures are kept outside
-Git. This records initial deposits, not a completed round trip. Add the exact factory/child, asset, transaction receipts and final
-position here only after confirmation. Do not use a wallet approval screen or
-CI success as a completed mainnet transaction.
+shows zero additional network cost. At that point each vault recorded 0.02
+principal and held strategy shares. The Korean completion notice was observed on the phone.
+Both vaults then renewed in one successful canonical transaction: their last
+check-in and deadlines match, with no asset movement or network charge.
+After reopening `80a2f18`, Plan showed the intended common recipient and 30-day
+period without the false mismatch from old empty cancelled vaults.
+
+The user approved the combined full exit in World App. One successful canonical
+receipt returned **0.020000000000088383 WLD and 0.02 USDC** to the test wallet,
+with zero additional network cost. Both vaults now have zero idle assets,
+strategy shares, accounted shares and cost basis; `hasAssets=false` and the
+recipient is reset to the owner. The test owner is also the service-fee recipient,
+so the WLD received includes its tiny fee transfer; this result alone does not
+verify fee allocation to an unrelated recipient. Pre-existing wallet-held USDC
+strategy shares are unchanged. The app displayed the completed exit, both asset
+tabs showed zero vault balances and the corresponding wallet cash, and a fresh
+force-stop/sign-in restored the ended state without another transaction.
+
+Total network cost for both initial deposits, top-up, renewal and full exit is
+**0.15827150695141555 WLD**, within the approved 0.5 WLD ceiling. No further
+principal or fees are needed for these completed steps.
+[Sanitized current-factory results](evidence/android-current-factories-2026-11-09.json)
+record the chain and device assertions. Canonical receipts, child/account-level
+snapshots and phone captures are retained privately outside Git.
 
 The October 27 WLD and November 1 WLD/USDC round trips in
 [device acceptance](WORLD_APP_ACCEPTANCE.md) concern the older contracts. Their
@@ -65,8 +80,6 @@ not validate the current factories above.
 
 ## Remaining observed-evidence boundaries
 
-- Finish combined renewal and full exit on Android; verify
-  final custody balances, cost basis, received assets and actual network costs.
 - Actual physical-iPhone World App approvals/permissions are not established
   by the native-host results.
 - A recipient's mainnet claim, full seven-day wait and final payout have not

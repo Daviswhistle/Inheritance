@@ -4,7 +4,7 @@
   "host": "Physical Android World App",
   "device": "Samsung SM-N986N",
   "language": "ko",
-  "scope": "Current factories, real funded Morpho positions; full exit pending",
+  "scope": "Current-factory Android real-money Morpho initial deposit, top-up, renewal and full exit completed",
   "principalBudget": {
     "WLD": "0.02",
     "USDC": "0.02"
@@ -22,13 +22,24 @@
     "topUpReceiptStatus": 1,
     "topUpBothExactTokenTransfers": true,
     "koreanCompletionMessageObserved": true,
-    "renewal": "native approval awaiting user",
-    "fullExit": "not yet executed"
+    "renewal": "two vaults renewed in one successful canonical transaction",
+    "fullExit": "one successful canonical transaction; both assets returned and recipients removed",
+    "renewalDeadlinesMatch": true,
+    "renewalDidNotMoveAssets": true,
+    "fullExitReceiptStatus": 1,
+    "fullExitBothExactTokenTransfers": true,
+    "settingsFalseMismatchAbsentOnCurrentRuntime": true,
+    "endedScreenObserved": true,
+    "bothAssetTabsShowZeroVaultBalance": true,
+    "coldProcessRestartEndedStateRestored": true,
+    "additionalFinancialRequestOnRecovery": false
   },
   "actualNetworkFeesWLD": {
     "initialDeposits": "0.15827150695141555",
     "topUp": "0",
-    "total": "0.15827150695141555"
+    "total": "0.15827150695141555",
+    "renewal": "0",
+    "fullExit": "0"
   },
   "assets": {
     "WLD": {
@@ -36,21 +47,36 @@
       "firstDeposit": "0.01",
       "additionalDeposit": "0.01",
       "totalPrincipal": "0.02",
-      "strategySharesPresent": true,
       "sharesMatchAccounting": true,
       "exactCostBasisVerified": true,
-      "preExistingWalletStrategySharesUnchanged": true
+      "preExistingWalletStrategySharesUnchanged": true,
+      "strategySharesPresentDuringDeposit": true,
+      "receivedByTestWallet": "0.020000000000088383",
+      "finalIdleBalance": "0",
+      "finalStrategyShares": "0",
+      "finalAccountedShares": "0",
+      "finalCostBasis": "0",
+      "finalHasAssets": false,
+      "recipientRemoved": true
     },
     "USDC": {
       "factory": "0xB3d5ead33a91287C2D39b345041D5a44dC381c5e",
       "firstDeposit": "0.01",
       "additionalDeposit": "0.01",
       "totalPrincipal": "0.02",
-      "strategySharesPresent": true,
       "sharesMatchAccounting": true,
       "exactCostBasisVerified": true,
-      "preExistingWalletStrategySharesUnchanged": true
+      "preExistingWalletStrategySharesUnchanged": true,
+      "strategySharesPresentDuringDeposit": true,
+      "receivedByTestWallet": "0.02",
+      "finalIdleBalance": "0",
+      "finalStrategyShares": "0",
+      "finalAccountedShares": "0",
+      "finalCostBasis": "0",
+      "finalHasAssets": false,
+      "recipientRemoved": true
     }
   },
-  "privacy": "Canonical receipts and account/contact-level captures are retained privately outside Git. This summary omits user and recipient identifiers."
+  "privacy": "Canonical receipts and account/contact-level captures are retained privately outside Git. This summary omits user and recipient identifiers.",
+  "feeEvidenceScope": "Test owner is also the configured service-fee recipient. WLD received includes the tiny service-fee transfer back to that same wallet; this round trip alone is not an independent-recipient fee-allocation test."
 }
