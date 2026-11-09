@@ -15,6 +15,11 @@ The operator's Korean opening sentence was preserved. The overview now explains
 setup, renewal, claims and fees without equating the integration with World App's
 own deposit product. South Korea remains the only store country.
 
+Store images were regenerated from the revised app using disposable test
+balances. The Korean renewal image uses the completed transaction as the start
+of the new period and omits the repeated app-opening warning. The English sharing
+image uses shorter text to preserve its footer clearance.
+
 The three public legal pages use shorter explanations of asset management,
 rewards and device recovery records. Their data categories, retention periods,
 fee calculation, delayed WLD ownership and consumer rights were preserved.
