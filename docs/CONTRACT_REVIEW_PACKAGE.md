@@ -34,9 +34,9 @@ new yield factories and all four legacy yield factories as supported. Portal
 permissions retain the original ten contracts plus the two new factories; the
 South Korea draft remains unverified.
 The activation receipt above is historical. The latest app release is
-`cb4eab1`, with successful deployment
-[42592223935](https://github.com/Daviswhistle/Inheritance/actions/runs/42592223935)
-and [immutable Pages build](https://3eeef6f2.inheritance.pages.dev).
+`80a2f18`, with successful deployment
+[42613413275](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413275)
+and [immutable Pages build](https://05c5fe99.inheritance.pages.dev).
 Current readiness separates this release from the older activation record and
 from older-contract Android transactions.
 

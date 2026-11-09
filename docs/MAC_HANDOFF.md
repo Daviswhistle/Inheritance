@@ -1,5 +1,46 @@
 # Mac continuation — 2026-11-09
 
+## Native setup and financial verification checkpoint — November 9
+
+Current runtime `80a2f18` is deployed at https://05c5fe99.inheritance.pages.dev.
+Deployment 42613413275 and general CI 42613413249 succeeded. The latest iOS run
+42613413262 passed 4/4 with no failures/skips; its downloaded summary, third
+landscape keyboard and recovered-USDC screenshots were reviewed. The supplemental
+local-chain browser harness passed all 93 checks after updating old UI/stale-toast
+expectations and observing committed IndexedDB recovery writes.
+These are native test-host results, not actual iOS World App. Nineteen public
+files match current production and its immutable build.
+
+Actual Android rejected the fresh two-creation six-call request before a quote.
+The same WLD-only request reached native approval; a local mainnet fork executed
+the six calls successfully at over 10 million gas without Safe/EntryPoint costs.
+No exact native gas cap is asserted. Setup now confirms one atomic asset group
+before opening the next asset's approval when any new vault is needed.
+The review and operating terms disclose per-asset approvals and fees.
+
+The user approved 0.02 WLD + 0.02 USDC test principal and at most 0.5 WLD total
+network costs, at most 0.15 WLD per transaction. Both initial deposits of 0.01
+succeeded, followed by one combined additional deposit of 0.01 each. Each current
+vault holds strategy shares and records 0.02 principal. Actual combined network
+fees are 0.15827150695141555 WLD, entirely from initial creation; top-up cost is
+zero. Ordinary login after force-stop restored both initial balances without a
+duplicate deposit. The Korean completion message was observed after the top-up.
+
+The combined renewal is now awaiting direct user approval in World App, with no
+additional fee displayed. After confirmation, verify both deadlines, reopen the
+latest runtime, and verify that old empty cancelled vaults no longer cause a
+false settings mismatch. Then stage full exit and hand final financial approval
+to the user; reconcile canonical receipts, returned assets, zero positions and
+untouched pre-existing wallet-held strategy shares. Do not make further deposits.
+Remaining network budget is 0.34172849304858445 WLD. Do not capture authentication.
+Private canonical receipts, state reader and screenshots remain in workspace
+outputs; account/contact-level evidence must stay outside public Git.
+
+Current evidence and reviewer materials are indexed by SUBMISSION_READINESS.md.
+The Korean Portal paragraph was saved/reloaded with “same recipient and renewal
+period”; country remains KR only. Do not submit or send a TFH follow-up.
+
+
 ## Copy review — 2026-11-09
 
 The app, both store descriptions and all three public legal pages were reviewed

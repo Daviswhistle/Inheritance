@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-09",
+  "chainId": 480,
+  "host": "Physical Android World App",
+  "device": "Samsung SM-N986N",
+  "language": "ko",
+  "scope": "Current factories, real funded Morpho positions; full exit pending",
+  "principalBudget": {
+    "WLD": "0.02",
+    "USDC": "0.02"
+  },
+  "networkBudgetWLD": {
+    "total": "0.5",
+    "perTransaction": "0.15"
+  },
+  "observations": {
+    "initialDepositCanonicalReceipts": 2,
+    "initialDepositReceiptStatus": 1,
+    "coldProcessRestartBalancesRestored": true,
+    "duplicateDepositObserved": false,
+    "topUpSingleCanonicalReceipt": true,
+    "topUpReceiptStatus": 1,
+    "topUpBothExactTokenTransfers": true,
+    "koreanCompletionMessageObserved": true,
+    "renewal": "native approval awaiting user",
+    "fullExit": "not yet executed"
+  },
+  "actualNetworkFeesWLD": {
+    "initialDeposits": "0.15827150695141555",
+    "topUp": "0",
+    "total": "0.15827150695141555"
+  },
+  "assets": {
+    "WLD": {
+      "factory": "0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff",
+      "firstDeposit": "0.01",
+      "additionalDeposit": "0.01",
+      "totalPrincipal": "0.02",
+      "strategySharesPresent": true,
+      "sharesMatchAccounting": true,
+      "exactCostBasisVerified": true,
+      "preExistingWalletStrategySharesUnchanged": true
+    },
+    "USDC": {
+      "factory": "0xB3d5ead33a91287C2D39b345041D5a44dC381c5e",
+      "firstDeposit": "0.01",
+      "additionalDeposit": "0.01",
+      "totalPrincipal": "0.02",
+      "strategySharesPresent": true,
+      "sharesMatchAccounting": true,
+      "exactCostBasisVerified": true,
+      "preExistingWalletStrategySharesUnchanged": true
+    }
+  },
+  "privacy": "Canonical receipts and account/contact-level captures are retained privately outside Git. This summary omits user and recipient identifiers."
+}

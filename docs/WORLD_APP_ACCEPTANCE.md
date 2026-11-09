@@ -1,6 +1,27 @@
 # Actual World App acceptance
 
-Status: physical Android checks observed on October 25, October 27 and
+## Current checkpoint — November 9, 2026
+
+Actual Android World App on Samsung SM-N986N showed successful sign-in,
+ended-plan Home/Plan, separate WLD/USDC balances, restart/setup, numeric keyboard
+Done, back navigation and the guest/sign-in screen after World App force-stop.
+No blank screen was observed. These were navigation and read-only checks.
+
+A fresh 0.01 WLD + 0.01 USDC request on the copy-review baseline failed native
+simulation before a fee quote. WLD alone reached a quote and was cancelled.
+The asset-group remediation in `84a74a8` reached native approvals, and both
+initial 0.01 deposits succeeded on the current WLD/USDC factories. The canonical
+receipts, exact principal and Morpho strategy shares were checked independently.
+Actual network fees total 0.15827150695141555 WLD. After process termination and
+fresh sign-in, both balances returned without another deposit. Additional
+0.01 WLD + 0.01 USDC succeeded together with zero additional network cost; each
+vault now records 0.02 principal. The corrected Korean completion toast appeared.
+Combined renewal awaits the user's direct approval; full exit is still pending.
+Read [submission readiness](SUBMISSION_READINESS.md) for the latest financial
+result. Earlier-generation real transactions below are historical.
+
+
+Historical financial scope: physical Android checks observed on October 25, October 27 and
 November 1–3, 2026. The WLD deposit/withdrawal test now includes a confirmed
 zero-share full exit, and the native notification permission dialog was exercised. This is acceptance of the observed flows, not proof of every asset,
 claim path or physical iPhone behavior. Native test hosts simulate the wallet

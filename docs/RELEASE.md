@@ -23,7 +23,41 @@ Local validation: TypeScript, lint and production build passed; error sanitizati
 safety passed 12 scenarios, WebKit passed 19 checks/31 layouts, and the focused
 asset-group suite passed 10 checks. An independent static review found no
 actionable asset-group recovery defect. These are local/test-host results;
-the corrected runtime still needs its actual Android financial round trip.
+the completed Android steps and remaining round-trip checks are recorded below.
+
+Runtime `84a74a8` deployed successfully and its native iOS host run
+42609363854 passed four tests with no failures/skips; logs and
+keyboard/recovered-position screenshots were reviewed. Subsequent `32f6190`
+corrected missing translations in completion/reward branches and extended the
+i18n AST check to conditional expressions. Its CI, deployment and iOS run passed.
+Actual Android then displayed the Korean completion message after a top-up.
+
+Current runtime `80a2f18` additionally excludes verified empty, cancelled vaults
+from common recipient/period settings and settings transactions. Funded,
+active-empty and uncertain positions remain included. This prevents old ended
+vaults from causing a false settings warning or blocking current settings.
+Its targeted classification checks, typecheck and lint passed; general CI
+42613413249 and deployment 42613413275 succeeded. Nineteen public files matched
+production and https://05c5fe99.inheritance.pages.dev. The latest native iOS host
+run [42613413262](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413262)
+passed 4/4 with no failures/skips. Its downloaded summary and third landscape
+keyboard/recovered-USDC screenshots were reviewed. The supplemental local-chain
+browser harness passed all 93 checks, including per-asset cancellation/rollback,
+receipt recovery, committed IndexedDB updates and legacy-route income/history.
+Its simulated bridge and approvals do not establish actual host acceptance.
+
+Actual current-factory financial verification is underway. Both initial 0.01
+deposits have successful canonical receipts and exact cost basis/strategy shares.
+A force-stop and fresh sign-in restored both positions without a second deposit.
+The user approved 0.02 WLD + 0.02 USDC total test principal and at most 0.5 WLD
+network fees, capped at 0.15 WLD per transaction. One combined top-up of 0.01 each
+then succeeded with zero additional network cost; both vaults record 0.02 capital.
+Actual network fees total 0.15827150695141555 WLD, reconciled from token transfers
+and wallet balances. Combined renewal awaits direct user approval; full exit
+and final returned-asset reconciliation remain pending. Raw account/contact
+receipts and screenshots stay outside Git. The Korean store's final paragraph
+now describes a common recipient and renewal period; it was saved and read back
+after reload.
 
 The current review index is [SUBMISSION_READINESS.md](SUBMISSION_READINESS.md).
 Older-contract real transactions, current Android UI observations, iOS test-host

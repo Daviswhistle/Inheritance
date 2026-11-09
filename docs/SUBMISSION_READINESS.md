@@ -6,9 +6,8 @@ index and review package, not a submission receipt or TFH acceptance.
 ## Current product and review scope
 
 - App: **상속 / Inheritance**, `app_28c40a2a42b7f6c95789c2d5231b1314`.
-- Production: https://inheritance.pages.dev/. The copy-review baseline is `cb4eab1`;
-  the native-setup remediation is described below and requires a fresh deployment
-  and financial receipt checkpoint.
+- Production: https://inheritance.pages.dev/; current runtime `80a2f18`.
+  The earlier copy-review baseline was `cb4eab1`.
 - Fresh Portal read: `unverified`, South Korea only, English and Korean.
 - Store availability is South Korea only. The app does not require a residence
   declaration or use IP/network country to gate setup or deposits. Earlier
@@ -23,11 +22,12 @@ index and review package, not a submission receipt or TFH acceptance.
 
 | Area | Observed result and boundary |
 | --- | --- |
-| General CI | [`42592223626`](https://github.com/Daviswhistle/Inheritance/actions/runs/42592223626) succeeded for `cb4eab1`. |
-| Deployment | [`42592223935`](https://github.com/Daviswhistle/Inheritance/actions/runs/42592223935) succeeded; [immutable release](https://3eeef6f2.inheritance.pages.dev). |
-| iOS native host | [`42592223892`](https://github.com/Daviswhistle/Inheritance/actions/runs/42592223892): 4 passed, 0 failed, 0 skipped; iPhone 16 Pro, iOS 18.5, arm64 host. Approvals are simulated. |
+| General CI | [`42613413249`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413249) succeeded for `80a2f18`. |
+| Deployment | [`42613413275`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413275) succeeded; [immutable release](https://05c5fe99.inheritance.pages.dev). Nineteen public files match production and the immutable build. |
+| iOS native host | [`42613413262`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413262): 4 passed, 0 failed, 0 skipped; iPhone 16 Pro, iOS 18.5, arm64 host. Approvals are simulated. |
 | Physical Android, November 9 | SM-N986N: sign-in, closed-plan Home/Plan state, separate WLD/USDC balances, reset → setup entry, keyboard Done, back navigation and World App force-stop → guest/sign-in recovery passed; no blank screen observed. This row covers navigation and recovery, not an approved financial transaction. |
-| Store and copy | English/Korean store descriptions were saved and checked after reload; app, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
+| Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (567 characters), without asserting identical creation timestamps; app, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
+| Supplemental local-chain browser | 93 checks passed, with canonical balance/receipt and durable IndexedDB recovery assertions. The bridge and approvals are simulated. |
 | Review materials | [Reviewer walkthrough](REVIEW_NOTES.md) and [current-contract review package](CONTRACT_REVIEW_PACKAGE.md) prepared. |
 
 ### Current-factory Android financial verification
@@ -36,8 +36,25 @@ index and review package, not a submission receipt or TFH acceptance.
 a fee quote. WLD alone reached an approval screen quoting 0.01 WLD principal
 plus 0.12 WLD network fee; it was cancelled without approval or spending.
 [Preflight evidence](evidence/native-setup-preflight-2026-11-09.json) records the
-mainnet-fork comparison and the asset-group remediation. Financial execution
-through the corrected release is still pending. Add the exact factory/child, asset, transaction receipts and final
+mainnet-fork comparison and the asset-group remediation. The corrected runtime was deployed and 16 public files matched its immutable
+build. The user approved a ceiling of 0.02 WLD + 0.02 USDC test principal and
+0.5 WLD total network costs (at most 0.15 WLD per transaction).
+Both current factories created their own vault and deposited exactly 0.01 of
+their asset. Two distinct canonical receipts have status 1; both positions hold
+Morpho strategy shares and record the exact deposited capital. Their combined
+actual WLD network cost is 0.15827150695141555, reconciled against transfer logs
+and the wallet balance. After process termination and fresh sign-in, both
+balances were restored without a second deposit.
+
+Additional deposits of 0.01 WLD + 0.01 USDC succeeded in one existing-vault
+request. Its canonical receipt contains both exact transfers; wallet reconciliation
+shows zero additional network cost. Each vault now records 0.02 principal and
+holds strategy shares. The Korean completion notice was observed on the phone.
+The combined renewal is awaiting the user's direct native approval; no additional
+network fee is shown. Full-exit verification remains pending.
+[Sanitized current-factory results](evidence/android-current-factories-2026-11-09.json) record completed steps and pending exit separately.
+Canonical receipts, account-level snapshots and phone captures are kept outside
+Git. This records initial deposits, not a completed round trip. Add the exact factory/child, asset, transaction receipts and final
 position here only after confirmation. Do not use a wallet approval screen or
 CI success as a completed mainnet transaction.
 
@@ -48,7 +65,8 @@ not validate the current factories above.
 
 ## Remaining observed-evidence boundaries
 
-- Finalize current-factory Android financial receipts and resulting balances.
+- Finish combined renewal and full exit on Android; verify
+  final custody balances, cost basis, received assets and actual network costs.
 - Actual physical-iPhone World App approvals/permissions are not established
   by the native-host results.
 - A recipient's mainnet claim, full seven-day wait and final payout have not
