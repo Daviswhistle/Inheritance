@@ -391,8 +391,8 @@ try {
   for (const [address, amount] of [[wldVault, 10n ** 19n], [usdcVault, 12_345678n]]) {
     assert.equal(await new Contract(address, ['function costBasis() view returns(uint256)'], provider).costBasis(), amount);
   }
-  assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 1);
-  pass('Actual iOS SDK login and one approved atomic WLD/USDC setup preserve exact amounts and require consent');
+  assert.equal(await page.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 2);
+  pass('Actual iOS SDK setup approves each new asset group and preserves exact WLD/USDC amounts and consent');
   // Hold real RPC responses during a fresh read. An empty in-memory overview is
   // not evidence that this funded owner has no active inheritance plan.
   let releasePositions;
@@ -562,11 +562,11 @@ try {
   const recoveryKey = 'inheritance:pending-plan:' + config.heir.toLowerCase();
   const journal = await heir.evaluate(async key => (await import('/src/plan-storage.ts')).readPlanJournal(key, JSON.parse), recoveryKey);
   assert.ok(journal.setupRequest && !journal.setupRequest.txHash, 'receipt ID has not reached the app');
-  assert.ok(journal.assets.every(asset => asset.depositState === 'submitting'));
-  const recoveredVaults = await Promise.all([wf.vaultOf(config.heir), uf.vaultOf(config.heir)]);
-  const amounts = () => Promise.all(recoveredVaults.map(address => new Contract(address,
-    ['function costBasis() view returns(uint256)'], provider).costBasis()));
-  assert.deepEqual(await amounts(), [4n * 10n ** 18n, 5_000001n]);
+  assert.deepEqual(journal.assets.map(asset => asset.depositState), ['submitting', 'ready']);
+  const recoveredWldVault = await wf.vaultOf(config.heir);
+  const wldBasis = new Contract(recoveredWldVault, ['function costBasis() view returns(uint256)'], provider);
+  assert.equal(await wldBasis.costBasis(), 4n * 10n ** 18n);
+  assert.equal(await uf.vaultOf(config.heir), '0x0000000000000000000000000000000000000000');
   await heir.reload();
   releaseResponse();
   await heir.unroute('**/__host/command');
@@ -575,11 +575,22 @@ try {
   assert.equal(await heir.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 0);
   await heir.screenshot({ path: out + '/interrupted-deposit-recovery.png' });
   await heir.locator('.plan-resume .btn-primary').tap();
-  await until(() => heir.evaluate(async key => !(await (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw)), recoveryKey), 'historical receipt recovery');
-  assert.deepEqual(await amounts(), [4n * 10n ** 18n, 5_000001n]);
-  assert.equal(submittedCommands, 1);
+  await until(() => heir.evaluate(async key => {
+    const saved = await (await import('/src/plan-storage.ts')).readPlanJournal(key, JSON.parse);
+    return saved?.assets[0].depositState === 'complete';
+  }, recoveryKey), 'committed group receipt recovered before new deposit consent');
   assert.equal(await heir.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 0);
-  pass('Reload after an approved deposit recovers both exact deposits from the receipt without a second transaction');
+  assert.equal(await uf.vaultOf(config.heir), '0x0000000000000000000000000000000000000000');
+  await heir.locator('#yield-consent').check();
+  await heir.locator('.plan-resume .btn-primary').tap();
+  await until(() => heir.evaluate(async key => !(await (await import('/src/plan-storage.ts')).readPlanJournal(key, raw => raw)), recoveryKey), 'historical receipt recovery');
+  assert.equal(await wf.vaultOf(config.heir), recoveredWldVault);
+  assert.equal(await wldBasis.costBasis(), 4n * 10n ** 18n);
+  const recoveredUsdcVault = await uf.vaultOf(config.heir);
+  assert.equal(await new Contract(recoveredUsdcVault, ['function costBasis() view returns(uint256)'], provider).costBasis(), 5_000001n);
+  assert.equal(submittedCommands, 1);
+  assert.equal(await heir.evaluate(() => window.__INHERITANCE_TEST_HOST__.history.filter(x => x.command === 'send-transaction').length), 1);
+  pass('Reload recovers the committed WLD group without resending it and submits only the unfinished USDC group');
   // Reach the real empty-plan dialog without modifying React state or contract storage.
   const exit = await page.evaluate(async ({ factory, owner }) => {
     const { sendWorldChainTx } = await import('/src/minikit.ts');

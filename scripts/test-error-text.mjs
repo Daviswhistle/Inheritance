@@ -55,6 +55,10 @@ const ok = (name, cond, detail) => {
 };
 
 const { errorText, humanizeRevertText, __testing } = await vite.ssrLoadModule("/src/errors.ts");
+check("observed World App simulation failure is readable", humanizeRevertText("Transaction failed: simulation_failed"),
+  "World App could not prepare this transaction for approval. Review the saved setup before trying again.");
+check("SDK simulation failure is readable", humanizeRevertText("The transaction simulation failed."),
+  "World App could not prepare this transaction for approval. Review the saved setup before trying again.");
 const { REVERT_IFACE } = __testing;
 
 // --- 1) 계약의 커스텀 에러가 실제로 해독되는가 -------------------------------

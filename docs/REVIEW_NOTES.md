@@ -5,7 +5,10 @@ URL: https://inheritance.pages.dev/
 Languages: English and Korean (`en`, `ko` confirmed in Portal). Mini App for World App.
 
 Working review package only. Current Portal state is `unverified`, Korea only.
-Submission is stopped; historical submission receipts are in RELEASE.md.
+Submission remains on hold. Current evidence and remaining verification are in
+[SUBMISSION_READINESS.md](SUBMISSION_READINESS.md); historical submission receipts
+are in RELEASE.md. The current Android transaction result must be read there,
+separately from the older-contract round trips.
 
 ## Improvements since the design review
 
@@ -23,7 +26,7 @@ Before sign-in, the tabs explain their purpose without displaying example
 balances. Browsing, opening legal documents and changing tabs do not request a
 wallet signature. **Agree and sign in** starts the explicit sign-in flow.
 
-Setup now separates entry, review and wallet approval. **Review plan** shows the
+Setup now separates entry, review and wallet approval. When a new vault is needed, WLD and USDC are deposited in turn with one approval per asset. Each asset’s creation and deposit are atomic; a completed asset is preserved if the next approval is cancelled, and resuming sends only unfinished assets. **Review plan** shows the
 exact token amounts, full recipient address and check-in interval first. A
 separate cost receipt shows deposit and additional WLD network-fee components.
 Asset-manager and service fees stay visible before consent; per-token tables
@@ -42,16 +45,18 @@ gestures in the final run dismissed the keyboard without an extra click. See
 Interrupted setup leads with completed deposits and the next unfinished action,
 then offers detailed network-fee information. It restores the original request
 and checks its receipt before allowing another deposit. The repaired **All** withdrawal reads the complete
-position at execution; actual Android WLD and USDC round trips finished with
-zero remaining shares, assets and cost basis.
+position at execution; the October 27 WLD and November 1 USDC Android checks finished with
+zero remaining shares, assets and cost basis on the older contract generation.
+Those receipts do not establish a round trip through the current factories.
 
 Additional deposits show the current strategy fee before approval and require
 a new review and consent if that fee changes. Withdrawals with an uncertain
 outcome preserve the original request and block another withdrawal until it is
 reconciled; recovery checks the original receipt without resending, and a missing
 wallet transaction ID keeps recovery pending until the transaction is identified.
-The [final submission review](FINAL_SUBMISSION_REVIEW_2026-11-04.md)
-records these fixes and the tested recovery boundaries.
+The [historical November 4 review](FINAL_SUBMISSION_REVIEW_2026-11-04.md)
+records these fixes and the tested recovery boundaries; its release checklist
+is superseded by the current readiness document.
 
 **End inheritance and withdraw all** reviews the net assets, destination and
 fees, then combines full recovery and recipient removal in one transaction.
@@ -136,8 +141,7 @@ For registered supported vaults, the service can submit the eligible transfer
 after the review period. Its infrastructure signer pays gas but cannot change
 the recipient, file the heir's claim or withdraw an active owner's funds.
 Manual completion remains available. Automation depends on registration, service
-and network availability, gas funding and spending caps. A timer is not death
-verification or a legal will. Current contracts support one heir.
+and network availability, gas funding and spending caps. Current contracts support one heir.
 
 ## Availability
 
@@ -148,11 +152,18 @@ See [LAUNCH_SCOPE.md](LAUNCH_SCOPE.md) for the country assessment.
 
 ## Verification and contract review
 
-Actual Android World App checks include sign-in cancellation/retry/success,
-contact cancellation and selection, keyboard dismissal, notification permission,
-one received self-notification, WLD and USDC deposit/full-withdrawal round trips,
-reopening recovery and regional controls.
+The November 9 physical Android check on SM-N986N confirmed sign-in, the
+closed-plan Home/Plan state, separate WLD/USDC balance reads, reset and setup
+entry, keyboard Done, back navigation and guest/sign-in recovery after World
+App force-stop. No blank screen was observed. Current-factory financial
+transaction verification is tracked separately in
+[submission readiness](SUBMISSION_READINESS.md).
 
+Earlier Android checks include sign-in cancellation/retry/success, contact
+selection, notification permission and one received self-notification. The
+October 27 WLD and November 1 USDC round trip used older contracts. Earlier
+regional-control tests describe the then-current product: residence/IP gating
+has since been removed.
 Native iOS WKWebView tests exercise the real MiniKit transport with disposable
 local contracts, the software keyboard, rotation, background return and recovery
 after process termination. Approvals in that host are simulated; these results

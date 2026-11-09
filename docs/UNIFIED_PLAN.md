@@ -10,14 +10,20 @@ are not added as a flat fee. A changed verified strategy fee invalidates
 the prior review. Fresh reads before each new wallet request are compared with
 the exact reviewed or explicitly consented rates; a mismatch clears consent and
 blocks the next request. Home and Assets
-label yield value before the service fee. “Review plan” is a local step with exact token amounts and the full
+label estimated yield value after the service fee, with the gross calculation available in details. “Review plan” is a local step with exact token amounts and the full
 resolved recipient address; it sends no wallet request. “Confirm and deposit”
 then starts the durable transaction flow. Inputs contain only amounts, recipient
 and interval; fee/risk consent appears once in this final review and starts
 unchecked. Editing values or verified fees invalidates the review.
-Missing asset contracts, exact approvals and selected deposits execute atomically
-in one World App wallet request. A new two-asset plan contains six calls in one
-chain transaction; if any call reverts, neither asset is created or deposited.
+When any selected asset needs a new vault, setup processes one asset per
+World App approval. Each asset groups creation (when needed), exact token
+approval and deposit atomically. The successful receipt is verified before
+requesting approval for the next asset. Cancelling or failing a later group
+keeps earlier completed deposits; resuming sends only unfinished assets. When
+all selected vaults already exist, their deposits can share one atomic request.
+A six-call two-creation request failed in actual Android World App before the
+fee quote; the same WLD-only request reached approval. The measured local-fork
+batch exceeds 10 million gas, but no exact World App gas cap is asserted.
 Balance, terms and quote reads happen before handoff. A failed read leaves the
 draft editable without recording an unresolved wallet request.
 The app manages the separate asset contracts internally;
@@ -25,8 +31,8 @@ it does not convert between WLD and USDC.
 
 Progress is saved per authenticated wallet in the tab. A completed asset is
 never deposited again during resume. An interrupted request without a verified
-result stays unresolved. New setup journals keep every original creation and
-deposit target as one request. All targets must match the same successful canonical
+result stays unresolved. Each setup group journals its original creation and
+deposit targets before requesting approval. All targets must match the same successful canonical
 receipt before any included asset is marked complete. Identified and ID-less
 receipts are recoverable without another wallet request; legacy journals with
 separately completed assets remain supported. Receipt logs must match the token,

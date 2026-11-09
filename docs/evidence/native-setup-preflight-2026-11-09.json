@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-09",
+  "runtime": "cb4eab1",
+  "chain_id": 480,
+  "device": "Samsung SM-N986N / actual Android World App",
+  "two_asset_setup": {
+    "amounts": {
+      "WLD": "0.01",
+      "USDC": "0.01"
+    },
+    "calls": 6,
+    "native_result": "simulation_failed before fee quote; no final approval or submitted transaction"
+  },
+  "single_asset_comparison": {
+    "asset": "WLD",
+    "amount": "0.01",
+    "native_result": "approval screen reached",
+    "quoted_network_fee_wld": "0.12",
+    "approved": false,
+    "result": "cancelled without submission"
+  },
+  "local_fork": {
+    "block": 37443462,
+    "sequential_six_calls": "all succeeded",
+    "atomic_six_calls": {
+      "succeeded": true,
+      "gas_used": 10178292,
+      "estimated_gas": 10328072,
+      "excludes": "actual Safe authorization and EntryPoint overhead; local-only CALL executor at impersonated address"
+    }
+  },
+  "finding": "The two-creation request fails actual native preflight while a single-asset request reaches approval. Contract calls themselves pass on a local mainnet fork. No exact World App gas limit is asserted.",
+  "remediation": "Process one atomic creation/approval/deposit group per selected asset when a new vault is needed; confirm its canonical receipt before requesting the next group. Preserve completed assets on cancellation and resume.",
+  "mainnet_financial_round_trip": "pending; no real funds spent in the observations above",
+  "privacy": "Phone captures, contact selection and account-level fork records are retained outside the public repository."
+}

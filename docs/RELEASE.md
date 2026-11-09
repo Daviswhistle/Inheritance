@@ -1,5 +1,36 @@
 # Release evidence
 
+## November 9, 2026 — native setup preflight and current review materials
+
+Actual Android World App rejected a fresh WLD+USDC six-call setup before the
+fee quote with `simulation_failed`. The same wallet, recipient and WLD amount
+reached native approval when USDC was excluded, quoting 0.01 WLD principal and
+0.12 WLD network fee. That quote was cancelled; no funds were spent.
+A local mainnet fork executed the six contract calls successfully and measured
+10,178,292 gas for an atomic CALL batch excluding Safe/EntryPoint overhead.
+No exact World App gas cap is claimed. The sanitized observations are in
+[the native preflight record](evidence/native-setup-preflight-2026-11-09.json).
+
+Setup now uses one atomic creation/approval/deposit group per asset when any
+new vault is required, and verifies that group's receipt before requesting the
+next approval. Already completed deposits survive cancellation and resume;
+existing-vault deposits can still share a request. The review and operating
+terms explain the per-asset approvals and costs. Native simulation errors now
+have an English/Korean action message instead of raw SDK text.
+
+Local validation: TypeScript, lint and production build passed; error sanitization
+65/65 and i18n 10/10 passed. The standard product suite passed 72 layouts, money
+safety passed 12 scenarios, WebKit passed 19 checks/31 layouts, and the focused
+asset-group suite passed 10 checks. An independent static review found no
+actionable asset-group recovery defect. These are local/test-host results;
+the corrected runtime still needs its actual Android financial round trip.
+
+The current review index is [SUBMISSION_READINESS.md](SUBMISSION_READINESS.md).
+Older-contract real transactions, current Android UI observations, iOS test-host
+results and current-factory financial execution are separate evidence scopes.
+The November 4 checklist is marked historical; its removed residence/IP gates
+must not be restored. No submission or external inquiry was made.
+
 ## November 9, 2026 — app, store and legal copy review
 
 English and Korean copy was reviewed across sign-in, setup, deposits, renewal,

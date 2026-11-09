@@ -1,5 +1,12 @@
 # Final pre-submission review — November 4, 2026
 
+> Historical review: the baseline, production revision and remaining-release list
+> below describe the November 4 review and its continuation, not current readiness.
+> Use [current submission readiness](SUBMISSION_READINESS.md) for the latest scope
+> and evidence. The former KR residence/IP controls have since been removed;
+> South Korea remains the only store country. Do not restore those controls from
+> the historical checklist. No review submission is authorized by this document.
+
 Reviewed baseline: `27344c23bc9c1c345971fe65a5e4c2feb9994ab1`.
 This is a new review of the current product, after the earlier
 [audit remediation](AUDIT_REMEDIATION_2026-11-04.md). Findings below were

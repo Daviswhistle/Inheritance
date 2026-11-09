@@ -2984,8 +2984,8 @@ export default function App() {
         }
       }
 
-      // A single wallet request can create and fund both assets. Resolve its
-      // entire historical receipt before legacy recovery or any fresh fee reads.
+      // Resolve the outstanding asset group against its exact historical receipt
+      // before legacy recovery or any fresh fee reads.
       if (workingPlan.setupRequest) await finishSetupRequest(workingPlan.setupRequest);
 
       for (const asset of workingPlan.assets.filter(item => item.depositState === "complete")) {
@@ -3141,7 +3141,13 @@ export default function App() {
       }
 
       const readyAssets = workingPlan.assets.filter(asset => asset.depositState === "ready");
-      if (readyAssets.length) {
+      // The observed two-creation request failed World App native simulation.
+      // Keep each creation atomic with its own approval and deposit, and confirm
+      // its durable request before opening the next wallet approval. Existing
+      // vault deposits can still share one request.
+      const setupGroups = readyAssets.some(asset => !currentIdentities.get(asset.factory.toLowerCase()))
+        ? readyAssets.map(asset => [asset]) : readyAssets.length ? [readyAssets] : [];
+      for (const setupAssets of setupGroups) {
         const createdFactories: string[] = [];
         const requestAssets: StoredSetupRequest["assets"] = [];
         const calls: Parameters<typeof sendWorldChainTx>[0] = [];
@@ -3149,7 +3155,7 @@ export default function App() {
         if (!block) throw new Error("World Chain time is unavailable. Refresh before continuing.");
         // Prepare every call before saving the request or asking the wallet.
         // Factories resolve the owner's new vault inside the same atomic batch.
-        for (const asset of readyAssets) {
+        for (const asset of setupAssets) {
           const route = routeForStep(asset);
           const identity = await readPlanVaultIdentity(route, plan.account);
           if (identity) {
@@ -3165,7 +3171,7 @@ export default function App() {
               args: [plan.heir, periodSeconds.toString()] });
           }
         }
-        for (const asset of readyAssets) {
+        for (const asset of setupAssets) {
           const route = routeForStep(asset);
           const amount = BigInt(asset.amount);
           const token = new ethers.Contract(route.asset, ERC20_ABI, provider);
@@ -3182,7 +3188,7 @@ export default function App() {
             : { address: route.factory, abi: planFactoryAbi(route), functionName: "deposit", args: [amount.toString()] });
         }
         const request: StoredSetupRequest = { beforeBlock: await provider.getBlockNumber(), createdFactories, assets: requestAssets };
-        const symbols = new Set(readyAssets.map(asset => asset.symbol));
+        const symbols = new Set(setupAssets.map(asset => asset.symbol));
         const resetRequest = (current: StoredPlan): StoredPlan => ({ ...current, setupRequest: undefined,
           createState: createdFactories.length ? "ready" : "complete", createTargets: [], createBeforeBlock: undefined,
           createTxHash: undefined, createHashType: undefined,

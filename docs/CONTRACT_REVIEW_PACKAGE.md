@@ -1,8 +1,10 @@
 # Existing-contract review package
 
-Prepared November 4, 2026. This package is ready to accompany a future review;
-it has not been submitted. It does not claim TFH acceptance. The current Portal
-draft is unverified and limited to South Korea.
+Prepared November 9, 2026 for review of the deployed WLD/USDC vaults and their
+service fees. This package indexes source, deployed addresses, control boundaries,
+fee calculations and reproducible checks. Current app/device results and the
+unsubmitted South Korea draft are tracked in
+[SUBMISSION_READINESS.md](SUBMISSION_READINESS.md).
 
 ## Scope
 
@@ -12,15 +14,16 @@ costs and loss recovery. Please confirm whether review through the Mini App
 submission covers these contracts and fees, or specify any separate intake,
 remediation or audit required for the existing deployments.
 
-The operator has no record of repository sharing before the earlier deployments. Public
-source is available, but does not establish that historical procedural step.
+The contracts are already deployed. No pre-deployment repository-sharing review
+record is available. The deployment history and public source below are supplied
+for review of the existing contracts.
 The relevant requirements are [repository access and fee review](https://docs.world.org/mini-apps/guidelines/smart-contract-development-guidelines).
 
 ## Deployed scope and source
 
 World Chain mainnet, chain ID 480. The remediated yield factories below have
 been mined and checked against the reviewed runtime, immutable configuration
-and both child-creation-code chunks. Production app/Worker activation completed
+and both child-creation-code chunks. Initial production app/Worker activation completed
 on November 4, 2026 (KST), from commit `1e4715d` in deployment run
 [41676338353](https://github.com/Daviswhistle/Inheritance/actions/runs/41676338353).
 The production HTML and all 21 build files matched the explicit
@@ -30,6 +33,12 @@ version `b07b7a46-8a56-4a0c-be02-c39f193a152f` reports the basic factory, both
 new yield factories and all four legacy yield factories as supported. Portal
 permissions retain the original ten contracts plus the two new factories; the
 South Korea draft remains unverified.
+The activation receipt above is historical. The latest app release is
+`cb4eab1`, with successful deployment
+[42592223935](https://github.com/Daviswhistle/Inheritance/actions/runs/42592223935)
+and [immutable Pages build](https://3eeef6f2.inheritance.pages.dev).
+Current readiness separates this release from the older activation record and
+from older-contract Android transactions.
 
 | Purpose | Address | Source |
 | --- | --- | --- |
@@ -49,7 +58,6 @@ and [helper](https://repo.sourcify.dev/480/0xc3CEda14416469144aaCb08637aAD1E61c0
 and the [USDC factory](https://repo.sourcify.dev/480/0xB3d5ead33a91287C2D39b345041D5a44dC381c5e)
 and [helper](https://repo.sourcify.dev/480/0x9713961Fb3485e97AD07860906f676E66A47c04e).
 The remediated build uses solc 0.8.38, viaIR, optimizer 200 and Cancun.
-Source verification is not an independent security audit or app activation.
 
 Legacy compatibility retains WLD yield
 `0x1a856aE8c3abd8a3746F542688a1846Bc6208435` and USDC yield
@@ -83,7 +91,7 @@ receipts and the latest app release and production checks are recorded in
   successful quote with a larger gas allowance does not change this bounded
   on-chain result.
 - Re7/Morpho strategy governance, liquidity, losses and fee changes are external
-  risks disclosed before deposit. No independent audit has been completed.
+  risks disclosed before deposit.
 - The [end-inheritance flow](PLAN_EXIT.md) uses existing entrypoints in one
   atomic transaction. The remediated generation separately isolates failed
   reward-counter reads from principal exits and makes a rejected USDC cash fee

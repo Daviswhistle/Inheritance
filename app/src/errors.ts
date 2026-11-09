@@ -83,6 +83,10 @@ const REVERT_HINTS: Record<string, string> = {
  * 덩어리를 잘라내고, 에러 이름이 있으면 문장으로 바꾼다.
  */
 const humanizeRevert = (raw: string): string => {
+  if (/^(?:Transaction failed:\s*)?simulation_failed\.?$/i.test(raw.trim())
+    || raw.trim() === "The transaction simulation failed.") {
+    return "World App could not prepare this transaction for approval. Review the saved setup before trying again.";
+  }
   /* 셀렉터와 에러 이름을 **먼저** 잡아 둔다.
      순서가 반대였고 그게 버그였다: 아래의 정리 정규식이
      `(action="estimateGas", data="0x203d82d8", …)` 를 끝까지 지우면서 `data=` 안의

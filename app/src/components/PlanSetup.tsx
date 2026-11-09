@@ -568,6 +568,7 @@ export function PlanSetup({
 
       {showReview && reviewSnapshot && <section className="plan-review plan-final-review" aria-labelledby="plan-review-title">
         <h3 id="plan-review-title" tabIndex={-1} ref={reviewHeadingRef}>{t("plan.review.title")}</h3>
+        {reviewSnapshot.assets.length > 1 && <p>{t("plan.review.assetApprovals")}</p>}
         <dl className="plan-review-list">
           <div>
             <dt>{t("plan.review.amounts")}</dt>
