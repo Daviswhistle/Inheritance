@@ -14,7 +14,7 @@ import { PlanSetup } from "@/components/PlanSetup";
 import { ReleasePlanDialog } from "@/components/ReleasePlanDialog";
 import { readExitTargets, exitQuoteStillValid, verifyExitTransfers, verifyExitEmpty, PlanExitError } from "@/plan-exit";
 import { HeirPlans, OwnerPlanSettings, EndedPlan, InviteHeir } from "@/components/PlanExperience";
-import { readInheritancePosition, ownerInheritancePositions, inheritanceStage, rememberedInheritances, rememberInheritances, readSettingsRequest, saveSettingsRequest, clearSettingsRequest, settingsFingerprint, verifySettingsReceipt, SETTING_EVENTS } from "@/inheritance";
+import { isEmptyCancelledPosition, readInheritancePosition, ownerInheritancePositions, inheritanceStage, rememberedInheritances, rememberInheritances, readSettingsRequest, saveSettingsRequest, clearSettingsRequest, settingsFingerprint, verifySettingsReceipt, SETTING_EVENTS } from "@/inheritance";
 import type { InheritancePosition, HeirReadiness, SettingsTarget, SettingsRequest } from "@/inheritance";
 import { MoneyReview } from "@/components/MoneyReview";
 import { WalletInvestment } from "@/components/WalletInvestment";
@@ -1108,6 +1108,7 @@ export default function App() {
   const activeOwnedPlans = ownedPlanRead.account === account.toLowerCase()
     ? ownedPlanRead.items.filter(item => item.active === true) : [];
   const unsettledOwnedPlans = ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items.filter(item => item.settled === false) : [];
+  const managedSettingsPlans = unsettledOwnedPlans.filter(item => !isEmptyCancelledPosition(item, account));
   const ownedPlanTotal = (symbol: AssetSymbol) => {
     const rows = (ownedPlanRead.account === account.toLowerCase() ? ownedPlanRead.items : []).filter(item => item.settled === false || item.hasAssets === true).filter(item => item.symbol === symbol
       || symbol === "WLD" && item.symbol === "USDC" && item.additionalWld !== 0n);
@@ -1139,9 +1140,9 @@ export default function App() {
   const commonPlanSettings = activeOwnedPlans.length > 0
     && activeOwnedPlans.every(item => item.heir.toLowerCase() === activeOwnedPlans[0].heir.toLowerCase()
       && item.periodSeconds === activeOwnedPlans[0].periodSeconds);
-  const commonManagedSettings = unsettledOwnedPlans.length > 0 && unsettledOwnedPlans.every(p => p.heir.toLowerCase() === unsettledOwnedPlans[0].heir.toLowerCase() && p.periodSeconds === unsettledOwnedPlans[0].periodSeconds);
+  const commonManagedSettings = managedSettingsPlans.length > 0 && managedSettingsPlans.every(p => p.heir.toLowerCase() === managedSettingsPlans[0].heir.toLowerCase() && p.periodSeconds === managedSettingsPlans[0].periodSeconds);
   const ownerSettingsPeriod = !periodTouchedRef.current && commonManagedSettings
-    ? String(Math.max(1, Math.round(Number(unsettledOwnedPlans[0].periodSeconds) / 86400))) : periodInput;
+    ? String(Math.max(1, Math.round(Number(managedSettingsPlans[0].periodSeconds) / 86400))) : periodInput;
   const homeHeirAddress = commonPlanSettings ? activeOwnedPlans[0]?.heir ?? "" : "";
   const homeHeirUsername = homeHeirUsernameRead?.account === account.toLowerCase()
     && homeHeirUsernameRead.address.toLowerCase() === homeHeirAddress.toLowerCase()
@@ -3782,7 +3783,7 @@ export default function App() {
   const readSettingsTargets = async (kind: "period" | "heir" | "cancel" | "exit", value: string): Promise<SettingsTarget[]> => {
     if (!provider || !account) throw new Error(t("journey.loading"));
     if (kind === "exit") return readExitTargets(provider, account);
-    const rows = (await ownerInheritancePositions(provider, account)).filter(p => p.claimedAt === 0n);
+    const rows = (await ownerInheritancePositions(provider, account)).filter(p => p.claimedAt === 0n && !isEmptyCancelledPosition(p, account));
     if (!rows.length) throw new Error(t("journey.owner.noActive"));
     if (rows.some(p => p.claimFiledAt > 0n || p.now >= p.deadline)) throw new Error(t("journey.owner.checkInFirst"));
     return rows.map(p => ({ factory: p.factory, vault: p.address, symbol: p.symbol,
@@ -5194,10 +5195,10 @@ export default function App() {
         {tab === "inherit" && showOwnerPlanSettings && <OwnerPlanSettings
           ended={inheritanceEmpty && activeOwnedPlans.length === 0} canCheckIn={activeOwnedPlans.length > 0}
           onRestart={() => setShowPlanSetup(true)}
-          heirLabel={commonManagedSettings ? unsettledOwnedPlans[0].heir.toLowerCase() === account.toLowerCase() ? t("journey.stage.cancelled") : homeHeirUsername ? `@${homeHeirUsername}` : unsettledOwnedPlans[0].heir : ""}
+          heirLabel={commonManagedSettings ? managedSettingsPlans[0].heir.toLowerCase() === account.toLowerCase() ? t("journey.stage.cancelled") : homeHeirUsername ? `@${homeHeirUsername}` : managedSettingsPlans[0].heir : ""}
           period={ownerSettingsPeriod} onPeriod={onPeriodChange} heir={newHeir} onHeir={onNewHeirInput}
           resolvedHeir={newHeirResolved?.address ?? ""} resolving={resolvingNewHeir}
-          busy={pendingAction} disabled={ownedPlanLoading || ownedPlanIncomplete || unsettledOwnedPlans.some(p => BigInt(chainNow || Math.floor(Date.now() / 1000)) >= p.lastPing + p.periodSeconds)}
+          busy={pendingAction} disabled={ownedPlanLoading || ownedPlanIncomplete || managedSettingsPlans.some(p => BigInt(chainNow || Math.floor(Date.now() / 1000)) >= p.lastPing + p.periodSeconds)}
           onPeriodReview={() => void runWalletAction(changePeriod, true)} onHeirReview={() => void runWalletAction(updateHeir, true)}
           onExit={() => void runWalletAction(reviewExit, true)} hasExitAssets={unsettledOwnedPlans.some(p => p.hasAssets)} exitDisabled={ownedPlanLoading || ownedPlanIncomplete} onCancel={() => void runWalletAction(cancelInheritance, true)} review={settingsReview?.kind === "exit" ? null : settingsReview?.targets ?? null} cancelReview={settingsReview?.kind === "cancel"}
           onConfirm={() => void runWalletAction(confirmPlanSettings, true)} onDismiss={() => setSettingsReview(null)}

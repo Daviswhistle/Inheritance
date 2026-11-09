@@ -136,6 +136,7 @@ jobs:
         run: |
           node ../scripts/verify/unified-plan.mjs
           node ../scripts/test-legacy-yield-routes.mjs
+          node ../scripts/test-managed-settings.mjs
 
       - name: Validate English and Korean copy and income history
         run: |

@@ -115,6 +115,12 @@ export function rememberInheritances(account: string, addresses: readonly string
   try { localStorage.setItem(historyKey(account), JSON.stringify([...new Set([...rememberedInheritances(account), ...addresses].map(v => v.toLowerCase()))])); }
   catch { /* A chain/backend read remains authoritative when local storage is unavailable. */ }
 }
+// Only a successful empty-balance read plus self-recipient proves this position
+// is irrelevant to shared settings. Unknown balances must remain manageable.
+export function isEmptyCancelledPosition(position: { heir: string; hasAssets: boolean | null | undefined }, owner: string): boolean {
+  return position.hasAssets === false && position.heir.toLowerCase() === owner.toLowerCase();
+}
+
 export function inheritanceStage(p: InheritancePosition) {
   return p.claimedAt > 0n ? "completed" : same(p.heir, p.owner) ? "cancelled"
     : p.claimFiledAt > 0n ? p.now >= p.challengeEndsAt ? "ready" : "waiting" : p.now >= p.deadline ? "expired" : "active";
