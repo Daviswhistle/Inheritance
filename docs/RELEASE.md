@@ -1,5 +1,28 @@
 # Release evidence
 
+## November 9, 2026 — resubmission confirmed
+
+At **22:08:52 KST / 13:08:52 UTC**, the authorized Portal submission returned
+`awaiting_review` for `meta_9cf3b324ec9a1838a56c5b6d98be8674`. An independent
+configuration read confirmed that status, exactly KR, en/ko, and the retained
+developer allowlisting setting. The refreshed Portal showed “In review. Editing
+is locked until review completes.” and an Un-submit control.
+
+The submitted changelog leads with UI/UX improvements and current-contract
+Android financial verification. It explicitly requests review of the existing
+immutable contracts and service fees, and includes pinned contract/fee-package
+and reviewer-walkthrough URLs at `d93a162f881bd33ab001fd650bc4ec7af540100e`.
+The full accepted request and receipt are in
+[evidence/portal-submission-2026-11-09.json](evidence/portal-submission-2026-11-09.json).
+The configuration readback exposes queue status, not the changelog body; delivery
+of the notes is evidenced by their inclusion in the successful submission call.
+
+A first validation attempt reported an annotation over 40 characters. The English
+tagline was shortened from 43 to 38 characters before the successful request.
+That validation failure did not create a review. This is a confirmed submission
+for approval; contract/fee acceptance and the final review decision are pending.
+No additional funds or support email were used.
+
 ## November 9, 2026 — introduction and review submission preparation
 
 The English and Korean listings now lead with asset management and the purpose
@@ -20,8 +43,8 @@ Latest native iOS run [42620430906](https://github.com/Daviswhistle/Inheritance/
 passed all four tests with zero failures/skips on iPhone 16 Pro / iOS 18.5.
 The downloaded summary, individual test outcomes, third landscape keyboard
 and pending-deposit recovery screenshots were reviewed. The user authorized
-submission with contract/fee review materials. The Portal submission receipt
-will be recorded after confirmation.
+submission with contract/fee review materials. The confirmed submission receipt
+is recorded above.
 
 ## November 9, 2026 — native setup preflight and current review materials
 

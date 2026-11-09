@@ -2,7 +2,10 @@
 
 ## Current release scope — South Korean store only
 
-The World App store remains set to South Korea. The app no longer asks for
+The November 9 submission is confirmed `awaiting_review`, with South Korea
+as the sole store country. This supersedes the older withdrawn/unverified
+checkpoints below; see [the receipt](evidence/portal-submission-2026-11-09.json).
+The app no longer asks for
 residence or checks the connection country before setup or deposit. This
 supersedes the earlier interface restrictions recorded below.
 

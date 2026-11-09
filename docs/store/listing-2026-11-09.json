@@ -6,7 +6,7 @@
   },
   "en": {
     "name": "Inheritance",
-    "tagline": "Manage your assets. Plan who receives them.",
+    "tagline": "Plan who receives your digital assets.",
     "description": "Plan who receives your digital assets while managing them in World App. Choose one recipient, set a renewable period of 1–365 days and deposit WLD, USDC or both.\n\nDeposits are invested through Re7 strategies on Morpho. View balances and earnings together, add funds or withdraw to your wallet. Ending inheritance returns the vault assets to your World App wallet and removes the recipient.\n\nTo renew, tap Check in on Home and approve in World App. Your chosen period starts again when the transaction completes. If the deadline passes, your recipient can request the assets. A seven-day wait follows. Renewing before payment cancels the request.\n\nInheritance charges 10% of realized net gains after strategy fees and prior losses, with no service fee on deposited principal. WLD rewards in a USDC vault carry a separate 10% fee. Re7 strategy fees and network costs are separate. Returns vary; investment losses and liquidity shortages can reduce assets or delay withdrawals."
   }
 }

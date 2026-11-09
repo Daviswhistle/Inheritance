@@ -1,14 +1,16 @@
 # Current submission readiness — November 9, 2026
 
-Evidence and review materials for the South Korea submission. The user authorized
-submission on November 9. The submission outcome will be recorded in RELEASE.md.
+Submitted for review on **November 9, 2026 at 22:08:52 KST**. The submission
+response and an independent configuration read both confirm **awaiting_review**.
+The refreshed Portal displays “In review. Editing is locked until review completes.”
+[Submission receipt](evidence/portal-submission-2026-11-09.json).
 
 ## Current product and review scope
 
 - App: **상속 / Inheritance**, `app_28c40a2a42b7f6c95789c2d5231b1314`.
 - Production: https://inheritance.pages.dev/; current runtime `e73e11f`.
   The earlier copy-review baseline was `cb4eab1`.
-- Fresh Portal read: `unverified`, South Korea only, English and Korean.
+- Confirmed Portal state: `awaiting_review`, South Korea only, English and Korean.
 - Store availability is South Korea only. The app does not require a residence
   declaration or use IP/network country to gate setup or deposits. Earlier
   regional-control checklists are historical and do not authorize restoration.
@@ -28,7 +30,7 @@ submission on November 9. The submission outcome will be recorded in RELEASE.md.
 | Physical Android, November 9 | SM-N986N: current-factory WLD/USDC initial deposits, combined top-up, combined renewal, full Morpho exit and recipient removal completed. Funded and ended states survive force-stop/sign-in; both asset balances and Korean completion states checked. See the financial results below. |
 | Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (597 characters), without asserting identical creation timestamps; the listing now leads with purpose and management features before fees. App, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
 | Supplemental local-chain browser | 93 checks passed, with canonical balance/receipt and durable IndexedDB recovery assertions. The bridge and approvals are simulated. |
-| Review materials | [Reviewer walkthrough](REVIEW_NOTES.md) and [current-contract review package](CONTRACT_REVIEW_PACKAGE.md) prepared. |
+| Review materials | The accepted submission changelog includes pinned links to the [reviewer walkthrough](REVIEW_NOTES.md) and [current-contract review package](CONTRACT_REVIEW_PACKAGE.md), with an explicit request to review the existing contracts and fees. |
 
 ### Current-factory Android financial verification
 
@@ -101,5 +103,5 @@ baseline, fixes and original release checklist. Its old production revision,
 merge/deploy tasks and residence/IP restrictions are not the current state.
 [RELEASE.md](RELEASE.md) retains chronological receipts, and
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md) retains device-specific
-history. This page is the current readiness index; no review submission is
-established by preparing it; the Portal receipt records the submission outcome.
+history. This page indexes the submitted evidence. The Portal receipt above records
+queue entry; the review decision remains with TFH.

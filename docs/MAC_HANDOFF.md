@@ -1,5 +1,29 @@
 # Mac continuation — 2026-11-09
 
+## Current state — resubmitted at 22:08:52 KST
+
+The user authorized submission with contract/fee materials. The Portal response
+and an independent read confirm `awaiting_review`; refreshed UI shows
+“In review. Editing is locked until review completes.” Exactly KR and en/ko
+remain selected. Do not repeat or withdraw this request unless the user asks.
+The successful changelog includes pinned contract/fee review and walkthrough
+links at d93a162f881bd33ab001fd650bc4ec7af540100e. See
+[the submission receipt](evidence/portal-submission-2026-11-09.json).
+
+Current runtime e73e11f is deployed at https://d0d809d8.inheritance.pages.dev.
+Deployment 42620431109, general CI 42620431044 and iOS 42620430906 succeeded;
+the latter passed 4/4 with zero failures/skips and its summary/logs/screenshots
+were read. Nineteen public files match production and the immutable release.
+The purpose-first welcome card was checked in the connected Android World App.
+Both store descriptions were saved and matched after reload: en 974 / ko 597
+characters. English tagline is 38 characters, Korean 19. Initial >40-character
+annotation validation was corrected before submission. Financial logic and
+contracts are unchanged from the completed owner round trip below.
+
+Prior instructions below to hold submission are historical and superseded by
+the explicit November 9 instruction and the confirmed submission. No new TFH
+email/Telegram message or extra spending is authorized by this status change.
+
 ## Native setup and financial verification checkpoint — November 9
 
 Current runtime `80a2f18` is deployed at https://05c5fe99.inheritance.pages.dev.
@@ -49,7 +73,8 @@ do not mark simulated approvals as physical-iPhone results.
 
 Current evidence and reviewer materials are indexed by SUBMISSION_READINESS.md.
 The Korean Portal paragraph was saved/reloaded with “same recipient and renewal
-period”; country remains KR only. Do not submit or send a TFH follow-up.
+period”; country remains KR only. The later confirmed submission is recorded above;
+do not send a TFH follow-up.
 
 
 ## Copy review — 2026-11-09

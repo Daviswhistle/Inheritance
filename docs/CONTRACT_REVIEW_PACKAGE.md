@@ -33,7 +33,9 @@ version `b07b7a46-8a56-4a0c-be02-c39f193a152f` reports the basic factory, both
 new yield factories and all four legacy yield factories as supported. Portal
 permissions retain the original ten contracts plus the two new factories; the
 South Korea draft remains unverified.
-The activation receipt above is historical. The latest app release is
+The activation receipt above, including its unverified status, is historical.
+The November 9 submission is now confirmed awaiting review; its changelog links
+this package and requests contract/fee review. The latest app release is
 `e73e11f`, with successful deployment
 [42620431109](https://github.com/Daviswhistle/Inheritance/actions/runs/42620431109)
 and [immutable Pages build](https://d0d809d8.inheritance.pages.dev).

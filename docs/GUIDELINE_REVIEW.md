@@ -1,13 +1,14 @@
 # World App guideline review — November 3, 2026
 
-## Current status — submission stopped
+## Current status — resubmitted November 9, 2026
 
-The operator withdrew the previous request and has not authorized resubmission.
-A fresh Portal readback on November 3 confirms **unverified**, **KR only**,
-with English and Korean support (`en`, `ko`). Supported languages and the
-draft descriptions were updated to reflect the exit flow, recovery storage and
-contract-review package. Independent readback confirmed only those fields changed. Earlier `awaiting_review` receipts are
-historical; see [RELEASE.md](RELEASE.md). They are not the current status.
+The user authorized resubmission with the contract/fee review materials. At
+22:08:52 KST on November 9, the submission response and independent Portal
+readback confirmed **awaiting_review**, **KR only**, with English and Korean.
+The refreshed UI shows editing locked while the app is in review. The changelog
+includes the existing-contract review package and the reviewer walkthrough.
+See [the submission receipt](evidence/portal-submission-2026-11-09.json).
+Earlier withdrawn/unverified checkpoints below are historical.
 
 This is an implementation and evidence review, not World App approval, legal
 certification or an independent security audit. Current production revisions

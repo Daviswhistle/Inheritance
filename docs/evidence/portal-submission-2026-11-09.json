@@ -1,0 +1,34 @@
+{
+  "submittedAtUTC": "2026-11-09T13:08:52Z",
+  "submittedAtKST": "2026-11-09T22:08:52+09:00",
+  "appId": "app_28c40a2a42b7f6c95789c2d5231b1314",
+  "metadataId": "meta_9cf3b324ec9a1838a56c5b6d98be8674",
+  "verificationStatus": "awaiting_review",
+  "countries": [
+    "KR"
+  ],
+  "languages": [
+    "en",
+    "ko"
+  ],
+  "isDeveloperAllowListing": true,
+  "submissionMethod": "World Developer Portal MCP submit_app_for_review",
+  "independentReadback": true,
+  "portalVisibleStatus": "In review. Editing is locked until review completes.",
+  "reviewSourceCommit": "d93a162f881bd33ab001fd650bc4ec7af540100e",
+  "runtime": "e73e11f8dd82770086e3e676d9d7c1c7f83f4d77",
+  "changelog": "Resubmission addressing the UI/UX review: distinct Home, Assets, Plan and Help tabs; clearer setup and cost review; explicit full withdrawal with recipient removal; keyboard and interrupted-transaction recovery fixes; complete English/Korean listings.\n\nPhysical Android World App verified initial WLD/USDC deposits, top-up, renewal, full Morpho withdrawal and restart recovery through the current factories. Both final positions had zero assets, shares and cost basis. iOS native-host tests passed 4/4, covering login retry, keyboard/lifecycle and pending-deposit recovery.\n\nPlease include the existing immutable contracts and service fees in this review. The app charges 10% of realized positive net gains after strategy costs and loss recovery; WLD rewards in a USDC vault have a separate 10% fee. Strategy/network costs are separate. Source, deployed addresses, fee calculations, permissions and reproducible checks:\nhttps://github.com/Daviswhistle/Inheritance/blob/d93a162f881bd33ab001fd650bc4ec7af540100e/docs/CONTRACT_REVIEW_PACKAGE.md\n\nReviewer walkthrough and evidence:\nhttps://github.com/Daviswhistle/Inheritance/blob/d93a162f881bd33ab001fd650bc4ec7af540100e/docs/REVIEW_NOTES.md\n\nSouth Korea store; English and Korean.",
+  "contractPackageURL": "https://github.com/Daviswhistle/Inheritance/blob/d93a162f881bd33ab001fd650bc4ec7af540100e/docs/CONTRACT_REVIEW_PACKAGE.md",
+  "reviewerNotesURL": "https://github.com/Daviswhistle/Inheritance/blob/d93a162f881bd33ab001fd650bc4ec7af540100e/docs/REVIEW_NOTES.md",
+  "notesDeliveryEvidence": "Changelog and document URLs were included in the accepted submission request. The configuration readback confirms queue status but does not expose changelog text.",
+  "preflightCorrection": "Initial submission validation rejected a 43-character English annotation. It was shortened to 38 characters; no review was created by that rejected validation call.",
+  "deploymentRun": 42620431109,
+  "generalCIRun": 42620431044,
+  "iosRun": 42620430906,
+  "ios": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "host": "iPhone 16 Pro / iOS 18.5 native test host"
+  }
+}
