@@ -1,5 +1,25 @@
 # Release evidence
 
+## November 9, 2026 — app, store and legal copy review
+
+English and Korean copy was reviewed across sign-in, setup, deposits, renewal,
+recipient claims, income, withdrawal and full exit. Repeated death/certificate
+language was removed from deposit review. Renewal text now describes transaction
+completion, and wallet-held investments identify their withdrawal asset.
+Recovery notices describe what users need to do without listing implementation
+details. Fees, claim waiting periods, cancellation and liquidity limits remain
+explicit.
+
+The store descriptions were saved and verified after reload in both languages.
+The operator's Korean opening sentence was preserved. The overview now explains
+setup, renewal, claims and fees without equating the integration with World App's
+own deposit product. South Korea remains the only store country.
+
+The three public legal pages use shorter explanations of asset management,
+rewards and device recovery records. Their data categories, retention periods,
+fee calculation, delayed WLD ownership and consumer rights were preserved.
+Submission remains on hold.
+
 ## November 5, 2026 — store availability and plan count
 
 The World App store remains configured for South Korea only. The app no longer

@@ -34,7 +34,7 @@ await test("English and Korean dictionaries cover every required key and interpo
     // Repeated values in the period explanation must all be interpolated.
     const example = i18n.translate("ko", "plan.interval.example", { days: 90 });
     assert.doesNotMatch(example, /\{\w+\}/);
-    assert.equal(example.match(/90일/g)?.length, 3);
+    assert.match(example, /90일.*거래가 완료된 시점부터 다시 90일/);
 });
 
 await test("explicit language preference overrides browser fallback and writes safely", () => {
@@ -76,14 +76,14 @@ await test("wallet debit review and network fee copy keep deposits and fees sepa
     assert.equal(i18n.translate("ko", "plan.review.totalWalletDebit"), "지갑 총차감액");
     assert.equal(i18n.translate("en", "plan.review.walletNetworkFee"), "+ WLD network fee (if charged)");
     assert.equal(i18n.translate("ko", "plan.review.walletNetworkFee"), "+ WLD 네트워크 수수료(발생하는 경우)");
-    assert.match(i18n.translate("en", "plan.review.walletDebitQuote"), /full deposit.*network fee is additional.*quote in World App.*final debit settles after the transaction/i);
-    assert.match(i18n.translate("ko", "plan.review.walletDebitQuote"), /금액 전부가 예치.*비용은 별도로 더해.*World App.*견적.*최종 차감액은 거래 후 정산/);
+    assert.match(i18n.translate("en", "plan.review.walletDebitQuote"), /full deposit.*network fee is additional.*total debit in World App.*approving/i);
+    assert.match(i18n.translate("ko", "plan.review.walletDebitQuote"), /금액 전부가 예치.*수수료는 별도로 더해.*World App.*총차감액.*승인/);
     assert.match(i18n.translate("en", "plan.review.networkPending"), /Confirmed in World App.*WLD/);
     assert.match(i18n.translate("ko", "plan.review.networkPending"), /World App에서 확인.*WLD/);
-    assert.match(i18n.translate("en", "fees.network.body"), /on top of deposits.*full entered amount goes to the vault/);
-    assert.match(i18n.translate("ko", "fees.network.body"), /맡기는 금액에서 빼지 않고 더해서.*입력한 금액 전부가 예치/);
-    assert.match(i18n.translate("en", "fees.network.body"), /Vault creation.*additional deposits.*withdrawals.*can each incur a fee.*existing vaults are not guaranteed free/);
-    assert.match(i18n.translate("ko", "fees.network.body"), /플랜 생성.*자산 추가.*출금.*네트워크 수수료.*기존 플랜도 마찬가지/);
+    assert.match(i18n.translate("en", "fees.network.body"), /charged separately in WLD.*full entered amount goes to the vault/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /WLD로 별도 청구.*입력한 예치 금액 전부가 금고/);
+    assert.match(i18n.translate("en", "fees.network.body"), /Vault creation.*additional deposits.*withdrawals.*network fees.*existing vaults/);
+    assert.match(i18n.translate("ko", "fees.network.body"), /금고 생성.*추가 예치.*출금.*네트워크 수수료.*기존 금고/);
     assert.match(i18n.translate("en", "fees.network.body"), /Inheritance’s service fee.*Re7’s strategy performance fee/);
     assert.match(i18n.translate("ko", "fees.network.body"), /앱 서비스 수수료.*Re7 운용 수수료.*별도/);
 });
@@ -112,7 +112,7 @@ await test("completed transaction messages reproject when language changes witho
     assert.equal(i18n.localizeAppMessage("ko", "Link copied."), "링크를 복사했습니다.");
     assert.equal(i18n.localizeAppMessage("ko", "Message copied."), "메시지를 복사했습니다.");
     assert.equal(i18n.localizeAppMessage("ko", "Not delivered: Check your World App notification settings."), "알림이 전달되지 않았습니다: World App의 알림 설정을 확인해 주세요.");
-    assert.match(i18n.translate("ko", "automation.ready"), /직접 수령/);
+    assert.match(i18n.translate("ko", "automation.ready"), /직접 받을/);
     const strategyFeeEn = i18n.translate("en", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 });
     const strategyFeeKo = i18n.translate("ko", "plan.risk.strategyFee", { symbol: "USDC", percent: 12 });
     assert.match(strategyFeeEn, /USDC.*12%.*lending profits.*Re7.*Morpho.*rate can change/);

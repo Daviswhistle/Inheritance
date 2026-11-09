@@ -295,7 +295,7 @@ try {
   assert.deepEqual(await walletDebit.locator('dd > span').allTextContents(), [
     '10 WLD', '12.345678 USDC', '+ WLD 네트워크 수수료(발생하는 경우)',
   ]);
-  assert.match(await page.locator('.plan-cost-receipt > p').textContent(), /입력한 금액 전부가 예치[\s\S]*별도로 더해[\s\S]*최종 차감액은 거래 후 정산/);
+  assert.match(await page.locator('.plan-cost-receipt > p').textContent(), /입력한 금액 전부가 예치[\s\S]*별도로 더해[\s\S]*World App에서 총차감액[\s\S]*승인/);
   assert.match(await page.locator('.plan-cost-list').innerText(), /World App에서 확인 · WLD/);
   assert.equal(await page.locator('.plan-fee-list').isVisible(), true, 'both fees remain visible before consent');
   assert.equal(await page.locator('.plan-review-address').textContent(), config.heir);

@@ -1,4 +1,13 @@
-# Mac continuation — 2026-11-05
+# Mac continuation — 2026-11-09
+
+## Copy review — 2026-11-09
+
+The app, both store descriptions and all three public legal pages were reviewed
+for repeated warnings, implementation details and confusing wording. Renewal
+copy uses transaction completion as the start of the new period. Fees, liquidity,
+claim/cancellation rules and recovery controls remain explicit. Store copy was
+saved and read back in both languages, retaining the owner's Korean opening
+sentence. Korea remains the only store country. Do not submit.
 
 ## Store availability — 2026-11-05
 

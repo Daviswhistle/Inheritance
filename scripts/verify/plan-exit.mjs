@@ -72,7 +72,7 @@ try{
  // Assets retained through the old remove-only path get a direct recovery action.
  for(const f of [wf,uf])await(await f.updateMyHeir(c.heir)).wait();await fund();await p.reload();
  await p.locator('.tab-item').nth(2).click();await p.getByText('상속 종료',{exact:true}).click();await p.getByText('자산은 계속 운용하고 싶어요',{exact:true}).click();await p.getByRole('button',{name:'수령인만 해제',exact:true}).click();
- await p.getByText('자산을 유지하고 수령인만 해제',{exact:true}).waitFor();assert.match(await p.locator('.owner-plan-settings').innerText(),/지갑으로 돌아오지 않고/);
+ await p.getByText('자산을 유지하고 수령인만 해제',{exact:true}).waitFor();assert.match(await p.locator('.owner-plan-settings').innerText(),/금고에서 계속 운용/);
  await p.getByRole('button',{name:'변경 내용 승인하기',exact:true}).click();await until(async()=>await wv.heir()===c.owner&&await uv.heir()===c.owner,'detach only');await until(async()=>!await p.getByText('진행 중인 거래 확인',{exact:true}).count(),'detach confirmed');
  assert.equal(await wv.hasAssets(),true);assert.equal(await uv.hasAssets(),true);pass('Explicit remove-only review keeps both assets invested and does not describe a withdrawal');
  await p.reload();await p.locator('.retained-assets').waitFor();assert.equal(await p.locator('.home-checkin-action').count(),0);await shot('retained-assets-ko');

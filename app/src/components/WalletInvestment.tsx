@@ -39,7 +39,7 @@ export function WalletInvestment({ route, provider, account, held, busy, onRedee
   return <details className="wallet-investment">
     <summary>{t("walletShares.title", { symbol: route.symbol })}<span>{t("walletShares.outside")}</span></summary>
     <div className="wallet-investment-content">
-      <p>{t("walletShares.body")}</p>
+      <p>{t("walletShares.body", { symbol: route.symbol })}</p>
       {!quote && <p role="status">{t(failed ? "walletShares.failed" : "walletShares.checking")}</p>}
       {quote && <>
         <dl className="yield-values">
