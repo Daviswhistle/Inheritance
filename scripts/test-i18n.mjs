@@ -155,13 +155,20 @@ await test("locale provider uses React context without mutating the document", (
 await test("every fixed app transaction status and toast has a Korean translation", () => {
     const source = ts.createSourceFile("App.tsx", readFileSync(new URL("../app/src/App.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const missing = new Set();
+    function fixedMessages(expression) {
+      if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return [expression.text];
+      if (ts.isParenthesizedExpression(expression)) return fixedMessages(expression.expression);
+      if (ts.isConditionalExpression(expression)) return [...fixedMessages(expression.whenTrue), ...fixedMessages(expression.whenFalse)];
+      return [];
+    }
     function visit(node) {
       if (ts.isCallExpression(node)) {
         const name = node.expression.getText(source);
         const argument = node.arguments[name === "pushToast" ? 1 : 0];
-        if (["setStatus", "pushToast", "report"].includes(name) && argument && ts.isStringLiteral(argument)) {
-          const message = argument.text;
-          if (message && i18n.localizeAppMessage("ko", message) === message) missing.add(message);
+        if (["setStatus", "pushToast", "report"].includes(name) && argument) {
+          for (const message of fixedMessages(argument)) {
+            if (message && i18n.localizeAppMessage("ko", message) === message) missing.add(message);
+          }
         }
       }
       ts.forEachChild(node, visit);

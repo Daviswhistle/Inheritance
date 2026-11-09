@@ -3244,8 +3244,8 @@ export default function App() {
       setTab("vault");
       setJustCreatedPlan(true);
       setShowPlanSetup(false);
-      setStatus(allPositionsUnchanged ? "Your inheritance plan is ready. Deposits and vaults are verified on World Chain."
-        : "Remaining setup is complete. Earlier deposits were verified; current assets and settings appear below.");
+      setStatus(allPositionsUnchanged ? "Your plan and deposits are ready. Review your deposited assets and recipient below."
+        : "Setup is complete. Your assets and settings are shown below.");
       void loadVault();
       void refreshBalances();
       void refreshTimer();
@@ -4286,8 +4286,8 @@ export default function App() {
       await waitForTxOrEvent(getRwProvider(), { txHash: sent.tx.hash, hashType: sent.tx.hashType,
         check: async () => await contract.totalRewardsClaimed() > before });
       if (scope !== balanceScopeRef.current) return;
-      setStatus(settledAt === 0n ? isUsdcVault ? "WLD rewards claimed and held in your USDC vault. Your USDC principal and timer are unchanged." : "WLD rewards claimed and reinvested. Your principal and timer are unchanged."
-        : "Remaining rewards paid to the fixed inheritance recipient after the net-gain fee.");
+      setStatus(settledAt === 0n ? isUsdcVault ? "WLD rewards are now held in your USDC vault." : "WLD rewards were reinvested."
+        : "Remaining rewards were paid to the inheritance recipient.");
       await Promise.all([refreshBalances(), refreshRewards()]);
     } catch (error) {
       if (scope === balanceScopeRef.current) { setStatus(errorText(error)); pushToast("error", errorText(error)); await refreshRewards(); }
@@ -4316,8 +4316,8 @@ export default function App() {
           && await new ethers.Contract(WLD_ADDRESS, ERC20_ABI, provider).balanceOf(selectedVault, { blockTag: receipt.blockNumber }) === 0n : undefined,
         check: async () => deferred ? !await readRewardsDeferred(contract as unknown as { rewardsDeferred: () => Promise<boolean> }) : await contract.unprocessedRewards() < amount });
       if (scope !== balanceScopeRef.current) return;
-      setStatus(settledAt === 0n ? "Received WLD rewards reinvested. Your principal and timer are unchanged."
-        : "Received rewards paid to the fixed inheritance recipient after the net-gain fee.");
+      setStatus(settledAt === 0n ? "WLD rewards were reinvested."
+        : "Remaining rewards were paid to the inheritance recipient.");
       await Promise.all([refreshBalances(), refreshRewards()]);
     } catch (error) {
       if (scope === balanceScopeRef.current) { setStatus(errorText(error)); pushToast("error", errorText(error)); await refreshBalances(); }
