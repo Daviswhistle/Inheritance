@@ -6,7 +6,7 @@ submission on November 9. The submission outcome will be recorded in RELEASE.md.
 ## Current product and review scope
 
 - App: **상속 / Inheritance**, `app_28c40a2a42b7f6c95789c2d5231b1314`.
-- Production: https://inheritance.pages.dev/; current runtime `80a2f18`.
+- Production: https://inheritance.pages.dev/; current runtime `e73e11f`.
   The earlier copy-review baseline was `cb4eab1`.
 - Fresh Portal read: `unverified`, South Korea only, English and Korean.
 - Store availability is South Korea only. The app does not require a residence
@@ -22,9 +22,9 @@ submission on November 9. The submission outcome will be recorded in RELEASE.md.
 
 | Area | Observed result and boundary |
 | --- | --- |
-| General CI | [`42613413249`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413249) succeeded for `80a2f18`. |
-| Deployment | [`42613413275`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413275) succeeded; [immutable release](https://05c5fe99.inheritance.pages.dev). Nineteen public files match production and the immutable build. |
-| iOS native host | [`42613413262`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413262): 4 passed, 0 failed, 0 skipped; iPhone 16 Pro, iOS 18.5, arm64 host. Approvals are simulated. |
+| General CI | [`42620431044`](https://github.com/Daviswhistle/Inheritance/actions/runs/42620431044) succeeded for `e73e11f`. |
+| Deployment | [`42620431109`](https://github.com/Daviswhistle/Inheritance/actions/runs/42620431109) succeeded; [immutable release](https://d0d809d8.inheritance.pages.dev). Nineteen public files match production and the immutable build. |
+| iOS native host | [`42620430906`](https://github.com/Daviswhistle/Inheritance/actions/runs/42620430906): 4 passed, 0 failed, 0 skipped; iPhone 16 Pro, iOS 18.5, arm64 host. Approvals are simulated. |
 | Physical Android, November 9 | SM-N986N: current-factory WLD/USDC initial deposits, combined top-up, combined renewal, full Morpho exit and recipient removal completed. Funded and ended states survive force-stop/sign-in; both asset balances and Korean completion states checked. See the financial results below. |
 | Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (597 characters), without asserting identical creation timestamps; the listing now leads with purpose and management features before fees. App, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
 | Supplemental local-chain browser | 93 checks passed, with canonical balance/receipt and durable IndexedDB recovery assertions. The bridge and approvals are simulated. |

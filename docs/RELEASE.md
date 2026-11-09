@@ -10,8 +10,18 @@ Korean characters; their exact text is in store/listing-2026-11-09.json.
 The welcome card likewise leads with managing assets and preparing inheritance;
 transaction review, risk consent and legal terms retain their financial details.
 Local typecheck, lint, i18n 10/10, build and product UI 72 layouts passed.
-The user authorized submission with contract/fee review materials. The Portal
-submission receipt will be recorded after confirmation.
+Runtime `e73e11f` deployed in [42620431109](https://github.com/Daviswhistle/Inheritance/actions/runs/42620431109)
+at https://d0d809d8.inheritance.pages.dev. General CI
+[42620431044](https://github.com/Daviswhistle/Inheritance/actions/runs/42620431044)
+succeeded. Nineteen public files match production and the immutable build,
+including the new English/Korean welcome strings. The connected Android World
+App displayed the updated welcome card with a visible sign-in action and tabs.
+Latest native iOS run [42620430906](https://github.com/Daviswhistle/Inheritance/actions/runs/42620430906)
+passed all four tests with zero failures/skips on iPhone 16 Pro / iOS 18.5.
+The downloaded summary, individual test outcomes, third landscape keyboard
+and pending-deposit recovery screenshots were reviewed. The user authorized
+submission with contract/fee review materials. The Portal submission receipt
+will be recorded after confirmation.
 
 ## November 9, 2026 — native setup preflight and current review materials
 
