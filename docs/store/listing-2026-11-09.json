@@ -1,0 +1,12 @@
+{
+  "ko": {
+    "name": "상속",
+    "tagline": "소중한 사람에게 남기는 디지털 자산",
+    "description": "상속은 일정 기간 후 지정된 사람에게 자산이 전달되는 금고에 자산을 예치하고 기간을 갱신하는 앱입니다.\n\n내가 모은 디지털 자산을 누구에게 남길지 미리 정해 두세요. WLD와 USDC 중 하나 또는 둘 다 예치하고, 받을 사람 한 명과 연장 주기(1–365일)를 선택하면 됩니다.\n\n예치한 자산은 Morpho의 Re7 전략으로 운용됩니다. 잔액과 운용 수익을 한곳에서 확인하고, 자산을 추가하거나 출금할 수 있습니다. 상속을 종료하면 금고의 자산을 내 World App 지갑으로 돌려받습니다.\n\n홈에서 ‘기한 연장하기’를 누르고 World App에서 승인하면, 거래가 완료된 시점부터 설정한 기간이 다시 시작됩니다. 기한이 지나면 지정한 사람이 수령을 신청할 수 있습니다. 신청 후 7일이 지나야 받을 수 있고, 지급 전에 기한을 연장하면 신청은 취소됩니다.\n\n서비스 수수료는 운용 수수료와 이전 손실을 반영한 실현 순이익의 10%이며 원금에는 부과하지 않습니다. USDC 금고의 WLD 보상에는 보상의 10%가 별도로 적용됩니다. Re7 운용 수수료와 네트워크 비용은 별도입니다. 수익률은 변동하며 원금 손실이나 유동성 부족에 따른 출금 지연이 발생할 수 있습니다."
+  },
+  "en": {
+    "name": "Inheritance",
+    "tagline": "Manage your assets. Plan who receives them.",
+    "description": "Plan who receives your digital assets while managing them in World App. Choose one recipient, set a renewable period of 1–365 days and deposit WLD, USDC or both.\n\nDeposits are invested through Re7 strategies on Morpho. View balances and earnings together, add funds or withdraw to your wallet. Ending inheritance returns the vault assets to your World App wallet and removes the recipient.\n\nTo renew, tap Check in on Home and approve in World App. Your chosen period starts again when the transaction completes. If the deadline passes, your recipient can request the assets. A seven-day wait follows. Renewing before payment cancels the request.\n\nInheritance charges 10% of realized net gains after strategy fees and prior losses, with no service fee on deposited principal. WLD rewards in a USDC vault carry a separate 10% fee. Re7 strategy fees and network costs are separate. Returns vary; investment losses and liquidity shortages can reduce assets or delay withdrawals."
+  }
+}

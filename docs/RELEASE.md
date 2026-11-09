@@ -1,5 +1,18 @@
 # Release evidence
 
+## November 9, 2026 — introduction and review submission preparation
+
+The English and Korean listings now lead with asset management and the purpose
+of choosing a recipient. The Korean opening sentence supplied by the operator
+is preserved. Deposit, renewal, claim and full-exit steps precede the concise
+fee/variable-return information. The descriptions contain 974 English and 597
+Korean characters; their exact text is in store/listing-2026-11-09.json.
+The welcome card likewise leads with managing assets and preparing inheritance;
+transaction review, risk consent and legal terms retain their financial details.
+Local typecheck, lint, i18n 10/10, build and product UI 72 layouts passed.
+The user authorized submission with contract/fee review materials. The Portal
+submission receipt will be recorded after confirmation.
+
 ## November 9, 2026 — native setup preflight and current review materials
 
 Actual Android World App rejected a fresh WLD+USDC six-call setup before the

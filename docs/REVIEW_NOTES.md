@@ -4,8 +4,7 @@ App ID: `app_28c40a2a42b7f6c95789c2d5231b1314`
 URL: https://inheritance.pages.dev/
 Languages: English and Korean (`en`, `ko` confirmed in Portal). Mini App for World App.
 
-Working review package only. Current Portal state is `unverified`, Korea only.
-Submission remains on hold. Current evidence and remaining verification are in
+Review package for the South Korea release. Current evidence and verification are in
 [SUBMISSION_READINESS.md](SUBMISSION_READINESS.md); historical submission receipts
 are in RELEASE.md. The current Android transaction result must be read there,
 separately from the older-contract round trips.
@@ -160,7 +159,8 @@ The November 9 physical Android check on SM-N986N confirmed sign-in, the
 closed-plan Home/Plan state, separate WLD/USDC balance reads, reset and setup
 entry, keyboard Done, back navigation and guest/sign-in recovery after World
 App force-stop. No blank screen was observed. Current-factory financial
-transaction verification is tracked separately in
+transaction verification, including initial deposits, top-up, renewal and full
+Morpho exit on both current factories, is recorded in
 [submission readiness](SUBMISSION_READINESS.md).
 
 Earlier Android checks include sign-in cancellation/retry/success, contact

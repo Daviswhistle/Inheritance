@@ -3,7 +3,7 @@
 Prepared November 9, 2026 for review of the deployed WLD/USDC vaults and their
 service fees. This package indexes source, deployed addresses, control boundaries,
 fee calculations and reproducible checks. Current app/device results and the
-unsubmitted South Korea draft are tracked in
+South Korea submission are tracked in
 [SUBMISSION_READINESS.md](SUBMISSION_READINESS.md).
 
 ## Scope

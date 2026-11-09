@@ -1,7 +1,7 @@
 # Current submission readiness — November 9, 2026
 
-Submission remains on hold at the user's instruction. This is a working evidence
-index and review package, not a submission receipt or TFH acceptance.
+Evidence and review materials for the South Korea submission. The user authorized
+submission on November 9. The submission outcome will be recorded in RELEASE.md.
 
 ## Current product and review scope
 
@@ -26,7 +26,7 @@ index and review package, not a submission receipt or TFH acceptance.
 | Deployment | [`42613413275`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413275) succeeded; [immutable release](https://05c5fe99.inheritance.pages.dev). Nineteen public files match production and the immutable build. |
 | iOS native host | [`42613413262`](https://github.com/Daviswhistle/Inheritance/actions/runs/42613413262): 4 passed, 0 failed, 0 skipped; iPhone 16 Pro, iOS 18.5, arm64 host. Approvals are simulated. |
 | Physical Android, November 9 | SM-N986N: current-factory WLD/USDC initial deposits, combined top-up, combined renewal, full Morpho exit and recipient removal completed. Funded and ended states survive force-stop/sign-in; both asset balances and Korean completion states checked. See the financial results below. |
-| Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (567 characters), without asserting identical creation timestamps; app, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
+| Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (597 characters), without asserting identical creation timestamps; the listing now leads with purpose and management features before fees. App, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
 | Supplemental local-chain browser | 93 checks passed, with canonical balance/receipt and durable IndexedDB recovery assertions. The bridge and approvals are simulated. |
 | Review materials | [Reviewer walkthrough](REVIEW_NOTES.md) and [current-contract review package](CONTRACT_REVIEW_PACKAGE.md) prepared. |
 
@@ -102,4 +102,4 @@ merge/deploy tasks and residence/IP restrictions are not the current state.
 [RELEASE.md](RELEASE.md) retains chronological receipts, and
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md) retains device-specific
 history. This page is the current readiness index; no review submission is
-performed or authorized by preparing it.
+established by preparing it; the Portal receipt records the submission outcome.
