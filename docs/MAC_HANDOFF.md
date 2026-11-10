@@ -1,15 +1,17 @@
 # Mac continuation — 2026-11-10
 
-
-
 ## Current status — November 10, 2026
 
-The user approved the final English review explanation and contract/fee package,
-with Korean translations, and authorized publication and resubmission. The latest
-Portal read is **unverified**, South Korea only, English and Korean. Publication
-is in progress; a new submission has not yet been confirmed. The November 9
-submission was withdrawn and is historical. The next confirmed receipt will be
-recorded in RELEASE.md and this section.
+Resubmission was confirmed on **November 10 at 15:48 KST**. The accepted
+submission response and an independent Portal read both report **awaiting_review**,
+South Korea only, English and Korean. The refreshed Portal displays
+“In review. Editing is locked until review completes.” The approved English
+explanation was sent unchanged, including the public repository, contract/fee
+package and walkthrough links. [Confirmed receipt](evidence/portal-submission-2026-11-10.json).
+
+The approved English/Korean materials are published at source commit `8b9a727`.
+The November 9 request was withdrawn and is historical. Await TFH's review
+result; do not repeat or withdraw this submission unless the user requests it.
 
 The approved materials are [the English submission explanation](SUBMISSION_REVIEW_DRAFT.en.txt),
 [its Korean translation](SUBMISSION_REVIEW_DRAFT.ko.txt), [the contract/fee package](CONTRACT_REVIEW_PACKAGE.md)
@@ -94,7 +96,6 @@ Current evidence and reviewer materials are indexed by SUBMISSION_READINESS.md.
 The Korean Portal paragraph was saved/reloaded with “same recipient and renewal
 period”; country remains KR only. The later confirmed submission is recorded above;
 do not send a TFH follow-up.
-
 
 ## Copy review — 2026-11-09
 
@@ -361,7 +362,6 @@ are prepared locally/on the feature branch only; the two newest old factories
 are explicitly retained alongside the two oldest. Asset migration and Mini App
 submission remain prohibited by the current scope.
 
-
 ## Earlier first-factory verification — 2026-11-04
 
 Funding block 37192271 is finalized. The guarded runner submitted only nonce 0,
@@ -399,7 +399,6 @@ Cleanup hosting run 41670407632 succeeded: both operator HTML paths serve normal
 SPA fallback and both operator JS paths are inert 62-byte tombstones. Normal root
 HTML hash is unchanged. Do not reopen the retired funding page or re-send funds.
 
-
 ## Earlier funding approval and receipt — 2026-11-04
 
 The operator explicitly approved **0.00004 WETH total funding**, with deployment
@@ -433,7 +432,6 @@ then use the approved frozen manifest hashes and the canonical hashes above.
 The budget approval persists; do not ask for the same 0.00004 WETH again. Halt
 if fresh all-in costs exceed that budget. Submission remains prohibited.
 
-
 ## Earlier resumption and approval checkpoint — 2026-11-04
 
 The operator explicitly resumed work. Submission remains stopped and deployment
@@ -462,7 +460,6 @@ additional displayed fee. No approval response or canonical receipt is recorded
 yet. Do not retry or publish another native request while this is unresolved.
 Private screenshot: `phone/resume-native-nov04.png`; hosting proof:
 `resume-hosted-nov04.json` under the same private evidence directory.
-
 
 ## Historical pause — 2026-11-03
 

@@ -1,6 +1,6 @@
 # Release evidence
 
-## November 10 — approved review materials and final checks
+## November 10 — resubmission confirmed and approved materials published
 
 The user reviewed and approved the English submission explanation and contract/fee
 package, with Korean translations, and authorized public repository updates and
@@ -9,9 +9,19 @@ and cash/share fee settlement, and records the verified improvements.
 [Final checks](evidence/final-check-2026-11-10.json) passed: 476 contract tests,
 25 World Chain forks, 12 money-safety scenarios and 72 UI layouts. Type checking
 and lint passed; 22 production files matched the immutable `e73e11f` release.
-Runtime and deployed contracts are unchanged. Before resubmission, Portal status
-is `unverified`, KR, en/ko. A new submission is not claimed until its receipt and
-independent readback are recorded here.
+Runtime and deployed contracts are unchanged. Source commit `8b9a727` published
+the approved materials. All four English/Korean files were independently fetched
+from GitHub and their blob hashes matched the approved local files.
+
+At **15:48 KST / 06:48 UTC**, `submit_app_for_review` accepted the approved English
+explanation unchanged, including the repository, contract/fee package and walkthrough
+links. Both the response and a separate configuration read confirm `awaiting_review`,
+KR, en/ko, with developer allowlisting retained. The refreshed Portal displays
+“In review. Editing is locked until review completes.” and an Un-submit control.
+[Submission receipt](evidence/portal-submission-2026-11-10.json) records the exact
+changelog, published document hashes and confirmation. Queue entry is complete;
+the approval decision remains pending. No runtime deployment, contract transaction,
+additional spending or support message was performed.
 
 
 ## November 9 — withdrawal and revised review drafts

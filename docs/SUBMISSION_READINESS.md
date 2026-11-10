@@ -1,15 +1,17 @@
 # Current submission readiness — November 10, 2026
 
-
-
 ## Current status — November 10, 2026
 
-The user approved the final English review explanation and contract/fee package,
-with Korean translations, and authorized publication and resubmission. The latest
-Portal read is **unverified**, South Korea only, English and Korean. Publication
-is in progress; a new submission has not yet been confirmed. The November 9
-submission was withdrawn and is historical. The next confirmed receipt will be
-recorded in RELEASE.md and this section.
+Resubmission was confirmed on **November 10 at 15:48 KST**. The accepted
+submission response and an independent Portal read both report **awaiting_review**,
+South Korea only, English and Korean. The refreshed Portal displays
+“In review. Editing is locked until review completes.” The approved English
+explanation was sent unchanged, including the public repository, contract/fee
+package and walkthrough links. [Confirmed receipt](evidence/portal-submission-2026-11-10.json).
+
+The approved English/Korean materials are published at source commit `8b9a727`.
+The November 9 request was withdrawn and is historical. Await TFH's review
+result; do not repeat or withdraw this submission unless the user requests it.
 
 The approved materials are [the English submission explanation](SUBMISSION_REVIEW_DRAFT.en.txt),
 [its Korean translation](SUBMISSION_REVIEW_DRAFT.ko.txt), [the contract/fee package](CONTRACT_REVIEW_PACKAGE.md)
@@ -24,7 +26,7 @@ native-host evidence remains 4/4 with simulated approvals.
 - App: **상속 / Inheritance**, `app_28c40a2a42b7f6c95789c2d5231b1314`.
 - Production: https://inheritance.pages.dev/; current runtime `e73e11f`.
   The earlier copy-review baseline was `cb4eab1`.
-- Confirmed Portal state before resubmission: `unverified`, South Korea only, English and Korean.
+- Confirmed Portal state: `awaiting_review`, South Korea only, English and Korean.
 - Store availability is South Korea only. The app does not require a residence
   declaration or use IP/network country to gate setup or deposits. Earlier
   regional-control checklists are historical and do not authorize restoration.
@@ -45,7 +47,7 @@ native-host evidence remains 4/4 with simulated approvals.
 | Physical Android, November 9 | SM-N986N: current-factory WLD/USDC initial deposits, combined top-up, combined renewal, full Morpho exit and recipient removal completed. Funded and ended states survive force-stop/sign-in; both asset balances and Korean completion states checked. See the financial results below. |
 | Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (597 characters), without asserting identical creation timestamps; the listing now leads with purpose and management features before fees. App, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
 | Supplemental local-chain browser | 93 checks passed, with canonical balance/receipt and durable IndexedDB recovery assertions. The bridge and approvals are simulated. |
-| Review materials | The user approved the final English explanation and contract/fee package, with Korean translations. The new review request includes the public repository, walkthrough and package. |
+| Review materials | Published English/Korean materials and the approved explanation were included in the accepted November 10 request through the public repository, walkthrough and package links. |
 
 ### November 10 final recheck
 
@@ -128,4 +130,4 @@ merge/deploy tasks and residence/IP restrictions are not the current state.
 [RELEASE.md](RELEASE.md) retains chronological receipts, and
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md) retains device-specific
 history. This page indexes the current evidence. November 9 receipts are historical;
-only a confirmed November 10 receipt establishes the new queue entry.
+[the November 10 receipt](evidence/portal-submission-2026-11-10.json) confirms the active queue entry.

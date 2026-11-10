@@ -1,0 +1,58 @@
+{
+  "confirmationRecordedAtUTC": "2026-11-10T06:48:49Z",
+  "confirmationRecordedAtKST": "2026-11-10T15:48:49+09:00",
+  "appId": "app_28c40a2a42b7f6c95789c2d5231b1314",
+  "metadataId": "meta_9cf3b324ec9a1838a56c5b6d98be8674",
+  "verificationStatus": "awaiting_review",
+  "countries": [
+    "KR"
+  ],
+  "languages": [
+    "en",
+    "ko"
+  ],
+  "isDeveloperAllowListing": true,
+  "submissionMethod": "World Developer Portal MCP submit_app_for_review",
+  "independentReadback": true,
+  "portalVisibleStatus": "In review. Editing is locked until review completes.",
+  "portalEditingLocked": true,
+  "portalUnsubmitControlVisible": true,
+  "reviewSourceCommit": "8b9a72774752333eb361ecb8394bd7696689b386",
+  "runtime": "e73e11f8dd82770086e3e676d9d7c1c7f83f4d77",
+  "changelog": "Source repository: https://github.com/Daviswhistle/Inheritance\nLive app: https://inheritance.pages.dev/\n\nPlease review this UI/UX update for approval in South Korea, with English and Korean support.\n\nHome presents the next action; Assets brings balances, income and withdrawals together; Plan manages the recipient and renewal period. Setup reviews the amounts, recipient, period and fees before World App approval. Ending inheritance returns the assets to the owner's wallet and removes the recipient in one atomic transaction. Keyboard handling and interrupted-transaction recovery have been improved.\n\nOn physical Android World App, the current WLD and USDC contracts completed initial deposits, top-ups, renewal, full Morpho withdrawal and restart recovery. Final checks passed 476 contract tests, 25 World Chain fork tests, 12 money-safety scenarios and 72 UI layouts. The production version's iOS simulator native-host tests passed 4/4 with simulated wallet approvals.\n\nPlease include the deployed immutable contracts and the disclosed service fees in your review. The package below explains the contract addresses, user permissions, cash/share settlement and fee calculations.\n\nContract and fee review: https://github.com/Daviswhistle/Inheritance/blob/main/docs/CONTRACT_REVIEW_PACKAGE.md\nReviewer walkthrough: https://github.com/Daviswhistle/Inheritance/blob/main/docs/REVIEW_NOTES.md",
+  "approvedChangelogFile": "../SUBMISSION_REVIEW_DRAFT.en.txt",
+  "koreanTranslationFile": "../SUBMISSION_REVIEW_DRAFT.ko.txt",
+  "contractPackageURL": "https://github.com/Daviswhistle/Inheritance/blob/main/docs/CONTRACT_REVIEW_PACKAGE.md",
+  "koreanContractPackageURL": "https://github.com/Daviswhistle/Inheritance/blob/main/docs/CONTRACT_REVIEW_PACKAGE.ko.md",
+  "reviewerNotesURL": "https://github.com/Daviswhistle/Inheritance/blob/main/docs/REVIEW_NOTES.md",
+  "publicationVerification": [
+    {
+      "index": 0,
+      "gitBlobSha": "b949902a903296dbdf133030363e7a78a3546300",
+      "publishedBlobSha": "b949902a903296dbdf133030363e7a78a3546300",
+      "match": true
+    },
+    {
+      "index": 1,
+      "gitBlobSha": "ef958d97203f41ca323912df91ed4affc1c201cd",
+      "publishedBlobSha": "ef958d97203f41ca323912df91ed4affc1c201cd",
+      "match": true
+    },
+    {
+      "index": 2,
+      "gitBlobSha": "6a3ec58692c0ad0a4ab11ffc21ff0c345d3b3d1a",
+      "publishedBlobSha": "6a3ec58692c0ad0a4ab11ffc21ff0c345d3b3d1a",
+      "match": true
+    },
+    {
+      "index": 3,
+      "gitBlobSha": "ff8eb10f4c3bdac62e96576f8bd9a6bc4e631751",
+      "publishedBlobSha": "ff8eb10f4c3bdac62e96576f8bd9a6bc4e631751",
+      "match": true
+    }
+  ],
+  "notesDeliveryEvidence": "The accepted submission call included the user-approved English changelog and the public repository/package/walkthrough links. Independent config readback exposes queue status, not changelog text.",
+  "previousSubmission": "portal-submission-2026-11-09.json",
+  "previousWithdrawal": "portal-withdrawal-2026-11-09.json",
+  "approvalDecision": "pending"
+}

@@ -1,15 +1,17 @@
 # World App guideline review — November 10, 2026
 
-
-
 ## Current status — November 10, 2026
 
-The user approved the final English review explanation and contract/fee package,
-with Korean translations, and authorized publication and resubmission. The latest
-Portal read is **unverified**, South Korea only, English and Korean. Publication
-is in progress; a new submission has not yet been confirmed. The November 9
-submission was withdrawn and is historical. The next confirmed receipt will be
-recorded in RELEASE.md and this section.
+Resubmission was confirmed on **November 10 at 15:48 KST**. The accepted
+submission response and an independent Portal read both report **awaiting_review**,
+South Korea only, English and Korean. The refreshed Portal displays
+“In review. Editing is locked until review completes.” The approved English
+explanation was sent unchanged, including the public repository, contract/fee
+package and walkthrough links. [Confirmed receipt](evidence/portal-submission-2026-11-10.json).
+
+The approved English/Korean materials are published at source commit `8b9a727`.
+The November 9 request was withdrawn and is historical. Await TFH's review
+result; do not repeat or withdraw this submission unless the user requests it.
 
 The approved materials are [the English submission explanation](SUBMISSION_REVIEW_DRAFT.en.txt),
 [its Korean translation](SUBMISSION_REVIEW_DRAFT.ko.txt), [the contract/fee package](CONTRACT_REVIEW_PACKAGE.md)
