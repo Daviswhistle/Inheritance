@@ -1,11 +1,30 @@
-# Mac continuation — 2026-11-09
+# Mac continuation — 2026-11-10
 
-## Current state — resubmitted at 22:08:52 KST
+
+
+## Current status — November 10, 2026
+
+The user approved the final English review explanation and contract/fee package,
+with Korean translations, and authorized publication and resubmission. The latest
+Portal read is **unverified**, South Korea only, English and Korean. Publication
+is in progress; a new submission has not yet been confirmed. The November 9
+submission was withdrawn and is historical. The next confirmed receipt will be
+recorded in RELEASE.md and this section.
+
+The approved materials are [the English submission explanation](SUBMISSION_REVIEW_DRAFT.en.txt),
+[its Korean translation](SUBMISSION_REVIEW_DRAFT.ko.txt), [the contract/fee package](CONTRACT_REVIEW_PACKAGE.md)
+and [its Korean translation](CONTRACT_REVIEW_PACKAGE.ko.md). Runtime `e73e11f`
+and all deployed contracts are unchanged. The [November 10 final checks](evidence/final-check-2026-11-10.json)
+record 476 contract tests, 25 World Chain fork tests, 12 money-safety scenarios,
+72 UI layouts and 22 production-file comparisons, all passed. Production iOS
+native-host evidence remains 4/4 with simulated approvals.
+
+## Historical checkpoint — November 9 submission, withdrawn later that day
 
 The user authorized submission with contract/fee materials. The Portal response
 and an independent read confirm `awaiting_review`; refreshed UI shows
 “In review. Editing is locked until review completes.” Exactly KR and en/ko
-remain selected. Do not repeat or withdraw this request unless the user asks.
+remain selected. That request was withdrawn at 22:50 KST; it is not the active review.
 The successful changelog includes pinned contract/fee review and walkthrough
 links at d93a162f881bd33ab001fd650bc4ec7af540100e. See
 [the submission receipt](evidence/portal-submission-2026-11-09.json).
@@ -20,8 +39,8 @@ characters. English tagline is 38 characters, Korean 19. Initial >40-character
 annotation validation was corrected before submission. Financial logic and
 contracts are unchanged from the completed owner round trip below.
 
-Prior instructions below to hold submission are historical and superseded by
-the explicit November 9 instruction and the confirmed submission. No new TFH
+The November 9 instructions and submission below are historical; the November 10
+status above controls continuation. No new TFH
 email/Telegram message or extra spending is authorized by this status change.
 
 ## Native setup and financial verification checkpoint — November 9

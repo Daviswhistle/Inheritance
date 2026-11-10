@@ -1,23 +1,38 @@
-# Current submission readiness — November 9, 2026
+# Current submission readiness — November 10, 2026
 
-Submitted for review on **November 9, 2026 at 22:08:52 KST**. The submission
-response and an independent configuration read both confirm **awaiting_review**.
-The refreshed Portal displays “In review. Editing is locked until review completes.”
-[Submission receipt](evidence/portal-submission-2026-11-09.json).
+
+
+## Current status — November 10, 2026
+
+The user approved the final English review explanation and contract/fee package,
+with Korean translations, and authorized publication and resubmission. The latest
+Portal read is **unverified**, South Korea only, English and Korean. Publication
+is in progress; a new submission has not yet been confirmed. The November 9
+submission was withdrawn and is historical. The next confirmed receipt will be
+recorded in RELEASE.md and this section.
+
+The approved materials are [the English submission explanation](SUBMISSION_REVIEW_DRAFT.en.txt),
+[its Korean translation](SUBMISSION_REVIEW_DRAFT.ko.txt), [the contract/fee package](CONTRACT_REVIEW_PACKAGE.md)
+and [its Korean translation](CONTRACT_REVIEW_PACKAGE.ko.md). Runtime `e73e11f`
+and all deployed contracts are unchanged. The [November 10 final checks](evidence/final-check-2026-11-10.json)
+record 476 contract tests, 25 World Chain fork tests, 12 money-safety scenarios,
+72 UI layouts and 22 production-file comparisons, all passed. Production iOS
+native-host evidence remains 4/4 with simulated approvals.
 
 ## Current product and review scope
 
 - App: **상속 / Inheritance**, `app_28c40a2a42b7f6c95789c2d5231b1314`.
 - Production: https://inheritance.pages.dev/; current runtime `e73e11f`.
   The earlier copy-review baseline was `cb4eab1`.
-- Confirmed Portal state: `awaiting_review`, South Korea only, English and Korean.
+- Confirmed Portal state before resubmission: `unverified`, South Korea only, English and Korean.
 - Store availability is South Korea only. The app does not require a residence
   declaration or use IP/network country to gate setup or deposits. Earlier
   regional-control checklists are historical and do not authorize restoration.
 - Current World Chain (480) yield factories: WLD
   `0xaC23bd1aF03ce3A178ac9dc54e0159005422F0ff`; USDC
   `0xB3d5ead33a91287C2D39b345041D5a44dC381c5e`.
-  Both fix the service fee at 1000 bps of realized positive net gains and the
+  Both fix the service fee at 1000 bps of positive gains, using actual receipts
+  for cash settlement and strategy quotes for share settlement, and the
   recipient at `0xe819320ed3d03f9912b06a48cc5e7f06060cc67a`.
 
 ## Completed evidence
@@ -30,7 +45,16 @@ The refreshed Portal displays “In review. Editing is locked until review compl
 | Physical Android, November 9 | SM-N986N: current-factory WLD/USDC initial deposits, combined top-up, combined renewal, full Morpho exit and recipient removal completed. Funded and ended states survive force-stop/sign-in; both asset balances and Korean completion states checked. See the financial results below. |
 | Store and copy | English/Korean store descriptions were saved and checked after reload; the Korean final paragraph now says the assets share a recipient and renewal period (597 characters), without asserting identical creation timestamps; the listing now leads with purpose and management features before fees. App, store images and public legal copy were reviewed. [Release details](RELEASE.md). |
 | Supplemental local-chain browser | 93 checks passed, with canonical balance/receipt and durable IndexedDB recovery assertions. The bridge and approvals are simulated. |
-| Review materials | The accepted submission changelog includes pinned links to the [reviewer walkthrough](REVIEW_NOTES.md) and [current-contract review package](CONTRACT_REVIEW_PACKAGE.md), with an explicit request to review the existing contracts and fees. |
+| Review materials | The user approved the final English explanation and contract/fee package, with Korean translations. The new review request includes the public repository, walkthrough and package. |
+
+### November 10 final recheck
+
+[Sanitized results](evidence/final-check-2026-11-10.json): 476 contract tests;
+25 World Chain fork tests at block 37478097; 12 money-safety scenarios;
+72 UI layouts; type checking and lint — all passed. All 22 checked production
+files match the `e73e11f` immutable release. The runtime's iOS CI remains 4/4;
+application, backend and contract source are unchanged. The November 9 actual
+Android round trip below remains the current-contract device evidence.
 
 ### Current-factory Android financial verification
 
@@ -103,5 +127,5 @@ baseline, fixes and original release checklist. Its old production revision,
 merge/deploy tasks and residence/IP restrictions are not the current state.
 [RELEASE.md](RELEASE.md) retains chronological receipts, and
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md) retains device-specific
-history. This page indexes the submitted evidence. The Portal receipt above records
-queue entry; the review decision remains with TFH.
+history. This page indexes the current evidence. November 9 receipts are historical;
+only a confirmed November 10 receipt establishes the new queue entry.

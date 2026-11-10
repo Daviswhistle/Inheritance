@@ -1,0 +1,13 @@
+Source repository: https://github.com/Daviswhistle/Inheritance
+Live app: https://inheritance.pages.dev/
+
+Please review this UI/UX update for approval in South Korea, with English and Korean support.
+
+Home presents the next action; Assets brings balances, income and withdrawals together; Plan manages the recipient and renewal period. Setup reviews the amounts, recipient, period and fees before World App approval. Ending inheritance returns the assets to the owner's wallet and removes the recipient in one atomic transaction. Keyboard handling and interrupted-transaction recovery have been improved.
+
+On physical Android World App, the current WLD and USDC contracts completed initial deposits, top-ups, renewal, full Morpho withdrawal and restart recovery. Final checks passed 476 contract tests, 25 World Chain fork tests, 12 money-safety scenarios and 72 UI layouts. The production version's iOS simulator native-host tests passed 4/4 with simulated wallet approvals.
+
+Please include the deployed immutable contracts and the disclosed service fees in your review. The package below explains the contract addresses, user permissions, cash/share settlement and fee calculations.
+
+Contract and fee review: https://github.com/Daviswhistle/Inheritance/blob/main/docs/CONTRACT_REVIEW_PACKAGE.md
+Reviewer walkthrough: https://github.com/Daviswhistle/Inheritance/blob/main/docs/REVIEW_NOTES.md

@@ -1,0 +1,13 @@
+소스 저장소: https://github.com/Daviswhistle/Inheritance
+운영 앱: https://inheritance.pages.dev/
+
+UI/UX를 개선한 이번 버전의 출시 승인을 요청드립니다. 출시 대상은 한국이며 영어와 한국어를 지원합니다.
+
+홈에서는 다음에 할 일을 안내하고, 자산에서는 잔액·수익·출금을 한곳에서 관리하며, 플랜에서는 수령인과 연장 주기를 설정합니다. 예치 전에는 금액·수령인·기간·수수료를 확인한 뒤 World App에서 승인합니다. 상속 종료는 자산을 소유자 지갑으로 돌려받는 작업과 수령인 해제를 하나의 거래로 처리합니다. 키보드 동작과 중단된 거래의 복구도 개선했습니다.
+
+실제 안드로이드 World App에서 현재 WLD·USDC 계약의 최초 예치, 추가 예치, 기한 연장, Morpho 전액 회수, 앱 재시작 후 복구를 완료했습니다. 최종 검사에서 계약 테스트 476개, World Chain 포크 테스트 25개, 자금 처리 안전성 시나리오 12개, UI 화면 구성 72개가 통과했습니다. 운영 버전의 iOS 시뮬레이터 네이티브 테스트 호스트도 모의 지갑 승인을 사용한 테스트 4개를 모두 통과했습니다.
+
+배포된 불변 계약과 안내된 서비스 수수료도 함께 검토해 주시기 바랍니다. 아래 자료에 계약 주소, 이용자 권한, 현금·지분 정산 방식과 수수료 계산을 정리했습니다.
+
+계약·수수료 검토 자료: https://github.com/Daviswhistle/Inheritance/blob/main/docs/CONTRACT_REVIEW_PACKAGE.md
+심사자 이용 절차: https://github.com/Daviswhistle/Inheritance/blob/main/docs/REVIEW_NOTES.md

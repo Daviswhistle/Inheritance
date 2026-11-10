@@ -1,0 +1,44 @@
+{
+  "checkedAtUTC": "2026-11-10T06:29:32.956845+00:00",
+  "sourceHead": "6937371ed4ae1ad7f3c5dd265085a85e42d87f1f",
+  "runtime": "e73e11f8dd82770086e3e676d9d7c1c7f83f4d77",
+  "applicationContractBackendSourceUnchanged": true,
+  "results": {
+    "contractTests": {
+      "passed": 476,
+      "failed": 0
+    },
+    "worldchainFork": {
+      "chainId": 480,
+      "block": "37478097",
+      "blockHash": "0xfdee9a1160cb9ebab94418f1983f5a0c30b410cc5ca970a0799a1b1716cc649d",
+      "tests": 25,
+      "failures": 0,
+      "skipped": 0,
+      "passed": true
+    },
+    "moneySafetyScenarios": {
+      "passed": 12,
+      "failed": 0
+    },
+    "uiLayouts": {
+      "passed": 72,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "productionFiles": {
+      "checked": 22,
+      "matchedImmutable": 22
+    },
+    "iosNativeHost": {
+      "run": 42620430906,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "runtimeMatchesProduction": true
+    }
+  },
+  "deviceEvidence": "android-current-factories-2026-11-09.json",
+  "scope": "Fork/browser funds and wallet approvals are local test fixtures; physical Android evidence is separately recorded. No production transactions or runtime deployment in this final check."
+}

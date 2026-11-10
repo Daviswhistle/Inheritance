@@ -177,7 +177,6 @@ Current build IDs, test results and the keyboard before/after evidence are in
 [WORLD_APP_ACCEPTANCE.md](WORLD_APP_ACCEPTANCE.md).
 
 Please include the existing immutable contracts and the 10% service fee on
-realized positive net gains in this code review. The contracts are already
-deployed; we have no pre-deployment TFH source-sharing record. Public source,
+realized positive net gains in this code review. Public source,
 deployed addresses, control boundaries, fee calculations and test coverage are
 indexed in [CONTRACT_REVIEW_PACKAGE.md](CONTRACT_REVIEW_PACKAGE.md).

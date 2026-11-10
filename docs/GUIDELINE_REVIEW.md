@@ -1,14 +1,23 @@
-# World App guideline review — November 3, 2026
+# World App guideline review — November 10, 2026
 
-## Current status — resubmitted November 9, 2026
 
-The user authorized resubmission with the contract/fee review materials. At
-22:08:52 KST on November 9, the submission response and independent Portal
-readback confirmed **awaiting_review**, **KR only**, with English and Korean.
-The refreshed UI shows editing locked while the app is in review. The changelog
-includes the existing-contract review package and the reviewer walkthrough.
-See [the submission receipt](evidence/portal-submission-2026-11-09.json).
-Earlier withdrawn/unverified checkpoints below are historical.
+
+## Current status — November 10, 2026
+
+The user approved the final English review explanation and contract/fee package,
+with Korean translations, and authorized publication and resubmission. The latest
+Portal read is **unverified**, South Korea only, English and Korean. Publication
+is in progress; a new submission has not yet been confirmed. The November 9
+submission was withdrawn and is historical. The next confirmed receipt will be
+recorded in RELEASE.md and this section.
+
+The approved materials are [the English submission explanation](SUBMISSION_REVIEW_DRAFT.en.txt),
+[its Korean translation](SUBMISSION_REVIEW_DRAFT.ko.txt), [the contract/fee package](CONTRACT_REVIEW_PACKAGE.md)
+and [its Korean translation](CONTRACT_REVIEW_PACKAGE.ko.md). Runtime `e73e11f`
+and all deployed contracts are unchanged. The [November 10 final checks](evidence/final-check-2026-11-10.json)
+record 476 contract tests, 25 World Chain fork tests, 12 money-safety scenarios,
+72 UI layouts and 22 production-file comparisons, all passed. Production iOS
+native-host evidence remains 4/4 with simulated approvals.
 
 This is an implementation and evidence review, not World App approval, legal
 certification or an independent security audit. Current production revisions
@@ -33,14 +42,11 @@ tab-only and expire after one hour.
 
 ## Contract-review status
 
-The technical package is [CONTRACT_REVIEW_PACKAGE.md](CONTRACT_REVIEW_PACKAGE.md).
-It links deployed contracts, source, controls, fee accounting and reproducible
-tests. The official guidelines require pre-deployment repository sharing and
-agreement on fees during code review. The operator reported no pre-deployment
-sharing record. Public source does not establish that step; preparing this
-package does not establish TFH acceptance. Existing-contract/fee acceptance and
-any additional intake requirement remain for TFH to determine. No new message
-or review request was sent during this correction.
+The approved [contract/fee package](CONTRACT_REVIEW_PACKAGE.md) provides the public
+repository, deployed addresses, user controls, cash/share fee accounting and
+reproducible verification. The resubmission asks TFH to review the existing
+immutable contracts and disclosed service fees. TFH's review decision and fee
+acceptance are determined by the review; they are not inferred from test results.
 
 ## Verification boundaries
 
@@ -82,7 +88,7 @@ and [Smart Contract Development Guidelines](https://docs.world.org/mini-apps/gui
 | Contract documentation | All 207 handwritten public/external functions and receive handlers have NatSpec, as checked by CI at `27344c2`. Access roles and fee behavior are explained below and in the source. Compiler metadata hashes can change when comments change, so old on-chain source verification must retain the original deployment source revision. |
 | Coverage | CI now measures coverage and enforces >=90% line coverage for every primary customer vault/factory/deployer and for their aggregate including shared helpers. Unsupported Foundry configuration keys that previously claimed enforcement were removed. Branch coverage is reported separately. |
 | Store assets and support | Current UI captures are regenerated; illustrative balances are labeled. Content card is 1035×720 (3×345×240), without text or essential details in its bottom 282px. PNG files remain below 500KB. Help provides Terms, Privacy, Yield Terms and daviswhistle@naver.com. |
-| Review access | Public source: https://github.com/Daviswhistle/Inheritance. Product: https://inheritance.pages.dev/. Reviewer flow: [REVIEW_NOTES.md](REVIEW_NOTES.md). The operator has no pre-deployment TFH source-sharing record to supply; public access does not establish that historical step. |
+| Review access | Public source: https://github.com/Daviswhistle/Inheritance. Product: https://inheritance.pages.dev/. Reviewer flow: [REVIEW_NOTES.md](REVIEW_NOTES.md). The approved contract/fee package and reviewer walkthrough accompany the review request. |
 
 ## Contract roles and coverage interpretation
 

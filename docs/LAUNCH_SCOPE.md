@@ -1,19 +1,35 @@
-# Launch scope — November 2, 2026
+# Launch scope — November 10, 2026
+
+
+
+## Current status — November 10, 2026
+
+The user approved the final English review explanation and contract/fee package,
+with Korean translations, and authorized publication and resubmission. The latest
+Portal read is **unverified**, South Korea only, English and Korean. Publication
+is in progress; a new submission has not yet been confirmed. The November 9
+submission was withdrawn and is historical. The next confirmed receipt will be
+recorded in RELEASE.md and this section.
+
+The approved materials are [the English submission explanation](SUBMISSION_REVIEW_DRAFT.en.txt),
+[its Korean translation](SUBMISSION_REVIEW_DRAFT.ko.txt), [the contract/fee package](CONTRACT_REVIEW_PACKAGE.md)
+and [its Korean translation](CONTRACT_REVIEW_PACKAGE.ko.md). Runtime `e73e11f`
+and all deployed contracts are unchanged. The [November 10 final checks](evidence/final-check-2026-11-10.json)
+record 476 contract tests, 25 World Chain fork tests, 12 money-safety scenarios,
+72 UI layouts and 22 production-file comparisons, all passed. Production iOS
+native-host evidence remains 4/4 with simulated approvals.
 
 ## Current release scope — South Korean store only
 
-The November 9 submission is confirmed `awaiting_review`, with South Korea
-as the sole store country. This supersedes the older withdrawn/unverified
-checkpoints below; see [the receipt](evidence/portal-submission-2026-11-09.json).
-The app no longer asks for
-residence or checks the connection country before setup or deposit. This
-supersedes the earlier interface restrictions recorded below.
+South Korea is the sole store country. The app does not ask for residence or
+check the connection country before setup or deposit. Historical territorial
+controls below are retained as dated records, not the current runtime policy.
 
-## November 2 release — Korea-only; withdrawn and unverified
+## Historical checkpoint — November 2 Korea-only release, withdrawn
 
 The intended release scope remains **South Korea (KR) only**. The November 2
 Korea-only submission and its `awaiting_review` receipt are historical: the
-operator subsequently withdrew the request. The current repository record is
+operator subsequently withdrew the request. The repository record at that checkpoint was
 **unverified**, as documented in REVIEW_NOTES.md and RELEASE.md. This is a
 withdrawal status, not Portal approval. This local audit does not submit or
 change Portal configuration; read the actual Portal before any future submission.
@@ -36,7 +52,7 @@ The keyboard cause and fix remain established by the before/after native trace:
 see [KEYBOARD_DISMISSAL.md](KEYBOARD_DISMISSAL.md). The previous three-country
 submission receipts below are historical and no longer the active request.
 
-## Decision and actual state
+## Historical assessment — November 2 decision and state
 
 The intended first-store-release scope is **South Korea (KR) only**. The operator
 explicitly narrowed the launch on November 2 to reduce the initial operational
@@ -45,7 +61,7 @@ the prior country assessment or declare the product prohibited there. The
 country-specific analysis below is retained for future decisions, not permission
 to re-enable those markets without authorization.
 
-The latest recorded Portal request is withdrawn and unverified; the intended availability remains exactly KR. Runtime `afd5bab` applied the
+At that November 2 checkpoint, the latest Portal request was withdrawn and unverified; the intended availability remains exactly KR. Runtime `afd5bab` applied the
 same scope to new vault/deposit requests at that time. Production and Android verification
 passed; exact receipts are recorded in [RELEASE.md](RELEASE.md). Earlier KR/AR/CO submissions are withdrawn.
 

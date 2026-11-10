@@ -1,5 +1,28 @@
 # Release evidence
 
+## November 10 — approved review materials and final checks
+
+The user reviewed and approved the English submission explanation and contract/fee
+package, with Korean translations, and authorized public repository updates and
+resubmission. The package leads with the source repository, describes user controls
+and cash/share fee settlement, and records the verified improvements.
+[Final checks](evidence/final-check-2026-11-10.json) passed: 476 contract tests,
+25 World Chain forks, 12 money-safety scenarios and 72 UI layouts. Type checking
+and lint passed; 22 production files matched the immutable `e73e11f` release.
+Runtime and deployed contracts are unchanged. Before resubmission, Portal status
+is `unverified`, KR, en/ko. A new submission is not claimed until its receipt and
+independent readback are recorded here.
+
+
+## November 9 — withdrawal and revised review drafts
+
+The user requested withdrawal and a preview of revised English/Korean review
+materials. Portal UI withdrawal completed; an independent configuration read
+confirmed `unverified`, KR and en/ko at 22:50 KST. At that checkpoint, revised notes and contract/fee
+materials were local drafts pending user review. No resubmission or runtime change
+was made during the withdrawal. Prior submitted content remains preserved in Git and its original receipt.
+
+
 ## November 9, 2026 — resubmission confirmed
 
 At **22:08:52 KST / 13:08:52 UTC**, the authorized Portal submission returned

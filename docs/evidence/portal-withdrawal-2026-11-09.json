@@ -1,0 +1,18 @@
+{
+  "checkedAtKST": "2026-11-09T22:50:02+09:00",
+  "appId": "app_28c40a2a42b7f6c95789c2d5231b1314",
+  "metadataId": "meta_9cf3b324ec9a1838a56c5b6d98be8674",
+  "status": "unverified",
+  "countries": [
+    "KR"
+  ],
+  "languages": [
+    "en",
+    "ko"
+  ],
+  "withdrawalAction": "Portal Un-submit",
+  "independentReadback": true,
+  "resubmissionAuthorized": false,
+  "revisedMaterials": "Local English/Korean drafts awaiting user review",
+  "previousReceipt": "portal-submission-2026-11-09.json"
+}
